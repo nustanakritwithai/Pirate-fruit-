@@ -14,6 +14,10 @@ interface NPCInstance {
   visual: THREE.Group;
 }
 
+export interface NPCActions {
+  openBoatShop?: () => void;
+}
+
 function makeNameSprite(name: string): THREE.Sprite {
   const canvas = document.createElement('canvas');
   canvas.width = 384;
@@ -80,6 +84,7 @@ export class NPCManager {
     private input: Input,
     private controller: CharacterController,
     collision: CollisionSystem,
+    private actions: NPCActions = {},
   ) {
     this.npcs = STARTER_NPCS.map((definition) => {
       const npc = makeNPC(definition, collision.heightAt(definition.x, definition.z));
@@ -100,6 +105,11 @@ export class NPCManager {
     this.reopenCooldown = Math.max(0, this.reopenCooldown - dt);
     if (this.dialogue.isOpen) {
       this.prompt.hide();
+      return;
+    }
+    if (!this.controller.inputEnabled) {
+      this.prompt.hide();
+      if (this.input.controlMode === 'player') this.input.consumeInteract();
       return;
     }
 
@@ -137,8 +147,15 @@ export class NPCManager {
     this.prompt.hide();
     this.controller.setControlsEnabled(false);
     const definition = nearest.definition;
+    const boatShopAction = definition.action === 'boat-shop' ? this.actions.openBoatShop : undefined;
     this.dialogue.open(
-      { name: definition.name, role: definition.role, pages: definition.dialogue },
+      {
+        name: definition.name,
+        role: definition.role,
+        pages: definition.dialogue,
+        actionLabel: boatShopAction ? '⚓ เปิดอู่เรือ' : undefined,
+        onAction: boatShopAction,
+      },
       () => {
         this.controller.setControlsEnabled(true);
         this.reopenCooldown = 0.45;

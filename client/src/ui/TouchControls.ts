@@ -1,4 +1,5 @@
 import type { Input } from '../engine/Input';
+import type { ControlMode } from '../engine/Input';
 import { isTouchDevice } from '../engine/device';
 
 const CAMERA_TOUCH_SENSITIVITY = 2.2;
@@ -31,6 +32,8 @@ export class TouchControls {
 
   private dashQueue = 0;
   private attackQueue = 0;
+  private anchorQueue = 0;
+  private mode: ControlMode = 'player';
 
   private joyPointerId: number | null = null;
   private camPointerId: number | null = null;
@@ -44,6 +47,10 @@ export class TouchControls {
   private cooldownRings = new Map<HTMLDivElement, CooldownGetter>();
   private toast: HTMLDivElement;
   private toastTimer: number | null = null;
+  private attackBtn: HTMLDivElement;
+  private dashBtn: HTMLDivElement;
+  private jumpBtn: HTMLDivElement;
+  private skillButtons: HTMLDivElement[] = [];
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
   static isTouchDevice(): boolean {
@@ -93,8 +100,12 @@ export class TouchControls {
     const jump = this.makeButton('tc-jump', '⬆️', null);
     jump.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      this.jumpHeldRaw = true;
-      this.jumpMinHoldUntil = performance.now() + 150;
+      if (this.mode === 'boat') {
+        this.anchorQueue = 1;
+      } else {
+        this.jumpHeldRaw = true;
+        this.jumpMinHoldUntil = performance.now() + 150;
+      }
     });
     const jumpOff = () => (this.jumpHeldRaw = false);
     jump.addEventListener('pointerup', jumpOff);
@@ -103,13 +114,17 @@ export class TouchControls {
 
     // สกิล 1-3 (ล็อก รอ Phase 5)
     for (let i = 1; i <= 3; i++) {
-      this.makeButton(`tc-skill tc-skill${i}`, '🔒', () =>
-        this.showToast(`สกิล ${i} ปลดล็อกใน Phase 5 (Combat)`),
+      this.skillButtons.push(
+        this.makeButton(`tc-skill tc-skill${i}`, '🔒', () =>
+          this.showToast(`สกิล ${i} ปลดล็อกใน Phase 5 (Combat)`),
+        ),
       );
     }
     // ไม้ตาย (ล็อก รอ Phase 7)
-    this.makeButton('tc-ult', '🔒', () =>
-      this.showToast('ไม้ตายปลดล็อกใน Phase 7 (ผลไม้ปีศาจ)'),
+    this.skillButtons.push(
+      this.makeButton('tc-ult', '🔒', () =>
+        this.showToast('ไม้ตายปลดล็อกใน Phase 7 (ผลไม้ปีศาจ)'),
+      ),
     );
 
     // ---------- ปุ่มสลับวิ่ง (ข้างจอยสติ๊ก) ----------
@@ -126,10 +141,25 @@ export class TouchControls {
     // เก็บอ้างอิงไว้ผูกวงแหวนคูลดาวน์ทีหลัง
     this.attackBtn = attack;
     this.dashBtn = dash;
+    this.jumpBtn = jump;
   }
 
-  private attackBtn: HTMLDivElement;
-  private dashBtn: HTMLDivElement;
+  setMode(mode: ControlMode): void {
+    this.mode = mode;
+    this.jumpHeldRaw = false;
+    this.anchorQueue = 0;
+    this.dashQueue = 0;
+    if (mode === 'boat') {
+      this.sprintOn = false;
+      this.sprintBtn.classList.remove('tc-on');
+    }
+    this.setButtonLabel(this.dashBtn, mode === 'boat' ? '⚡' : '💨');
+    this.setButtonLabel(this.jumpBtn, mode === 'boat' ? '⚓' : '⬆️');
+    this.attackBtn.style.display = mode === 'boat' ? 'none' : 'flex';
+    this.sprintBtn.style.display = mode === 'boat' ? 'none' : 'flex';
+    for (const button of this.skillButtons) button.style.display = mode === 'boat' ? 'none' : 'flex';
+    this.dashBtn.classList.toggle('tc-boat-boost', mode === 'boat');
+  }
 
   /** ผูก getter คูลดาวน์ของ dash/โจมตี เพื่อวาดวงแหวนบนปุ่ม */
   bindCooldowns(dash: CooldownGetter, attack: CooldownGetter): void {
@@ -151,6 +181,12 @@ export class TouchControls {
       return true;
     }
     return false;
+  }
+
+  consumeAnchor(): boolean {
+    if (this.anchorQueue <= 0) return false;
+    this.anchorQueue = 0;
+    return true;
   }
 
   /** เรียกทุกเฟรมจาก game loop เพื่ออัปเดตวงแหวนคูลดาวน์ */
@@ -239,6 +275,11 @@ export class TouchControls {
     return btn;
   }
 
+  private setButtonLabel(button: HTMLDivElement, label: string): void {
+    const span = button.querySelector('span');
+    if (span) span.textContent = label;
+  }
+
   private showToast(msg: string): void {
     this.toast.textContent = msg;
     this.toast.classList.add('tc-visible');
@@ -277,6 +318,7 @@ export class TouchControls {
                    border-color: rgba(255,120,90,.8); background: rgba(120,35,20,.55); }
       .tc-dash   { right: 128px; bottom: 30px;  width: 62px; height: 62px; font-size: 26px;
                    border-color: rgba(120,220,255,.8); }
+      .tc-dash.tc-boat-boost { border-color:rgba(255,220,95,.9); background:rgba(100,72,12,.62); }
       .tc-jump   { right: 112px; bottom: 108px; width: 62px; height: 62px; font-size: 24px; }
       .tc-skill1 { right: 26px;  bottom: 134px; width: 56px; height: 56px; font-size: 20px; }
       .tc-skill2 { right: 92px;  bottom: 188px; width: 56px; height: 56px; font-size: 20px; }

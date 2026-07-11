@@ -52,6 +52,7 @@ export class CharacterController {
   private dashCooldownTimer = 0;
   private dashDir = new THREE.Vector3(0, 0, 1);
   private controlsEnabled = true;
+  private mounted = false;
 
   /** เรียกเมื่อผู้เล่นจมน้ำ/ตกขอบโลก เพื่อให้ระบบภายนอกพากลับจุดเซฟ */
   onDrown: (() => void) | null = null;
@@ -85,7 +86,21 @@ export class CharacterController {
     return this.controlsEnabled;
   }
 
+  setMounted(mounted: boolean): void {
+    this.mounted = mounted;
+    this.verticalVelocity = 0;
+    this.state = { speed: 0, onGround: true, sprinting: false, dashing: false };
+  }
+
+  get isMounted(): boolean {
+    return this.mounted;
+  }
+
   update(dt: number): void {
+    if (this.mounted) {
+      this.state = { speed: 0, onGround: true, sprinting: false, dashing: false };
+      return;
+    }
     // ---------- ทิศทางจาก input (สัมพัทธ์กับกล้อง) ----------
     const raw = this.controlsEnabled ? this.input.moveVector() : { x: 0, z: 0 };
     let mag = Math.min(1, Math.hypot(raw.x, raw.z));

@@ -1,5 +1,7 @@
 import type { TouchControls } from '../ui/TouchControls';
 
+export type ControlMode = 'player' | 'boat';
+
 /**
  * รวมสถานะ input ทั้งหมดไว้ที่เดียว (คีย์บอร์ด + เมาส์ + จอสัมผัส)
  * - คีย์บอร์ดอ่านจาก e.code (ตำแหน่งปุ่มจริง) จึงใช้ได้ทุก layout รวมถึงแป้นไทย
@@ -20,6 +22,8 @@ export class Input {
   private dashQueue = 0;
   private attackQueue = 0;
   private interactQueue = 0;
+  private anchorQueue = 0;
+  private mode: ControlMode = 'player';
 
   private touch: TouchControls | null = null;
 
@@ -31,6 +35,7 @@ export class Input {
       }
       if (e.code === 'KeyQ' && !e.repeat) this.dashQueue++;
       if (e.code === 'KeyE' && !e.repeat) this.interactQueue++;
+      if (e.code === 'Space' && !e.repeat) this.anchorQueue++;
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -65,6 +70,18 @@ export class Input {
   /** เชื่อมกับระบบปุ่มจอสัมผัส (เรียกครั้งเดียวตอนบูตเกม) */
   attachTouch(touch: TouchControls): void {
     this.touch = touch;
+    touch.setMode(this.mode);
+  }
+
+  setMode(mode: ControlMode): void {
+    this.mode = mode;
+    this.anchorQueue = 0;
+    this.dashQueue = 0;
+    this.touch?.setMode(mode);
+  }
+
+  get controlMode(): ControlMode {
+    return this.mode;
   }
 
   isDown(code: string): boolean {
@@ -122,6 +139,19 @@ export class Input {
   consumeInteract(): boolean {
     if (this.interactQueue > 0) {
       this.interactQueue = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** Space/ปุ่มสมอแบบ edge trigger ใช้เฉพาะตอนขับเรือ */
+  consumeAnchor(): boolean {
+    if (this.touch?.consumeAnchor()) {
+      this.anchorQueue = 0;
+      return true;
+    }
+    if (this.anchorQueue > 0) {
+      this.anchorQueue = 0;
       return true;
     }
     return false;

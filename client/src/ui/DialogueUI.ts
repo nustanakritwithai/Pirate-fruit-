@@ -2,6 +2,8 @@ export interface DialogueContent {
   name: string;
   role: string;
   pages: string[];
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 /** กล่องบทสนทนาแบบหลายหน้า รองรับปุ่มแตะและคีย์บอร์ด */
@@ -12,6 +14,7 @@ export class DialogueUI {
   private readonly textElement: HTMLDivElement;
   private readonly pageElement: HTMLDivElement;
   private readonly nextButton: HTMLButtonElement;
+  private readonly actionButton: HTMLButtonElement;
   private content: DialogueContent | null = null;
   private page = 0;
   private onClose: (() => void) | null = null;
@@ -24,8 +27,9 @@ export class DialogueUI {
         <div class="dialogue-head"><div><div class="dialogue-name"></div><div class="dialogue-role"></div></div>
           <button class="dialogue-close" type="button" aria-label="ปิด">×</button></div>
         <div class="dialogue-text"></div>
-        <div class="dialogue-foot"><div class="dialogue-page"></div>
-          <button class="dialogue-next" type="button">ถัดไป ›</button></div>
+        <div class="dialogue-foot"><div class="dialogue-page"></div><div class="dialogue-actions">
+          <button class="dialogue-action" type="button"></button>
+          <button class="dialogue-next" type="button">ถัดไป ›</button></div></div>
       </div>`;
     document.body.appendChild(this.root);
     this.nameElement = this.root.querySelector('.dialogue-name')!;
@@ -33,7 +37,13 @@ export class DialogueUI {
     this.textElement = this.root.querySelector('.dialogue-text')!;
     this.pageElement = this.root.querySelector('.dialogue-page')!;
     this.nextButton = this.root.querySelector('.dialogue-next')!;
+    this.actionButton = this.root.querySelector('.dialogue-action')!;
     this.nextButton.addEventListener('click', () => this.advance());
+    this.actionButton.addEventListener('click', () => {
+      const action = this.content?.onAction;
+      this.close();
+      action?.();
+    });
     this.root.querySelector<HTMLButtonElement>('.dialogue-close')!.addEventListener('click', () => this.close());
     window.addEventListener('keydown', (event) => {
       if (!this.isOpen) return;
@@ -49,6 +59,7 @@ export class DialogueUI {
   }
 
   open(content: DialogueContent, onClose: () => void): void {
+    if (document.pointerLockElement) document.exitPointerLock();
     this.content = content;
     this.page = 0;
     this.onClose = onClose;
@@ -82,6 +93,9 @@ export class DialogueUI {
     this.textElement.textContent = this.content.pages[this.page];
     this.pageElement.textContent = `${this.page + 1} / ${this.content.pages.length}`;
     this.nextButton.textContent = this.page === this.content.pages.length - 1 ? 'จบการสนทนา' : 'ถัดไป ›';
+    const showAction = this.page === this.content.pages.length - 1 && Boolean(this.content.actionLabel);
+    this.actionButton.style.display = showAction ? 'inline-block' : 'none';
+    this.actionButton.textContent = this.content.actionLabel ?? '';
   }
 
   private injectStyles(): void {
@@ -101,6 +115,9 @@ export class DialogueUI {
       .dialogue-close { border:0; color:#c7d2d4; background:transparent; font-size:27px; cursor:pointer; }
       .dialogue-next { border:1px solid rgba(255,218,122,.65); border-radius:16px; padding:7px 14px;
         color:#1c2930; background:#ffda7a; font-weight:800; cursor:pointer; touch-action:manipulation; }
+      .dialogue-actions { display:flex; align-items:center; gap:7px; }
+      .dialogue-action { display:none; border:1px solid rgba(126,225,241,.55); border-radius:16px; padding:7px 14px;
+        color:#e8fbff; background:rgba(19,102,120,.72); font-weight:800; cursor:pointer; touch-action:manipulation; }
       @media (max-width:700px) { .dialogue-root { padding-bottom:122px; }
         .dialogue-card { padding:14px; } .dialogue-text { font-size:14px; min-height:62px; } }
     `;

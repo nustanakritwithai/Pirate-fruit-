@@ -188,24 +188,6 @@ function buildHarbor(ctx: BuildContext): void {
   ctx.scene.add(posts);
 
   ctx.collision.addPlatform({ minX: -2.35, maxX: 2.35, minZ: -59, maxZ: -27.7, y: dockY + 0.09 });
-
-  // เรือประดับสำหรับปูทางสู่ Phase 3 (ยังขับไม่ได้)
-  const boat = new THREE.Group();
-  boat.position.set(5.1, 0.35, -49);
-  boat.rotation.y = -0.08;
-  const hull = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 0.5, 5.2, 8, 1, false), darkWoodMaterial);
-  hull.rotation.x = Math.PI / 2;
-  hull.scale.x = 0.75;
-  shadow(hull, ctx.graphics);
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 4.5, 6), darkWoodMaterial);
-  mast.position.y = 2.1;
-  const sail = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.7, 2.5),
-    new THREE.MeshStandardMaterial({ color: 0xe4d4ad, side: THREE.DoubleSide, roughness: 1 }),
-  );
-  sail.position.set(0, 2.5, 0.12);
-  boat.add(hull, mast, sail);
-  ctx.scene.add(boat);
 }
 
 function buildTrainingBeach(ctx: BuildContext): void {

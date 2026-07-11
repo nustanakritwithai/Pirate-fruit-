@@ -18,12 +18,26 @@ export class ThirdPersonCamera {
 
   private currentPos = new THREE.Vector3();
   private initialized = false;
+  private playerDistance = 7;
+  private targetHeight = 1.5;
 
   constructor(
     private camera: THREE.PerspectiveCamera,
     private input: Input,
     private getTarget: () => THREE.Vector3,
   ) {}
+
+  setBoatMode(enabled: boolean): void {
+    if (enabled) {
+      this.playerDistance = this.distance;
+      this.distance = 11;
+      this.targetHeight = 1.15;
+      this.pitch = Math.max(this.pitch, 0.25);
+    } else {
+      this.distance = THREE.MathUtils.clamp(this.playerDistance, MIN_DIST, MAX_DIST);
+      this.targetHeight = 1.5;
+    }
+  }
 
   update(dt: number): void {
     const { dx, dy } = this.input.consumeMouseDelta();
@@ -39,7 +53,7 @@ export class ThirdPersonCamera {
 
     // จุดที่กล้องมอง: ระดับหน้าอกของตัวละคร
     const target = this.getTarget().clone();
-    target.y += 1.5;
+    target.y += this.targetHeight;
 
     const horiz = Math.cos(this.pitch) * this.distance;
     const idealPos = new THREE.Vector3(

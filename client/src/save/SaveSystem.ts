@@ -43,7 +43,7 @@ export class SaveSystem {
   }
 
   save(): void {
-    if (!this.controller.moveState.onGround) return;
+    if (!this.controller.moveState.onGround || this.controller.isMounted) return;
     const p = this.controller.position;
     const data: SaveData = {
       x: p.x,

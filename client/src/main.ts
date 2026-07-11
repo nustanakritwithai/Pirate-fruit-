@@ -14,6 +14,7 @@ import { loadGraphicsProfile } from './engine/GraphicsQuality';
 import { GraphicsSettings } from './ui/GraphicsSettings';
 import { SpawnManager } from './world/SpawnManager';
 import { NPCManager } from './npc/NPCManager';
+import { BoatManager } from './boat/BoatManager';
 
 const ATTACK_COOLDOWN = 0.5;
 
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
 
   // หน้าจอโหลดชั่วคราวระหว่างรอโมเดล
   const loading = document.createElement('div');
+  loading.className = 'game-loading';
   loading.style.cssText =
     'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
     'color:#fff;font-size:20px;background:#06121f;z-index:100;';
@@ -69,7 +71,20 @@ async function main(): Promise<void> {
   const minimap = new Minimap(controller);
   const saveSystem = new SaveSystem(controller, camera, () => world.timeOfDay);
   const effects = new Effects(game.scene);
-  const npcManager = new NPCManager(game.scene, input, controller, world.collision);
+  const boatManager = new BoatManager(
+    game.scene,
+    input,
+    controller,
+    camera,
+    world.collision,
+    worldTextures,
+    graphics,
+    effects,
+    () => spawnManager.respawn(),
+  );
+  const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
+    openBoatShop: () => boatManager.openShop(),
+  });
   new GraphicsSettings(graphics);
 
   // โจมตีพื้นฐาน (placeholder — ดาเมจจริงมาใน Phase 5)
@@ -91,7 +106,9 @@ async function main(): Promise<void> {
     touchControls = new TouchControls(input);
     input.attachTouch(touchControls);
     touchControls.bindCooldowns(
-      () => controller.dashCooldownFraction,
+      () => input.controlMode === 'boat'
+        ? boatManager.boostCooldownFraction
+        : controller.dashCooldownFraction,
       () => attackCooldown / ATTACK_COOLDOWN,
     );
   }
@@ -103,6 +120,7 @@ async function main(): Promise<void> {
 
   game.add(world);
   game.add(controller);
+  game.add(boatManager);
   game.add(player);
   game.add(camera);
   game.add(combat);
@@ -122,8 +140,12 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error('เกมเริ่มไม่สำเร็จ:', err);
+  document.querySelector('.game-loading')?.remove();
   document.body.insertAdjacentHTML(
     'beforeend',
-    `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#f66">โหลดเกมไม่สำเร็จ — ดูรายละเอียดใน console</div>`,
+    `<div style="position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;
+      padding:24px;text-align:center;color:#ff9b8e;background:#06121f">
+      เปิดเกมไม่สำเร็จ — อุปกรณ์นี้อาจไม่รองรับ WebGL<br>ลองเปิดด้วย Chrome หรือปรับเบราว์เซอร์ให้ใช้ GPU
+    </div>`,
   );
 });

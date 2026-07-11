@@ -37,6 +37,26 @@ export class Effects {
     this.active.push({ mesh, life: 0.22, maxLife: 0.22 });
   }
 
+  spawnBoatImpact(position: THREE.Vector3, destructive = false): void {
+    const material = new THREE.MeshBasicMaterial({
+      color: destructive ? 0xff6b42 : 0xd9ffff,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const geometry = destructive
+      ? new THREE.IcosahedronGeometry(1.1, 1)
+      : new THREE.RingGeometry(0.25, 1.35, 20);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.position.y += destructive ? 0.8 : 0.08;
+    if (!destructive) mesh.rotation.x = -Math.PI / 2;
+    this.scene.add(mesh);
+    this.active.push({ mesh, life: destructive ? 0.65 : 0.38, maxLife: destructive ? 0.65 : 0.38 });
+  }
+
   update(dt: number): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const fx = this.active[i];

@@ -32,9 +32,14 @@ export class InteractionPrompt {
   }
 
   show(name: string): void {
+    this.showAction('คุยกับ', name, '💬');
+  }
+
+  showAction(action: string, target = '', icon = '◆'): void {
+    const label = target ? `${action} <strong>${target}</strong>` : action;
     this.element.innerHTML = isTouchDevice()
-      ? `💬 คุยกับ <strong>${name}</strong>`
-      : `<strong>E</strong> · คุยกับ ${name}`;
+      ? `${icon} ${label}`
+      : `<strong>E</strong> · ${label}`;
     this.element.style.display = 'block';
   }
 
