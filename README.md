@@ -47,11 +47,20 @@ npm run dev
 ## สิ่งที่มีใน Phase 1
 
 - เกาะเริ่มต้นแบบ procedural (เนิน หาดทราย ต้นปาล์ม หิน ลัง) ล้อมด้วยทะเล
+- กราฟฟิก **Mobile Realistic PBR**: ท้องฟ้าจำลองบรรยากาศจริง + environment map,
+  พื้นเกาะ texture splatting 3 ชั้น (ทราย/หญ้า/หิน พร้อม normal map),
+  น้ำทะเลคลื่นเคลื่อนไหวสะท้อนแสงอาทิตย์, ต้นปาล์ม/หิน/ลังใช้ texture จริง
+- ปรับแต่งให้มือถือ: texture JPG 1K (~2.4MB), จำกัด pixel ratio, ลดความละเอียดเงาอัตโนมัติ
 - ตัวละคร 3D (`Soldier.glb` จาก three.js examples) พร้อม animation Idle / Walk / Run
 - กล้อง Third Person
 - ระบบชน: พื้นเกาะ + สิ่งกีดขวาง
 - HUD: แถบ HP, แถบ Energy, พิกัด, FPS
 - เซฟ/โหลดตำแหน่งอัตโนมัติ
+
+## เครดิต Asset (CC0)
+
+- Texture PBR (หญ้า Grass004, ทราย Ground033, หิน Rock023, เปลือกไม้ Bark012, ไม้กระดาน Planks012) จาก [ambientCG](https://ambientcg.com) — CC0
+- `waternormals.jpg` และโมเดล `Soldier.glb` จาก [three.js examples](https://github.com/mrdoob/three.js)
 
 ## คำสั่งอื่น
 

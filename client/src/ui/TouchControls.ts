@@ -1,4 +1,5 @@
 import type { Input } from '../engine/Input';
+import { isTouchDevice } from '../engine/device';
 
 const CAMERA_TOUCH_SENSITIVITY = 2.2;
 
@@ -46,8 +47,7 @@ export class TouchControls {
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
   static isTouchDevice(): boolean {
-    if (new URLSearchParams(location.search).has('touch')) return true;
-    return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+    return isTouchDevice();
   }
 
   constructor(private input: Input) {

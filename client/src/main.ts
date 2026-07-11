@@ -1,6 +1,7 @@
 import { Game } from './engine/Game';
 import { Input } from './engine/Input';
 import { World, heightAt } from './world/World';
+import { loadWorldTextures } from './world/textures';
 import { CharacterController } from './player/CharacterController';
 import { Player } from './player/Player';
 import { ThirdPersonCamera } from './camera/ThirdPersonCamera';
@@ -24,7 +25,8 @@ async function main(): Promise<void> {
 
   const game = new Game(container);
   const input = new Input(game.renderer.domElement);
-  const world = new World(game.scene);
+  const worldTextures = await loadWorldTextures();
+  const world = new World(game.scene, game.renderer, worldTextures);
 
   const camera: ThirdPersonCamera = new ThirdPersonCamera(
     game.camera,
@@ -88,6 +90,7 @@ async function main(): Promise<void> {
     controller.hp = Math.max(1, controller.hp - 5);
   };
 
+  game.add(world);
   game.add(controller);
   game.add(player);
   game.add(camera);

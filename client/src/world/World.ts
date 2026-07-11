@@ -1,9 +1,15 @@
 import * as THREE from 'three';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { CollisionSystem } from './Collision';
 import { scatterProps } from './props';
+import type { WorldTextures } from './textures';
+import { isTouchDevice } from '../engine/device';
 
 export const ISLAND_RADIUS = 60;
 export const WATER_LEVEL = 0;
+
+/** จำนวนรอบ tiling ของ texture พื้นบนเกาะ */
+const TERRAIN_TILE = 34;
 
 /**
  * ความสูงของพื้นเกาะที่จุด (x, z) — เป็นสูตรล้วนๆ จึงใช้ร่วมกัน
@@ -22,57 +28,86 @@ export function heightAt(x: number, z: number): number {
 }
 
 /**
- * โลกของ Phase 1: เกาะเริ่มต้นกลางทะเล + แสง + ท้องฟ้า + สิ่งกีดขวาง
+ * โลกของเกมแบบ Mobile Realistic PBR:
+ * - ท้องฟ้าจำลองบรรยากาศจริง (Sky) + environment map จาก PMREM ให้ทุกวัสดุ
+ * - พื้นเกาะ texture splatting 3 ชั้น (ทราย/หญ้า/หิน) ตามความสูง+ความชัน
+ * - น้ำทะเล normal map เคลื่อนไหว 2 ชั้น (ไม่ใช้ planar reflection — ประหยัด GPU มือถือ)
  */
 export class World {
   readonly collision: CollisionSystem;
 
-  constructor(scene: THREE.Scene) {
+  /** uniform เวลาสำหรับคลื่นน้ำ อัปเดตทุกเฟรม */
+  private waterTime = { value: 0 };
+
+  constructor(
+    scene: THREE.Scene,
+    renderer: THREE.WebGLRenderer,
+    private textures: WorldTextures,
+  ) {
     this.collision = new CollisionSystem(heightAt);
 
-    // ---------- ท้องฟ้า + หมอก ----------
-    const skyColor = new THREE.Color(0x7ec8f0);
-    scene.background = skyColor;
-    scene.fog = new THREE.Fog(skyColor, 90, 400);
+    // ---------- ท้องฟ้า (บรรยากาศจริง) ----------
+    const sky = new Sky();
+    sky.scale.setScalar(450);
+    const skyU = sky.material.uniforms;
+    skyU.turbidity.value = 6;
+    skyU.rayleigh.value = 2.2;
+    skyU.mieCoefficient.value = 0.005;
+    skyU.mieDirectionalG.value = 0.8;
 
-    // ---------- แสง ----------
-    const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x3f6b4f, 0.9);
-    scene.add(hemi);
+    // ดวงอาทิตย์ช่วงบ่าย แสงเฉียงให้เงาสวย
+    const sunDir = new THREE.Vector3().setFromSphericalCoords(
+      1,
+      THREE.MathUtils.degToRad(90 - 38), // elevation 38°
+      THREE.MathUtils.degToRad(140),
+    );
+    skyU.sunPosition.value.copy(sunDir);
 
-    const sun = new THREE.DirectionalLight(0xfff2d9, 2.2);
-    sun.position.set(60, 90, 40);
+    // environment map จากท้องฟ้า — ทำครั้งเดียว ให้แสงสะท้อน/ambient กับวัสดุ PBR ทุกชิ้น
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = new THREE.Scene();
+    envScene.add(sky);
+    scene.environment = pmrem.fromScene(envScene).texture;
+    scene.environmentIntensity = 0.55;
+    pmrem.dispose();
+    scene.add(sky); // เอากลับมาแสดงในฉากหลัก
+
+    scene.fog = new THREE.Fog(0xcadfeb, 110, 420);
+
+    // ---------- แสงอาทิตย์ (เงา) ----------
+    const sun = new THREE.DirectionalLight(0xfff1dc, 3.0);
+    sun.position.copy(sunDir).multiplyScalar(130);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const shadowRes = isTouchDevice() ? 1024 : 2048;
+    sun.shadow.mapSize.set(shadowRes, shadowRes);
     sun.shadow.camera.left = -80;
     sun.shadow.camera.right = 80;
     sun.shadow.camera.top = 80;
     sun.shadow.camera.bottom = -80;
-    sun.shadow.camera.far = 250;
-    sun.shadow.bias = -0.0005;
+    sun.shadow.camera.far = 300;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.02;
     scene.add(sun);
 
-    // ---------- พื้นเกาะ ----------
-    scene.add(this.buildTerrain());
+    // แสงฟุ้งจากฟ้า/พื้นเบาๆ เสริม env map
+    scene.add(new THREE.HemisphereLight(0xbdd8ee, 0x51624c, 0.35));
 
-    // ---------- ทะเล ----------
-    const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(1200, 1200),
-      new THREE.MeshStandardMaterial({
-        color: 0x1e6fa8,
-        roughness: 0.35,
-        metalness: 0.1,
-        transparent: true,
-        opacity: 0.92,
-      }),
-    );
-    water.rotation.x = -Math.PI / 2;
-    water.position.y = WATER_LEVEL;
-    scene.add(water);
+    // ---------- พื้นเกาะ + ทะเล ----------
+    scene.add(this.buildTerrain());
+    scene.add(this.buildWater());
 
     // ---------- ต้นไม้ หิน ลัง ----------
-    scatterProps(scene, this.collision, heightAt, ISLAND_RADIUS);
+    scatterProps(scene, this.collision, heightAt, ISLAND_RADIUS, textures);
   }
 
+  /** อัปเดตคลื่นน้ำ (เรียกจาก game loop) */
+  update(dt: number): void {
+    this.waterTime.value += dt;
+  }
+
+  // ------------------------------------------------------------------
+  // พื้นเกาะ: MeshStandardMaterial + splatting ทราย/หญ้า/หิน ใน shader
+  // ------------------------------------------------------------------
   private buildTerrain(): THREE.Mesh {
     const size = ISLAND_RADIUS * 2.4;
     const segments = 140;
@@ -80,40 +115,127 @@ export class World {
     geo.rotateX(-Math.PI / 2);
 
     const pos = geo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const sand = new THREE.Color(0xe6d29a);
-    const grass = new THREE.Color(0x4f9e4a);
-    const rockCol = new THREE.Color(0x8d8f8a);
-    const tmp = new THREE.Color();
-
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
-      const y = heightAt(x, z);
-      pos.setY(i, y);
-
-      // ไล่สีตามความสูง: ทราย → หญ้า → หิน
-      if (y < 0.6) {
-        tmp.copy(sand);
-      } else if (y < 1.2) {
-        tmp.copy(sand).lerp(grass, (y - 0.6) / 0.6);
-      } else if (y < 3.5) {
-        tmp.copy(grass);
-      } else {
-        tmp.copy(grass).lerp(rockCol, Math.min((y - 3.5) / 1.5, 1));
-      }
-      colors[i * 3] = tmp.r;
-      colors[i * 3 + 1] = tmp.g;
-      colors[i * 3 + 2] = tmp.b;
+      pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
     }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
 
-    const terrain = new THREE.Mesh(
-      geo,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
-    );
+    // น้ำหนัก splat ต่อ vertex: x=ทราย y=หญ้า z=หิน (จากความสูง + ความชัน)
+    const normal = geo.attributes.normal;
+    const splat = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const h = pos.getY(i);
+      const slope = 1 - normal.getY(i); // 0 = ราบ, มากขึ้น = ชัน
+      let sand = THREE.MathUtils.smoothstep(1.1 - h, 0, 1.1); // ต่ำ = ทราย
+      let rock = THREE.MathUtils.smoothstep(slope, 0.12, 0.3); // ชัน = หิน
+      rock = Math.max(rock, THREE.MathUtils.smoothstep(h, 3.6, 4.6)); // ยอดสูง = หิน
+      sand *= 1 - rock;
+      let grass = Math.max(0, 1 - sand - rock);
+      const sum = sand + grass + rock;
+      splat[i * 3] = sand / sum;
+      splat[i * 3 + 1] = grass / sum;
+      splat[i * 3 + 2] = rock / sum;
+    }
+    geo.setAttribute('splat', new THREE.BufferAttribute(splat, 3));
+
+    const t = this.textures;
+    for (const tex of [t.grassColor, t.grassNormal]) tex.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
+
+    const mat = new THREE.MeshStandardMaterial({
+      map: t.grassColor,
+      normalMap: t.grassNormal,
+      roughness: 1,
+      metalness: 0,
+    });
+
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSandMap = { value: t.sandColor };
+      shader.uniforms.uRockMap = { value: t.rockColor };
+      shader.uniforms.uSandNormal = { value: t.sandNormal };
+      shader.uniforms.uRockNormal = { value: t.rockNormal };
+
+      shader.vertexShader =
+        'attribute vec3 splat;\nvarying vec3 vSplat;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\n\tvSplat = splat;',
+        );
+
+      shader.fragmentShader =
+        'varying vec3 vSplat;\n' +
+        'uniform sampler2D uSandMap;\nuniform sampler2D uRockMap;\n' +
+        'uniform sampler2D uSandNormal;\nuniform sampler2D uRockNormal;\n' +
+        shader.fragmentShader
+          .replace(
+            '#include <map_fragment>',
+            `
+	vec2 rockUv = vMapUv * 0.55;
+	vec4 splatColor = texture2D( uSandMap, vMapUv ) * vSplat.x
+		+ texture2D( map, vMapUv ) * vSplat.y
+		+ texture2D( uRockMap, rockUv ) * vSplat.z;
+	diffuseColor *= splatColor;
+`,
+          )
+          .replace(
+            '#include <normal_fragment_maps>',
+            `
+	vec3 splatN = texture2D( uSandNormal, vNormalMapUv ).xyz * vSplat.x
+		+ texture2D( normalMap, vNormalMapUv ).xyz * vSplat.y
+		+ texture2D( uRockNormal, vNormalMapUv * 0.55 ).xyz * vSplat.z;
+	vec3 mapN = splatN * 2.0 - 1.0;
+	mapN.xy *= normalScale;
+	normal = normalize( tbn * mapN );
+`,
+          )
+          .replace(
+            '#include <roughnessmap_fragment>',
+            // ทรายด้านสุด หญ้ารองลงมา หินเงาขึ้นนิด
+            'float roughnessFactor = dot( vSplat, vec3( 1.0, 0.95, 0.82 ) );',
+          );
+    };
+
+    const terrain = new THREE.Mesh(geo, mat);
     terrain.receiveShadow = true;
     return terrain;
+  }
+
+  // ------------------------------------------------------------------
+  // ทะเล: normal map 2 ชั้นเลื่อนสวนกัน + แสงสะท้อนจาก env map
+  // ------------------------------------------------------------------
+  private buildWater(): THREE.Mesh {
+    const waterNormal = this.textures.waterNormal;
+    waterNormal.repeat.set(48, 48);
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x0d3d57,
+      roughness: 0.14,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.93,
+      normalMap: waterNormal,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+    });
+
+    const time = this.waterTime;
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = time;
+      shader.fragmentShader =
+        'uniform float uTime;\n' +
+        shader.fragmentShader.replace(
+          '#include <normal_fragment_maps>',
+          `
+	vec3 w1 = texture2D( normalMap, vNormalMapUv + vec2( uTime * 0.012, uTime * 0.009 ) ).xyz;
+	vec3 w2 = texture2D( normalMap, vNormalMapUv * 0.63 - vec2( uTime * 0.010, uTime * 0.007 ) ).xyz;
+	vec3 mapN = normalize( ( w1 + w2 ) - 1.0 );
+	mapN.xy *= normalScale;
+	normal = normalize( tbn * mapN );
+`,
+        );
+    };
+
+    const water = new THREE.Mesh(new THREE.CircleGeometry(600, 48), mat);
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = WATER_LEVEL;
+    return water;
   }
 }

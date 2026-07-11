@@ -22,6 +22,7 @@
 - [x] เซฟตำแหน่ง (localStorage + autosave + respawn ตอนตกน้ำ)
 - [x] รองรับมือถือ: ระบบบังคับแบบ RoV (จอยสติ๊กเสมือน, ปุ่มโจมตีหลัก, ช่องสกิล 3 + ไม้ตาย 1, กระโดด, หมุนกล้องด้วยการลากนิ้ว)
 - [x] พุ่งหลบ (Dash) ติดตัว — คูลดาวน์ 2.2 วิ + ใช้ Energy (ปุ่ม `Q` บน PC / ปุ่ม 💨 บนมือถือ)
+- [x] กราฟฟิก Mobile Realistic PBR: ท้องฟ้าบรรยากาศจริง (Sky + env map), พื้นเกาะ texture splatting ทราย/หญ้า/หิน (albedo+normal), น้ำทะเล normal map เคลื่อนไหว 2 ชั้น, ปาล์ม/หิน/ลังใช้ texture PBR จริง (CC0 จาก ambientCG)
 
 ## Phase 2 — โลกของเกม ⬜
 
@@ -129,9 +130,9 @@
 - [ ] LOD
 - [ ] Instancing
 - [ ] Frustum Culling
-- [ ] Texture Compression
-- [ ] Mobile PBR
-- [ ] Dynamic Shadow ระดับต่ำ
+- [x] Texture Compression (ทำก่อนกำหนด — JPG 1K บีบ mozjpeg รวม ~2.4MB)
+- [x] Mobile PBR (ทำก่อนกำหนด — ดูหมายเหตุ Phase 1)
+- [x] Dynamic Shadow ระดับต่ำ (ทำก่อนกำหนด — มือถือลด shadow map 2048→1024 + จำกัด pixel ratio 1.5)
 - [ ] Occlusion Culling
 
 ---

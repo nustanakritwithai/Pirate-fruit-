@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isTouchDevice } from './device';
 
 export interface Updatable {
   update(dt: number): void;
@@ -27,10 +28,12 @@ export class Game {
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // มือถือจำกัด pixel ratio ต่ำลง — จอ retina x3 แพงเกินจำเป็น
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice() ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.75;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
