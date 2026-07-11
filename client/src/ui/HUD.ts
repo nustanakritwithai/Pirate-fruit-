@@ -12,10 +12,12 @@ export class HUD {
   private energyText: HTMLSpanElement;
   private posText: HTMLDivElement;
   private fpsText: HTMLDivElement;
+  private timeText: HTMLDivElement;
 
   constructor(
     private controller: CharacterController,
     private game: Game,
+    private getClockLabel: () => string,
   ) {
     const style = document.createElement('style');
     style.textContent = `
@@ -53,10 +55,11 @@ export class HUD {
 
     const info = document.createElement('div');
     info.className = 'hud hud-info';
-    info.innerHTML = `<div class="pos"></div><div class="fps"></div>`;
+    info.innerHTML = `<div class="time"></div><div class="pos"></div><div class="fps"></div>`;
     document.body.appendChild(info);
     this.posText = info.querySelector('.pos')!;
     this.fpsText = info.querySelector('.fps')!;
+    this.timeText = info.querySelector('.time')!;
 
     // บนมือถือมีปุ่มบนจอครบแล้ว ไม่ต้องแสดงคำแนะนำคีย์บอร์ด
     if (!TouchControls.isTouchDevice()) {
@@ -83,6 +86,10 @@ export class HUD {
 
     const p = c.position;
     this.posText.textContent = `X ${p.x.toFixed(1)}  Y ${p.y.toFixed(1)}  Z ${p.z.toFixed(1)}`;
-    this.fpsText.textContent = `${this.game.fps} FPS`;
+    this.timeText.textContent = `☀ ${this.getClockLabel()}`;
+    const tris = this.game.triangles >= 1000
+      ? `${(this.game.triangles / 1000).toFixed(1)}k`
+      : `${this.game.triangles}`;
+    this.fpsText.textContent = `${this.game.fps} FPS · ${this.game.drawCalls} calls · ${tris} tris`;
   }
 }

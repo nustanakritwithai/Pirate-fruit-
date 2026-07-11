@@ -3,10 +3,14 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { CollisionSystem } from './Collision';
 import { scatterProps } from './props';
 import type { WorldTextures } from './textures';
-import { isTouchDevice } from '../engine/device';
+import type { GraphicsProfile } from '../engine/GraphicsQuality';
+import { buildStarterIsland } from '../island/StarterIsland';
+import { Ocean, WATER_LEVEL } from '../ocean/Ocean';
+import { CloudLayer } from './CloudLayer';
+import { DayNightCycle } from './DayNightCycle';
 
 export const ISLAND_RADIUS = 60;
-export const WATER_LEVEL = 0;
+export { WATER_LEVEL };
 
 /** จำนวนรอบ tiling ของ texture พื้นบนเกาะ */
 const TERRAIN_TILE = 34;
@@ -35,14 +39,15 @@ export function heightAt(x: number, z: number): number {
  */
 export class World {
   readonly collision: CollisionSystem;
-
-  /** uniform เวลาสำหรับคลื่นน้ำ อัปเดตทุกเฟรม */
-  private waterTime = { value: 0 };
+  readonly dayNight: DayNightCycle;
+  private readonly ocean: Ocean;
+  private readonly clouds: CloudLayer;
 
   constructor(
     scene: THREE.Scene,
     renderer: THREE.WebGLRenderer,
     private textures: WorldTextures,
+    private graphics: GraphicsProfile,
   ) {
     this.collision = new CollisionSystem(heightAt);
 
@@ -63,23 +68,25 @@ export class World {
     );
     skyU.sunPosition.value.copy(sunDir);
 
-    // environment map จากท้องฟ้า — ทำครั้งเดียว ให้แสงสะท้อน/ambient กับวัสดุ PBR ทุกชิ้น
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const envScene = new THREE.Scene();
-    envScene.add(sky);
-    scene.environment = pmrem.fromScene(envScene).texture;
-    scene.environmentIntensity = 0.55;
-    pmrem.dispose();
-    scene.add(sky); // เอากลับมาแสดงในฉากหลัก
+    // environment map ทำเพียงครั้งเดียว โหมด Low ข้ามขั้นนี้เพื่อลดเวลาเริ่มเกมและหน่วยความจำ GPU
+    if (graphics.tier !== 'low') {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envScene = new THREE.Scene();
+      envScene.add(sky);
+      scene.environment = pmrem.fromScene(envScene).texture;
+      scene.environmentIntensity = 0.55;
+      pmrem.dispose();
+    }
+    scene.add(sky);
 
-    scene.fog = new THREE.Fog(0xcadfeb, 110, 420);
+    const fog = new THREE.Fog(0xcadfeb, 110, 420);
+    scene.fog = fog;
 
     // ---------- แสงอาทิตย์ (เงา) ----------
     const sun = new THREE.DirectionalLight(0xfff1dc, 3.0);
     sun.position.copy(sunDir).multiplyScalar(130);
-    sun.castShadow = true;
-    const shadowRes = isTouchDevice() ? 1024 : 2048;
-    sun.shadow.mapSize.set(shadowRes, shadowRes);
+    sun.castShadow = graphics.shadows;
+    sun.shadow.mapSize.set(graphics.shadowMapSize, graphics.shadowMapSize);
     sun.shadow.camera.left = -80;
     sun.shadow.camera.right = 80;
     sun.shadow.camera.top = 80;
@@ -90,19 +97,44 @@ export class World {
     scene.add(sun);
 
     // แสงฟุ้งจากฟ้า/พื้นเบาๆ เสริม env map
-    scene.add(new THREE.HemisphereLight(0xbdd8ee, 0x51624c, 0.35));
+    const hemisphere = new THREE.HemisphereLight(0xbdd8ee, 0x51624c, 0.35);
+    scene.add(hemisphere);
 
     // ---------- พื้นเกาะ + ทะเล ----------
     scene.add(this.buildTerrain());
-    scene.add(this.buildWater());
+    this.ocean = new Ocean(textures.waterNormal, graphics);
+    scene.add(this.ocean.mesh);
 
-    // ---------- ต้นไม้ หิน ลัง ----------
-    scatterProps(scene, this.collision, heightAt, ISLAND_RADIUS, textures);
+    // ---------- สถานที่หลัก หมู่บ้าน ท่าเรือ หาดฝึก ----------
+    const starterIsland = buildStarterIsland(scene, this.collision, textures, graphics);
+
+    // ---------- ธรรมชาติแบบ instancing ----------
+    scatterProps(scene, this.collision, heightAt, ISLAND_RADIUS, textures, graphics);
+
+    this.clouds = new CloudLayer(graphics);
+    scene.add(this.clouds.mesh);
+    this.dayNight = new DayNightCycle(
+      sky,
+      sun,
+      hemisphere,
+      fog,
+      starterIsland.nightMaterial,
+      starterIsland.nightLights,
+    );
   }
 
-  /** อัปเดตคลื่นน้ำ (เรียกจาก game loop) */
+  get timeOfDay(): number {
+    return this.dayNight.value;
+  }
+
+  setTimeOfDay(value: number): void {
+    this.dayNight.setTime(value);
+  }
+
   update(dt: number): void {
-    this.waterTime.value += dt;
+    this.ocean.update(dt);
+    this.clouds.update(dt);
+    this.dayNight.update(dt);
   }
 
   // ------------------------------------------------------------------
@@ -110,7 +142,7 @@ export class World {
   // ------------------------------------------------------------------
   private buildTerrain(): THREE.Mesh {
     const size = ISLAND_RADIUS * 2.4;
-    const segments = 140;
+    const segments = this.graphics.terrainSegments;
     const geo = new THREE.PlaneGeometry(size, size, segments, segments);
     geo.rotateX(-Math.PI / 2);
 
@@ -195,47 +227,7 @@ export class World {
     };
 
     const terrain = new THREE.Mesh(geo, mat);
-    terrain.receiveShadow = true;
+    terrain.receiveShadow = this.graphics.shadows;
     return terrain;
-  }
-
-  // ------------------------------------------------------------------
-  // ทะเล: normal map 2 ชั้นเลื่อนสวนกัน + แสงสะท้อนจาก env map
-  // ------------------------------------------------------------------
-  private buildWater(): THREE.Mesh {
-    const waterNormal = this.textures.waterNormal;
-    waterNormal.repeat.set(48, 48);
-
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x0d3d57,
-      roughness: 0.14,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.93,
-      normalMap: waterNormal,
-      normalScale: new THREE.Vector2(0.85, 0.85),
-    });
-
-    const time = this.waterTime;
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = time;
-      shader.fragmentShader =
-        'uniform float uTime;\n' +
-        shader.fragmentShader.replace(
-          '#include <normal_fragment_maps>',
-          `
-	vec3 w1 = texture2D( normalMap, vNormalMapUv + vec2( uTime * 0.012, uTime * 0.009 ) ).xyz;
-	vec3 w2 = texture2D( normalMap, vNormalMapUv * 0.63 - vec2( uTime * 0.010, uTime * 0.007 ) ).xyz;
-	vec3 mapN = normalize( ( w1 + w2 ) - 1.0 );
-	mapN.xy *= normalScale;
-	normal = normalize( tbn * mapN );
-`,
-        );
-    };
-
-    const water = new THREE.Mesh(new THREE.CircleGeometry(600, 48), mat);
-    water.rotation.x = -Math.PI / 2;
-    water.position.y = WATER_LEVEL;
-    return water;
   }
 }

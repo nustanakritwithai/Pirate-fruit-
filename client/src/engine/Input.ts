@@ -19,6 +19,7 @@ export class Input {
   /** นับจำนวนครั้งที่สั่ง dash/โจมตี (edge trigger) รอให้ logic มาเก็บไป */
   private dashQueue = 0;
   private attackQueue = 0;
+  private interactQueue = 0;
 
   private touch: TouchControls | null = null;
 
@@ -29,6 +30,7 @@ export class Input {
         e.preventDefault();
       }
       if (e.code === 'KeyQ' && !e.repeat) this.dashQueue++;
+      if (e.code === 'KeyE' && !e.repeat) this.interactQueue++;
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -111,6 +113,15 @@ export class Input {
     if (fromTouch) return true;
     if (this.attackQueue > 0) {
       this.attackQueue = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** อ่านคำสั่งโต้ตอบ NPC หนึ่งครั้ง */
+  consumeInteract(): boolean {
+    if (this.interactQueue > 0) {
+      this.interactQueue = 0;
       return true;
     }
     return false;

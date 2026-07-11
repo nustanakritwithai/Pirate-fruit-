@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { CollisionSystem } from './Collision';
 import type { WorldTextures } from './textures';
+import { WORLD_POI_LIST } from './WorldPOI';
 
 /** สุ่มแบบกำหนด seed ได้ เพื่อให้เกาะหน้าตาเหมือนเดิมทุกครั้งที่โหลด */
 export function mulberry32(seed: number): () => number {
@@ -14,251 +16,225 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-/** noise ตายตัวตามตำแหน่ง (จุดซ้ำกันได้ค่าเดิม — ผิว mesh ไม่แตกตะเข็บ) */
-function hashNoise(x: number, y: number, z: number): number {
-  const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
-  return s - Math.floor(s);
-}
-
-/**
- * วาดใบปาล์มลง canvas (ก้านกลาง + ใบย่อยแบบขนนก) ใช้เป็น alpha texture
- * ไม่ต้องดาวน์โหลด asset เพิ่ม
- */
 function makeFrondTexture(): THREE.CanvasTexture {
-  const w = 256;
-  const h = 512;
   const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = 128;
+  canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, w, h);
-
-  // ก้านกลาง (โคนล่าง → ปลายบน)
-  const stem = ctx.createLinearGradient(0, h, 0, 0);
-  stem.addColorStop(0, '#7a6a3d');
-  stem.addColorStop(1, '#5f7a35');
-  ctx.strokeStyle = stem;
-  ctx.lineWidth = 9;
+  const gradient = ctx.createLinearGradient(0, 256, 0, 0);
+  gradient.addColorStop(0, '#597439');
+  gradient.addColorStop(1, '#2f8c4d');
+  ctx.strokeStyle = gradient;
   ctx.lineCap = 'round';
+  ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.moveTo(w / 2, h - 4);
-  ctx.lineTo(w / 2, 6);
+  ctx.moveTo(64, 252);
+  ctx.lineTo(64, 4);
   ctx.stroke();
-
-  // ใบย่อยสองฝั่ง เฉียงขึ้น สั้นลงเรื่อยๆ เมื่อใกล้ปลาย
-  const rand = mulberry32(7);
-  const steps = 34;
-  for (let i = 0; i < steps; i++) {
-    const t = i / (steps - 1);
-    const y = h - 18 - t * (h - 40);
-    const len = (1 - t * 0.55) * 105 * (0.85 + rand() * 0.3);
-    const lift = 38 + t * 30; // ปลายใบเชิดขึ้น
-    const g = 105 + Math.floor(rand() * 55);
-    ctx.strokeStyle = `rgba(${30 + Math.floor(rand() * 25)}, ${g}, ${40 + Math.floor(rand() * 25)}, 0.95)`;
-    ctx.lineWidth = 5.5 - t * 2.5;
+  const random = mulberry32(7);
+  for (let i = 0; i < 24; i++) {
+    const t = i / 23;
+    const y = 244 - t * 225;
+    const length = (1 - t * 0.48) * (48 + random() * 7);
+    ctx.strokeStyle = `rgba(${28 + random() * 16},${112 + random() * 40},${45 + random() * 18},.97)`;
+    ctx.lineWidth = 3.4 - t * 1.5;
     for (const side of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(w / 2, y);
-      ctx.quadraticCurveTo(
-        w / 2 + side * len * 0.55,
-        y - lift * 0.35,
-        w / 2 + side * len,
-        y - lift,
-      );
+      ctx.moveTo(64, y);
+      ctx.quadraticCurveTo(64 + side * length * 0.5, y - 10, 64 + side * length, y - 25 - t * 9);
       ctx.stroke();
     }
   }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 2;
+  return texture;
 }
 
-interface PropMaterials {
-  bark: THREE.MeshStandardMaterial;
-  frond: THREE.MeshStandardMaterial;
-  rock: THREE.MeshStandardMaterial;
-  crate: THREE.MeshStandardMaterial;
+function isProtected(x: number, z: number): boolean {
+  return WORLD_POI_LIST.some((poi) => Math.hypot(x - poi.x, z - poi.z) < poi.safeRadius);
 }
 
-function makeMaterials(t: WorldTextures): PropMaterials {
-  t.barkColor.repeat.set(1, 2);
-  t.barkNormal.repeat.set(1, 2);
-  return {
-    bark: new THREE.MeshStandardMaterial({
-      map: t.barkColor,
-      normalMap: t.barkNormal,
-      roughness: 0.9,
-    }),
-    frond: new THREE.MeshStandardMaterial({
-      map: makeFrondTexture(),
-      alphaTest: 0.35,
-      side: THREE.DoubleSide,
-      roughness: 0.65,
-    }),
-    rock: new THREE.MeshStandardMaterial({
-      map: t.rockColor,
-      normalMap: t.rockNormal,
-      roughness: 0.95,
-    }),
-    crate: new THREE.MeshStandardMaterial({
-      map: t.planksColor,
-      normalMap: t.planksNormal,
-      roughness: 0.8,
-    }),
-  };
+interface Spot {
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  scale: number;
 }
 
-/** ใบปาล์มโค้งปลายตก (bend ระนาบตามความยาว) */
-function makeFrondGeometry(): THREE.PlaneGeometry {
-  const geo = new THREE.PlaneGeometry(0.95, 2.9, 1, 6);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const v = (pos.getY(i) + 1.45) / 2.9; // 0 โคน → 1 ปลาย
-    pos.setZ(i, -0.6 * v * v);
+function createSpots(
+  count: number,
+  minGround: number,
+  islandRadius: number,
+  heightAt: (x: number, z: number) => number,
+  random: () => number,
+  occupied: Spot[],
+  spacing: number,
+): Spot[] {
+  const result: Spot[] = [];
+  for (let i = 0; i < count; i++) {
+    for (let attempt = 0; attempt < 45; attempt++) {
+      const angle = random() * Math.PI * 2;
+      const distance = Math.sqrt(random()) * islandRadius * 0.86;
+      const x = Math.cos(angle) * distance;
+      const z = Math.sin(angle) * distance;
+      const y = heightAt(x, z);
+      if (y < minGround || isProtected(x, z)) continue;
+      if (occupied.some((spot) => Math.hypot(spot.x - x, spot.z - z) < spacing)) continue;
+      const spot = { x, y, z, rotation: random() * Math.PI * 2, scale: 0.82 + random() * 0.42 };
+      occupied.push(spot);
+      result.push(spot);
+      break;
+    }
   }
-  geo.computeVertexNormals();
-  return geo;
+  return result;
 }
 
-function makePalmTree(rand: () => number, mats: PropMaterials, frondGeo: THREE.PlaneGeometry): THREE.Group {
-  const tree = new THREE.Group();
-
-  // ลำต้นโค้งเล็กน้อยแบบปาล์มริมหาด
-  const trunkHeight = 4 + rand() * 2.2;
-  const bendDir = rand() * Math.PI * 2;
-  const bendAmt = 0.35 + rand() * 0.5;
-  const trunkGeo = new THREE.CylinderGeometry(0.15, 0.3, trunkHeight, 8, 6);
-  const tp = trunkGeo.attributes.position;
-  for (let i = 0; i < tp.count; i++) {
-    const v = (tp.getY(i) + trunkHeight / 2) / trunkHeight;
-    tp.setX(i, tp.getX(i) + Math.cos(bendDir) * bendAmt * v * v);
-    tp.setZ(i, tp.getZ(i) + Math.sin(bendDir) * bendAmt * v * v);
-  }
-  trunkGeo.computeVertexNormals();
-  const trunk = new THREE.Mesh(trunkGeo, mats.bark);
-  trunk.position.y = trunkHeight / 2;
-  trunk.castShadow = true;
-  tree.add(trunk);
-
-  // พุ่มใบ: ใบระนาบ alpha กางรอบยอด ปลายตกลง
-  const crown = new THREE.Group();
-  crown.position.set(
-    Math.cos(bendDir) * bendAmt,
-    trunkHeight - 0.05,
-    Math.sin(bendDir) * bendAmt,
+function addPalms(
+  scene: THREE.Scene,
+  collision: CollisionSystem,
+  spots: Spot[],
+  textures: WorldTextures,
+  graphics: GraphicsProfile,
+): void {
+  const bark = new THREE.MeshStandardMaterial({
+    map: textures.barkColor,
+    normalMap: textures.barkNormal,
+    roughness: 0.92,
+  });
+  const frond = new THREE.MeshStandardMaterial({
+    map: makeFrondTexture(),
+    alphaTest: 0.42,
+    side: THREE.DoubleSide,
+    roughness: 0.72,
+  });
+  const trunkGeometry = new THREE.CylinderGeometry(0.18, 0.3, 1, 7, 2);
+  const frondGeometry = new THREE.PlaneGeometry(0.9, 3.05, 1, 3);
+  frondGeometry.translate(0, 1.52, 0);
+  const trunks = new THREE.InstancedMesh(trunkGeometry, bark, spots.length);
+  const leaves = new THREE.InstancedMesh(
+    frondGeometry,
+    frond,
+    spots.length * graphics.palmFronds,
   );
-  const frondCount = 9;
-  for (let i = 0; i < frondCount; i++) {
-    const frond = new THREE.Mesh(frondGeo, mats.frond);
-    const angle = (i / frondCount) * Math.PI * 2 + rand() * 0.4;
-    frond.position.y = 0.1;
-    // ตั้งใบให้กางออกจากยอดแล้วกดปลายลง
-    frond.rotation.order = 'YXZ';
-    frond.rotation.y = angle;
-    frond.rotation.x = -(Math.PI / 2) + 0.55 + rand() * 0.35;
-    // ขยับโคนใบออกจากแกนเล็กน้อย
-    frond.translateY(1.25);
-    frond.castShadow = true;
-    crown.add(frond);
-  }
-  tree.add(crown);
-  return tree;
+  const dummy = new THREE.Object3D();
+  let leafIndex = 0;
+
+  spots.forEach((spot, index) => {
+    const height = 4.6 * spot.scale;
+    dummy.position.set(spot.x, spot.y + height / 2, spot.z);
+    dummy.rotation.set(0, spot.rotation, 0);
+    dummy.scale.set(spot.scale, height, spot.scale);
+    dummy.updateMatrix();
+    trunks.setMatrixAt(index, dummy.matrix);
+
+    for (let f = 0; f < graphics.palmFronds; f++) {
+      const angle = spot.rotation + (f / graphics.palmFronds) * Math.PI * 2;
+      dummy.position.set(spot.x, spot.y + height - 0.1, spot.z);
+      dummy.rotation.order = 'YXZ';
+      dummy.rotation.set(-Math.PI / 2 + 0.62 + (f % 2) * 0.12, angle, 0);
+      dummy.scale.setScalar(0.92 * spot.scale);
+      dummy.updateMatrix();
+      leaves.setMatrixAt(leafIndex++, dummy.matrix);
+    }
+    collision.addCollider({
+      x: spot.x,
+      z: spot.z,
+      radius: 0.42 * spot.scale,
+      minY: spot.y - 1,
+      maxY: spot.y + height,
+    });
+  });
+  trunks.castShadow = graphics.shadows;
+  trunks.receiveShadow = graphics.shadows;
+  // ใบไม้ alpha + เงาเป็นคอขวดใหญ่ เปิดเฉพาะโหมดสวย
+  leaves.castShadow = graphics.tier === 'high';
+  scene.add(trunks, leaves);
 }
 
-function makeRock(rand: () => number, mats: PropMaterials): THREE.Mesh {
-  const size = 0.6 + rand() * 1.2;
-  const geo = new THREE.IcosahedronGeometry(size, 2);
-  const pos = geo.attributes.position;
-  const v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.set(pos.getX(i), pos.getY(i), pos.getZ(i));
-    // ดันผิวเข้า/ออกตาม noise ตำแหน่ง ให้ก้อนหินไม่กลมเนียน
-    const n = 0.78 + hashNoise(v.x * 1.7, v.y * 1.7, v.z * 1.7) * 0.42;
-    v.multiplyScalar(n);
-    pos.setXYZ(i, v.x, v.y, v.z);
-  }
-  geo.computeVertexNormals();
-  geo.computeBoundingSphere();
-  const rock = new THREE.Mesh(geo, mats.rock);
-  rock.scale.y = 0.62 + rand() * 0.3;
-  rock.castShadow = true;
-  rock.receiveShadow = true;
-  return rock;
+function addRocks(
+  scene: THREE.Scene,
+  collision: CollisionSystem,
+  spots: Spot[],
+  textures: WorldTextures,
+  graphics: GraphicsProfile,
+): void {
+  const geometry = new THREE.IcosahedronGeometry(1, graphics.tier === 'high' ? 2 : 1);
+  const material = new THREE.MeshStandardMaterial({
+    map: textures.rockColor,
+    normalMap: textures.rockNormal,
+    roughness: 0.96,
+  });
+  const rocks = new THREE.InstancedMesh(geometry, material, spots.length);
+  const dummy = new THREE.Object3D();
+  spots.forEach((spot, index) => {
+    dummy.position.set(spot.x, spot.y + 0.45 * spot.scale, spot.z);
+    dummy.rotation.set(spot.rotation * 0.25, spot.rotation, spot.rotation * 0.1);
+    dummy.scale.set(spot.scale, spot.scale * 0.62, spot.scale * 0.9);
+    dummy.updateMatrix();
+    rocks.setMatrixAt(index, dummy.matrix);
+    collision.addCollider({
+      x: spot.x,
+      z: spot.z,
+      radius: 0.78 * spot.scale,
+      minY: spot.y - 1,
+      maxY: spot.y + 1.2 * spot.scale,
+    });
+  });
+  rocks.castShadow = graphics.shadows;
+  rocks.receiveShadow = graphics.shadows;
+  scene.add(rocks);
 }
 
-function makeCrate(rand: () => number, mats: PropMaterials): THREE.Mesh {
-  const size = 0.8 + rand() * 0.5;
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mats.crate);
-  crate.position.y = size / 2;
-  crate.castShadow = true;
-  crate.receiveShadow = true;
-  return crate;
+function addCrates(
+  scene: THREE.Scene,
+  collision: CollisionSystem,
+  spots: Spot[],
+  textures: WorldTextures,
+  graphics: GraphicsProfile,
+): void {
+  const material = new THREE.MeshStandardMaterial({
+    map: textures.planksColor,
+    normalMap: textures.planksNormal,
+    roughness: 0.86,
+  });
+  const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), material, spots.length);
+  const dummy = new THREE.Object3D();
+  spots.forEach((spot, index) => {
+    dummy.position.set(spot.x, spot.y + spot.scale / 2, spot.z);
+    dummy.rotation.set(0, spot.rotation, 0);
+    dummy.scale.setScalar(spot.scale);
+    dummy.updateMatrix();
+    crates.setMatrixAt(index, dummy.matrix);
+    collision.addCollider({
+      x: spot.x,
+      z: spot.z,
+      radius: 0.65 * spot.scale,
+      minY: spot.y - 1,
+      maxY: spot.y + spot.scale,
+    });
+  });
+  crates.castShadow = graphics.shadows;
+  crates.receiveShadow = graphics.shadows;
+  scene.add(crates);
 }
 
-/**
- * โปรยต้นไม้/หิน/ลังบนเกาะ พร้อมลงทะเบียน collider ให้เดินชนได้
- */
+/** โปรยธรรมชาติด้วย InstancedMesh ลดหลายร้อย draw calls เหลือไม่กี่ calls */
 export function scatterProps(
   scene: THREE.Scene,
   collision: CollisionSystem,
   heightAt: (x: number, z: number) => number,
   islandRadius: number,
   textures: WorldTextures,
+  graphics: GraphicsProfile,
 ): void {
-  const rand = mulberry32(20260711);
-  const mats = makeMaterials(textures);
-  const frondGeo = makeFrondGeometry();
-  const placed: { x: number; z: number }[] = [];
-
-  const tryPlace = (minGround: number): { x: number; z: number; y: number } | null => {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const angle = rand() * Math.PI * 2;
-      const dist = Math.sqrt(rand()) * islandRadius * 0.85;
-      const x = Math.cos(angle) * dist;
-      const z = Math.sin(angle) * dist;
-      const y = heightAt(x, z);
-      if (y < minGround) continue;
-      // เว้นจุดเกิดผู้เล่นกลางเกาะ และอย่าวางซ้อนกัน
-      if (Math.hypot(x, z) < 6) continue;
-      if (placed.some((p) => Math.hypot(p.x - x, p.z - z) < 3.5)) continue;
-      placed.push({ x, z });
-      return { x, z, y };
-    }
-    return null;
-  };
-
-  for (let i = 0; i < 40; i++) {
-    const spot = tryPlace(0.8);
-    if (!spot) continue;
-    const tree = makePalmTree(rand, mats, frondGeo);
-    tree.position.set(spot.x, spot.y - 0.1, spot.z);
-    tree.rotation.y = rand() * Math.PI * 2;
-    scene.add(tree);
-    collision.addCollider({ x: spot.x, z: spot.z, radius: 0.4, minY: spot.y - 1, maxY: spot.y + 4 });
-  }
-
-  for (let i = 0; i < 25; i++) {
-    const spot = tryPlace(0.3);
-    if (!spot) continue;
-    const rock = makeRock(rand, mats);
-    rock.position.set(spot.x, spot.y + 0.1, spot.z);
-    rock.rotation.y = rand() * Math.PI * 2;
-    scene.add(rock);
-    const r = Math.max(rock.geometry.boundingSphere?.radius ?? 1, 0.6) * 0.8;
-    collision.addCollider({ x: spot.x, z: spot.z, radius: r, minY: spot.y - 1, maxY: spot.y + 1.2 });
-  }
-
-  for (let i = 0; i < 10; i++) {
-    const spot = tryPlace(0.8);
-    if (!spot) continue;
-    const crate = makeCrate(rand, mats);
-    crate.position.x = spot.x;
-    crate.position.z = spot.z;
-    crate.position.y += spot.y;
-    crate.rotation.y = rand() * Math.PI * 2;
-    scene.add(crate);
-    collision.addCollider({ x: spot.x, z: spot.z, radius: 0.7, minY: spot.y - 1, maxY: spot.y + 1 });
-  }
+  const random = mulberry32(20260711);
+  const occupied: Spot[] = [];
+  const palms = createSpots(graphics.palmCount, 0.55, islandRadius, heightAt, random, occupied, 3.3);
+  const rocks = createSpots(graphics.rockCount, 0.15, islandRadius, heightAt, random, occupied, 2.5);
+  const crates = createSpots(graphics.crateCount, 0.55, islandRadius, heightAt, random, occupied, 2.2);
+  addPalms(scene, collision, palms, textures, graphics);
+  addRocks(scene, collision, rocks, textures, graphics);
+  addCrates(scene, collision, crates, textures, graphics);
 }

@@ -10,6 +10,8 @@ export interface SaveData {
   z: number;
   heading: number;
   cameraYaw: number;
+  worldTime?: number;
+  spawnId?: string;
 }
 
 /**
@@ -22,6 +24,8 @@ export class SaveSystem {
   constructor(
     private controller: CharacterController,
     private camera: ThirdPersonCamera,
+    private getWorldTime: () => number,
+    private spawnId = 'starter-village',
   ) {
     window.addEventListener('beforeunload', () => this.save());
   }
@@ -47,6 +51,8 @@ export class SaveSystem {
       z: p.z,
       heading: this.controller.heading,
       cameraYaw: this.camera.yaw,
+      worldTime: this.getWorldTime(),
+      spawnId: this.spawnId,
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));

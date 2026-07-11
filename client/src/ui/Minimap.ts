@@ -1,6 +1,7 @@
 import type { CharacterController } from '../player/CharacterController';
 import { heightAt, WATER_LEVEL } from '../world/World';
 import { isTouchDevice } from '../engine/device';
+import { WORLD_POI_LIST } from '../world/WorldPOI';
 
 /** รัศมีโลก (เมตร) ที่มินิแมพครอบคลุมจากกึ่งกลางเกาะ */
 const MAP_WORLD_RADIUS = 78;
@@ -69,6 +70,24 @@ export class Minimap {
       }
     }
     ctx.putImageData(img, 0, 0);
+
+    // จุดสำคัญของเกาะ วาดลงพื้นหลังครั้งเดียว
+    for (const poi of WORLD_POI_LIST) {
+      const px = ((poi.x / MAP_WORLD_RADIUS) * 0.5 + 0.5) * res;
+      const py = ((poi.z / MAP_WORLD_RADIUS) * 0.5 + 0.5) * res;
+      ctx.beginPath();
+      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,216,105,.95)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(35,27,15,.85)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = '#302415';
+      ctx.font = 'bold 7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(poi.icon, px, py + 0.3);
+    }
     return bg;
   }
 

@@ -1,6 +1,6 @@
 import { Game } from './engine/Game';
 import { Input } from './engine/Input';
-import { World, heightAt } from './world/World';
+import { World } from './world/World';
 import { loadWorldTextures } from './world/textures';
 import { CharacterController } from './player/CharacterController';
 import { Player } from './player/Player';
@@ -10,6 +10,10 @@ import { Minimap } from './ui/Minimap';
 import { TouchControls } from './ui/TouchControls';
 import { Effects } from './effects/Effects';
 import { SaveSystem } from './save/SaveSystem';
+import { loadGraphicsProfile } from './engine/GraphicsQuality';
+import { GraphicsSettings } from './ui/GraphicsSettings';
+import { SpawnManager } from './world/SpawnManager';
+import { NPCManager } from './npc/NPCManager';
 
 const ATTACK_COOLDOWN = 0.5;
 
@@ -24,10 +28,11 @@ async function main(): Promise<void> {
   loading.textContent = 'กำลังโหลดเกม...';
   document.body.appendChild(loading);
 
-  const game = new Game(container);
+  const graphics = loadGraphicsProfile();
+  const game = new Game(container, graphics);
   const input = new Input(game.renderer.domElement);
   const worldTextures = await loadWorldTextures();
-  const world = new World(game.scene, game.renderer, worldTextures);
+  const world = new World(game.scene, game.renderer, worldTextures, graphics);
 
   const camera: ThirdPersonCamera = new ThirdPersonCamera(
     game.camera,
@@ -40,30 +45,40 @@ async function main(): Promise<void> {
     () => camera.yaw,
   );
 
-  // จุดเกิด: โหลดจากเซฟเดิมถ้ามี ไม่งั้นเกิดกลางเกาะ
+  const spawnManager = new SpawnManager(controller, world.collision);
+
+  // โหลดตำแหน่งเดิมเฉพาะจุดที่ยังปลอดภัย ไม่งั้นกลับจุดเกิดกลางหมู่บ้าน
   const saved = SaveSystem.load();
-  if (saved) {
-    controller.teleport(saved.x, Math.max(saved.y, heightAt(saved.x, saved.z)), saved.z);
+  if (saved && spawnManager.isSafeSavedPosition(saved)) {
+    controller.teleport(
+      saved.x,
+      Math.max(saved.y, world.collision.heightAt(saved.x, saved.z)),
+      saved.z,
+    );
     controller.heading = saved.heading ?? 0;
     camera.yaw = saved.cameraYaw ?? 0;
   } else {
-    controller.teleport(0, heightAt(0, 0), 0);
+    spawnManager.teleportToDefault();
   }
+  world.setTimeOfDay(saved?.worldTime ?? 0.31);
 
   const player = new Player(controller);
   await player.load(game.scene);
 
-  const hud = new HUD(controller, game);
+  const hud = new HUD(controller, game, () => world.dayNight.clockLabel);
   const minimap = new Minimap(controller);
-  const saveSystem = new SaveSystem(controller, camera);
+  const saveSystem = new SaveSystem(controller, camera, () => world.timeOfDay);
   const effects = new Effects(game.scene);
+  const npcManager = new NPCManager(game.scene, input, controller, world.collision);
+  new GraphicsSettings(graphics);
 
   // โจมตีพื้นฐาน (placeholder — ดาเมจจริงมาใน Phase 5)
   let attackCooldown = 0;
   const combat = {
     update(dt: number) {
       attackCooldown = Math.max(0, attackCooldown - dt);
-      if (input.consumeAttack() && attackCooldown === 0) {
+      const requested = input.consumeAttack();
+      if (requested && controller.inputEnabled && attackCooldown === 0) {
         attackCooldown = ATTACK_COOLDOWN;
         effects.spawnSlash(controller.position, controller.heading);
       }
@@ -81,15 +96,9 @@ async function main(): Promise<void> {
     );
   }
 
-  // ตกทะเล → กลับจุดเซฟล่าสุด (หรือกลางเกาะ) และโดนหักเลือดนิดหน่อย
+  // ตกทะเล → กลับ Safe Zone ของหมู่บ้าน ไม่วนเกิดซ้ำในตำแหน่งอันตราย
   controller.onDrown = () => {
-    const spawn = saveSystem.lastSpawn();
-    if (spawn && heightAt(spawn.x, spawn.z) > 0) {
-      controller.teleport(spawn.x, heightAt(spawn.x, spawn.z), spawn.z);
-    } else {
-      controller.teleport(0, heightAt(0, 0), 0);
-    }
-    controller.hp = Math.max(1, controller.hp - 5);
+    spawnManager.respawn();
   };
 
   game.add(world);
@@ -98,6 +107,7 @@ async function main(): Promise<void> {
   game.add(camera);
   game.add(combat);
   game.add(effects);
+  game.add(npcManager);
   game.add(saveSystem);
   game.add({ update: () => hud.update() });
   game.add({ update: () => minimap.update() });

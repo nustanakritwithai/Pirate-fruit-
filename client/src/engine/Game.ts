@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isTouchDevice } from './device';
+import type { GraphicsProfile } from './GraphicsQuality';
 
 export interface Updatable {
   update(dt: number): void;
@@ -19,18 +19,23 @@ export class Game {
   private accumulator = 0;
   /** logic ทำงานที่ 60 ครั้ง/วินาทีเสมอ */
   private readonly fixedDt = 1 / 60;
+  /** กัน spiral of death: เครื่องช้าไม่ควรไล่คำนวณเฟรมย้อนหลังไม่สิ้นสุด */
+  private readonly maxSubSteps = 5;
 
   /** ค่า FPS เฉลี่ยสำหรับแสดงบน HUD */
   fps = 0;
   private fpsFrames = 0;
   private fpsTime = 0;
 
-  constructor(container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+  constructor(container: HTMLElement, readonly graphics: GraphicsProfile) {
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: graphics.antialias,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     // มือถือจำกัด pixel ratio ต่ำลง — จอ retina x3 แพงเกินจำเป็น
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice() ? 1.5 : 2));
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, graphics.pixelRatio));
+    this.renderer.shadowMap.enabled = graphics.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.75;
@@ -51,6 +56,14 @@ export class Game {
     });
   }
 
+  get drawCalls(): number {
+    return this.renderer.info.render.calls;
+  }
+
+  get triangles(): number {
+    return this.renderer.info.render.triangles;
+  }
+
   add(updatable: Updatable): void {
     this.updatables.push(updatable);
   }
@@ -65,9 +78,15 @@ export class Game {
     const frameDt = Math.min(this.clock.getDelta(), 0.25);
     this.accumulator += frameDt;
 
-    while (this.accumulator >= this.fixedDt) {
+    let subSteps = 0;
+    while (this.accumulator >= this.fixedDt && subSteps < this.maxSubSteps) {
       for (const u of this.updatables) u.update(this.fixedDt);
       this.accumulator -= this.fixedDt;
+      subSteps++;
+    }
+    if (subSteps === this.maxSubSteps && this.accumulator >= this.fixedDt) {
+      // ยอมทิ้งเวลาที่ค้างแทนการทำให้เครื่องติดอยู่ในวงจรคำนวณย้อนหลัง
+      this.accumulator = 0;
     }
 
     this.fpsFrames++;

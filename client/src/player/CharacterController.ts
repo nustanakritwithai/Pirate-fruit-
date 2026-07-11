@@ -51,6 +51,7 @@ export class CharacterController {
   private dashTimer = 0;
   private dashCooldownTimer = 0;
   private dashDir = new THREE.Vector3(0, 0, 1);
+  private controlsEnabled = true;
 
   /** เรียกเมื่อผู้เล่นจมน้ำ/ตกขอบโลก เพื่อให้ระบบภายนอกพากลับจุดเซฟ */
   onDrown: (() => void) | null = null;
@@ -76,9 +77,17 @@ export class CharacterController {
     this.dashTimer = 0;
   }
 
+  setControlsEnabled(enabled: boolean): void {
+    this.controlsEnabled = enabled;
+  }
+
+  get inputEnabled(): boolean {
+    return this.controlsEnabled;
+  }
+
   update(dt: number): void {
     // ---------- ทิศทางจาก input (สัมพัทธ์กับกล้อง) ----------
-    const raw = this.input.moveVector();
+    const raw = this.controlsEnabled ? this.input.moveVector() : { x: 0, z: 0 };
     let mag = Math.min(1, Math.hypot(raw.x, raw.z));
     if (mag < 0.15) mag = 0; // deadzone จอยสติ๊ก
     const hasInput = mag > 0;
@@ -98,7 +107,7 @@ export class CharacterController {
     }
 
     // ---------- Sprint + Energy ----------
-    const wantSprint = this.input.sprint && hasInput;
+    const wantSprint = this.controlsEnabled && this.input.sprint && hasInput;
     if (this.exhausted && this.energy >= ENERGY_RECOVER_THRESHOLD) this.exhausted = false;
     const sprinting = wantSprint && !this.exhausted && this.energy > 0;
 
@@ -112,6 +121,7 @@ export class CharacterController {
     // ---------- พุ่งหลบ (Dash) ----------
     this.dashCooldownTimer = Math.max(0, this.dashCooldownTimer - dt);
     if (
+      this.controlsEnabled &&
       this.input.consumeDash() &&
       this.dashCooldownTimer === 0 &&
       this.energy >= DASH_ENERGY_COST
@@ -144,7 +154,7 @@ export class CharacterController {
     }
 
     // ---------- แรงโน้มถ่วง + กระโดด ----------
-    if (this.onGround && this.input.jump) {
+    if (this.controlsEnabled && this.onGround && this.input.jump) {
       this.verticalVelocity = JUMP_SPEED;
       this.onGround = false;
     }

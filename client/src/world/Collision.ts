@@ -9,6 +9,15 @@ export interface CircleCollider {
   maxY: number;
 }
 
+/** พื้นสี่เหลี่ยมแนวราบ เช่น สะพานและท่าเรือ */
+export interface PlatformCollider {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  y: number;
+}
+
 const PLAYER_RADIUS = 0.45;
 const PLAYER_HEIGHT = 1.8;
 
@@ -19,11 +28,32 @@ const PLAYER_HEIGHT = 1.8;
  */
 export class CollisionSystem {
   private colliders: CircleCollider[] = [];
+  private platforms: PlatformCollider[] = [];
 
-  constructor(readonly heightAt: (x: number, z: number) => number) {}
+  constructor(private readonly terrainHeightAt: (x: number, z: number) => number) {}
 
   addCollider(c: CircleCollider): void {
     this.colliders.push(c);
+  }
+
+  addPlatform(platform: PlatformCollider): void {
+    this.platforms.push(platform);
+  }
+
+  /** คืนพื้นสูงสุด ณ จุดนั้น รวมพื้นเกาะและสิ่งปลูกสร้างที่เดินบนได้ */
+  heightAt(x: number, z: number): number {
+    let height = this.terrainHeightAt(x, z);
+    for (const platform of this.platforms) {
+      if (
+        x >= platform.minX &&
+        x <= platform.maxX &&
+        z >= platform.minZ &&
+        z <= platform.maxZ
+      ) {
+        height = Math.max(height, platform.y);
+      }
+    }
+    return height;
   }
 
   /** ดันตำแหน่งผู้เล่นออกจากสิ่งกีดขวางทั้งหมด (แก้ไข position ตรงๆ) */
