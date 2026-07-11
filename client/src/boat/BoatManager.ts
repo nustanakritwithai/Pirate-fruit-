@@ -151,7 +151,8 @@ export class BoatManager {
     boat.speed = THREE.MathUtils.clamp(boat.speed, -boat.definition.reverseSpeed, maxForward);
     const turnFactor = THREE.MathUtils.clamp(Math.abs(boat.speed) / 3, 0.12, 1);
     const reverseDirection = boat.speed < 0 ? -1 : 1;
-    boat.heading += steering * boat.definition.turnSpeed * turnFactor * reverseDirection * dt;
+    // โยกขวา (steering > 0) = เลี้ยวขวา — heading เพิ่มขึ้นหมุนหัวเรือไปทางซ้าย จึงต้องลบ
+    boat.heading -= steering * boat.definition.turnSpeed * turnFactor * reverseDirection * dt;
   }
 
   private updateIdle(boat: Boat, dt: number): void {
