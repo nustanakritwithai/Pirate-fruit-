@@ -43,3 +43,13 @@ npm run dev
 npm run build     # type-check + build ลง dist/
 npm run preview   # เสิร์ฟไฟล์ที่ build แล้ว
 ```
+
+## Deploy ขึ้น Render
+
+repo นี้มี [`render.yaml`](render.yaml) เป็น Blueprint พร้อม deploy เป็น Static Site:
+
+1. เข้า [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+2. เลือก repo นี้ (branch ที่ต้องการ) — Render จะอ่าน `render.yaml` แล้วตั้งค่า build/publish ให้อัตโนมัติ
+3. กด **Apply** รอ build เสร็จก็ได้ URL ใช้งานทันที
+
+Build command และ publish directory (`client` → `npm run build` → `dist/`) ถูกกำหนดไว้ใน `render.yaml` แล้ว ไม่ต้องตั้งค่าเองในหน้าเว็บ
