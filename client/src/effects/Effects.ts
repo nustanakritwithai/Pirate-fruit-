@@ -57,6 +57,24 @@ export class Effects {
     this.active.push({ mesh, life: destructive ? 0.65 : 0.38, maxLife: destructive ? 0.65 : 0.38 });
   }
 
+  /** ประกายเล็ก ๆ ตอนดาบโดนมอนสเตอร์ */
+  spawnHitSpark(position: THREE.Vector3, color = 0xfff1a8): void {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.5, 16), mat);
+    mesh.position.copy(position);
+    mesh.position.y += 1.1;
+    mesh.lookAt(mesh.position.x, mesh.position.y + 0.001, mesh.position.z + 1);
+    this.scene.add(mesh);
+    this.active.push({ mesh, life: 0.24, maxLife: 0.24 });
+  }
+
   update(dt: number): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const fx = this.active[i];

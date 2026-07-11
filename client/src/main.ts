@@ -15,6 +15,7 @@ import { GraphicsSettings } from './ui/GraphicsSettings';
 import { SpawnManager } from './world/SpawnManager';
 import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
+import { MonsterManager } from './monster/MonsterManager';
 
 const ATTACK_COOLDOWN = 0.5;
 
@@ -85,6 +86,21 @@ async function main(): Promise<void> {
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
     openBoatShop: () => boatManager.openShop(),
   });
+  const monsterManager = new MonsterManager(
+    game.scene,
+    controller,
+    world.collision,
+    effects,
+    graphics,
+    {
+      onPlayerHit: () => hud.flashDamage(),
+      onPlayerDefeated: () => {
+        spawnManager.teleportToDefault();
+        controller.hp = controller.hpMax;
+        hud.flashDamage();
+      },
+    },
+  );
   new GraphicsSettings(graphics);
 
   // โจมตีพื้นฐาน (placeholder — ดาเมจจริงมาใน Phase 5)
@@ -96,6 +112,7 @@ async function main(): Promise<void> {
       if (requested && controller.inputEnabled && attackCooldown === 0) {
         attackCooldown = ATTACK_COOLDOWN;
         effects.spawnSlash(controller.position, controller.heading);
+        monsterManager.playerAttack(controller.position, controller.heading);
       }
     },
   };
@@ -126,6 +143,7 @@ async function main(): Promise<void> {
   game.add(combat);
   game.add(effects);
   game.add(npcManager);
+  game.add(monsterManager);
   game.add(saveSystem);
   game.add({ update: () => hud.update() });
   game.add({ update: () => minimap.update() });

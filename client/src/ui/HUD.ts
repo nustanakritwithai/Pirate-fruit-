@@ -13,6 +13,7 @@ export class HUD {
   private posText: HTMLDivElement;
   private fpsText: HTMLDivElement;
   private timeText: HTMLDivElement;
+  private damageFlash!: HTMLDivElement;
 
   constructor(
     private controller: CharacterController,
@@ -36,8 +37,16 @@ export class HUD {
       .hud-help { left: 16px; top: 172px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
       .hud-help b { color: #ffd76b; }
+      .hud-damage { position:fixed; inset:0; z-index:9; pointer-events:none; opacity:0;
+        transition:opacity .35s ease-out;
+        box-shadow: inset 0 0 120px 30px rgba(200,20,20,.65); }
+      .hud-damage.hit { opacity:1; transition:opacity .04s; }
     `;
     document.head.appendChild(style);
+
+    this.damageFlash = document.createElement('div');
+    this.damageFlash.className = 'hud-damage';
+    document.body.appendChild(this.damageFlash);
 
     const bars = document.createElement('div');
     bars.className = 'hud hud-bars';
@@ -75,6 +84,12 @@ export class HUD {
       `;
       document.body.appendChild(help);
     }
+  }
+
+  /** แฟลชขอบจอแดงสั้น ๆ ตอนผู้เล่นโดนตี */
+  flashDamage(): void {
+    this.damageFlash.classList.add('hit');
+    requestAnimationFrame(() => this.damageFlash.classList.remove('hit'));
   }
 
   update(): void {
