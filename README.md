@@ -54,7 +54,7 @@ npm run dev
 - ตัวละคร 3D (`Soldier.glb` จาก three.js examples) พร้อม animation Idle / Walk / Run
 - กล้อง Third Person
 - ระบบชน: พื้นเกาะ + สิ่งกีดขวาง
-- HUD: แถบ HP, แถบ Energy, พิกัด, FPS
+- HUD: มินิแมพ (มุมซ้ายบน แสดงเกาะ + ลูกศรทิศผู้เล่น), แถบ HP/Energy ขนาดกะทัดรัดกลางล่าง, พิกัด, FPS
 - เซฟ/โหลดตำแหน่งอัตโนมัติ
 
 ## เครดิต Asset (CC0)

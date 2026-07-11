@@ -21,17 +21,17 @@ export class HUD {
     style.textContent = `
       .hud { position: fixed; pointer-events: none; color: #fff;
              text-shadow: 0 1px 3px rgba(0,0,0,.7); z-index: 10; }
-      .hud-bars { left: 16px; bottom: 16px; width: 260px; }
-      .hud-bar { height: 18px; border-radius: 9px; background: rgba(0,0,0,.45);
-                 border: 1px solid rgba(255,255,255,.35); margin-top: 6px;
+      .hud-bars { left: 50%; transform: translateX(-50%); bottom: 10px; width: 180px; }
+      .hud-bar { height: 13px; border-radius: 7px; background: rgba(0,0,0,.45);
+                 border: 1px solid rgba(255,255,255,.35); margin-top: 4px;
                  position: relative; overflow: hidden; }
-      .hud-bar-fill { height: 100%; border-radius: 8px; transition: width .1s linear; }
-      .hud-bar-label { position: absolute; inset: 0; font-size: 12px; line-height: 18px;
+      .hud-bar-fill { height: 100%; border-radius: 6px; transition: width .1s linear; }
+      .hud-bar-label { position: absolute; inset: 0; font-size: 9px; line-height: 13px;
                        text-align: center; font-weight: 600; }
       .hp-fill { background: linear-gradient(#ff7a6b, #d92f1f); }
       .energy-fill { background: linear-gradient(#ffe97a, #e8b820); }
       .hud-info { right: 16px; top: 16px; text-align: right; font-size: 13px; }
-      .hud-help { left: 16px; top: 16px; font-size: 13px; background: rgba(0,0,0,.4);
+      .hud-help { left: 16px; top: 172px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
       .hud-help b { color: #ffd76b; }
     `;
@@ -45,12 +45,6 @@ export class HUD {
       <div class="hud-bar"><div class="hud-bar-fill energy-fill"></div>
         <div class="hud-bar-label">Energy <span class="energy-num"></span></div></div>
     `;
-    // บนมือถือ มุมซ้ายล่างเป็นโซนจอยสติ๊ก — ย้ายแถบเลือดขึ้นมุมซ้ายบน
-    if (TouchControls.isTouchDevice()) {
-      bars.style.bottom = 'auto';
-      bars.style.top = '16px';
-      bars.style.width = '200px';
-    }
     document.body.appendChild(bars);
     this.hpFill = bars.querySelector('.hp-fill')!;
     this.energyFill = bars.querySelector('.energy-fill')!;

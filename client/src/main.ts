@@ -6,6 +6,7 @@ import { CharacterController } from './player/CharacterController';
 import { Player } from './player/Player';
 import { ThirdPersonCamera } from './camera/ThirdPersonCamera';
 import { HUD } from './ui/HUD';
+import { Minimap } from './ui/Minimap';
 import { TouchControls } from './ui/TouchControls';
 import { Effects } from './effects/Effects';
 import { SaveSystem } from './save/SaveSystem';
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
   await player.load(game.scene);
 
   const hud = new HUD(controller, game);
+  const minimap = new Minimap(controller);
   const saveSystem = new SaveSystem(controller, camera);
   const effects = new Effects(game.scene);
 
@@ -98,6 +100,7 @@ async function main(): Promise<void> {
   game.add(effects);
   game.add(saveSystem);
   game.add({ update: () => hud.update() });
+  game.add({ update: () => minimap.update() });
   if (touchControls) {
     const tc = touchControls;
     game.add({ update: () => tc.update() });
