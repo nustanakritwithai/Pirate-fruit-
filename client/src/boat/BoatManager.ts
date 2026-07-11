@@ -193,30 +193,39 @@ export class BoatManager {
       return;
     }
 
-    let exitX: number | null = null;
-    let exitZ = boat.group.position.z;
+    let exitX: number;
+    let exitZ: number;
+    let intoWater = false;
+
     if (this.isDockZone(boat.group.position.x, boat.group.position.z)) {
       exitX = 1.85;
       exitZ = THREE.MathUtils.clamp(boat.group.position.z, -58, -28.3);
     } else {
+      // เลือกจุดลงข้างเรือ — เอาฝั่งที่เป็นพื้นดินก่อน ถ้าไม่มีก็ลงน้ำข้างเรือเลย
       const candidates = [
         [-(boat.definition.width + 1.1), 0],
         [boat.definition.width + 1.1, 0],
         [0, boat.definition.length * 0.58],
       ] as const;
+      let land: { x: number; z: number } | null = null;
       for (const [localX, localZ] of candidates) {
         const x = boat.group.position.x + Math.cos(boat.heading) * localX + Math.sin(boat.heading) * localZ;
         const z = boat.group.position.z - Math.sin(boat.heading) * localX + Math.cos(boat.heading) * localZ;
         if (heightAt(x, z) > 0) {
-          exitX = x;
-          exitZ = z;
+          land = { x, z };
           break;
         }
       }
-    }
-    if (exitX === null) {
-      this.hud.notify('ต้องจอดใกล้ท่าหรือชายฝั่งก่อนลง', true);
-      return;
+      if (land) {
+        exitX = land.x;
+        exitZ = land.z;
+      } else {
+        // ลงว่ายน้ำข้างเรือ (ด้านขวาของเรือ)
+        const side = boat.definition.width + 1.1;
+        exitX = boat.group.position.x + Math.cos(boat.heading) * side;
+        exitZ = boat.group.position.z - Math.sin(boat.heading) * side;
+        intoWater = true;
+      }
     }
 
     boat.state = this.isDockZone(boat.group.position.x, boat.group.position.z) ? 'docked' : 'spawned';
@@ -225,9 +234,11 @@ export class BoatManager {
     this.controller.setControlsEnabled(true);
     this.input.setMode('player');
     this.camera.setBoatMode(false);
-    const exitY = this.collision.heightAt(exitX, exitZ);
-    this.controller.teleport(exitX, exitY + 0.03, exitZ);
+    // ลงน้ำ → วางที่ผิวน้ำให้ตัวละครลอย/ว่ายได้ทันที, ลงฝั่ง → วางบนพื้น
+    const exitY = intoWater ? WATER_LEVEL - 0.3 : this.collision.heightAt(exitX, exitZ) + 0.03;
+    this.controller.teleport(exitX, exitY, exitZ);
     this.controller.heading = boat.heading;
+    if (intoWater) this.hud.notify('กระโดดลงน้ำแล้ว — ว่ายกลับมากด E เพื่อขึ้นเรือ');
     this.hud.hide();
     this.prompt.hide();
   }

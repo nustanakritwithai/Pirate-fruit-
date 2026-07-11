@@ -20,12 +20,20 @@ const DASH_DURATION = 0.18;
 const DASH_COOLDOWN = 2.2;
 const DASH_ENERGY_COST = 12;
 
+// ว่ายน้ำ: เมื่ออยู่เหนือทะเลลึก ตัวละครลอยที่ผิวน้ำแทนที่จะจมและถูกพากลับฝั่ง
+const WATER_DEPTH_FOR_SWIM = 0.3; // พื้นทะเลต่ำกว่าผิวน้ำเกินค่านี้ = ต้องว่าย
+const SWIM_LEVEL = WATER_LEVEL - 0.35; // ระดับที่ตัวละครลอย (จมประมาณครึ่งตัว)
+const SWIM_SPEED = 3.4;
+const SWIM_RISE = 3.5; // กด Space เพื่อดันตัวขึ้น (ปีนขึ้นฝั่ง/เรือ)
+const WORLD_BOUND = 430; // ว่ายไกลเกินขอบโลกจึงพากลับฝั่ง
+
 export interface MoveState {
   /** ความเร็วแนวราบปัจจุบัน (m/s) ใช้เลือก animation */
   speed: number;
   onGround: boolean;
   sprinting: boolean;
   dashing: boolean;
+  swimming: boolean;
 }
 
 /**
@@ -46,7 +54,7 @@ export class CharacterController {
   private verticalVelocity = 0;
   private onGround = false;
   private exhausted = false;
-  private state: MoveState = { speed: 0, onGround: true, sprinting: false, dashing: false };
+  private state: MoveState = { speed: 0, onGround: true, sprinting: false, dashing: false, swimming: false };
 
   private dashTimer = 0;
   private dashCooldownTimer = 0;
@@ -89,7 +97,7 @@ export class CharacterController {
   setMounted(mounted: boolean): void {
     this.mounted = mounted;
     this.verticalVelocity = 0;
-    this.state = { speed: 0, onGround: true, sprinting: false, dashing: false };
+    this.state = { speed: 0, onGround: true, sprinting: false, dashing: false, swimming: false };
   }
 
   get isMounted(): boolean {
@@ -98,9 +106,12 @@ export class CharacterController {
 
   update(dt: number): void {
     if (this.mounted) {
-      this.state = { speed: 0, onGround: true, sprinting: false, dashing: false };
+      this.state = { speed: 0, onGround: true, sprinting: false, dashing: false, swimming: false };
       return;
     }
+
+    // อยู่เหนือทะเลลึกไหม (พื้นทะเลต่ำกว่าผิวน้ำมาก) → โหมดว่ายน้ำ
+    const inWater = this.collision.heightAt(this.position.x, this.position.z) < WATER_LEVEL - WATER_DEPTH_FOR_SWIM;
     // ---------- ทิศทางจาก input (สัมพัทธ์กับกล้อง) ----------
     const raw = this.controlsEnabled ? this.input.moveVector() : { x: 0, z: 0 };
     let mag = Math.min(1, Math.hypot(raw.x, raw.z));
@@ -121,8 +132,8 @@ export class CharacterController {
       dirZ /= len;
     }
 
-    // ---------- Sprint + Energy ----------
-    const wantSprint = this.controlsEnabled && this.input.sprint && hasInput;
+    // ---------- Sprint + Energy ---------- (ว่ายน้ำวิ่งไม่ได้)
+    const wantSprint = this.controlsEnabled && this.input.sprint && hasInput && !inWater;
     if (this.exhausted && this.energy >= ENERGY_RECOVER_THRESHOLD) this.exhausted = false;
     const sprinting = wantSprint && !this.exhausted && this.energy > 0;
 
@@ -162,39 +173,58 @@ export class CharacterController {
       this.position.z += this.dashDir.z * DASH_SPEED * dt;
       this.faceToward(this.dashDir.x, this.dashDir.z, dt, 20);
     } else if (hasInput) {
-      speed = (sprinting ? SPRINT_SPEED : WALK_SPEED) * mag;
+      const base = inWater ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
+      speed = base * mag;
       this.position.x += dirX * speed * dt;
       this.position.z += dirZ * speed * dt;
-      this.faceToward(dirX, dirZ, dt, 12);
+      this.faceToward(dirX, dirZ, dt, inWater ? 8 : 12);
     }
 
-    // ---------- แรงโน้มถ่วง + กระโดด ----------
-    if (this.controlsEnabled && this.onGround && this.input.jump) {
-      this.verticalVelocity = JUMP_SPEED;
-      this.onGround = false;
-    }
-    this.verticalVelocity -= GRAVITY * dt;
-    this.position.y += this.verticalVelocity * dt;
-
-    // ---------- ชนพื้น (จากสูตรความสูงของเกาะ) ----------
+    // พื้น/ทะเลใต้ตำแหน่งใหม่หลังขยับแนวราบ
     const ground = this.collision.heightAt(this.position.x, this.position.z);
-    if (this.position.y <= ground) {
-      this.position.y = ground;
-      this.verticalVelocity = 0;
-      this.onGround = true;
-    } else if (this.position.y - ground > 0.05) {
+    const overWater = ground < WATER_LEVEL - WATER_DEPTH_FOR_SWIM;
+    let swimming = false;
+
+    if (overWater && this.position.y <= SWIM_LEVEL + 0.5 && !dashing) {
+      // ---------- ว่ายน้ำ / ลอยตัวที่ผิวน้ำ ----------
+      swimming = true;
       this.onGround = false;
+      if (this.controlsEnabled && this.input.jump) {
+        // ดันตัวขึ้น เพื่อปีนขึ้นฝั่งหรือกระโดดขึ้นเรือ
+        this.verticalVelocity = 0;
+        this.position.y += SWIM_RISE * dt;
+      } else {
+        // ลอยกลับเข้าหาระดับผิวน้ำอย่างนุ่มนวล
+        this.verticalVelocity = 0;
+        this.position.y = THREE.MathUtils.damp(this.position.y, SWIM_LEVEL, 6, dt);
+      }
+    } else {
+      // ---------- แรงโน้มถ่วง + กระโดด + ชนพื้น (บนบก) ----------
+      if (this.controlsEnabled && this.onGround && this.input.jump) {
+        this.verticalVelocity = JUMP_SPEED;
+        this.onGround = false;
+      }
+      this.verticalVelocity -= GRAVITY * dt;
+      this.position.y += this.verticalVelocity * dt;
+
+      if (this.position.y <= ground) {
+        this.position.y = ground;
+        this.verticalVelocity = 0;
+        this.onGround = true;
+      } else if (this.position.y - ground > 0.05) {
+        this.onGround = false;
+      }
     }
 
     // ---------- ชนสิ่งกีดขวาง ----------
     this.collision.resolveObstacles(this.position);
 
-    // ---------- จมน้ำ ----------
-    if (this.position.y < WATER_LEVEL - 1.2) {
+    // ---------- กันว่ายหลุดขอบโลก ----------
+    if (Math.hypot(this.position.x, this.position.z) > WORLD_BOUND) {
       this.onDrown?.();
     }
 
-    this.state = { speed, onGround: this.onGround, sprinting, dashing };
+    this.state = { speed, onGround: this.onGround, sprinting, dashing, swimming };
   }
 
   /** ค่อยๆ หมุนตัวละครไปทางทิศ (dx, dz) */

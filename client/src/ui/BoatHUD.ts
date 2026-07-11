@@ -67,18 +67,20 @@ export class BoatHUD {
   private injectStyles(): void {
     const style = document.createElement('style');
     style.textContent = `
-      .boat-hud { position:fixed; z-index:24; right:12px; top:96px;
-        width:196px; padding:7px 10px; box-sizing:border-box; color:#eefcff;
-        border:1px solid rgba(123,218,239,.48); border-radius:10px;
-        background:linear-gradient(135deg,rgba(5,26,38,.85),rgba(15,49,59,.78));
-        box-shadow:0 4px 18px rgba(0,0,0,.36); backdrop-filter:blur(7px);
+      /* การ์ดสเตตัสเรือ: กลางบน โปร่งใสมาก เห็นแค่พออ่านออก */
+      .boat-hud { position:fixed; z-index:24; left:50%; top:12px; transform:translateX(-50%);
+        width:208px; padding:6px 12px; box-sizing:border-box; color:#eafaff;
+        border:1px solid rgba(150,220,240,.20); border-radius:11px;
+        background:rgba(6,24,34,.20);
+        box-shadow:0 2px 10px rgba(0,0,0,.18); backdrop-filter:blur(2px);
+        text-shadow:0 1px 2px rgba(0,0,0,.6);
         font:600 10px 'Segoe UI',Tahoma,sans-serif; pointer-events:none; }
-      .boat-hud-title { color:#ffe08a; font-size:12px; font-weight:800; margin-bottom:4px; }
+      .boat-hud-title { color:#ffe6a0; font-size:12px; font-weight:800; margin-bottom:4px; }
       .boat-hud-row,.boat-hud-metrics { display:flex; justify-content:space-between; gap:6px; }
-      .boat-hp { height:6px; margin:3px 0 5px; border-radius:4px; overflow:hidden; background:rgba(0,0,0,.45); }
-      .boat-hp-fill { height:100%; background:linear-gradient(90deg,#3fd1aa,#78e58e); transition:width .12s; }
+      .boat-hp { height:6px; margin:3px 0 5px; border-radius:4px; overflow:hidden; background:rgba(0,0,0,.28); }
+      .boat-hp-fill { height:100%; background:linear-gradient(90deg,#3fd1aa,#78e58e); opacity:.85; transition:width .12s; }
       .boat-hp-fill.critical { background:linear-gradient(90deg,#d82e2e,#ff6a45); }
-      .boat-hud-metrics { color:#b9d6db; font-size:9px; }
+      .boat-hud-metrics { color:#cfe6ea; font-size:9px; }
       .boat-hud-metrics b { color:#fff; }
       .boat-toast { position:fixed; z-index:72; left:50%; top:25%; transform:translate(-50%,-8px);
         opacity:0; color:#fff; padding:9px 17px; border-radius:20px; background:rgba(7,34,45,.9);
@@ -86,7 +88,7 @@ export class BoatHUD {
         transition:opacity .2s,transform .2s; pointer-events:none; white-space:nowrap; }
       .boat-toast.visible { opacity:1; transform:translate(-50%,0); }
       .boat-toast.danger { background:rgba(92,22,17,.92); border-color:#ff765d; }
-      @media(max-width:700px) { .boat-hud { right:8px; top:90px; width:150px; padding:6px 8px; }
+      @media(max-width:700px) { .boat-hud { top:8px; width:172px; padding:5px 9px; }
         .boat-hud-title { font-size:11px; }
         .boat-hud-metrics { flex-wrap:wrap; gap:4px; } }
     `;
