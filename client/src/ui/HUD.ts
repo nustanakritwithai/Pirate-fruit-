@@ -1,5 +1,6 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { Game } from '../engine/Game';
+import { TouchControls } from './TouchControls';
 
 /**
  * HUD พื้นฐาน (HTML overlay): แถบ HP, แถบ Energy, พิกัด, FPS และคำแนะนำปุ่ม
@@ -44,6 +45,12 @@ export class HUD {
       <div class="hud-bar"><div class="hud-bar-fill energy-fill"></div>
         <div class="hud-bar-label">Energy <span class="energy-num"></span></div></div>
     `;
+    // บนมือถือ มุมซ้ายล่างเป็นโซนจอยสติ๊ก — ย้ายแถบเลือดขึ้นมุมซ้ายบน
+    if (TouchControls.isTouchDevice()) {
+      bars.style.bottom = 'auto';
+      bars.style.top = '16px';
+      bars.style.width = '200px';
+    }
     document.body.appendChild(bars);
     this.hpFill = bars.querySelector('.hp-fill')!;
     this.energyFill = bars.querySelector('.energy-fill')!;
@@ -57,16 +64,20 @@ export class HUD {
     this.posText = info.querySelector('.pos')!;
     this.fpsText = info.querySelector('.fps')!;
 
-    const help = document.createElement('div');
-    help.className = 'hud hud-help';
-    help.innerHTML = `
-      <b>WASD / ลูกศร</b> เดิน<br>
-      <b>Shift</b> วิ่ง (ใช้ Energy)<br>
-      <b>Space</b> กระโดด<br>
-      <b>คลิกซ้าย</b> ล็อกเมาส์หมุนกล้อง (Esc ปลด)<br>
-      <b>ล้อเมาส์</b> ซูม
-    `;
-    document.body.appendChild(help);
+    // บนมือถือมีปุ่มบนจอครบแล้ว ไม่ต้องแสดงคำแนะนำคีย์บอร์ด
+    if (!TouchControls.isTouchDevice()) {
+      const help = document.createElement('div');
+      help.className = 'hud hud-help';
+      help.innerHTML = `
+        <b>WASD / ลูกศร</b> เดิน<br>
+        <b>Shift</b> วิ่ง (ใช้ Energy)<br>
+        <b>Space</b> กระโดด<br>
+        <b>Q</b> พุ่งหลบ<br>
+        <b>คลิกซ้าย</b> ล็อกเมาส์หมุนกล้อง (Esc ปลด) / คลิกอีกที = โจมตี<br>
+        <b>ล้อเมาส์</b> ซูม
+      `;
+      document.body.appendChild(help);
+    }
   }
 
   update(): void {

@@ -14,16 +14,24 @@ const ENERGY_REGEN = 16; // ต่อวินาที ตอนไม่ sprin
 /** ถ้าพลังหมด ต้องฟื้นถึงค่านี้ก่อนถึงจะ sprint ได้อีก */
 const ENERGY_RECOVER_THRESHOLD = 25;
 
+// พุ่งหลบ (ติดตัวทุกคน ใช้ได้ตั้งแต่ Phase 1)
+const DASH_SPEED = 22;
+const DASH_DURATION = 0.18;
+const DASH_COOLDOWN = 2.2;
+const DASH_ENERGY_COST = 12;
+
 export interface MoveState {
   /** ความเร็วแนวราบปัจจุบัน (m/s) ใช้เลือก animation */
   speed: number;
   onGround: boolean;
   sprinting: boolean;
+  dashing: boolean;
 }
 
 /**
- * ตัวควบคุมการเคลื่อนที่ของผู้เล่น: เดิน วิ่ง กระโดด sprint แรงโน้มถ่วง และการชน
- * ทิศทางการเดินอิงมุมกล้อง (กด W = เดินไปทางที่กล้องหัน)
+ * ตัวควบคุมการเคลื่อนที่ของผู้เล่น: เดิน วิ่ง กระโดด sprint พุ่งหลบ
+ * แรงโน้มถ่วง และการชน — ทิศทางการเดินอิงมุมกล้อง (กด W = เดินไปทางที่กล้องหัน)
+ * รองรับ input แบบ analog จากจอยสติ๊กเสมือน (ขนาดเวกเตอร์คุมความเร็ว)
  */
 export class CharacterController {
   readonly position = new THREE.Vector3();
@@ -38,7 +46,11 @@ export class CharacterController {
   private verticalVelocity = 0;
   private onGround = false;
   private exhausted = false;
-  private state: MoveState = { speed: 0, onGround: true, sprinting: false };
+  private state: MoveState = { speed: 0, onGround: true, sprinting: false, dashing: false };
+
+  private dashTimer = 0;
+  private dashCooldownTimer = 0;
+  private dashDir = new THREE.Vector3(0, 0, 1);
 
   /** เรียกเมื่อผู้เล่นจมน้ำ/ตกขอบโลก เพื่อให้ระบบภายนอกพากลับจุดเซฟ */
   onDrown: (() => void) | null = null;
@@ -53,20 +65,37 @@ export class CharacterController {
     return this.state;
   }
 
+  /** สัดส่วนคูลดาวน์พุ่งหลบที่เหลือ 0..1 (0 = พร้อมใช้) สำหรับวาดวงแหวนบนปุ่ม */
+  get dashCooldownFraction(): number {
+    return Math.max(0, this.dashCooldownTimer) / DASH_COOLDOWN;
+  }
+
   teleport(x: number, y: number, z: number): void {
     this.position.set(x, y, z);
     this.verticalVelocity = 0;
+    this.dashTimer = 0;
   }
 
   update(dt: number): void {
     // ---------- ทิศทางจาก input (สัมพัทธ์กับกล้อง) ----------
-    let ix = 0;
-    let iz = 0;
-    if (this.input.forward) iz -= 1;
-    if (this.input.backward) iz += 1;
-    if (this.input.left) ix -= 1;
-    if (this.input.right) ix += 1;
-    const hasInput = ix !== 0 || iz !== 0;
+    const raw = this.input.moveVector();
+    let mag = Math.min(1, Math.hypot(raw.x, raw.z));
+    if (mag < 0.15) mag = 0; // deadzone จอยสติ๊ก
+    const hasInput = mag > 0;
+
+    const yaw = this.getCameraYaw();
+    const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    // หมุนเวกเตอร์ input ตามมุมกล้อง (ทิศหน่วย)
+    let dirX = 0;
+    let dirZ = 0;
+    if (hasInput) {
+      dirX = raw.x * cos + raw.z * sin;
+      dirZ = -raw.x * sin + raw.z * cos;
+      const len = Math.hypot(dirX, dirZ);
+      dirX /= len;
+      dirZ /= len;
+    }
 
     // ---------- Sprint + Energy ----------
     const wantSprint = this.input.sprint && hasInput;
@@ -80,29 +109,38 @@ export class CharacterController {
       this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * dt);
     }
 
+    // ---------- พุ่งหลบ (Dash) ----------
+    this.dashCooldownTimer = Math.max(0, this.dashCooldownTimer - dt);
+    if (
+      this.input.consumeDash() &&
+      this.dashCooldownTimer === 0 &&
+      this.energy >= DASH_ENERGY_COST
+    ) {
+      this.energy -= DASH_ENERGY_COST;
+      this.dashTimer = DASH_DURATION;
+      this.dashCooldownTimer = DASH_COOLDOWN;
+      // พุ่งไปทางที่กำลังเดิน ถ้ายืนเฉยๆ พุ่งไปทางที่ตัวละครหันหน้า
+      if (hasInput) {
+        this.dashDir.set(dirX, 0, dirZ);
+      } else {
+        this.dashDir.set(Math.sin(this.heading), 0, Math.cos(this.heading));
+      }
+    }
+    const dashing = this.dashTimer > 0;
+
     // ---------- เคลื่อนที่แนวราบ ----------
     let speed = 0;
-    if (hasInput) {
-      const yaw = this.getCameraYaw();
-      // หมุนเวกเตอร์ input ตามมุมกล้อง
-      const sin = Math.sin(yaw);
-      const cos = Math.cos(yaw);
-      let dx = ix * cos + iz * sin;
-      let dz = -ix * sin + iz * cos;
-      const len = Math.hypot(dx, dz);
-      dx /= len;
-      dz /= len;
-
-      speed = sprinting ? SPRINT_SPEED : WALK_SPEED;
-      this.position.x += dx * speed * dt;
-      this.position.z += dz * speed * dt;
-
-      // ค่อยๆ หมุนตัวละครไปทางที่เดิน
-      const targetHeading = Math.atan2(dx, dz);
-      let diff = targetHeading - this.heading;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      this.heading += diff * Math.min(1, dt * 12);
+    if (dashing) {
+      this.dashTimer -= dt;
+      speed = DASH_SPEED;
+      this.position.x += this.dashDir.x * DASH_SPEED * dt;
+      this.position.z += this.dashDir.z * DASH_SPEED * dt;
+      this.faceToward(this.dashDir.x, this.dashDir.z, dt, 20);
+    } else if (hasInput) {
+      speed = (sprinting ? SPRINT_SPEED : WALK_SPEED) * mag;
+      this.position.x += dirX * speed * dt;
+      this.position.z += dirZ * speed * dt;
+      this.faceToward(dirX, dirZ, dt, 12);
     }
 
     // ---------- แรงโน้มถ่วง + กระโดด ----------
@@ -131,6 +169,15 @@ export class CharacterController {
       this.onDrown?.();
     }
 
-    this.state = { speed, onGround: this.onGround, sprinting };
+    this.state = { speed, onGround: this.onGround, sprinting, dashing };
+  }
+
+  /** ค่อยๆ หมุนตัวละครไปทางทิศ (dx, dz) */
+  private faceToward(dx: number, dz: number, dt: number, rate: number): void {
+    const targetHeading = Math.atan2(dx, dz);
+    let diff = targetHeading - this.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    this.heading += diff * Math.min(1, dt * rate);
   }
 }
