@@ -99,6 +99,10 @@ export class Input {
    * จอยสติ๊กให้ค่า analog, คีย์บอร์ดให้ -1/0/1
    */
   moveVector(): { x: number; z: number } {
+    // หลังล็อก auto-run ผู้เล่นปล่อยจอยได้ แต่ยังวิ่งตรงไปข้างหน้าเอง
+    if (this.touch?.autoRun && this.mode === 'player') {
+      return { x: 0, z: -1 };
+    }
     if (this.touch?.joystickActive) {
       return { x: this.touch.moveX, z: this.touch.moveZ };
     }

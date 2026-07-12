@@ -28,9 +28,13 @@ import { QuestBoard } from './ui/QuestBoard';
 import { ProgressionDebugPanel } from './ui/ProgressionDebugPanel';
 import { RewardContributionTracker } from './progression/RewardSystem';
 import type { Monster } from './monster/Monster';
+import { FullscreenManager } from './ui/FullscreenManager';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
+
+  // เบราว์เซอร์อนุญาต fullscreen หลัง gesture เท่านั้น; gesture แรกของเกมจะขอให้อัตโนมัติ
+  new FullscreenManager();
 
   // หน้าจอโหลดชั่วคราวระหว่างรอโมเดล
   const loading = document.createElement('div');
