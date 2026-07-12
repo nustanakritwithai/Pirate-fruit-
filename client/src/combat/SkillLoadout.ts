@@ -5,23 +5,41 @@ import type {
   SkillSlotIndex,
   WeaponKind,
 } from './types';
+import { listUnlockedFightingStyleSkills } from '../fighting-styles/skills/FightingStyleSkillRegistry';
 import { listUnlockedGunSkills } from '../guns/skills/GunSkillRegistry';
 import { listUnlockedSwordSkills } from '../swords/skills/SwordSkillRegistry';
 import { listUnlockedSkills } from '../fruit/skills/FruitSkillRegistry';
 
 export const DEFAULT_SKILL_LOADOUT: SkillLoadoutState = {
   activeSet: 'weapon',
-  equippedWeaponKind: 'sword',
-  equippedSwordId: 'katana',
+  equippedWeaponKind: 'fighting-style',
+  equippedSwordId: null,
   equippedGunId: null,
+  equippedFightingStyleId: 'combat',
   equippedFruitId: null,
   swordMastery: 1,
   gunMastery: 1,
+  fightingStyleMastery: 1,
   fruitMastery: 1,
   fruitAwakened: false,
 };
 
 const WEAPON_SLOTS: SkillSlotIndex[] = [1, 2, 3, 'ultimate'];
+
+/** ดาบ / ปืน: Z, X เท่านั้น */
+const MELEE_RANGED_SLOT_MAP: { slot: SkillSlotIndex; key: string }[] = [
+  { slot: 1, key: 'Z' },
+  { slot: 2, key: 'X' },
+];
+
+/** สไตล์ต่อสู้: Z, X, C และบางสไตล์มี V */
+const FIGHTING_STYLE_SLOT_MAP: { slot: SkillSlotIndex; key: string }[] = [
+  { slot: 1, key: 'Z' },
+  { slot: 2, key: 'X' },
+  { slot: 3, key: 'C' },
+  { slot: 'ultimate', key: 'V' },
+];
+
 const FRUIT_SLOT_MAP: { slot: SkillSlotIndex; key: string }[] = [
   { slot: 1, key: 'Z' },
   { slot: 2, key: 'X' },
@@ -53,16 +71,19 @@ export class SkillLoadout {
     this.state.activeSet = kind;
   }
 
-  /** สวมดาบ — สลับชุดอาวุธเป็นระยะใกล้ */
   equipSword(swordId: string | null): void {
     this.state.equippedWeaponKind = 'sword';
     this.state.equippedSwordId = swordId;
   }
 
-  /** สวมปืน — สลับชุดอาวุธเป็นระยะไกล */
   equipGun(gunId: string | null): void {
     this.state.equippedWeaponKind = 'gun';
     this.state.equippedGunId = gunId;
+  }
+
+  equipFightingStyle(styleId: string | null): void {
+    this.state.equippedWeaponKind = 'fighting-style';
+    this.state.equippedFightingStyleId = styleId;
   }
 
   equipFruit(fruitId: string | null, awakened = false): void {
@@ -77,80 +98,69 @@ export class SkillLoadout {
   }
 
   private resolveWeaponSlots(): ResolvedSkillSlot[] {
-    if (this.state.equippedWeaponKind === 'gun') {
-      return this.resolveGunSlots();
+    switch (this.state.equippedWeaponKind) {
+      case 'gun':
+        return this.resolveKeyedWeaponSlots(
+          this.state.equippedGunId,
+          this.state.gunMastery,
+          listUnlockedGunSkills,
+          MELEE_RANGED_SLOT_MAP,
+          'ไม่มีปืน',
+          'ปืน',
+        );
+      case 'fighting-style':
+        return this.resolveKeyedWeaponSlots(
+          this.state.equippedFightingStyleId,
+          this.state.fightingStyleMastery,
+          listUnlockedFightingStyleSkills,
+          FIGHTING_STYLE_SLOT_MAP,
+          'ไม่มีสไตล์ต่อสู้',
+          'สไตล์',
+        );
+      default:
+        return this.resolveKeyedWeaponSlots(
+          this.state.equippedSwordId,
+          this.state.swordMastery,
+          listUnlockedSwordSkills,
+          MELEE_RANGED_SLOT_MAP,
+          'ไม่มีดาบ',
+          'ดาบ',
+        );
     }
-    return this.resolveSwordSlots();
   }
 
-  private resolveSwordSlots(): ResolvedSkillSlot[] {
-    const swordId = this.state.equippedSwordId;
-    if (!swordId) {
-      return this.emptyWeaponSlots('ไม่มีดาบ');
-    }
-    const byKey = new Map(
-      listUnlockedSwordSkills(swordId, this.state.swordMastery).map((s) => [s.key, s]),
-    );
-    return this.weaponZxSlots(byKey, 'ดาบ');
-  }
-
-  private resolveGunSlots(): ResolvedSkillSlot[] {
-    const gunId = this.state.equippedGunId;
-    if (!gunId) {
-      return this.emptyWeaponSlots('ไม่มีปืน');
-    }
-    const byKey = new Map(
-      listUnlockedGunSkills(gunId, this.state.gunMastery).map((s) => [s.key, s]),
-    );
-    return this.weaponZxSlots(byKey, 'ปืน');
-  }
-
-  private emptyWeaponSlots(reason: string): ResolvedSkillSlot[] {
-    return WEAPON_SLOTS.map((slot) => ({
-      slot,
-      skillId: null,
-      label: '—',
-      locked: true,
-      lockReason: reason,
-    }));
-  }
-
-  private weaponZxSlots(
-    byKey: Map<string, { id: string; name: string; key: string }>,
+  private resolveKeyedWeaponSlots<T extends { id: string; name: string; key: string }>(
+    weaponId: string | null,
+    mastery: number,
+    listUnlocked: (id: string, mastery: number) => T[],
+    slotMap: { slot: SkillSlotIndex; key: string }[],
+    emptyReason: string,
     weaponLabel: string,
   ): ResolvedSkillSlot[] {
-    const z = byKey.get('Z');
-    const x = byKey.get('X');
-    return [
-      {
-        slot: 1,
-        skillId: z?.id ?? null,
-        label: z?.name ?? 'Z',
-        locked: !z,
-        lockReason: z ? undefined : 'ยังไม่ปลดล็อก Z',
-      },
-      {
-        slot: 2,
-        skillId: x?.id ?? null,
-        label: x?.name ?? 'X',
-        locked: !x,
-        lockReason: x ? undefined : 'ยังไม่ปลดล็อก X',
-      },
-      {
-        slot: 3,
+    if (!weaponId) {
+      return WEAPON_SLOTS.map((slot) => ({
+        slot,
         skillId: null,
         label: '—',
         locked: true,
-        lockReason: `${weaponLabel}ไม่มีสกิล 3`,
-      },
-      {
-        slot: 'ultimate',
-        skillId: null,
-        label: '—',
-        locked: true,
-        lockReason: `${weaponLabel}ไม่มีไม้ตาย`,
-      },
-    ];
+        lockReason: emptyReason,
+      }));
+    }
+
+    const byKey = new Map(listUnlocked(weaponId, mastery).map((s) => [s.key, s]));
+
+    return slotMap.map(({ slot, key }) => {
+      const skill = byKey.get(key);
+      const missingLabel =
+        slot === 'ultimate' ? `${weaponLabel}ไม่มีไม้ตาย` : `${weaponLabel}ไม่มีสกิล ${key}`;
+      return {
+        slot,
+        skillId: skill?.id ?? null,
+        label: skill?.name ?? key,
+        locked: !skill,
+        lockReason: skill ? undefined : skill === undefined && !byKey.has(key) ? missingLabel : `ยังไม่ปลดล็อก ${key}`,
+      };
+    });
   }
 
   private resolveFruitSlots(): ResolvedSkillSlot[] {
