@@ -480,10 +480,12 @@ export class TouchControls {
       .tc-ult    { right: 148px; bottom: 18px;  width: 50px; height: 50px; font-size: 19px;
                    border-color: rgba(200,120,255,.85); background: rgba(70,25,110,.55);
                    opacity: .65; }
-      .tc-block  { right: 208px; bottom: 22px; width: 46px; height: 46px; font-size: 19px;
+      /* ย้ายโล่ไปยังตำแหน่งเดิมของปุ่มเปลี่ยนอาวุธ */
+      .tc-block  { right: 202px; bottom: 76px; width: 42px; height: 42px; font-size: 18px;
                    border-color: rgba(150,200,255,.8); }
       .tc-block.tc-on { background: rgba(90,160,255,.55); border-color: #bfe0ff; }
-      .tc-weapon { right: 204px; bottom: 78px; width: 38px; height: 38px; font-size: 16px;
+      /* จุดวงกลมด้านขวากลางจอสำหรับสลับอาวุธ ไม่ชนปุ่มโจมตี */
+      .tc-weapon { right: 16px; top: 52%; transform: translateY(-50%); width: 42px; height: 42px; font-size: 17px;
                    opacity: .9; border-color: rgba(255,215,140,.8); }
       .tc-autorun { position: fixed; left: 110px; top: 570px; width: 34px; height: 34px; font-size: 15px;
                     display: none; opacity: .75; border-width: 1px; border-color: rgba(255,224,126,.85);
