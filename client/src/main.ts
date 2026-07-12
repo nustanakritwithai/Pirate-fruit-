@@ -17,6 +17,17 @@ import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
 import { MonsterManager } from './monster/MonsterManager';
 import { PlayerCombat } from './combat/PlayerCombat';
+import { ProgressionManager } from './progression/ProgressionManager';
+import { QuestManager } from './quest/QuestManager';
+import { ProgressionHUD } from './ui/ProgressionHUD';
+import { StatsPanel } from './ui/StatsPanel';
+import { MasteryPanel } from './ui/MasteryPanel';
+import { QuestTracker } from './ui/QuestTracker';
+import { RewardFeed } from './ui/RewardFeed';
+import { QuestBoard } from './ui/QuestBoard';
+import { ProgressionDebugPanel } from './ui/ProgressionDebugPanel';
+import { RewardContributionTracker } from './progression/RewardSystem';
+import type { Monster } from './monster/Monster';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -46,6 +57,7 @@ async function main(): Promise<void> {
     world.collision,
     () => camera.yaw,
   );
+  const progression = new ProgressionManager({ resources: controller });
 
   const spawnManager = new SpawnManager(controller, world.collision);
 
@@ -62,6 +74,11 @@ async function main(): Promise<void> {
   } else {
     spawnManager.teleportToDefault();
   }
+  controller.hp = Math.min(controller.hpMax, Math.max(1, saved?.hp ?? controller.hpMax));
+  controller.energy = Math.min(
+    controller.energyMax,
+    Math.max(0, saved?.energy ?? controller.energyMax),
+  );
   world.setTimeOfDay(saved?.worldTime ?? 0.31);
 
   const player = new Player(controller);
@@ -71,6 +88,11 @@ async function main(): Promise<void> {
   const minimap = new Minimap(controller);
   const saveSystem = new SaveSystem(controller, camera, () => world.timeOfDay);
   const effects = new Effects(game.scene);
+  let playerCombat: PlayerCombat | null = null;
+  const questManager = new QuestManager(progression, () =>
+    playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
+  );
+  const questBoard = new QuestBoard(questManager, progression);
   const boatManager = new BoatManager(
     game.scene,
     input,
@@ -81,9 +103,14 @@ async function main(): Promise<void> {
     graphics,
     effects,
     () => spawnManager.respawn(),
+    progression,
   );
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
     openBoatShop: () => boatManager.openShop(),
+    openQuestBoard: () => {
+      controller.setControlsEnabled(false);
+      questBoard.open(() => controller.setControlsEnabled(true));
+    },
   });
   new GraphicsSettings(graphics);
 
@@ -95,7 +122,7 @@ async function main(): Promise<void> {
   }
 
   // มอนสเตอร์ + ระบบต่อสู้ (Phase 4-5) — callbacks อ้าง playerCombat แบบ late-bind
-  let playerCombat: PlayerCombat;
+  const rewardContributions = new RewardContributionTracker<Monster>();
   const monsterManager = new MonsterManager(
     game.scene,
     controller,
@@ -103,14 +130,45 @@ async function main(): Promise<void> {
     effects,
     graphics,
     {
-      onPlayerHit: () => hud.flashDamage(),
-      modifyIncomingDamage: (attack) => playerCombat.modifyIncomingDamage(attack),
+      onPlayerHit: () => {
+        playerCombat?.notifyDamaged();
+        hud.flashDamage();
+      },
+      modifyIncomingDamage: (attack) =>
+        playerCombat?.modifyIncomingDamage(attack) ?? attack.amount,
       onMonsterDamaged: (monster, amount) =>
         effects.spawnDamageNumber(monster.group.position, amount),
       onPlayerDefeated: () => {
-        spawnManager.teleportToDefault();
-        controller.hp = controller.hpMax;
+        spawnManager.respawn();
         hud.flashDamage();
+      },
+      onRewardContribution: (monster, damage, killed, source) => {
+        const type = monster.type;
+        const contribution = rewardContributions.record(
+          monster,
+          type.id,
+          damage,
+          killed,
+          source,
+        );
+        if (!contribution) return;
+        progression.grantEnemyRewards(
+          {
+            id: type.id,
+            level: type.level,
+            isBoss: type.kind === 'boss',
+            reward: type.reward,
+          },
+          contribution,
+        );
+        const position = monster.group.position;
+        progression.events.emit('monster:killed', {
+          monsterId: type.id,
+          monsterType: type.kind,
+          isBoss: type.kind === 'boss',
+          position: { x: position.x, y: position.y, z: position.z },
+          contribution,
+        });
       },
     },
   );
@@ -121,10 +179,29 @@ async function main(): Promise<void> {
     monsterManager,
     effects,
     touchControls,
+    progression,
   );
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
+
+  new ProgressionHUD(progression);
+  let controlsBeforeStats = true;
+  new StatsPanel(progression, (open) => {
+    if (open) controlsBeforeStats = controller.inputEnabled;
+    controller.setControlsEnabled(open ? false : controlsBeforeStats);
+  });
+  const masteryPanel = new MasteryPanel(progression, () => playerCombat!.activeItem);
+  const questTracker = new QuestTracker(questManager);
+  const rewardFeed = new RewardFeed(progression);
+  const progressionDebug = new ProgressionDebugPanel(
+    progression,
+    questManager,
+    () => playerCombat!.activeItem,
+  );
+  progression.events.on('player:level-up', () => {
+    effects.spawnShockwave(controller.position, 3.5, 0xffdf74);
+  });
 
   touchControls?.bindCooldowns(
     () =>
@@ -149,6 +226,11 @@ async function main(): Promise<void> {
   game.add(npcManager);
   game.add(monsterManager);
   game.add(saveSystem);
+  game.add(progression);
+  game.add({ update: () => masteryPanel.update() });
+  game.add(questTracker);
+  game.add(rewardFeed);
+  game.add(progressionDebug);
   game.add({ update: () => hud.update() });
   game.add({ update: () => minimap.update() });
   if (touchControls) {

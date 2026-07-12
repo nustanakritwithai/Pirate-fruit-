@@ -67,7 +67,8 @@ Combat Framework → Level/Stats/Mastery → Quest/Reward Loop
 
 ### 5.3 Damage Pipeline ✅
 Attack Request → ตรวจ Combat State → ตรวจ Cooldown → สร้าง Hitbox (กรวย/รัศมี/projectile)
-→ ตรวจเป้าหมาย → คำนวณ Damage → Apply → Stun/Knockback → **Reward Contribution hook** (รอ Phase 6)
+→ ตรวจเป้าหมาย → คำนวณ Damage → Apply → Stun/Knockback → **Reward Contribution hook**
+ซึ่ง Phase 6 ใช้เก็บ contribution ต่ออุปกรณ์โดยไม่สร้าง Damage Pipeline ซ้ำ
 
 ### 5.4 Loadout Framework ✅
 ช่อง 1 Fighting Style · 2 Sword · 3 Gun · 4 Fruit · 5 Utility (`combat/Loadout.ts` + persist)
@@ -85,15 +86,18 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 — data-driven เต็มรูปแบบ: สกิลปัจจุบัน 3 ตัว (🌊 ฟันคลื่น / 🌀 วงจันทร์ / ⚡ พุ่งฟัน) อยู่หมวด style,
 มี castTime (state casting), เพิ่มสกิลใหม่ได้โดยไม่แก้ Combat Core
 
-## Phase 6 — Level, Stats, Mastery และ Quest พื้นฐาน ⬜
+## Phase 6 — Level, Stats, Mastery และ Quest พื้นฐาน ✅
 
-- [ ] Player Level + EXP (ต่อจาก Reward Contribution hook ที่วางไว้แล้ว)
-- [ ] Stat Points 5 สาย: **Combat / Vitality / Blade / Ranged / Fruit Power**
-- [ ] Mastery แยกตามของแต่ละชิ้น: Basic Brawl, Sword แต่ละเล่ม, Gun แต่ละกระบอก, Fruit แต่ละผล
-      (ไม่มี Weapon Mastery / Haki Mastery รวม)
-- [ ] สกิลปลดตาม masteryRequired (ฟิลด์มีอยู่แล้วใน SkillDefinition)
-- [ ] Quest พื้นฐานจาก NPC: ฆ่ามอน / เก็บของ — แหล่ง EXP ที่เป็นระบบ
-- [ ] รางวัล: เงิน (ผูกกับ BoatProgress coins เดิม) + EXP + Mastery
+- [x] Player Level + EXP พร้อม multi-level up, EXP curve และ Level Cap 100
+- [x] Stat Points 3 แต้มต่อ Level — **Combat / Vitality / Blade / Ranged / Fruit Power**
+- [x] Max HP / Energy และ Damage Multiplier ผ่าน provider ของ Damage Pipeline เดิม
+- [x] Mastery แยกตาม Item ID และบังคับใช้ `SkillDefinition.masteryRequired`
+- [x] Reward Contribution ต่อศัตรู: 70% ให้อุปกรณ์ที่ทำดาเมจสูงสุด, 30% ให้ last hit
+- [x] Enemy/Boss Reward พร้อมลด EXP/Mastery เมื่อเลเวลต่างกันมาก
+- [x] Quest 3 รายการ (kill / boss) จากหัวหน้าหมู่บ้าน พร้อม auto claim
+- [x] Progression HUD, Stats/Mastery Panel, Quest Tracker และ Reward Feed
+- [x] Save migration จาก Phase 1–5 และ Coins ชุดเดียวกับ BoatProgress
+- [x] Logic tests + progression/quest integration E2E
 
 ## Phase 7 — Fighting Style, Sword และ Loadout เต็มรูปแบบ ⬜
 
@@ -149,11 +153,13 @@ Three.js Client (single-player)
 ├── monster/   AI + แคมป์ + บอส + heavy attack
 ├── combat/    ⭐ Combat Framework: state machine, loadout,
 │              damage pipeline, guard, skill data
+├── progression/ Level / Stats / Mastery / Reward / Save migration
+├── quest/     Quest definitions / progress / manager
 ├── npc/       NPC + บทสนทนา
 ├── effects/   slash / shockwave / damage numbers
-├── ui/        HUD, minimap, boss bar, touch controls, ร้านค้า
+├── ui/        HUD, progression, mastery, quest, touch controls, ร้านค้า
 └── save/      localStorage (ต้องย้ายขึ้น server ก่อน Phase 10)
 ```
 
-หมายเหตุ: ข้อมูลสำคัญ (เงิน เรือ ตำแหน่ง loadout) ยังอยู่ใน localStorage —
-เหมาะกับ single-player prototype แต่ต้อง migrate ใน Phase 10
+หมายเหตุ: ข้อมูลสำคัญ (เงิน เรือ ตำแหน่ง loadout และ progression) ยังอยู่ใน localStorage —
+เหมาะกับ single-player vertical slice แต่ต้อง migrate ใน Phase 10

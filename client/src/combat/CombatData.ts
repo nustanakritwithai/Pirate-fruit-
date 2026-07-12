@@ -5,6 +5,12 @@
 
 export type LoadoutCategory = 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
 
+/** metadata ที่ Damage Pipeline ส่งต่อให้ Reward Contribution hook */
+export interface CombatRewardSource {
+  itemId: string;
+  category: LoadoutCategory;
+}
+
 /** หนึ่งจังหวะของคอมโบ M1 */
 export interface ComboHit {
   /** ตัวคูณดาเมจจากดาเมจฐานของอาวุธ */
@@ -76,7 +82,7 @@ export const COMBO_WINDOW = 1.2;
 export interface SkillDefinition {
   id: string;
   category: LoadoutCategory;
-  /** Mastery ขั้นต่ำของของชิ้นนั้น (ระบบ Mastery จริงมาใน Phase 6 — ตอนนี้ 0 = ใช้ได้เลย) */
+  /** Mastery ขั้นต่ำของของชิ้นนั้น; Phase 6 ตรวจจริงก่อนเริ่ม casting */
   masteryRequired: number;
   cooldown: number;
   energyCost: number;

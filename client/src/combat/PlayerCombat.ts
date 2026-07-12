@@ -22,6 +22,9 @@ import {
   KNOCKDOWN_STUN,
   REGEN_DELAY,
   REGEN_RATE,
+  LOADOUT_ITEMS,
+  type CombatRewardSource,
+  type LoadoutCategory,
   type SkillDefinition,
 } from './CombatData';
 import { Loadout } from './Loadout';
@@ -33,6 +36,10 @@ import {
   canBlock,
   isAttackState,
 } from './CombatState';
+import type {
+  ActiveLoadoutItem,
+  SkillRequirement,
+} from '../progression/ProgressionTypes';
 
 interface WaveProjectile {
   mesh: THREE.Mesh;
@@ -40,6 +47,8 @@ interface WaveProjectile {
   dirZ: number;
   life: number;
   hit: Set<Monster>;
+  damage: number;
+  source: CombatRewardSource;
 }
 
 /** สกิลที่ร่ายค้างอยู่ (state = casting) รอ castTime ครบแล้วปล่อยผล */
@@ -54,6 +63,14 @@ interface ActiveSwing {
   comboIndex: number;
   timer: number;
   hitDone: boolean;
+}
+
+export interface CombatProgressionAdapter {
+  getDamageMultiplier(category: LoadoutCategory): number;
+  getMasteryLevel(itemId: string): number;
+  canUseSkill(itemId: string, skill: SkillRequirement): boolean;
+  notifySkillLocked?(itemId: string, skill: SkillRequirement): void;
+  registerSkillRequirements?(itemId: string, skills: readonly SkillRequirement[]): void;
 }
 
 /**
@@ -84,6 +101,7 @@ export class PlayerCombat {
   private timeSinceDamaged = 99;
 
   private readonly projectiles: WaveProjectile[] = [];
+  private lastTouchMasteryKey = '';
   private readonly shield: THREE.Mesh;
   private readonly waveGeo = new THREE.RingGeometry(0.6, 1.7, 22, 1, 0, Math.PI * 0.8);
 
@@ -94,6 +112,7 @@ export class PlayerCombat {
     private monsters: MonsterManager,
     private effects: Effects,
     private touch: TouchControls | null,
+    private progression?: CombatProgressionAdapter,
   ) {
     this.shield = new THREE.Mesh(
       new THREE.SphereGeometry(1.25, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
@@ -117,6 +136,14 @@ export class PlayerCombat {
         () => this.skillCooldownFraction(2),
       ]);
     }
+
+    for (const item of Object.values(LOADOUT_ITEMS)) {
+      this.progression?.registerSkillRequirements?.(
+        item.id,
+        SKILLS.filter((skill) => skill.category === item.category),
+      );
+    }
+    this.syncTouchMastery();
   }
 
   // ------------------------------------------------------------------
@@ -125,6 +152,15 @@ export class PlayerCombat {
 
   get state(): CombatState {
     return this.combatState;
+  }
+
+  get activeItem(): ActiveLoadoutItem {
+    const item = this.loadout.activeItem;
+    return {
+      itemId: item.id,
+      category: item.category,
+      name: item.name,
+    };
   }
 
   get attackCooldownFraction(): number {
@@ -201,6 +237,7 @@ export class PlayerCombat {
   // ------------------------------------------------------------------
 
   update(dt: number): void {
+    this.syncTouchMastery();
     for (let i = 0; i < 3; i++) this.skillCooldowns[i] = Math.max(0, this.skillCooldowns[i] - dt);
     this.comboWindowTimer -= dt;
     if (this.comboWindowTimer <= 0 && !this.swing) this.comboIndex = 0;
@@ -329,10 +366,11 @@ export class PlayerCombat {
       const heading = this.controller.heading;
       this.effects.spawnSlash(position, heading, item.color, isFinisher ? 1.6 : 1);
       this.monsters.playerAttack(position, heading, {
-        damage: item.damage * hit.multiplier,
+        damage: item.damage * hit.multiplier * this.damageMultiplier(item.category),
         range: item.range,
         arcCos: Math.cos(THREE.MathUtils.degToRad(item.arcDeg / 2)),
         knockback: hit.knockback,
+        source: this.combatSource(),
       });
     }
 
@@ -353,6 +391,12 @@ export class PlayerCombat {
   private beginCast(index: number): void {
     if (this.skillCooldowns[index] > 0) return;
     const skill = SKILLS[index];
+    const source = this.combatSource(skill.category);
+    if (!this.progression?.canUseSkill(source.itemId, skill) && this.progression) {
+      this.touch?.notify(`ต้องการ Mastery ${skill.masteryRequired} 🔒`);
+      this.progression.notifySkillLocked?.(source.itemId, skill);
+      return;
+    }
     if (this.controller.energy < skill.energyCost) {
       this.touch?.notify('พลังงานไม่พอ ⚡');
       return;
@@ -384,6 +428,8 @@ export class PlayerCombat {
     const heading = this.controller.heading;
     const dirX = Math.sin(heading);
     const dirZ = Math.cos(heading);
+    const source = this.combatSource(skill.category);
+    const scaledDamage = skill.damage * this.damageMultiplier(skill.category);
 
     if (skill.tags.includes('projectile')) {
       const mesh = new THREE.Mesh(
@@ -401,11 +447,25 @@ export class PlayerCombat {
       mesh.rotation.set(-Math.PI / 2, 0, 0);
       mesh.rotateZ(heading - Math.PI * 0.4);
       this.scene.add(mesh);
-      this.projectiles.push({ mesh, dirX, dirZ, life: WAVE_LIFETIME, hit: new Set() });
+      this.projectiles.push({
+        mesh,
+        dirX,
+        dirZ,
+        life: WAVE_LIFETIME,
+        hit: new Set(),
+        damage: scaledDamage,
+        source,
+      });
       this.effects.spawnSlash(position, heading, 0x74e8ff, 1.3);
     } else if (skill.tags.includes('aoe')) {
       this.effects.spawnShockwave(position, skill.radius);
-      this.monsters.damageRadius(position, skill.radius, skill.damage, skill.tags.includes('knockback-heavy') ? 10 : 4);
+      this.monsters.damageRadius(
+        position,
+        skill.radius,
+        scaledDamage,
+        skill.tags.includes('knockback-heavy') ? 10 : 4,
+        source,
+      );
     } else if (skill.tags.includes('dash')) {
       this.controller.startDash(dirX, dirZ, skill.range / LUNGE_DURATION, LUNGE_DURATION);
       const samplePoint = new THREE.Vector3();
@@ -419,7 +479,7 @@ export class PlayerCombat {
         for (const monster of this.monsters.monstersNear(samplePoint.x, samplePoint.z, skill.radius)) {
           if (damaged.has(monster)) continue;
           damaged.add(monster);
-          this.monsters.applyHit(monster, skill.damage, position.x, position.z, 6);
+          this.monsters.applyHit(monster, scaledDamage, position.x, position.z, 6, source);
         }
       }
       this.effects.spawnSlash(position, heading, 0xffe27a, 1.5);
@@ -446,10 +506,11 @@ export class PlayerCombat {
           wave.hit.add(monster);
           this.monsters.applyHit(
             monster,
-            waveSkill.damage,
+            wave.damage,
             wave.mesh.position.x - wave.dirX,
             wave.mesh.position.z - wave.dirZ,
             5,
+            wave.source,
           );
         }
       }
@@ -460,5 +521,32 @@ export class PlayerCombat {
         this.projectiles.splice(i, 1);
       }
     }
+  }
+
+  private damageMultiplier(category: LoadoutCategory): number {
+    return this.progression?.getDamageMultiplier(category) ?? 1;
+  }
+
+  private combatSource(category?: LoadoutCategory): CombatRewardSource {
+    const loadoutItem = category ? this.loadout.itemIn(category) : this.loadout.activeItem;
+    const item = loadoutItem ?? this.loadout.activeItem;
+    return {
+      itemId: item.id,
+      category: item.category,
+    };
+  }
+
+  private syncTouchMastery(): void {
+    if (!this.touch) return;
+    const firstSkill = SKILLS[0];
+    const item = this.loadout.itemIn(firstSkill.category) ?? this.loadout.activeItem;
+    const mastery = this.progression?.getMasteryLevel(item.id) ?? 1;
+    const key = `${item.id}:${mastery}`;
+    if (key === this.lastTouchMasteryKey) return;
+    this.lastTouchMasteryKey = key;
+    this.touch.setSkillMasteryState(
+      mastery,
+      SKILLS.map((skill) => skill.masteryRequired),
+    );
   }
 }
