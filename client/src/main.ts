@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     graphics,
     {
       onPlayerHit: () => hud.flashDamage(),
-      modifyIncomingDamage: (amount) => playerCombat.modifyIncomingDamage(amount),
+      modifyIncomingDamage: (attack) => playerCombat.modifyIncomingDamage(attack),
       onMonsterDamaged: (monster, amount) =>
         effects.spawnDamageNumber(monster.group.position, amount),
       onPlayerDefeated: () => {
@@ -122,6 +122,9 @@ async function main(): Promise<void> {
     effects,
     touchControls,
   );
+  hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
+  // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
+  (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
 
   touchControls?.bindCooldowns(
     () =>

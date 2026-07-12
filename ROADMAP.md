@@ -1,7 +1,15 @@
-# 🏴‍☠️ Pirate Fruit — Roadmap
+# 🏴‍☠️ Pirate Fruit — Roadmap (v2)
 
-แผนพัฒนาเกมโอเพนเวิลด์แนว Blox Fruits ด้วย Three.js แบ่งเป็น 12 Phase
-แต่ละ Phase เล่นและทดสอบได้จริงก่อนขยายต่อ เพื่อให้ AI Agent สร้างและทดสอบได้ทีละระบบ
+แผนพัฒนาเกมโอเพนเวิลด์แนว Blox Fruits ด้วย Three.js + TypeScript
+ปรับโครงใหม่ให้ตรงกับสถานะจริงของโค้ด: เกมไม่ใช่ prototype เดินเล่นแล้ว
+แต่เป็น **single-player vertical slice** ที่มีโลก เรือ มอนสเตอร์ บอส และ Combat Framework แล้ว
+
+หลักการ: **หยุดเพิ่มระบบแนวกว้างชั่วคราว แล้วสร้างแกนกลางสามส่วนให้แข็งแรง**
+Combat Framework → Level/Stats/Mastery → Quest/Reward Loop
+
+วงจรเกมเป้าหมาย:
+รับ Quest → ต่อสู้ → ได้ EXP และเงิน → เพิ่ม Level → อัป Stats → เพิ่ม Mastery
+→ ปลดล็อก Skill → สู้ Boss → เดินทางไปเกาะต่อไป
 
 สถานะ: ✅ เสร็จแล้ว · 🔨 กำลังทำ · ⬜ ยังไม่เริ่ม
 
@@ -9,178 +17,143 @@
 
 ## Phase 1 — Core Prototype ✅
 
-เป้าหมาย: **"เดินเล่นได้"**
-
-- [x] ระบบ Three.js (renderer, game loop แบบ fixed timestep)
-- [x] โหลดแผนที่ (เกาะเริ่มต้น)
-- [x] ตัวละคร 3D (GLTF + animation Idle/Walk/Run)
-- [x] กล้อง Third Person (pointer lock + ซูมล้อเมาส์)
-- [x] เดิน / วิ่ง / กระโดด
-- [x] Sprint (ใช้ Energy, หมดแล้วต้องรอฟื้น)
-- [x] ระบบชน (Collision — พื้นเกาะ + สิ่งกีดขวาง)
-- [x] HUD พื้นฐาน (HP, Energy, พิกัด, FPS, คำแนะนำปุ่ม)
-- [x] มินิแมพ (วาดเกาะจากสูตรความสูง + ลูกศรบอกทิศผู้เล่น + ทิศเหนือ)
-- [x] เซฟตำแหน่ง (localStorage + autosave + respawn ตอนตกน้ำ)
-- [x] รองรับมือถือ: ระบบบังคับแบบ RoV (จอยสติ๊กเสมือน, ปุ่มโจมตีหลัก, ช่องสกิล 3 + ไม้ตาย 1, กระโดด, หมุนกล้องด้วยการลากนิ้ว)
-- [x] พุ่งหลบ (Dash) ติดตัว — คูลดาวน์ 2.2 วิ + ใช้ Energy (ปุ่ม `Q` บน PC / ปุ่ม 💨 บนมือถือ)
-- [x] กราฟฟิก Mobile Realistic PBR: ท้องฟ้าบรรยากาศจริง (Sky + env map), พื้นเกาะ texture splatting ทราย/หญ้า/หิน (albedo+normal), น้ำทะเล normal map เคลื่อนไหว 2 ชั้น, ปาล์ม/หิน/ลังใช้ texture PBR จริง (CC0 จาก ambientCG)
+- Three.js + TypeScript + Vite (three 0.178, vite 6)
+- ตัวละคร 3D พร้อม Idle / Walk / Run, กล้อง Third Person
+- เดิน วิ่ง กระโดด Sprint, Dash พร้อม Energy + Cooldown
+- Collision (พื้นเกาะสูตรความสูง + สิ่งกีดขวาง + platform)
+- HUD, Minimap, FPS / draw calls / triangles
+- ระบบควบคุมมือถือแบบ MOBA (จอยสติ๊กลอย + ปุ่มชุดขวา)
+- Save ตำแหน่งลง localStorage
+- Mobile Realistic PBR + Graphics Preset (ประหยัด/สมดุล/สวย)
 
 ## Phase 2 — โลกของเกม ✅
 
-สร้างโลกแบบเกาะ
-
-- [x] เกาะเริ่มต้น: หมู่บ้าน หาดฝึก สวนผลไม้ ศาลาบนเนิน และท่าเรือ
-- [x] ทะเล shader แบบ Mobile PBR พร้อมสีตามระยะชายฝั่งและฟองคลื่น
-- [x] คลื่นภาพ 2 ชั้น + `getWaveHeight()` เตรียมใช้กับเรือใน Phase 3
-- [x] ท้องฟ้าบรรยากาศจริง + เมฆแบบ InstancedMesh
-- [x] กลางวัน/กลางคืน 12 นาที พร้อมโคมไฟกลางคืนและเซฟเวลา
-- [x] NPC 4 ตัว พร้อมชื่อ ระยะโต้ตอบ และบทสนทนาแบบหลายหน้า
-- [x] Safe Spawn แยกจาก autosave ป้องกันเกิดซ้ำในจุดอันตราย
-- [x] จุดสำคัญของเกาะแสดงบนมินิแมพ
-- [x] ระดับกราฟิก Low / Medium / High พร้อมเลือกอัตโนมัติบนมือถือ
+- เกาะเริ่มต้นแบบ Procedural (texture splatting ทราย/หญ้า/หิน)
+- หมู่บ้าน หาดฝึก สวนผลไม้ ศาลา และท่าเรือ
+- NPC 4 ตัวพร้อมบทสนทนา, Safe Zone + Safe Spawn
+- กลางวัน–กลางคืน (12 นาที + โคมไฟกลางคืน)
+- ทะเล shader + คลื่น (getWaveHeight ใช้ร่วมกับเรือ)
+- จุดสำคัญบน Minimap, Instancing สำหรับวัตถุจำนวนมาก
 
 ## Phase 3 — ระบบเรือ ✅
 
-- [x] อู่เรือกัปตันคราม + เงินและ ownership ที่บันทึกใน localStorage
-- [x] เรือพายฝึกหัดฟรี + เรือใบวายุราคา 500 เหรียญ
-- [x] เรียก/เก็บ/ซ่อมเรือ และจำกัดเรือใช้งานพร้อมกันหนึ่งลำ
-- [x] ขึ้น/ลงเรือ พร้อมสลับกล้อง Input และปุ่มมือถือ
-- [x] ขับหน้า ถอย เลี้ยว เบรก Boost และ Anchor
-- [x] ลอยตามคลื่น 4 จุดด้วย `getWaveHeight()`
-- [x] HP เรือ ชนเกาะ ดาเมจ เอฟเฟกต์แตก และ cooldown เรียกใหม่
-- [x] Dock Zone จอดเทียบท่าและลงบนท่าอย่างปลอดภัย
-- [x] Boat HUD: HP ความเร็ว Anchor และ Boost cooldown
+- อู่เรือ + NPC, ซื้อ/เป็นเจ้าของ/เลือกเรือ (เรือพาย + เรือใบ)
+- เรียก เก็บ ซ่อมเรือ, ขับหน้า ถอย เลี้ยว เบรก Boost Anchor
+- เรือเอียงตามคลื่น 4 จุด, HP เรือ + ความเสียหายจากการชน
+- ขึ้น/ลงเรือได้ทุกที่ รวมถึงลงกลางทะเลแล้วว่ายกลับขึ้นเรือ
+- Boat HUD + ปุ่มมือถือเฉพาะโหมดเรือ
 
-## Phase 4 — ระบบมอนสเตอร์ ✅
+## Phase 4 — มอนสเตอร์ ✅
 
-แต่ละเกาะมี
+- ปูทะเลดุ Lv.2, โจรสลัดเร่ร่อน Lv.4, บอสกัปตันหนวดดำ Lv.10
+- AI: Idle → Wander → Chase → Attack → Return + **Leash กันไล่เข้าหมู่บ้าน**
+- มอนสเตอร์ไม่เดินลงทะเล, HP Bar + Level เหนือหัว, Respawn
+- Hit effect, ผู้เล่นรับดาเมจ/ตายได้, Boss Bar
+- i-frame แยกตามศัตรู (attack cooldown ต่อตัว)
 
-- [x] เลเวลกำกับต่อโซน/มอนสเตอร์ (แสดง Lv บนหลอดเลือด — การบังคับ gate รอ Player Level ใน Phase 6)
-- [x] มอนสเตอร์หลายชนิด: ปูทะเลดุ (Lv.2) และโจรสลัดเร่ร่อน (Lv.4) พร้อม HP / Damage ต่างกัน
-- [x] AI ไล่ผู้เล่น (idle/wander → chase → attack → กลับบ้าน, ไม่เดินลงน้ำ)
-- [x] Respawn (ตาย → ยุบหาย → เกิดใหม่ที่แคมป์เดิม; ผู้เล่นตาย → กลับหมู่บ้าน+ฟื้น HP)
-- [x] Boss กัปตันหนวดดำ (Lv.10, HP 680) + แถบเลือดบอสกลางบน
-- [x] ต่อสายการโจมตี melee (กรวยหน้าตัวละคร) ให้ทำดาเมจจริง + เอฟเฟกต์โดนตี + แฟลชจอแดงตอนโดน
+## Phase 5 — Combat Framework ✅
 
-## Phase 5 — Combat ✅
+### 5.1 Combat State ✅
+`idle / attack1-4 / casting / blocking / stunned / knockback / knockdown / dead`
+(state machine ใน `combat/CombatState.ts` — ระบบอื่นอ่านผ่าน getter)
 
-- [x] หมัด + คอมโบ 3 จังหวะ (จังหวะสุดท้ายดาเมจแรง + ผลักกระเด็น)
-- [x] ดาบ (สลับด้วย `R` / ปุ่มอาวุธบนมือถือ — ช้ากว่าแต่แรงและไกลกว่าหมัด)
-- [x] Dash (ทำตั้งแต่ Phase 1 — ปุ่ม `Q` / 💨)
-- [x] Block (`F` / ปุ่ม 🛡️ ค้าง — ลดดาเมจเหลือ 30% แลกพลังงาน + โล่แสงรอบตัว)
-- [x] Skill 3 ช่อง: 🌊 ฟันคลื่น (projectile), 🌀 วงจันทร์ (AoE รอบตัว), ⚡ พุ่งฟัน (dash+ดาเมจตามทาง)
-      พร้อมคูลดาวน์/ค่าพลังงาน — ปลดล็อกปุ่มมือถือที่ล็อกไว้ (ไม้ตายยังรอ Phase 7)
-- [x] เอฟเฟกต์: slash สีตามอาวุธ, คลื่นกระแทก, ประกายโดนตี, ตัวเลขดาเมจลอย
-- [x] Knockback: ศัตรูกระเด็น+เซตามแรงตี (บอสต้านทาน 75%)
-- [x] โบนัส: HP ฟื้นเองนอกการต่อสู้ (หลังไม่โดนตี 6 วิ)
+### 5.2 M1 Combo ✅
+- คอมโบ 4 จังหวะ Hit 1 → 2 → 3 → 4 Finisher
+- Combo Window (1.2 วิ) + Combo Reset
+- Hit Once Per Swing, Attack Recovery ต่อจังหวะ
+- Movement Lock บางจังหวะ (จังหวะ 4 ล็อกอยู่กับที่)
+- Knockback ใน Hit สุดท้าย
+- Animation Event: hitbox เกิดหลัง windup ของแต่ละจังหวะ
 
-## Phase 6 — ระบบเลเวล ⬜
+### 5.3 Damage Pipeline ✅
+Attack Request → ตรวจ Combat State → ตรวจ Cooldown → สร้าง Hitbox (กรวย/รัศมี/projectile)
+→ ตรวจเป้าหมาย → คำนวณ Damage → Apply → Stun/Knockback → **Reward Contribution hook** (รอ Phase 6)
 
-ผู้เล่นมี
+### 5.4 Loadout Framework ✅
+ช่อง 1 Fighting Style · 2 Sword · 3 Gun · 4 Fruit · 5 Utility (`combat/Loadout.ts` + persist)
+ตอนนี้มีของ: หมัดพื้นฐาน (style) + ดาบฝึกหัด (sword) — โครงรองรับทุกหมวดแล้ว
 
-- [ ] Level / EXP
-- [ ] HP / Energy สเกลตามเลเวล
-- [ ] Stat Point
-- [ ] อัปค่าสถานะ: Melee / Defense / Sword / Fruit
+### 5.5 Block และ Guard ✅
+- Block ลดดาเมจจากด้านหน้าเหลือ 25%
+- **Guard Meter** (แถบฟ้าใต้ Energy) — กันแล้วกิน guard ตามดาเมจ
+- Guard หมด → **Guard Break** (สตัน 1.6 วิ + บล็อกไม่ได้จน guard ฟื้นถึง 30)
+- ศัตรูบางท่าป้องกันไม่ได้: บอสทุกตีครั้งที่ 3 = ท่าหนัก **unblockable + knockdown** (มีแฟลชเตือน)
+- ผู้เล่นโจมตี/ร่ายสกิลขณะ Block ไม่ได้
 
-## Phase 7 — ผลไม้ปีศาจ ⬜
+### 5.6 Skill Framework ✅
+`SkillDefinition { id, category, masteryRequired, cooldown, energyCost, castTime, damage, range, radius, tags }`
+— data-driven เต็มรูปแบบ: สกิลปัจจุบัน 3 ตัว (🌊 ฟันคลื่น / 🌀 วงจันทร์ / ⚡ พุ่งฟัน) อยู่หมวด style,
+มี castTime (state casting), เพิ่มสกิลใหม่ได้โดยไม่แก้ Combat Core
 
-- [ ] ระบบสุ่มผลไม้
-- [ ] ความหายาก: Common / Rare / Epic / Legendary / Mythic
-- [ ] กินแล้วเปลี่ยนสายพลัง + สกิลเฉพาะ
-- [ ] Mastery ของผลไม้ (1 / 20 / 50 / 100 / 200)
-- [ ] ปลดล็อกสกิลใหม่ตามระดับ Mastery
+## Phase 6 — Level, Stats, Mastery และ Quest พื้นฐาน ⬜
 
-## Phase 8 — Quest ⬜
+- [ ] Player Level + EXP (ต่อจาก Reward Contribution hook ที่วางไว้แล้ว)
+- [ ] Stat Points 5 สาย: **Combat / Vitality / Blade / Ranged / Fruit Power**
+- [ ] Mastery แยกตามของแต่ละชิ้น: Basic Brawl, Sword แต่ละเล่ม, Gun แต่ละกระบอก, Fruit แต่ละผล
+      (ไม่มี Weapon Mastery / Haki Mastery รวม)
+- [ ] สกิลปลดตาม masteryRequired (ฟิลด์มีอยู่แล้วใน SkillDefinition)
+- [ ] Quest พื้นฐานจาก NPC: ฆ่ามอน / เก็บของ — แหล่ง EXP ที่เป็นระบบ
+- [ ] รางวัล: เงิน (ผูกกับ BoatProgress coins เดิม) + EXP + Mastery
 
-- [ ] NPC ให้เควส: ฆ่ามอน / เก็บของ / ส่งของ / ล่าบอส
-- [ ] รางวัล: เงิน / EXP / ไอเทม
+## Phase 7 — Fighting Style, Sword และ Loadout เต็มรูปแบบ ⬜
 
-## Phase 9 — ระบบเกาะ ⬜
+- [ ] Fighting Style หลายสาย + ครูฝึกสอน (ซื้อ/เปลี่ยน)
+- [ ] ดาบหลายเล่ม (ดรอปจากบอส/ร้าน)
+- [ ] UI จัดการ Loadout 5 ช่อง + สลับของในช่องเดียวกัน
+- [ ] สกิลต่อของแต่ละชิ้น ปลดตาม Mastery
 
-สร้างเกาะหลายระดับ
+## Phase 8 — Fruit Framework ⬜
 
-- [ ] 1. Beginner Island
-- [ ] 2. Jungle Island
-- [ ] 3. Desert Island
-- [ ] 4. Snow Island
-- [ ] 5. Sky Island
-- [ ] 6. Volcano Island
-- [ ] 7. Underwater Island
-- [ ] 8. Ancient Island
-- [ ] 9. Demon Island
-- [ ] 10. Final Island
+- [ ] โครงผลไม้ปีศาจ: กิน → เปลี่ยนสายพลัง → สกิลเฉพาะ (หมวด fruit ใน Loadout)
+- [ ] Fruit Dealer + สุ่ม (Gacha) + ความหายาก Common → Mythic
+- [ ] Fruit Spawn ตามจุดบนเกาะ
+- [ ] Mastery ต่อผล + ปลดสกิลตามระดับ
 
-แต่ละเกาะ: มอนสเตอร์ / NPC / ร้านค้า / บอส / ดันเจียน
+## Phase 9 — หลายเกาะและ World Progression ⬜
 
-## Phase 10 — Multiplayer ⬜
+- [ ] เกาะที่ 2-3 (ระดับมอนสูงขึ้น) + การเดินเรือระหว่างเกาะ
+- [ ] เลเวลขั้นต่ำต่อเกาะ + ป้ายบอกระดับ
+- [ ] บอส/ร้านค้า/NPC ต่อเกาะ
 
-- [ ] Server Authoritative
-- [ ] Login
-- [ ] Sync Player
-- [ ] Chat
-- [ ] Party
-- [ ] PvP
-- [ ] Trading
-- [ ] Guild
+## Phase 10 — Server Migration และ Multiplayer ⬜
 
-## Phase 11 — Endgame ⬜
+- [ ] ย้ายข้อมูลสำคัญออกจาก localStorage (เงิน ตำแหน่ง เรือ ownership เลเวล) ขึ้น server
+- [ ] Server Authoritative + Login
+- [ ] Sync Player + Chat + Party
 
-- [ ] Raid Boss
-- [ ] World Boss
-- [ ] Dungeon
-- [ ] Sea Event
-- [ ] Treasure
-- [ ] Rare Fruit Event
+## Phase 11 — Raid, Awakening, Sea Events และ Endgame ⬜
 
-## Phase 12 — Optimization (มือถือ) ⬜
+- [ ] Raid Boss / World Boss
+- [ ] Fruit Awakening
+- [ ] Sea Events + Treasure
 
-- [ ] LOD
-- [x] Instancing (ต้นปาล์ม ใบไม้ หิน ลัง เมฆ และชิ้นส่วนท่าเรือ)
-- [ ] Frustum Culling
-- [x] Texture Compression (ทำก่อนกำหนด — JPG 1K บีบ mozjpeg รวม ~2.4MB)
-- [x] Mobile PBR (ทำก่อนกำหนด — ดูหมายเหตุ Phase 1)
-- [x] Dynamic Shadow ระดับต่ำ (ทำก่อนกำหนด — มือถือลด shadow map 2048→1024 + จำกัด pixel ratio 1.5)
-- [ ] Occlusion Culling
+## Phase 12 — Trading, Crew, PvP และ Live-Service ⬜
+
+- [ ] Trading ระหว่างผู้เล่น
+- [ ] Crew (กิลด์) + สงคราม
+- [ ] PvP + จัดอันดับ
+- [ ] ระบบ Live-Service (อีเวนต์หมุนเวียน)
 
 ---
 
-## โครงสร้างโปรเจกต์
+## สถาปัตยกรรมปัจจุบัน
 
 ```
-client/                 # เกมฝั่งเบราว์เซอร์ (Vite + TypeScript + Three.js)
-    src/
-        engine/         # game loop, renderer, input
-        camera/         # กล้อง third person
-        player/         # ตัวละคร + character controller
-        world/          # เกาะ, ทะเล, แสง, collision, props
-        ui/             # HUD
-        save/           # เซฟลง localStorage
-        # จะเพิ่มใน Phase ถัดๆ ไป:
-        # ocean/ island/ monster/ npc/ combat/ fruit/ skills/
-        # inventory/ quest/ boat/ effects/
-
-server/                 # เพิ่มใน Phase 10 (Multiplayer)
-    # auth/ player/ combat/ ai/ quest/ fruit/
-    # inventory/ save/ network/
+Three.js Client (single-player)
+├── engine/    game loop, input, graphics preset
+├── world/     เกาะ, ทะเล, day/night, collision, POI
+├── island/    หมู่บ้าน ท่าเรือ สิ่งปลูกสร้าง
+├── player/    character controller (เดิน/ว่าย/dash/stun)
+├── camera/    third person
+├── boat/      เรือ + ร้าน + ownership
+├── monster/   AI + แคมป์ + บอส + heavy attack
+├── combat/    ⭐ Combat Framework: state machine, loadout,
+│              damage pipeline, guard, skill data
+├── npc/       NPC + บทสนทนา
+├── effects/   slash / shockwave / damage numbers
+├── ui/        HUD, minimap, boss bar, touch controls, ร้านค้า
+└── save/      localStorage (ต้องย้ายขึ้น server ก่อน Phase 10)
 ```
 
-## ลำดับการพัฒนา
-
-1. ✅ เดิน วิ่ง กระโดด
-2. ✅ กล้อง
-3. ✅ เกาะแรก
-4. ✅ ทะเลและคลื่น
-5. ✅ เรือ
-6. ✅ มอนสเตอร์
-7. ✅ ต่อสู้
-8. ⬜ เลเวล
-9. ⬜ NPC
-10. ⬜ เควส
-11. ⬜ ผลไม้ปีศาจ
-12. ⬜ Mastery
-13. ⬜ เกาะใหม่
-14. ⬜ Multiplayer
-15. ⬜ PvP
-16. ⬜ World Boss
-17. ⬜ ปรับประสิทธิภาพสำหรับมือถือ
+หมายเหตุ: ข้อมูลสำคัญ (เงิน เรือ ตำแหน่ง loadout) ยังอยู่ใน localStorage —
+เหมาะกับ single-player prototype แต่ต้อง migrate ใน Phase 10

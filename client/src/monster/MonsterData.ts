@@ -2,6 +2,20 @@
 
 export type MonsterKind = 'crab' | 'grunt' | 'boss';
 
+/** ท่าโจมตีหนักพิเศษ (มี telegraph ก่อนปล่อย) */
+export interface HeavyAttackDefinition {
+  /** ปล่อยทุกการโจมตีครั้งที่ N */
+  everyNth: number;
+  /** ตัวคูณดาเมจจากดาเมจปกติ */
+  multiplier: number;
+  /** เวลาง้าง (ตัวมอนแฟลชเตือน) ก่อนตีจริง */
+  telegraph: number;
+  /** แรงผลักผู้เล่น */
+  knockback: number;
+  /** เช่น 'unblockable' (ทะลุ Block), 'knockdown' (ล้มนาน) */
+  tags: string[];
+}
+
 export interface MonsterType {
   id: string;
   name: string;
@@ -16,6 +30,7 @@ export interface MonsterType {
   scale: number;
   color: number;
   xp: number; // เผื่อ Phase 6 (ระบบเลเวล)
+  heavyAttack?: HeavyAttackDefinition;
 }
 
 export const MONSTER_TYPES: Record<string, MonsterType> = {
@@ -63,6 +78,14 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
     scale: 1.9,
     color: 0x3a2b45,
     xp: 300,
+    // ทุกตีครั้งที่ 3: ฟาดหนัก ทะลุ Block + ผลักผู้เล่นล้ม (มีแฟลชเตือน 0.6 วิ)
+    heavyAttack: {
+      everyNth: 3,
+      multiplier: 1.6,
+      telegraph: 0.6,
+      knockback: 11,
+      tags: ['unblockable', 'knockdown'],
+    },
   },
 };
 

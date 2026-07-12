@@ -126,6 +126,13 @@ export class Monster {
   kbZ = 0;
   /** ระหว่างเซอยู่ AI ขยับเข้าตีไม่ได้ */
   staggerTimer = 0;
+  /** นับจำนวนครั้งที่ตี (ไว้จับจังหวะท่าหนักทุกครั้งที่ N) */
+  attackCount = 0;
+  /** เกิน leash จากบ้าน — บังคับเดินกลับจนใกล้บ้านก่อนถึงจะ aggro ใหม่ได้ */
+  returningHome = false;
+  /** กำลังง้างท่าหนัก — แฟลชเตือนจนกว่าจะครบเวลาแล้วปล่อย */
+  telegraphTimer = 0;
+  pendingHeavy = false;
   private hitFlash = 0;
   private deathTimer = 0;
 
@@ -183,6 +190,12 @@ export class Monster {
     this.hp = this.type.maxHp;
     this.state = 'idle';
     this.attackCooldown = 0;
+    this.attackCount = 0;
+    this.pendingHeavy = false;
+    this.telegraphTimer = 0;
+    this.kbX = 0;
+    this.kbZ = 0;
+    this.staggerTimer = 0;
     this.group.position.set(this.home.x, y, this.home.y);
     this.group.scale.setScalar(this.type.scale);
     this.group.visible = true;
@@ -196,6 +209,16 @@ export class Monster {
       this.hitFlash -= dt;
       const material = this.hull.material as THREE.MeshStandardMaterial;
       material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 8);
+    } else if (this.pendingHeavy) {
+      // telegraph ท่าหนัก: กะพริบส้มเตือนให้ผู้เล่นหลบ
+      const material = this.hull.material as THREE.MeshStandardMaterial;
+      material.emissive.setHex(0xff9020);
+      material.emissiveIntensity = 0.6 + Math.sin(performance.now() * 0.03) * 0.5;
+    } else if (this.state !== 'dead') {
+      const material = this.hull.material as THREE.MeshStandardMaterial;
+      if (material.emissiveIntensity > 0 && this.hitFlash <= 0) {
+        material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 6);
+      }
     }
     if (this.state === 'dead') {
       this.deathTimer -= dt;

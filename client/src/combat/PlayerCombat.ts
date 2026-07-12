@@ -1,27 +1,38 @@
 import * as THREE from 'three';
 import type { Input } from '../engine/Input';
 import type { CharacterController } from '../player/CharacterController';
-import type { MonsterManager } from '../monster/MonsterManager';
+import type { MonsterManager, IncomingAttack } from '../monster/MonsterManager';
 import type { Effects } from '../effects/Effects';
 import type { TouchControls } from '../ui/TouchControls';
+import type { Monster } from '../monster/Monster';
 import {
-  WEAPONS,
   COMBO_WINDOW,
   SKILLS,
   WAVE_SPEED,
   WAVE_LIFETIME,
-  WAVE_HIT_RADIUS,
-  SPIN_RADIUS,
-  SPIN_KNOCKBACK,
-  LUNGE_DISTANCE,
   LUNGE_DURATION,
-  LUNGE_HIT_RADIUS,
+  GUARD_MAX,
+  GUARD_DAMAGE_FACTOR,
+  GUARD_REGEN,
   BLOCK_DAMAGE_RATIO,
-  BLOCK_ENERGY_COST,
+  GUARD_BREAK_STUN,
+  GUARD_REBLOCK_THRESHOLD,
+  PLAYER_KNOCKBACK_SPEED,
+  PLAYER_KNOCKBACK_DURATION,
+  KNOCKDOWN_STUN,
   REGEN_DELAY,
   REGEN_RATE,
+  type SkillDefinition,
 } from './CombatData';
-import type { Monster } from '../monster/Monster';
+import { Loadout } from './Loadout';
+import {
+  type CombatState,
+  ATTACK_STATES,
+  canStartAttack,
+  canCastSkill,
+  canBlock,
+  isAttackState,
+} from './CombatState';
 
 interface WaveProjectile {
   mesh: THREE.Mesh;
@@ -31,16 +42,44 @@ interface WaveProjectile {
   hit: Set<Monster>;
 }
 
+/** สกิลที่ร่ายค้างอยู่ (state = casting) รอ castTime ครบแล้วปล่อยผล */
+interface PendingCast {
+  skill: SkillDefinition;
+  index: number;
+  timer: number;
+}
+
+/** จังหวะโจมตี M1 ที่กำลังดำเนินอยู่ (windup → hitbox event → recovery) */
+interface ActiveSwing {
+  comboIndex: number;
+  timer: number;
+  hitDone: boolean;
+}
+
 /**
- * ระบบต่อสู้ของผู้เล่น (Phase 5):
- * อาวุธ 2 ชนิด (หมัด/ดาบ) + คอมโบ 3 จังหวะ, Block, สกิล 3 ตัว, HP regen นอกคอมแบต
- * ดาเมจส่งผ่าน MonsterManager (กรวยหน้า / รัศมี / projectile)
+ * Combat Framework ของผู้เล่น (Phase 5)
+ * - State machine: idle/attack1-4/casting/blocking/stunned/knockback/knockdown/dead
+ * - M1 คอมโบ 4 จังหวะ: windup (animation event สร้าง hitbox) → active → recovery,
+ *   ตีครั้งเดียวต่อ swing, ล็อกการเดินบางจังหวะ, จังหวะ 4 knockback
+ * - Damage pipeline เดียว: state → cooldown → hitbox → targets → damage → apply →
+ *   stun/knockback → reward hook (Phase 6)
+ * - Block แบบ Guard Meter: กันแล้วกิน guard, guard หมด → Guard Break (stunned),
+ *   ท่า unblockable ทะลุบล็อก
+ * - สกิล data-driven ผ่าน SkillDefinition — เพิ่มสกิลใหม่โดยไม่แก้ core
  */
 export class PlayerCombat {
-  private weaponIndex = 0;
-  private attackCooldown = 0;
-  private comboStep = 0;
-  private comboTimer = 0;
+  readonly loadout = new Loadout();
+
+  guard = GUARD_MAX;
+  readonly guardMax = GUARD_MAX;
+
+  private combatState: CombatState = 'idle';
+  private comboIndex = 0;
+  private comboWindowTimer = 0;
+  private swing: ActiveSwing | null = null;
+  private pendingCast: PendingCast | null = null;
+  private stateTimer = 0;
+  private guardBroken = false;
   private skillCooldowns = [0, 0, 0];
   private timeSinceDamaged = 99;
 
@@ -56,7 +95,6 @@ export class PlayerCombat {
     private effects: Effects,
     private touch: TouchControls | null,
   ) {
-    // โล่ครึ่งทรงกลมโปร่งแสง โชว์ตอนกด Block
     this.shield = new THREE.Mesh(
       new THREE.SphereGeometry(1.25, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
       new THREE.MeshBasicMaterial({
@@ -72,7 +110,7 @@ export class PlayerCombat {
 
     if (touch) {
       touch.unlockSkills([SKILLS[0].icon, SKILLS[1].icon, SKILLS[2].icon]);
-      touch.setWeaponIcon(this.weapon.icon);
+      touch.setWeaponIcon(this.loadout.activeItem.icon);
       touch.bindSkillCooldowns([
         () => this.skillCooldownFraction(0),
         () => this.skillCooldownFraction(1),
@@ -81,46 +119,97 @@ export class PlayerCombat {
     }
   }
 
-  get weapon() {
-    return WEAPONS[this.weaponIndex];
+  // ------------------------------------------------------------------
+  // getters สำหรับ UI/ระบบอื่น
+  // ------------------------------------------------------------------
+
+  get state(): CombatState {
+    return this.combatState;
   }
 
   get attackCooldownFraction(): number {
-    return Math.max(0, this.attackCooldown) / this.weapon.cooldown;
+    // ปุ่มโจมตีติดมืดระหว่าง swing (windup+recovery ของจังหวะปัจจุบัน)
+    if (!this.swing) return 0;
+    const hit = this.loadout.activeItem.combo[this.swing.comboIndex];
+    const total = hit.windup + hit.recovery;
+    return Math.max(0, this.swing.timer) / total;
   }
 
   skillCooldownFraction(index: number): number {
     return Math.max(0, this.skillCooldowns[index]) / SKILLS[index].cooldown;
   }
 
-  /** กำลังยกโล่อยู่ไหม (block ได้เฉพาะตอนคุมตัวละครปกติ) */
-  get blocking(): boolean {
-    return (
-      this.input.block &&
-      this.controller.inputEnabled &&
-      !this.controller.isMounted &&
-      this.controller.energy > 0
-    );
+  get guardFraction(): number {
+    return this.guard / GUARD_MAX;
   }
 
-  /** เรียกจาก MonsterManager ก่อนหักเลือดผู้เล่น — Block ลดดาเมจแลกพลังงาน */
-  modifyIncomingDamage(amount: number): number {
+  get blocking(): boolean {
+    return this.combatState === 'blocking';
+  }
+
+  // ------------------------------------------------------------------
+  // Damage pipeline ขาเข้า (มอนสเตอร์ → ผู้เล่น)
+  // ------------------------------------------------------------------
+
+  /** เรียกจาก MonsterManager ก่อนหักเลือด — ตัดสิน Block/Guard/unblockable/ผลัก คืนดาเมจสุดท้าย */
+  modifyIncomingDamage(attack: IncomingAttack): number {
     this.timeSinceDamaged = 0;
-    if (this.blocking && this.controller.energy >= BLOCK_ENERGY_COST) {
-      this.controller.energy -= BLOCK_ENERGY_COST;
+    let amount = attack.amount;
+
+    if (this.combatState === 'blocking' && !attack.unblockable) {
+      // บล็อกสำเร็จ: ลดดาเมจ แลก guard ตามดาเมจดิบ
+      this.guard = Math.max(0, this.guard - attack.amount * GUARD_DAMAGE_FACTOR);
+      amount = attack.amount * BLOCK_DAMAGE_RATIO;
       this.effects.spawnHitSpark(this.controller.position, 0x8fd4ff);
-      return amount * BLOCK_DAMAGE_RATIO;
+      if (this.guard <= 0) {
+        // Guard Break: สตันและบล็อกไม่ได้จนกว่า guard ฟื้น
+        this.guardBroken = true;
+        this.enterState('stunned', GUARD_BREAK_STUN);
+        this.controller.applyStun(GUARD_BREAK_STUN);
+        this.touch?.notify('🛡️ โล่แตก!');
+      }
+    } else if (attack.unblockable && attack.knockback > 0) {
+      // ท่าหนักทะลุบล็อก: ผลักผู้เล่นกระเด็น (+ล้มถ้ามี tag knockdown)
+      const dx = this.controller.position.x - attack.sourceX;
+      const dz = this.controller.position.z - attack.sourceZ;
+      const len = Math.hypot(dx, dz) || 1;
+      this.controller.applyKnockback(
+        dx / len,
+        dz / len,
+        PLAYER_KNOCKBACK_SPEED * (attack.knockback / 8),
+        PLAYER_KNOCKBACK_DURATION,
+      );
+      if (attack.tags.includes('knockdown')) {
+        this.enterState('knockdown', KNOCKDOWN_STUN);
+        this.controller.applyStun(KNOCKDOWN_STUN);
+      } else {
+        this.enterState('knockback', PLAYER_KNOCKBACK_DURATION);
+      }
     }
+
+    if (this.controller.hp - amount <= 0) this.enterState('dead', 0.8);
     return amount;
   }
 
-  update(dt: number): void {
-    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-    for (let i = 0; i < 3; i++) this.skillCooldowns[i] = Math.max(0, this.skillCooldowns[i] - dt);
+  /** แจ้งว่าเพิ่งโดนดาเมจ (หยุด HP regen) — main เรียกจาก onPlayerHit */
+  notifyDamaged(): void {
+    this.timeSinceDamaged = 0;
+  }
 
-    // หมดหน้าต่างคอมโบ → เริ่มนับจังหวะใหม่
-    this.comboTimer -= dt;
-    if (this.comboTimer <= 0) this.comboStep = 0;
+  // ------------------------------------------------------------------
+  // Loop หลัก
+  // ------------------------------------------------------------------
+
+  update(dt: number): void {
+    for (let i = 0; i < 3; i++) this.skillCooldowns[i] = Math.max(0, this.skillCooldowns[i] - dt);
+    this.comboWindowTimer -= dt;
+    if (this.comboWindowTimer <= 0 && !this.swing) this.comboIndex = 0;
+
+    // ---------- Guard regen (ตอนไม่บล็อก) ----------
+    if (this.combatState !== 'blocking' && this.guard < GUARD_MAX) {
+      this.guard = Math.min(GUARD_MAX, this.guard + GUARD_REGEN * dt);
+      if (this.guardBroken && this.guard >= GUARD_REBLOCK_THRESHOLD) this.guardBroken = false;
+    }
 
     // ---------- HP regen นอกคอมแบต ----------
     this.timeSinceDamaged += dt;
@@ -133,63 +222,135 @@ export class PlayerCombat {
       this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + REGEN_RATE * dt);
     }
 
-    // ---------- โล่ Block ----------
-    const blocking = this.blocking;
-    this.shield.visible = blocking;
-    if (blocking) {
-      this.shield.position.copy(this.controller.position);
-      this.shield.position.y += 0.35;
+    // ---------- state timer (stunned/knockback/knockdown/dead หมดเวลาแล้วกลับ idle) ----------
+    if (this.stateTimer > 0) {
+      this.stateTimer -= dt;
+      if (this.stateTimer <= 0 && ['stunned', 'knockback', 'knockdown', 'dead'].includes(this.combatState)) {
+        this.combatState = 'idle';
+      }
     }
+    if (this.controller.hp <= 0 && this.combatState !== 'dead') this.enterState('dead', 0.8);
 
     const canAct = this.controller.inputEnabled && !this.controller.isMounted;
 
-    // ---------- สลับอาวุธ ----------
-    if (this.input.consumeWeaponSwitch() && canAct) {
-      this.weaponIndex = (this.weaponIndex + 1) % WEAPONS.length;
-      this.comboStep = 0;
-      this.attackCooldown = Math.min(this.attackCooldown, 0.15);
-      this.touch?.setWeaponIcon(this.weapon.icon);
-      this.touch?.notify(`ใช้${this.weapon.name}แล้ว ${this.weapon.icon}`);
+    // ---------- ดำเนิน swing ที่ค้างอยู่ (windup → hitbox → recovery) ----------
+    this.advanceSwing(dt);
+
+    // ---------- ดำเนินการร่ายสกิลที่ค้าง ----------
+    this.advanceCast(dt);
+
+    // ---------- Block: ถือปุ่มและ guard ไม่แตก ----------
+    const wantBlock = this.input.block && canAct && !this.guardBroken;
+    if (wantBlock && canBlock(this.combatState)) {
+      this.combatState = 'blocking';
+    } else if (this.combatState === 'blocking' && !wantBlock) {
+      this.combatState = 'idle';
+    }
+    this.shield.visible = this.combatState === 'blocking';
+    if (this.shield.visible) {
+      this.shield.position.copy(this.controller.position);
+      this.shield.position.y += 0.35;
+      // โล่จางลงตาม guard ที่เหลือ
+      (this.shield.material as THREE.MeshBasicMaterial).opacity = 0.1 + 0.18 * this.guardFraction;
     }
 
-    // ---------- โจมตีปกติ + คอมโบ ----------
+    // ---------- ล็อกการเดินตามจังหวะ (ตั้งใหม่ทุกเฟรม) ----------
+    let lock = 1;
+    if (this.swing) {
+      lock = this.loadout.activeItem.combo[this.swing.comboIndex].movementLock;
+    } else if (this.combatState === 'casting') {
+      lock = 0;
+    } else if (this.combatState === 'blocking') {
+      lock = 0.45;
+    }
+    this.controller.setMovementLock(lock);
+
+    // ---------- สลับ Loadout ----------
+    if (this.input.consumeWeaponSwitch() && canAct && !this.swing && this.combatState !== 'casting') {
+      const item = this.loadout.cycleActive();
+      this.comboIndex = 0;
+      this.touch?.setWeaponIcon(item.icon);
+      this.touch?.notify(`ใช้${item.name}แล้ว ${item.icon}`);
+    }
+
+    // ---------- คำขอโจมตี M1 ----------
     const attackRequested = this.input.consumeAttack();
-    if (attackRequested && canAct && !blocking && this.attackCooldown === 0) {
-      this.performAttack();
+    if (attackRequested && canAct && canStartAttack(this.combatState) && !this.swing) {
+      this.startSwing();
     }
 
-    // ---------- สกิล ----------
+    // ---------- คำขอสกิล ----------
     const skillRequested = this.input.consumeSkill();
-    if (skillRequested >= 1 && skillRequested <= 3 && canAct && !blocking) {
-      this.castSkill(skillRequested - 1);
+    if (skillRequested >= 1 && canAct && canCastSkill(this.combatState) && !this.pendingCast) {
+      this.beginCast(skillRequested - 1);
     }
 
-    // ---------- projectile ฟันคลื่น ----------
+    // ---------- projectiles ----------
     this.updateProjectiles(dt);
   }
 
-  private performAttack(): void {
-    const weapon = this.weapon;
-    const step = this.comboStep;
-    const multiplier = weapon.comboMultipliers[step];
-    const isFinisher = step === weapon.comboMultipliers.length - 1;
-
-    this.attackCooldown = weapon.cooldown * (isFinisher ? 1.35 : 1);
-    this.comboTimer = COMBO_WINDOW;
-    this.comboStep = isFinisher ? 0 : step + 1;
-
-    const position = this.controller.position;
-    const heading = this.controller.heading;
-    this.effects.spawnSlash(position, heading, weapon.color, isFinisher ? 1.6 : 1);
-    this.monsters.playerAttack(position, heading, {
-      damage: weapon.damage * multiplier,
-      range: weapon.range,
-      arcCos: Math.cos(THREE.MathUtils.degToRad(weapon.arcDeg / 2)),
-      knockback: isFinisher ? weapon.finisherKnockback : 2,
-    });
+  private enterState(state: CombatState, duration: number): void {
+    this.combatState = state;
+    this.stateTimer = duration;
+    // โดนขัดจังหวะ = swing/cast ที่ค้างอยู่หลุด
+    this.swing = null;
+    this.pendingCast = null;
   }
 
-  private castSkill(index: number): void {
+  // ------------------------------------------------------------------
+  // M1 combo: windup → hitbox event → recovery
+  // ------------------------------------------------------------------
+
+  private startSwing(): void {
+    const combo = this.loadout.activeItem.combo;
+    const index = Math.min(this.comboIndex, combo.length - 1);
+    this.swing = { comboIndex: index, timer: combo[index].windup + combo[index].recovery, hitDone: false };
+    this.combatState = ATTACK_STATES[index];
+  }
+
+  private advanceSwing(dt: number): void {
+    if (!this.swing) return;
+    if (!isAttackState(this.combatState)) {
+      // โดนสตัน/ตายกลางจังหวะ — ยกเลิก swing
+      this.swing = null;
+      return;
+    }
+    const item = this.loadout.activeItem;
+    const hit = item.combo[this.swing.comboIndex];
+    const total = hit.windup + hit.recovery;
+    this.swing.timer -= dt;
+    const elapsed = total - this.swing.timer;
+
+    // animation event: hitbox เกิดเมื่อพ้นช่วงง้าง — ตีครั้งเดียวต่อ swing
+    if (!this.swing.hitDone && elapsed >= hit.windup) {
+      this.swing.hitDone = true;
+      const isFinisher = this.swing.comboIndex === item.combo.length - 1;
+      const position = this.controller.position;
+      const heading = this.controller.heading;
+      this.effects.spawnSlash(position, heading, item.color, isFinisher ? 1.6 : 1);
+      this.monsters.playerAttack(position, heading, {
+        damage: item.damage * hit.multiplier,
+        range: item.range,
+        arcCos: Math.cos(THREE.MathUtils.degToRad(item.arcDeg / 2)),
+        knockback: hit.knockback,
+      });
+    }
+
+    if (this.swing.timer <= 0) {
+      // จบจังหวะ: เปิดหน้าต่างต่อคอมโบ
+      const isFinisher = this.swing.comboIndex === item.combo.length - 1;
+      this.comboIndex = isFinisher ? 0 : this.swing.comboIndex + 1;
+      this.comboWindowTimer = COMBO_WINDOW;
+      this.swing = null;
+      this.combatState = 'idle';
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // สกิล: casting (castTime) → ปล่อยผล
+  // ------------------------------------------------------------------
+
+  private beginCast(index: number): void {
     if (this.skillCooldowns[index] > 0) return;
     const skill = SKILLS[index];
     if (this.controller.energy < skill.energyCost) {
@@ -198,14 +359,33 @@ export class PlayerCombat {
     }
     this.controller.energy -= skill.energyCost;
     this.skillCooldowns[index] = skill.cooldown;
+    this.swing = null;
+    this.comboIndex = 0;
+    this.pendingCast = { skill, index, timer: skill.castTime };
+    this.combatState = 'casting';
+  }
 
+  private advanceCast(dt: number): void {
+    if (!this.pendingCast) return;
+    if (this.combatState !== 'casting') {
+      this.pendingCast = null; // โดนขัดจังหวะ
+      return;
+    }
+    this.pendingCast.timer -= dt;
+    if (this.pendingCast.timer > 0) return;
+    const { skill } = this.pendingCast;
+    this.pendingCast = null;
+    this.combatState = 'idle';
+    this.releaseSkill(skill);
+  }
+
+  private releaseSkill(skill: SkillDefinition): void {
     const position = this.controller.position;
     const heading = this.controller.heading;
     const dirX = Math.sin(heading);
     const dirZ = Math.cos(heading);
 
-    if (skill.id === 'wave-slash') {
-      // คลื่นพลังพุ่งไปข้างหน้า ตัดทุกตัวที่ขวางทาง
+    if (skill.tags.includes('projectile')) {
       const mesh = new THREE.Mesh(
         this.waveGeo,
         new THREE.MeshBasicMaterial({
@@ -223,22 +403,20 @@ export class PlayerCombat {
       this.scene.add(mesh);
       this.projectiles.push({ mesh, dirX, dirZ, life: WAVE_LIFETIME, hit: new Set() });
       this.effects.spawnSlash(position, heading, 0x74e8ff, 1.3);
-    } else if (skill.id === 'moon-spin') {
-      // หมุนฟาดรอบตัว + ผลักศัตรูกระเด็น
-      this.effects.spawnShockwave(position, SPIN_RADIUS);
-      this.monsters.damageRadius(position, SPIN_RADIUS, skill.damage, SPIN_KNOCKBACK);
-    } else if (skill.id === 'lunge-strike') {
-      // พุ่งไปข้างหน้าแล้วฟันทุกตัวตามเส้นทาง
-      this.controller.startDash(dirX, dirZ, LUNGE_DISTANCE / LUNGE_DURATION, LUNGE_DURATION);
+    } else if (skill.tags.includes('aoe')) {
+      this.effects.spawnShockwave(position, skill.radius);
+      this.monsters.damageRadius(position, skill.radius, skill.damage, skill.tags.includes('knockback-heavy') ? 10 : 4);
+    } else if (skill.tags.includes('dash')) {
+      this.controller.startDash(dirX, dirZ, skill.range / LUNGE_DURATION, LUNGE_DURATION);
       const samplePoint = new THREE.Vector3();
       const damaged = new Set<Monster>();
       for (let step = 0; step <= 3; step++) {
         samplePoint.set(
-          position.x + dirX * (LUNGE_DISTANCE * step) / 3,
+          position.x + (dirX * skill.range * step) / 3,
           position.y,
-          position.z + dirZ * (LUNGE_DISTANCE * step) / 3,
+          position.z + (dirZ * skill.range * step) / 3,
         );
-        for (const monster of this.monsters.monstersNear(samplePoint.x, samplePoint.z, LUNGE_HIT_RADIUS)) {
+        for (const monster of this.monsters.monstersNear(samplePoint.x, samplePoint.z, skill.radius)) {
           if (damaged.has(monster)) continue;
           damaged.add(monster);
           this.monsters.applyHit(monster, skill.damage, position.x, position.z, 6);
@@ -249,21 +427,31 @@ export class PlayerCombat {
   }
 
   private updateProjectiles(dt: number): void {
+    const waveSkill = SKILLS.find((skill) => skill.tags.includes('projectile'));
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const wave = this.projectiles[i];
       wave.life -= dt;
       wave.mesh.position.x += wave.dirX * WAVE_SPEED * dt;
       wave.mesh.position.z += wave.dirZ * WAVE_SPEED * dt;
-      (wave.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, wave.life / WAVE_LIFETIME + 0.35) * 0.9;
+      (wave.mesh.material as THREE.MeshBasicMaterial).opacity =
+        Math.min(1, wave.life / WAVE_LIFETIME + 0.35) * 0.9;
 
-      for (const monster of this.monsters.monstersNear(
-        wave.mesh.position.x,
-        wave.mesh.position.z,
-        WAVE_HIT_RADIUS,
-      )) {
-        if (wave.hit.has(monster)) continue;
-        wave.hit.add(monster);
-        this.monsters.applyHit(monster, SKILLS[0].damage, wave.mesh.position.x - wave.dirX, wave.mesh.position.z - wave.dirZ, 5);
+      if (waveSkill) {
+        for (const monster of this.monsters.monstersNear(
+          wave.mesh.position.x,
+          wave.mesh.position.z,
+          waveSkill.radius,
+        )) {
+          if (wave.hit.has(monster)) continue;
+          wave.hit.add(monster);
+          this.monsters.applyHit(
+            monster,
+            waveSkill.damage,
+            wave.mesh.position.x - wave.dirX,
+            wave.mesh.position.z - wave.dirZ,
+            5,
+          );
+        }
       }
 
       if (wave.life <= 0) {

@@ -60,6 +60,10 @@ export class CharacterController {
   private dashCooldownTimer = 0;
   private dashDir = new THREE.Vector3(0, 0, 1);
   private dashSpeed = DASH_SPEED;
+  /** สตันจากการต่อสู้ (Guard Break/ท่าหนัก) — ระหว่างนี้ไม่รับ input เดิน/กระโดด/dash */
+  private stunTimer = 0;
+  /** ตัวคูณความเร็วเดินจาก combat (ล็อกระหว่างง้างโจมตี/ร่ายสกิล) */
+  private movementLock = 1;
   private controlsEnabled = true;
   private mounted = false;
 
@@ -99,6 +103,26 @@ export class CharacterController {
     this.dashTimer = duration;
   }
 
+  /** สตันผู้เล่น (Guard Break / โดนท่าหนัก) — ไม่ทับกับ stun ที่ยาวกว่าที่ค้างอยู่ */
+  applyStun(duration: number): void {
+    this.stunTimer = Math.max(this.stunTimer, duration);
+    this.dashTimer = 0;
+  }
+
+  get isStunned(): boolean {
+    return this.stunTimer > 0;
+  }
+
+  /** ผลักผู้เล่น (ท่า unblockable ของบอส) — ใช้กลไก dash ผลักถอย */
+  applyKnockback(dirX: number, dirZ: number, speed: number, duration: number): void {
+    this.startDash(dirX, dirZ, speed, duration);
+  }
+
+  /** ล็อกความเร็วเดินชั่วคราวจาก combat (0 = หยุด, 1 = ปกติ) — ตั้งใหม่ทุกเฟรมโดย PlayerCombat */
+  setMovementLock(factor: number): void {
+    this.movementLock = THREE.MathUtils.clamp(factor, 0, 1);
+  }
+
   get inputEnabled(): boolean {
     return this.controlsEnabled;
   }
@@ -121,8 +145,12 @@ export class CharacterController {
 
     // อยู่เหนือทะเลลึกไหม (พื้นทะเลต่ำกว่าผิวน้ำมาก) → โหมดว่ายน้ำ
     const inWater = this.collision.heightAt(this.position.x, this.position.z) < WATER_LEVEL - WATER_DEPTH_FOR_SWIM;
+
+    this.stunTimer = Math.max(0, this.stunTimer - dt);
+    const acceptInput = this.controlsEnabled && this.stunTimer === 0;
+
     // ---------- ทิศทางจาก input (สัมพัทธ์กับกล้อง) ----------
-    const raw = this.controlsEnabled ? this.input.moveVector() : { x: 0, z: 0 };
+    const raw = acceptInput ? this.input.moveVector() : { x: 0, z: 0 };
     let mag = Math.min(1, Math.hypot(raw.x, raw.z));
     if (mag < 0.15) mag = 0; // deadzone จอยสติ๊ก
     const hasInput = mag > 0;
@@ -142,7 +170,7 @@ export class CharacterController {
     }
 
     // ---------- Sprint + Energy ---------- (ว่ายน้ำวิ่งไม่ได้)
-    const wantSprint = this.controlsEnabled && this.input.sprint && hasInput && !inWater;
+    const wantSprint = acceptInput && this.input.sprint && hasInput && !inWater;
     if (this.exhausted && this.energy >= ENERGY_RECOVER_THRESHOLD) this.exhausted = false;
     const sprinting = wantSprint && !this.exhausted && this.energy > 0;
 
@@ -156,7 +184,7 @@ export class CharacterController {
     // ---------- พุ่งหลบ (Dash) ----------
     this.dashCooldownTimer = Math.max(0, this.dashCooldownTimer - dt);
     if (
-      this.controlsEnabled &&
+      acceptInput &&
       this.input.consumeDash() &&
       this.dashCooldownTimer === 0 &&
       this.energy >= DASH_ENERGY_COST
@@ -184,7 +212,7 @@ export class CharacterController {
       this.faceToward(this.dashDir.x, this.dashDir.z, dt, 20);
     } else if (hasInput) {
       const base = inWater ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
-      speed = base * mag;
+      speed = base * mag * this.movementLock;
       this.position.x += dirX * speed * dt;
       this.position.z += dirZ * speed * dt;
       this.faceToward(dirX, dirZ, dt, inWater ? 8 : 12);
@@ -199,7 +227,7 @@ export class CharacterController {
       // ---------- ว่ายน้ำ / ลอยตัวที่ผิวน้ำ ----------
       swimming = true;
       this.onGround = false;
-      if (this.controlsEnabled && this.input.jump) {
+      if (acceptInput && this.input.jump) {
         // ดันตัวขึ้น เพื่อปีนขึ้นฝั่งหรือกระโดดขึ้นเรือ
         this.verticalVelocity = 0;
         this.position.y += SWIM_RISE * dt;
@@ -210,7 +238,7 @@ export class CharacterController {
       }
     } else {
       // ---------- แรงโน้มถ่วง + กระโดด + ชนพื้น (บนบก) ----------
-      if (this.controlsEnabled && this.onGround && this.input.jump) {
+      if (acceptInput && this.onGround && this.input.jump) {
         this.verticalVelocity = JUMP_SPEED;
         this.onGround = false;
       }

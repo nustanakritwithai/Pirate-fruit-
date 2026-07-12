@@ -33,6 +33,12 @@ export class HUD {
                        text-align: center; font-weight: 600; }
       .hp-fill { background: linear-gradient(#ff7a6b, #d92f1f); }
       .energy-fill { background: linear-gradient(#ffe97a, #e8b820); }
+      .hud-guard { height: 6px; margin-top: 3px; border-radius: 4px; overflow: hidden;
+                   background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.25);
+                   opacity: 0; transition: opacity .25s; }
+      .hud-guard.visible { opacity: 1; }
+      .guard-fill { height: 100%; background: linear-gradient(90deg, #6fc2ff, #a5dcff);
+                    transition: width .1s linear; }
       .hud-info { right: 16px; top: 16px; text-align: right; font-size: 13px; }
       .hud-help { left: 16px; top: 172px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
@@ -55,6 +61,7 @@ export class HUD {
         <div class="hud-bar-label">HP <span class="hp-num"></span></div></div>
       <div class="hud-bar"><div class="hud-bar-fill energy-fill"></div>
         <div class="hud-bar-label">Energy <span class="energy-num"></span></div></div>
+      <div class="hud-guard"><div class="guard-fill"></div></div>
     `;
     document.body.appendChild(bars);
     this.hpFill = bars.querySelector('.hp-fill')!;
@@ -87,6 +94,15 @@ export class HUD {
     }
   }
 
+  private getGuardFraction: (() => number) | null = null;
+  private isBlocking: (() => boolean) | null = null;
+
+  /** ผูกแถบ Guard เข้ากับ PlayerCombat (เรียกครั้งเดียวตอนบูต) */
+  bindGuard(getFraction: () => number, isBlocking: () => boolean): void {
+    this.getGuardFraction = getFraction;
+    this.isBlocking = isBlocking;
+  }
+
   /** แฟลชขอบจอแดงสั้น ๆ ตอนผู้เล่นโดนตี */
   flashDamage(): void {
     this.damageFlash.classList.add('hit');
@@ -99,6 +115,17 @@ export class HUD {
     this.energyFill.style.width = `${(c.energy / c.energyMax) * 100}%`;
     this.hpText.textContent = `${Math.round(c.hp)}/${c.hpMax}`;
     this.energyText.textContent = `${Math.round(c.energy)}/${c.energyMax}`;
+
+    // แถบ Guard: โชว์เฉพาะตอนบล็อกหรือ guard ยังไม่เต็ม
+    if (this.getGuardFraction) {
+      const fraction = this.getGuardFraction();
+      const guardBar = document.querySelector<HTMLDivElement>('.hud-guard');
+      const guardFill = document.querySelector<HTMLDivElement>('.guard-fill');
+      if (guardBar && guardFill) {
+        guardBar.classList.toggle('visible', fraction < 0.999 || (this.isBlocking?.() ?? false));
+        guardFill.style.width = `${fraction * 100}%`;
+      }
+    }
 
     const p = c.position;
     this.posText.textContent = `X ${p.x.toFixed(1)}  Y ${p.y.toFixed(1)}  Z ${p.z.toFixed(1)}`;

@@ -18,13 +18,26 @@ export interface AttackOptions {
   knockback?: number;
 }
 
+/** ข้อมูลท่าที่ตีเข้าผู้เล่นหนึ่งครั้ง — ให้ PlayerCombat ตัดสิน Block/Guard/ผลัก */
+export interface IncomingAttack {
+  amount: number;
+  unblockable: boolean;
+  /** แรงผลักผู้เล่น (0 = ไม่ผลัก) */
+  knockback: number;
+  sourceX: number;
+  sourceZ: number;
+  tags: string[];
+}
+
 export interface MonsterCallbacks {
   onPlayerHit?: () => void;
   onPlayerDefeated?: () => void;
-  /** ให้ระบบภายนอก (เช่น Block) ปรับดาเมจก่อนเข้าตัวผู้เล่น */
-  modifyIncomingDamage?: (amount: number) => number;
+  /** ให้ระบบภายนอก (Block/Guard) ปรับดาเมจก่อนเข้าตัวผู้เล่น คืนดาเมจสุดท้าย */
+  modifyIncomingDamage?: (attack: IncomingAttack) => number;
   /** แจ้งเมื่อมอนสเตอร์โดนดาเมจ (ไว้โชว์ตัวเลขดาเมจ) */
   onMonsterDamaged?: (monster: Monster, amount: number) => void;
+  /** hook สำหรับระบบรางวัล (EXP/เงิน) ใน Phase 6 */
+  onRewardContribution?: (monster: Monster, damage: number, killed: boolean) => void;
 }
 
 /** ปรับจำนวนมอนสเตอร์ตามระดับกราฟิก เพื่อคุมภาระมือถือ */
@@ -131,11 +144,12 @@ export class MonsterManager {
     return found;
   }
 
-  /** ทำดาเมจ + knockback (บอสต้านทานแรงผลัก/อาการเซ) */
+  /** ทำดาเมจ + knockback (บอสต้านทานแรงผลัก/อาการเซ) — ปลายทางเดียวของ damage pipeline ฝั่งศัตรู */
   applyHit(monster: Monster, damage: number, srcX: number, srcZ: number, knockback: number): void {
     const died = monster.takeDamage(damage);
     this.effects.spawnHitSpark(monster.group.position);
     this.callbacks.onMonsterDamaged?.(monster, damage);
+    this.callbacks.onRewardContribution?.(monster, damage, died);
     if (!died && knockback > 0) {
       const dx = monster.group.position.x - srcX;
       const dz = monster.group.position.z - srcZ;
@@ -197,14 +211,62 @@ export class MonsterManager {
       const distToPlayer = Math.hypot(dx, dz);
       const type = monster.type;
 
-      if (engageable && distToPlayer < type.aggroRange) {
+      // ---------- Leash: ไล่ไกลจากบ้านเกินขอบเขต → บังคับกลับก่อน (กันมอนตามเข้าหมู่บ้าน) ----------
+      const distFromHome = Math.hypot(
+        monster.group.position.x - monster.home.x,
+        monster.group.position.z - monster.home.y,
+      );
+      const leash = Math.min(type.aggroRange * 1.15, 15);
+      if (distFromHome > leash) monster.returningHome = true;
+      if (monster.returningHome && distFromHome < 2.5) monster.returningHome = false;
+
+      // ---------- ท่าหนักที่ค้างง้างอยู่: นับถอยหลังแล้วปล่อย ----------
+      if (monster.pendingHeavy) {
+        monster.telegraphTimer -= dt;
+        this.faceTo(monster, dx, dz, dt);
+        if (monster.telegraphTimer <= 0) {
+          monster.pendingHeavy = false;
+          monster.attackCount++;
+          monster.attackCooldown = type.attackCooldown * 1.25;
+          const heavy = type.heavyAttack!;
+          // ปล่อยท่า: โดนเฉพาะถ้าผู้เล่นยังอยู่ในระยะ (หลบทัน = พลาด)
+          if (engageable && distToPlayer <= type.attackRange * 1.6) {
+            this.damagePlayer({
+              amount: type.damage * heavy.multiplier,
+              unblockable: heavy.tags.includes('unblockable'),
+              knockback: heavy.knockback,
+              sourceX: monster.group.position.x,
+              sourceZ: monster.group.position.z,
+              tags: heavy.tags,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (engageable && distToPlayer < type.aggroRange && !monster.returningHome) {
         // ---------- ไล่/โจมตีผู้เล่น ----------
         this.faceTo(monster, dx, dz, dt);
         if (distToPlayer <= type.attackRange) {
           monster.state = 'attack';
           if (monster.attackCooldown <= 0) {
-            monster.attackCooldown = type.attackCooldown;
-            this.damagePlayer(type.damage);
+            const heavy = type.heavyAttack;
+            if (heavy && (monster.attackCount + 1) % heavy.everyNth === 0) {
+              // เริ่มง้างท่าหนัก (แฟลชเตือนใน updateVisual)
+              monster.pendingHeavy = true;
+              monster.telegraphTimer = heavy.telegraph;
+            } else {
+              monster.attackCooldown = type.attackCooldown;
+              monster.attackCount++;
+              this.damagePlayer({
+                amount: type.damage,
+                unblockable: false,
+                knockback: 0,
+                sourceX: monster.group.position.x,
+                sourceZ: monster.group.position.z,
+                tags: [],
+              });
+            }
           }
         } else {
           monster.state = 'chase';
@@ -234,8 +296,8 @@ export class MonsterManager {
     if (this.boss && (!this.boss.alive || !bossEngaged)) this.bossBar.hide();
   }
 
-  private damagePlayer(amount: number): void {
-    const final = this.callbacks.modifyIncomingDamage?.(amount) ?? amount;
+  private damagePlayer(attack: IncomingAttack): void {
+    const final = this.callbacks.modifyIncomingDamage?.(attack) ?? attack.amount;
     this.controller.hp = Math.max(0, this.controller.hp - final);
     this.callbacks.onPlayerHit?.();
     if (this.controller.hp <= 0) {
