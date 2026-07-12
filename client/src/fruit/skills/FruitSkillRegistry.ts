@@ -3,7 +3,7 @@ import type { FruitSkillDefinition } from './types';
 
 export { FRUIT_SKILLS, FRUIT_SKILL_BY_ID };
 
-export function getSkill(id: string): FruitSkillDefinition | undefined {
+export function getFruitSkill(id: string): FruitSkillDefinition | undefined {
   return FRUIT_SKILL_BY_ID[id];
 }
 
