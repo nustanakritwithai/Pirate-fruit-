@@ -7,19 +7,19 @@ export class BossBar {
   constructor() {
     const style = document.createElement('style');
     style.textContent = `
-      .boss-bar { position:fixed; z-index:26; left:50%; top:54px; transform:translateX(-50%);
-        width:min(440px,72vw); padding:6px 12px 9px; box-sizing:border-box; color:#fff;
-        border:1px solid rgba(255,120,110,.5); border-radius:12px;
+      .boss-bar { position:fixed; z-index:26; left:50%; top:50px; transform:translateX(-50%);
+        width:min(300px,60vw); padding:4px 8px 6px; box-sizing:border-box; color:#fff;
+        border:1px solid rgba(255,120,110,.5); border-radius:9px;
         background:linear-gradient(180deg,rgba(40,8,10,.72),rgba(20,6,10,.62));
-        box-shadow:0 4px 18px rgba(0,0,0,.4); backdrop-filter:blur(4px);
+        box-shadow:0 3px 12px rgba(0,0,0,.35); backdrop-filter:blur(4px);
         text-shadow:0 1px 2px #000; pointer-events:none; display:none; }
-      .boss-bar-name { display:flex; justify-content:space-between; font:800 13px 'Segoe UI',Tahoma,sans-serif;
-        color:#ffd0c0; margin-bottom:4px; }
-      .boss-bar-track { height:11px; border-radius:6px; overflow:hidden; background:rgba(0,0,0,.5);
+      .boss-bar-name { display:flex; justify-content:space-between; font:800 10px 'Segoe UI',Tahoma,sans-serif;
+        color:#ffd0c0; margin-bottom:3px; }
+      .boss-bar-track { height:6px; border-radius:4px; overflow:hidden; background:rgba(0,0,0,.5);
         border:1px solid rgba(255,255,255,.2); }
       .boss-bar-fill { height:100%; width:100%; transition:width .15s linear;
         background:linear-gradient(90deg,#ff5b45,#ff9161); }
-      @media(max-width:700px){ .boss-bar{ top:44px; } }
+      @media(max-width:700px){ .boss-bar{ top:34px; width:min(250px,58vw); } }
     `;
     document.head.appendChild(style);
 

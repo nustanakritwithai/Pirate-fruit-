@@ -47,6 +47,11 @@ export class HUD {
         transition:opacity .35s ease-out;
         box-shadow: inset 0 0 120px 30px rgba(200,20,20,.65); }
       .hud-damage.hit { opacity:1; transition:opacity .04s; }
+      @media(max-width:700px){
+        .hud-bars { bottom:92px; width:170px; }
+        .hud-bar { height:11px; }
+        .hud-bar-label { font-size:8px; line-height:11px; }
+      }
     `;
     document.head.appendChild(style);
 

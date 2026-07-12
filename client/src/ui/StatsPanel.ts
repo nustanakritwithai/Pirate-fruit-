@@ -125,7 +125,7 @@ export class StatsPanel {
       .stats-row button:disabled { opacity:.35; cursor:not-allowed; }
       .stats-derived { margin-top:12px; color:#9fe6cc; font-size:12px; text-align:center; }
       .stats-panel footer { margin-top:12px; color:#82a5ac; font-size:10px; text-align:center; }
-      @media(max-width:700px){ .stats-open-button{right:10px;top:91px;width:34px;height:34px}
+      @media(max-width:700px){ .stats-open-button{right:8px;top:88px;width:30px;height:30px;font-size:14px}
         .stats-panel-root{align-items:flex-end;padding:8px}.stats-panel{max-height:74vh;overflow:auto} }
     `;
     document.head.appendChild(style);

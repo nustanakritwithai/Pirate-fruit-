@@ -8,8 +8,8 @@ const CAMERA_TOUCH_SENSITIVITY = 2.2;
 export type CooldownGetter = () => number;
 
 /**
- * ระบบบังคับบนจอสัมผัสสไตล์ RoV:
- * - ซ้าย: จอยสติ๊กเสมือนแบบลอย (แตะตรงไหนก็ได้ในโซนซ้าย) + ปุ่มเปิด/ปิดวิ่ง
+ * ระบบบังคับบนจอสัมผัสสไตล์ PUBG:
+ * - ซ้าย: จอยสติ๊กเสมือนแบบลอย; ดันขึ้นแรงจะแสดงจุดล็อกวิ่งอัตโนมัติ
  * - ขวา: ปุ่มโจมตีหลักใหญ่สุดที่มุม, สกิล 1-3 เรียงโค้งรอบปุ่มโจมตี,
  *   ไม้ตาย (Ultimate) แยกเด่น, ปุ่มพุ่งหลบ (Dash) และปุ่มกระโดด
  * - ลากนิ้วบนพื้นที่ว่างฝั่งขวา = หมุนกล้อง
@@ -20,7 +20,17 @@ export class TouchControls {
   moveX = 0;
   moveZ = 0;
   joystickActive = false;
-  sprintOn = false;
+  private autoRunOn = false;
+
+  /** วิ่งเมื่อดันจอยขึ้นแรง หรือแตะจุดเล็กเพื่อให้วิ่งตรงต่ออัตโนมัติ */
+  get sprintOn(): boolean {
+    const pushingForward = this.joystickActive && this.moveZ < -0.72 && Math.abs(this.moveX) < 0.72;
+    return this.autoRunOn || pushingForward;
+  }
+
+  get autoRun(): boolean {
+    return this.autoRunOn;
+  }
 
   private jumpHeldRaw = false;
   /** แตะสั้นๆ ก็ต้องนับเป็นกระโดด — ค้างสถานะขั้นต่ำไว้ให้เฟรมถัดไปเก็บทัน */
@@ -50,11 +60,12 @@ export class TouchControls {
   private camPointerId: number | null = null;
   private joyCenter = { x: 0, y: 0 };
   private lastCam = { x: 0, y: 0 };
+  private autoRunReleaseTarget = false;
 
   private root: HTMLDivElement;
   private joyBase: HTMLDivElement;
   private joyKnob: HTMLDivElement;
-  private sprintBtn: HTMLDivElement;
+  private autoRunBtn: HTMLDivElement;
   private cooldownRings = new Map<HTMLDivElement, CooldownGetter>();
   private toast: HTMLDivElement;
   private toastTimer: number | null = null;
@@ -164,11 +175,13 @@ export class TouchControls {
 
     this.weaponBtn = this.makeButton('tc-weapon', '👊', () => (this.weaponQueue = 1));
 
-    // ---------- ปุ่มสลับวิ่ง (ข้างจอยสติ๊ก) ----------
-    this.sprintBtn = this.makeButton('tc-sprint', '🏃', () => {
-      this.sprintOn = !this.sprintOn;
-      this.sprintBtn.classList.toggle('tc-on', this.sprintOn);
+    // ---------- จุดล็อกวิ่งอัตโนมัติแบบ PUBG ----------
+    this.autoRunBtn = this.makeButton('tc-autorun', '➜', () => {
+      this.autoRunOn = !this.autoRunOn;
+      this.autoRunBtn.classList.toggle('tc-on', this.autoRunOn);
+      this.autoRunBtn.classList.toggle('tc-visible', this.autoRunOn);
     });
+    this.autoRunBtn.title = 'ดันจอยขึ้น แล้ววางนิ้วบนจุดนี้เพื่อวิ่งอัตโนมัติ';
 
     // ---------- toast ----------
     this.toast = document.createElement('div');
@@ -190,14 +203,15 @@ export class TouchControls {
     this.dashQueue = 0;
     this.skillTapQueue = 0;
     if (mode === 'boat') {
-      this.sprintOn = false;
-      this.sprintBtn.classList.remove('tc-on');
+      this.autoRunOn = false;
+      this.autoRunBtn.classList.remove('tc-on', 'tc-visible');
     }
     this.setButtonLabel(this.dashBtn, mode === 'boat' ? '⚡' : '💨');
     this.setButtonLabel(this.jumpBtn, mode === 'boat' ? '⚓' : '⬆️');
     const display = mode === 'boat' ? 'none' : 'flex';
     this.attackBtn.style.display = display;
-    this.sprintBtn.style.display = display;
+    // จุด auto-run ใช้ class ควบคุมการแสดงผล เพื่อให้ซ่อนจนกว่าจะดันจอยขึ้น
+    this.autoRunBtn.style.display = mode === 'boat' ? 'none' : '';
     this.blockBtn.style.display = display;
     this.weaponBtn.style.display = display;
     for (const button of this.skillButtons) button.style.display = display;
@@ -303,6 +317,12 @@ export class TouchControls {
     this.joyCenter = { x: e.clientX, y: e.clientY };
     this.joyBase.style.left = `${e.clientX}px`;
     this.joyBase.style.top = `${e.clientY}px`;
+    this.autoRunBtn.style.left = `${e.clientX}px`;
+    this.autoRunBtn.style.top = `${Math.max(46, e.clientY - 70)}px`;
+    this.autoRunReleaseTarget = false;
+    // แตะจอยใหม่เพื่อบังคับทิศทาง = ยกเลิก auto-run เดิม
+    this.autoRunOn = false;
+    this.autoRunBtn.classList.remove('tc-on');
     this.joyBase.classList.add('tc-visible');
     this.joystickActive = true;
     this.updateKnob(0, 0);
@@ -310,7 +330,7 @@ export class TouchControls {
 
   private pointerMove(e: PointerEvent): void {
     if (e.pointerId === this.joyPointerId) {
-      const maxR = 55;
+      const maxR = 43;
       let dx = e.clientX - this.joyCenter.x;
       let dy = e.clientY - this.joyCenter.y;
       const len = Math.hypot(dx, dy);
@@ -321,6 +341,7 @@ export class TouchControls {
       this.updateKnob(dx, dy);
       this.moveX = dx / maxR;
       this.moveZ = dy / maxR;
+      this.updateAutoRunHint(e.clientX, e.clientY);
     } else if (e.pointerId === this.camPointerId) {
       this.input.addCameraDelta(
         (e.clientX - this.lastCam.x) * CAMERA_TOUCH_SENSITIVITY,
@@ -332,11 +353,19 @@ export class TouchControls {
 
   private pointerEnd(e: PointerEvent): void {
     if (e.pointerId === this.joyPointerId) {
+      const lockAutoRun = this.autoRunReleaseTarget && this.moveZ < -0.72;
       this.joyPointerId = null;
       this.joystickActive = false;
       this.moveX = 0;
       this.moveZ = 0;
       this.joyBase.classList.remove('tc-visible');
+      this.autoRunReleaseTarget = false;
+      if (lockAutoRun) {
+        this.autoRunOn = true;
+        this.autoRunBtn.classList.add('tc-visible', 'tc-on');
+      } else {
+        this.autoRunBtn.classList.toggle('tc-visible', this.autoRunOn);
+      }
     } else if (e.pointerId === this.camPointerId) {
       this.camPointerId = null;
     }
@@ -344,6 +373,20 @@ export class TouchControls {
 
   private updateKnob(dx: number, dy: number): void {
     this.joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  }
+
+  private updateAutoRunHint(clientX: number, clientY: number): void {
+    const pushingForward = this.moveZ < -0.72 && Math.abs(this.moveX) < 0.72;
+    if (!pushingForward) {
+      this.autoRunReleaseTarget = false;
+      this.autoRunBtn.classList.toggle('tc-visible', this.autoRunOn);
+      return;
+    }
+    this.autoRunBtn.classList.add('tc-visible');
+    const rect = this.autoRunBtn.getBoundingClientRect();
+    this.autoRunReleaseTarget = clientX >= rect.left && clientX <= rect.right &&
+      clientY >= rect.top && clientY <= rect.bottom;
+    this.autoRunBtn.classList.toggle('tc-on', this.autoRunReleaseTarget || this.autoRunOn);
   }
 
   // ---------- helper ----------
@@ -405,11 +448,11 @@ export class TouchControls {
       .tc-camzone { position: absolute; right: 0; top: 0; width: 55%; height: 100%;
                     pointer-events: auto; touch-action: none; }
 
-      .tc-joybase { position: absolute; width: 130px; height: 130px; border-radius: 50%;
+      .tc-joybase { position: absolute; width: 102px; height: 102px; border-radius: 50%;
                     background: rgba(255,255,255,.10); border: 2px solid rgba(255,255,255,.35);
                     transform: translate(-50%, -50%); display: none; }
       .tc-joybase.tc-visible { display: block; }
-      .tc-joyknob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px;
+      .tc-joyknob { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px;
                     border-radius: 50%; background: rgba(255,255,255,.45);
                     border: 2px solid rgba(255,255,255,.7);
                     transform: translate(-50%, -50%); }
@@ -421,30 +464,32 @@ export class TouchControls {
       .tc-btn:active { background: rgba(90,160,255,.5); }
       .tc-btn span { pointer-events: none; }
 
-      .tc-attack { right: 22px;  bottom: 22px;  width: 88px; height: 88px; font-size: 38px;
+      .tc-attack { right: 14px;  bottom: 18px;  width: 70px; height: 70px; font-size: 28px;
                    border-color: rgba(255,120,90,.8); background: rgba(120,35,20,.55); }
-      .tc-dash   { right: 128px; bottom: 30px;  width: 62px; height: 62px; font-size: 26px;
+      .tc-dash   { right: 92px; bottom: 24px;  width: 48px; height: 48px; font-size: 21px;
                    border-color: rgba(120,220,255,.8); }
       .tc-dash.tc-boat-boost { border-color:rgba(255,220,95,.9); background:rgba(100,72,12,.62); }
-      .tc-jump   { right: 112px; bottom: 108px; width: 62px; height: 62px; font-size: 24px; }
-      .tc-skill1 { right: 26px;  bottom: 134px; width: 56px; height: 56px; font-size: 20px; }
-      .tc-skill2 { right: 92px;  bottom: 188px; width: 56px; height: 56px; font-size: 20px; }
-      .tc-skill3 { right: 176px; bottom: 158px; width: 56px; height: 56px; font-size: 20px; }
+      .tc-jump   { right: 86px; bottom: 82px; width: 48px; height: 48px; font-size: 20px; }
+      .tc-skill1 { right: 18px;  bottom: 108px; width: 42px; height: 42px; font-size: 16px; }
+      .tc-skill2 { right: 70px;  bottom: 146px; width: 42px; height: 42px; font-size: 16px; }
+      .tc-skill3 { right: 124px; bottom: 124px; width: 42px; height: 42px; font-size: 16px; }
       .tc-skill  { opacity: .55; }
       .tc-skill.tc-skill-ready { opacity: .95; border-color: rgba(140,235,190,.85);
                    background: rgba(14,66,48,.6); }
       .tc-skill.tc-skill-locked { opacity:.55; font-size:14px; filter:saturate(.45); }
-      .tc-ult    { right: 216px; bottom: 26px;  width: 70px; height: 70px; font-size: 24px;
+      .tc-ult    { right: 148px; bottom: 18px;  width: 50px; height: 50px; font-size: 19px;
                    border-color: rgba(200,120,255,.85); background: rgba(70,25,110,.55);
                    opacity: .65; }
-      .tc-block  { right: 296px; bottom: 28px; width: 60px; height: 60px; font-size: 24px;
+      .tc-block  { right: 208px; bottom: 22px; width: 46px; height: 46px; font-size: 19px;
                    border-color: rgba(150,200,255,.8); }
       .tc-block.tc-on { background: rgba(90,160,255,.55); border-color: #bfe0ff; }
-      .tc-weapon { right: 254px; bottom: 106px; width: 48px; height: 48px; font-size: 20px;
+      .tc-weapon { right: 204px; bottom: 78px; width: 38px; height: 38px; font-size: 16px;
                    opacity: .9; border-color: rgba(255,215,140,.8); }
-      .tc-sprint { left: 180px; bottom: 40px; width: 58px; height: 58px; font-size: 24px;
-                   opacity: .8; }
-      .tc-sprint.tc-on { background: rgba(255,215,90,.55); border-color: #ffd76b; }
+      .tc-autorun { position: fixed; left: 110px; top: 570px; width: 34px; height: 34px; font-size: 15px;
+                    display: none; opacity: .75; border-width: 1px; border-color: rgba(255,224,126,.85);
+                    background: rgba(80,68,18,.7); }
+      .tc-autorun.tc-visible { display: flex; }
+      .tc-autorun.tc-on { opacity: 1; background: rgba(255,215,90,.72); border-color: #ffe27a; }
 
       /* วงแหวนคูลดาวน์: --cd = องศาที่ยังมืดอยู่ */
       .tc-ring { position: absolute; inset: -2px; border-radius: 50%; pointer-events: none; }
