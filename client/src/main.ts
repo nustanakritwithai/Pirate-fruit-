@@ -28,6 +28,8 @@ import { ProgressionDebugPanel } from './ui/ProgressionDebugPanel';
 import { RewardContributionTracker } from './progression/RewardSystem';
 import type { Monster } from './monster/Monster';
 import { FullscreenManager } from './ui/FullscreenManager';
+import { EquipmentVisuals } from './art/EquipmentVisuals';
+import { PBRPerformanceMonitor } from './art/PBRPerformanceMonitor';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -47,7 +49,9 @@ async function main(): Promise<void> {
   const graphics = loadGraphicsProfile();
   const game = new Game(container, graphics);
   const input = new Input(game.renderer.domElement);
-  const worldTextures = await loadWorldTextures();
+  const worldTextures = await loadWorldTextures(
+    Math.min(graphics.textureAnisotropy, game.renderer.capabilities.getMaxAnisotropy()),
+  );
   const world = new World(game.scene, game.renderer, worldTextures, graphics);
 
   const camera: ThirdPersonCamera = new ThirdPersonCamera(
@@ -84,7 +88,7 @@ async function main(): Promise<void> {
   );
   world.setTimeOfDay(saved?.worldTime ?? 0.31);
 
-  const player = new Player(controller);
+  const player = new Player(controller, graphics, game.renderer.capabilities.getMaxAnisotropy());
   await player.load(game.scene);
 
   const hud = new HUD(controller, game, () => world.dayNight.clockLabel);
@@ -187,6 +191,11 @@ async function main(): Promise<void> {
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
+  const equipmentVisuals = new EquipmentVisuals(
+    player.group,
+    () => playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
+  );
+  const pbrPerformance = new PBRPerformanceMonitor(game);
 
   const progressionHud = new ProgressionHUD(progression, controller);
   let controlsBeforeStats = true;
@@ -226,6 +235,7 @@ async function main(): Promise<void> {
   game.add(player);
   game.add(camera);
   game.add(playerCombat);
+  game.add(equipmentVisuals);
   game.add(effects);
   game.add(npcManager);
   game.add(monsterManager);
@@ -235,6 +245,7 @@ async function main(): Promise<void> {
   game.add(questTracker);
   game.add(rewardFeed);
   game.add(progressionDebug);
+  game.add(pbrPerformance);
   game.add({ update: () => hud.update() });
   game.add({ update: () => minimap.update() });
   if (touchControls) {

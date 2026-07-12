@@ -1,61 +1,23 @@
 import * as THREE from 'three';
 import type { MonsterType } from './MonsterData';
+import { createCrabVisual, createHumanoidVisual } from '../art/CharacterVisuals';
 
 export type MonsterState = 'idle' | 'chase' | 'attack' | 'return' | 'dead';
 
-/** สร้างโมเดล low-poly ตามชนิด คืน group + hull (ตัวหลักไว้แฟลชตอนโดนตี) */
+/** สร้าง visual แบบ Mobile PBR คืน group + hull (ตัวหลักไว้แฟลชตอนโดนตี) */
 function createModel(type: MonsterType): { group: THREE.Group; hull: THREE.Mesh } {
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.7, metalness: 0.05 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x241d1a, roughness: 0.9 });
-  let hull: THREE.Mesh;
-
-  if (type.kind === 'crab') {
-    // ลำตัวปูแบนกว้าง + ก้ามสองข้าง + ตาก้าน
-    hull = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 8), bodyMat);
-    hull.scale.set(1.25, 0.72, 1);
-    hull.position.y = 0.62;
-    group.add(hull);
-    for (const side of [-1, 1]) {
-      const claw = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.32, 0.5), bodyMat);
-      claw.position.set(side * 1.02, 0.5, 0.35);
-      group.add(claw);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), darkMat);
-      eye.position.set(side * 0.28, 1.05, 0.4);
-      group.add(eye);
-      for (let i = 0; i < 3; i++) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.6), darkMat);
-        leg.position.set(side * 0.82, 0.28, -0.4 + i * 0.4);
-        leg.rotation.y = side * 0.4;
-        group.add(leg);
-      }
-    }
-  } else {
-    // โจรสลัด/บอส: ทรงมนุษย์อย่างง่าย
-    hull = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.56, 1.4, 8), bodyMat);
-    hull.position.y = 1.55;
-    group.add(hull);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 10, 8), new THREE.MeshStandardMaterial({ color: 0xb07a53, roughness: 0.85 }));
-    head.position.y = 2.5;
-    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.42, 4), darkMat);
-    hat.position.y = 2.95;
-    hat.rotation.y = Math.PI / 4;
-    group.add(head, hat);
-    for (const side of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.95, 0.34), darkMat);
-      leg.position.set(side * 0.22, 0.5, 0);
-      group.add(leg);
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.9, 0.28), bodyMat);
-      arm.position.set(side * 0.62, 1.55, 0.1);
-      group.add(arm);
-    }
-  }
+  const visual = type.kind === 'crab'
+    ? createCrabVisual(type.color)
+    : createHumanoidVisual({
+        clothColor: type.color,
+        accentColor: type.kind === 'boss' ? 0x7b2030 : 0x825033,
+        skinColor: type.kind === 'boss' ? 0x9a664b : 0xb9825f,
+        pirate: true,
+        boss: type.kind === 'boss',
+      });
+  const { group, hull } = visual;
 
   group.scale.setScalar(type.scale);
-  group.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (mesh.isMesh) mesh.castShadow = true;
-  });
   return { group, hull };
 }
 

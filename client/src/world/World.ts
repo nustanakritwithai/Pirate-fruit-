@@ -74,7 +74,7 @@ export class World {
       const envScene = new THREE.Scene();
       envScene.add(sky);
       scene.environment = pmrem.fromScene(envScene).texture;
-      scene.environmentIntensity = 0.55;
+      scene.environmentIntensity = graphics.tier === 'high' ? 0.68 : 0.56;
       pmrem.dispose();
     }
     scene.add(sky);
@@ -91,9 +91,11 @@ export class World {
     sun.shadow.camera.right = 80;
     sun.shadow.camera.top = 80;
     sun.shadow.camera.bottom = -80;
+    sun.shadow.camera.near = 4;
     sun.shadow.camera.far = 300;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
+    sun.shadow.radius = graphics.tier === 'high' ? 2.4 : 1.4;
     scene.add(sun);
 
     // แสงฟุ้งจากฟ้า/พื้นเบาๆ เสริม env map
@@ -114,6 +116,7 @@ export class World {
     this.clouds = new CloudLayer(graphics);
     scene.add(this.clouds.mesh);
     this.dayNight = new DayNightCycle(
+      scene,
       sky,
       sun,
       hemisphere,
@@ -178,6 +181,8 @@ export class World {
       normalMap: t.grassNormal,
       roughness: 1,
       metalness: 0,
+      normalScale: new THREE.Vector2(0.72, 0.72),
+      envMapIntensity: 0.34,
     });
 
     mat.onBeforeCompile = (shader) => {
@@ -206,6 +211,8 @@ export class World {
 		+ texture2D( map, vMapUv ) * vSplat.y
 		+ texture2D( uRockMap, rockUv ) * vSplat.z;
 	diffuseColor *= splatColor;
+	float macroShade = sin( vMapUv.x * 0.19 ) * cos( vMapUv.y * 0.17 );
+	diffuseColor.rgb *= 0.965 + macroShade * 0.035;
 `,
           )
           .replace(

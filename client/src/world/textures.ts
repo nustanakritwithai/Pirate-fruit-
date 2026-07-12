@@ -15,14 +15,17 @@ export interface WorldTextures {
   waterNormal: THREE.Texture;
 }
 
-export async function loadWorldTextures(): Promise<WorldTextures> {
+export async function loadWorldTextures(anisotropy = 4): Promise<WorldTextures> {
   const loader = new THREE.TextureLoader();
 
   const load = async (file: string, srgb: boolean): Promise<THREE.Texture> => {
     const tex = await loader.loadAsync(`assets/textures/${file}`);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.anisotropy = 4;
+    tex.anisotropy = Math.max(1, anisotropy);
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
     if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   };

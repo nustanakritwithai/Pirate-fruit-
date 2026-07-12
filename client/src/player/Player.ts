@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { CharacterController } from './CharacterController';
+import type { GraphicsProfile } from '../engine/GraphicsQuality';
+import { enhanceLoadedModel } from '../art/ModelEnhancer';
 
 type AnimName = 'Idle' | 'Walk' | 'Run';
 
@@ -17,17 +19,16 @@ export class Player {
   private actions = new Map<AnimName, THREE.AnimationAction>();
   private current: AnimName = 'Idle';
 
-  constructor(private controller: CharacterController) {}
+  constructor(
+    private controller: CharacterController,
+    private graphics: GraphicsProfile,
+    private maxAnisotropy = 4,
+  ) {}
 
   async load(scene: THREE.Scene): Promise<void> {
     const gltf = await new GLTFLoader().loadAsync('assets/models/Soldier.glb');
     const model = gltf.scene;
-    model.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = false;
-      }
-    });
+    enhanceLoadedModel(model, this.graphics, this.maxAnisotropy);
     model.rotation.y = MODEL_YAW_OFFSET;
     this.group.add(model);
     scene.add(this.group);

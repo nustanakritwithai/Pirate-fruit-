@@ -28,6 +28,7 @@ export class Game {
   private fpsTime = 0;
 
   constructor(container: HTMLElement, readonly graphics: GraphicsProfile) {
+    THREE.ColorManagement.enabled = true;
     this.renderer = new THREE.WebGLRenderer({
       antialias: graphics.antialias,
       powerPreference: 'high-performance',
@@ -35,10 +36,11 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     // มือถือจำกัด pixel ratio ต่ำลง — จอ retina x3 แพงเกินจำเป็น
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, graphics.pixelRatio));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = graphics.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.75;
+    this.renderer.toneMappingExposure = graphics.exposure;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();

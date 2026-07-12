@@ -3,6 +3,7 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { CollisionSystem } from './Collision';
 import type { WorldTextures } from './textures';
 import { WORLD_POI_LIST } from './WorldPOI';
+import { createMobileMaterial } from '../art/MobilePBRMaterials';
 
 /** สุ่มแบบกำหนด seed ได้ เพื่อให้เกาะหน้าตาเหมือนเดิมทุกครั้งที่โหลด */
 export function mulberry32(seed: number): () => number {
@@ -44,6 +45,33 @@ function makeFrondTexture(): THREE.CanvasTexture {
       ctx.quadraticCurveTo(64 + side * length * 0.5, y - 10, 64 + side * length, y - 25 - t * 9);
       ctx.stroke();
     }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 2;
+  return texture;
+}
+
+function makeGroundCoverTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createLinearGradient(0, 128, 0, 0);
+  gradient.addColorStop(0, 'rgba(37,78,30,1)');
+  gradient.addColorStop(0.5, 'rgba(67,125,49,.98)');
+  gradient.addColorStop(1, 'rgba(124,157,74,0)');
+  const random = mulberry32(1447);
+  ctx.strokeStyle = gradient;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 22; i++) {
+    const x = 12 + random() * 104;
+    const height = 46 + random() * 72;
+    ctx.lineWidth = 2 + random() * 2.4;
+    ctx.beginPath();
+    ctx.moveTo(64, 127);
+    ctx.quadraticCurveTo(x, 127 - height * 0.45, x + (random() - 0.5) * 18, 127 - height);
+    ctx.stroke();
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -98,16 +126,18 @@ function addPalms(
   textures: WorldTextures,
   graphics: GraphicsProfile,
 ): void {
-  const bark = new THREE.MeshStandardMaterial({
+  const bark = createMobileMaterial('wood', {
     map: textures.barkColor,
     normalMap: textures.barkNormal,
-    roughness: 0.92,
+    roughness: 0.88,
+    normalStrength: 0.66,
   });
-  const frond = new THREE.MeshStandardMaterial({
+  const frond = createMobileMaterial('foliage', {
     map: makeFrondTexture(),
     alphaTest: 0.42,
     side: THREE.DoubleSide,
-    roughness: 0.72,
+    roughness: 0.74,
+    normalStrength: 0.18,
   });
   const trunkGeometry = new THREE.CylinderGeometry(0.18, 0.3, 1, 7, 2);
   const frondGeometry = new THREE.PlaneGeometry(0.9, 3.05, 1, 3);
@@ -161,10 +191,11 @@ function addRocks(
   graphics: GraphicsProfile,
 ): void {
   const geometry = new THREE.IcosahedronGeometry(1, graphics.tier === 'high' ? 2 : 1);
-  const material = new THREE.MeshStandardMaterial({
+  const material = createMobileMaterial('stone', {
     map: textures.rockColor,
     normalMap: textures.rockNormal,
-    roughness: 0.96,
+    roughness: 0.86,
+    normalStrength: 0.78,
   });
   const rocks = new THREE.InstancedMesh(geometry, material, spots.length);
   const dummy = new THREE.Object3D();
@@ -194,10 +225,11 @@ function addCrates(
   textures: WorldTextures,
   graphics: GraphicsProfile,
 ): void {
-  const material = new THREE.MeshStandardMaterial({
+  const material = createMobileMaterial('wood', {
     map: textures.planksColor,
     normalMap: textures.planksNormal,
-    roughness: 0.86,
+    roughness: 0.8,
+    normalStrength: 0.58,
   });
   const crates = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), material, spots.length);
   const dummy = new THREE.Object3D();
@@ -220,6 +252,55 @@ function addCrates(
   scene.add(crates);
 }
 
+function addGroundCover(
+  scene: THREE.Scene,
+  grassSpots: Spot[],
+  shrubSpots: Spot[],
+  graphics: GraphicsProfile,
+): void {
+  const grassMaterial = createMobileMaterial('foliage', {
+    map: makeGroundCoverTexture(),
+    color: 0xb8cf91,
+    alphaTest: 0.36,
+    side: THREE.DoubleSide,
+    roughness: 0.9,
+    normalStrength: 0.1,
+  });
+  const grassGeometry = new THREE.PlaneGeometry(0.82, 1.18, 1, 2);
+  grassGeometry.translate(0, 0.59, 0);
+  const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, grassSpots.length);
+  const dummy = new THREE.Object3D();
+  grassSpots.forEach((spot, index) => {
+    dummy.position.set(spot.x, spot.y, spot.z);
+    dummy.rotation.set(0, spot.rotation, 0);
+    dummy.scale.setScalar(0.48 + spot.scale * 0.35);
+    dummy.updateMatrix();
+    grass.setMatrixAt(index, dummy.matrix);
+  });
+  grass.castShadow = false;
+  grass.receiveShadow = false;
+  grass.frustumCulled = true;
+
+  const shrubMaterial = createMobileMaterial('foliage', {
+    color: 0x3b7c43,
+    roughness: 0.86,
+    normalStrength: 0.32,
+  });
+  const shrubGeometry = new THREE.IcosahedronGeometry(0.72, graphics.tier === 'high' ? 2 : 1);
+  const shrubs = new THREE.InstancedMesh(shrubGeometry, shrubMaterial, shrubSpots.length);
+  shrubSpots.forEach((spot, index) => {
+    dummy.position.set(spot.x, spot.y + 0.46 * spot.scale, spot.z);
+    dummy.rotation.set(spot.rotation * 0.12, spot.rotation, 0);
+    dummy.scale.set(spot.scale * 0.85, spot.scale * 0.58, spot.scale);
+    dummy.updateMatrix();
+    shrubs.setMatrixAt(index, dummy.matrix);
+  });
+  shrubs.castShadow = graphics.tier === 'high';
+  shrubs.receiveShadow = graphics.shadows;
+  shrubs.frustumCulled = true;
+  scene.add(grass, shrubs);
+}
+
 /** โปรยธรรมชาติด้วย InstancedMesh ลดหลายร้อย draw calls เหลือไม่กี่ calls */
 export function scatterProps(
   scene: THREE.Scene,
@@ -234,7 +315,10 @@ export function scatterProps(
   const palms = createSpots(graphics.palmCount, 0.55, islandRadius, heightAt, random, occupied, 3.3);
   const rocks = createSpots(graphics.rockCount, 0.15, islandRadius, heightAt, random, occupied, 2.5);
   const crates = createSpots(graphics.crateCount, 0.55, islandRadius, heightAt, random, occupied, 2.2);
+  const grass = createSpots(graphics.grassPatchCount, 0.42, islandRadius, heightAt, random, occupied, 0.65);
+  const shrubs = createSpots(graphics.shrubCount, 0.52, islandRadius, heightAt, random, occupied, 2.1);
   addPalms(scene, collision, palms, textures, graphics);
   addRocks(scene, collision, rocks, textures, graphics);
   addCrates(scene, collision, crates, textures, graphics);
+  addGroundCover(scene, grass, shrubs, graphics);
 }

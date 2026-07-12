@@ -15,6 +15,7 @@ export class DayNightCycle {
   private readonly nightSun = new THREE.Color(0x7792bf);
 
   constructor(
+    private scene: THREE.Scene,
     private sky: Sky,
     private sun: THREE.DirectionalLight,
     private hemisphere: THREE.HemisphereLight,
@@ -70,6 +71,7 @@ export class DayNightCycle {
     this.sun.intensity = THREE.MathUtils.lerp(0.12, 3, daylight);
     this.sun.color.copy(this.nightSun).lerp(this.daySun, daylight).lerp(this.duskSun, dusk * 0.72);
     this.hemisphere.intensity = THREE.MathUtils.lerp(0.12, 0.42, daylight);
+    this.scene.environmentIntensity = THREE.MathUtils.lerp(0.14, 0.62, daylight);
 
     const fogColor = this.nightFog.clone().lerp(this.dayFog, daylight).lerp(this.duskFog, dusk * 0.5);
     this.fog.color.copy(fogColor);
