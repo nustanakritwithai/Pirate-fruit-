@@ -47,9 +47,9 @@ export class CharacterController {
   heading = 0;
 
   hp = 100;
-  readonly hpMax = 100;
+  private _hpMax = 100;
   energy = ENERGY_MAX;
-  readonly energyMax = ENERGY_MAX;
+  private _energyMax = ENERGY_MAX;
 
   private verticalVelocity = 0;
   private onGround = false;
@@ -78,6 +78,39 @@ export class CharacterController {
 
   get moveState(): MoveState {
     return this.state;
+  }
+
+  get hpMax(): number {
+    return this._hpMax;
+  }
+
+  get energyMax(): number {
+    return this._energyMax;
+  }
+
+  /** ใช้ HP/Energy ชุดเดิม แต่รับเพดานใหม่จาก ProgressionManager */
+  applyProgressionCaps(
+    maxHp: number,
+    maxEnergy: number,
+    mode: 'clamp' | 'preserve-delta' | 'full',
+  ): void {
+    const oldHpMax = this._hpMax;
+    const oldEnergyMax = this._energyMax;
+    this._hpMax = Math.max(1, Math.floor(maxHp));
+    this._energyMax = Math.max(1, Math.floor(maxEnergy));
+    if (mode === 'full') {
+      this.hp = this._hpMax;
+      this.energy = this._energyMax;
+    } else if (mode === 'preserve-delta') {
+      this.hp = Math.min(this._hpMax, Math.max(0, this.hp + this._hpMax - oldHpMax));
+      this.energy = Math.min(
+        this._energyMax,
+        Math.max(0, this.energy + this._energyMax - oldEnergyMax),
+      );
+    } else {
+      this.hp = Math.min(this.hp, this._hpMax);
+      this.energy = Math.min(this.energy, this._energyMax);
+    }
   }
 
   /** สัดส่วนคูลดาวน์พุ่งหลบที่เหลือ 0..1 (0 = พร้อมใช้) สำหรับวาดวงแหวนบนปุ่ม */
@@ -178,7 +211,7 @@ export class CharacterController {
       this.energy = Math.max(0, this.energy - ENERGY_DRAIN * dt);
       if (this.energy === 0) this.exhausted = true;
     } else {
-      this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * dt);
+      this.energy = Math.min(this.energyMax, this.energy + ENERGY_REGEN * dt);
     }
 
     // ---------- พุ่งหลบ (Dash) ----------

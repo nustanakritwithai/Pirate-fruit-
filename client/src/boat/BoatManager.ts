@@ -14,6 +14,7 @@ import type { WorldTextures } from '../world/textures';
 import { Boat } from './Boat';
 import { getBoatDefinition } from './BoatData';
 import { BoatProgress } from './BoatProgress';
+import type { EconomyWallet } from '../progression/ProgressionTypes';
 
 const BOAT_SPAWN = { x: 4.2, z: -43, heading: Math.PI };
 const BOOST_DURATION = 1.2;
@@ -23,7 +24,7 @@ const BOARD_RANGE = 4.8;
 
 export class BoatManager {
   private active: Boat | null = null;
-  private readonly progress = new BoatProgress();
+  private readonly progress: BoatProgress;
   private readonly prompt = new InteractionPrompt();
   private readonly hud = new BoatHUD();
   private readonly shop: BoatShopUI;
@@ -41,7 +42,9 @@ export class BoatManager {
     private graphics: GraphicsProfile,
     private effects: Effects,
     private onBoatDestroyed: () => void,
+    economy?: EconomyWallet,
   ) {
+    this.progress = new BoatProgress(economy);
     this.shop = new BoatShopUI(
       this.progress,
       () => this.active,

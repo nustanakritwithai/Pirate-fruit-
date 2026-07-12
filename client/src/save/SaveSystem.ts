@@ -5,6 +5,7 @@ const SAVE_KEY = 'pirate-fruit:save-v1';
 const AUTOSAVE_INTERVAL = 3; // วินาที
 
 export interface SaveData {
+  saveVersion?: 2;
   x: number;
   y: number;
   z: number;
@@ -12,6 +13,8 @@ export interface SaveData {
   cameraYaw: number;
   worldTime?: number;
   spawnId?: string;
+  hp?: number;
+  energy?: number;
 }
 
 /**
@@ -46,6 +49,7 @@ export class SaveSystem {
     if (!this.controller.moveState.onGround || this.controller.isMounted) return;
     const p = this.controller.position;
     const data: SaveData = {
+      saveVersion: 2,
       x: p.x,
       y: p.y,
       z: p.z,
@@ -53,6 +57,8 @@ export class SaveSystem {
       cameraYaw: this.camera.yaw,
       worldTime: this.getWorldTime(),
       spawnId: this.spawnId,
+      hp: this.controller.hp,
+      energy: this.controller.energy,
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));

@@ -36,6 +36,9 @@ export class TouchControls {
   private skillTapQueue = 0;
   private weaponQueue = 0;
   private skillsUnlocked = false;
+  private skillIcons: [string, string, string] = ['🔒', '🔒', '🔒'];
+  private skillMasteryRequirements = [0, 0, 0];
+  private activeMasteryLevel = 1;
   private blockHeldRaw = false;
   private mode: ControlMode = 'player';
 
@@ -126,7 +129,10 @@ export class TouchControls {
     for (let i = 1; i <= 3; i++) {
       this.skillButtons.push(
         this.makeButton(`tc-skill tc-skill${i}`, '🔒', () => {
-          if (this.skillsUnlocked) {
+          const required = this.skillMasteryRequirements[i - 1];
+          if (this.activeMasteryLevel < required) {
+            this.showToast(`ต้องการ Mastery ${required}`);
+          } else if (this.skillsUnlocked) {
             this.skillTapQueue = i;
           } else {
             this.showToast(`สกิล ${i} ปลดล็อกใน Phase 5 (Combat)`);
@@ -207,10 +213,19 @@ export class TouchControls {
   /** ปลดล็อกปุ่มสกิล 1-3 พร้อมตั้งไอคอน (เรียกโดย PlayerCombat) */
   unlockSkills(icons: [string, string, string]): void {
     this.skillsUnlocked = true;
-    for (let i = 0; i < 3; i++) {
-      this.setButtonLabel(this.skillButtons[i], icons[i]);
-      this.skillButtons[i].classList.add('tc-skill-ready');
-    }
+    this.skillIcons = icons;
+    this.renderSkillMasteryState();
+  }
+
+  /** Phase 6: แสดงล็อกและเลข Mastery โดยไม่เพิ่มปุ่มมือถือใหม่ */
+  setSkillMasteryState(masteryLevel: number, requirements: readonly number[]): void {
+    this.activeMasteryLevel = masteryLevel;
+    this.skillMasteryRequirements = [
+      requirements[0] ?? 0,
+      requirements[1] ?? 0,
+      requirements[2] ?? 0,
+    ];
+    this.renderSkillMasteryState();
   }
 
   /** ผูกวงแหวนคูลดาวน์ของสกิล 1-3 */
@@ -356,6 +371,22 @@ export class TouchControls {
     if (span) span.textContent = label;
   }
 
+  private renderSkillMasteryState(): void {
+    for (let i = 0; i < 3; i++) {
+      const locked = !this.skillsUnlocked || this.activeMasteryLevel < this.skillMasteryRequirements[i];
+      this.setButtonLabel(
+        this.skillButtons[i],
+        locked && this.skillMasteryRequirements[i] > 0
+          ? `🔒${this.skillMasteryRequirements[i]}`
+          : this.skillsUnlocked
+            ? this.skillIcons[i]
+            : '🔒',
+      );
+      this.skillButtons[i].classList.toggle('tc-skill-ready', !locked);
+      this.skillButtons[i].classList.toggle('tc-skill-locked', locked);
+    }
+  }
+
   private showToast(msg: string): void {
     this.toast.textContent = msg;
     this.toast.classList.add('tc-visible');
@@ -402,6 +433,7 @@ export class TouchControls {
       .tc-skill  { opacity: .55; }
       .tc-skill.tc-skill-ready { opacity: .95; border-color: rgba(140,235,190,.85);
                    background: rgba(14,66,48,.6); }
+      .tc-skill.tc-skill-locked { opacity:.55; font-size:14px; filter:saturate(.45); }
       .tc-ult    { right: 216px; bottom: 26px;  width: 70px; height: 70px; font-size: 24px;
                    border-color: rgba(200,120,255,.85); background: rgba(70,25,110,.55);
                    opacity: .65; }

@@ -16,6 +16,7 @@ interface NPCInstance {
 
 export interface NPCActions {
   openBoatShop?: () => void;
+  openQuestBoard?: () => void;
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -147,14 +148,23 @@ export class NPCManager {
     this.prompt.hide();
     this.controller.setControlsEnabled(false);
     const definition = nearest.definition;
-    const boatShopAction = definition.action === 'boat-shop' ? this.actions.openBoatShop : undefined;
+    const action = definition.action === 'boat-shop'
+      ? this.actions.openBoatShop
+      : definition.action === 'quest-board'
+        ? this.actions.openQuestBoard
+        : undefined;
+    const actionLabel = definition.action === 'boat-shop'
+      ? '⚓ เปิดอู่เรือ'
+      : definition.action === 'quest-board'
+        ? '📜 ดูภารกิจ'
+        : undefined;
     this.dialogue.open(
       {
         name: definition.name,
         role: definition.role,
         pages: definition.dialogue,
-        actionLabel: boatShopAction ? '⚓ เปิดอู่เรือ' : undefined,
-        onAction: boatShopAction,
+        actionLabel: action ? actionLabel : undefined,
+        onAction: action,
       },
       () => {
         this.controller.setControlsEnabled(true);

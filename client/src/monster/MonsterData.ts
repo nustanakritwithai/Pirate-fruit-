@@ -1,3 +1,5 @@
+import type { EnemyRewardDefinition } from '../progression/ProgressionTypes';
+
 /** ชนิดของมอนสเตอร์และแคมป์ที่เกิดบนเกาะ (Phase 4) */
 
 export type MonsterKind = 'crab' | 'grunt' | 'boss';
@@ -29,7 +31,7 @@ export interface MonsterType {
   attackCooldown: number; // วินาที
   scale: number;
   color: number;
-  xp: number; // เผื่อ Phase 6 (ระบบเลเวล)
+  reward: EnemyRewardDefinition;
   heavyAttack?: HeavyAttackDefinition;
 }
 
@@ -47,7 +49,7 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
     attackCooldown: 1.3,
     scale: 1,
     color: 0xcf5a38,
-    xp: 12,
+    reward: { playerExp: 30, masteryExp: 18, coins: 12 },
   },
   grunt: {
     id: 'grunt',
@@ -62,7 +64,7 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
     attackCooldown: 1.1,
     scale: 1.1,
     color: 0x6f7f3a,
-    xp: 20,
+    reward: { playerExp: 55, masteryExp: 30, coins: 24 },
   },
   boss: {
     id: 'boss',
@@ -77,7 +79,7 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
     attackCooldown: 1.4,
     scale: 1.9,
     color: 0x3a2b45,
-    xp: 300,
+    reward: { playerExp: 300, masteryExp: 150, coins: 180 },
     // ทุกตีครั้งที่ 3: ฟาดหนัก ทะลุ Block + ผลักผู้เล่นล้ม (มีแฟลชเตือน 0.6 วิ)
     heavyAttack: {
       everyNth: 3,

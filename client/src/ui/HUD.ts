@@ -40,7 +40,7 @@ export class HUD {
       .guard-fill { height: 100%; background: linear-gradient(90deg, #6fc2ff, #a5dcff);
                     transition: width .1s linear; }
       .hud-info { right: 16px; top: 16px; text-align: right; font-size: 13px; }
-      .hud-help { left: 16px; top: 172px; font-size: 13px; background: rgba(0,0,0,.4);
+      .hud-help { left: 16px; top: 310px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
       .hud-help b { color: #ffd76b; }
       .hud-damage { position:fixed; inset:0; z-index:9; pointer-events:none; opacity:0;
@@ -87,6 +87,7 @@ export class HUD {
         <b>Space</b> กระโดด<br>
         <b>Q</b> พุ่งหลบ · <b>F</b> ยกโล่กัน<br>
         <b>R</b> สลับหมัด/ดาบ · <b>1-3</b> สกิล<br>
+        <b>K</b> เปิด Stats<br>
         <b>คลิกซ้าย</b> ล็อกเมาส์หมุนกล้อง (Esc ปลด) / คลิกอีกที = โจมตี<br>
         <b>ล้อเมาส์</b> ซูม
       `;

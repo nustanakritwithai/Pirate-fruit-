@@ -1,4 +1,5 @@
 import { getBoatDefinition } from './BoatData';
+import type { EconomyWallet } from '../progression/ProgressionTypes';
 
 const STORAGE_KEY = 'pirate-fruit:boats-v1';
 
@@ -18,12 +19,12 @@ const DEFAULT_PROGRESS: BoatProgressData = {
 export class BoatProgress {
   private data: BoatProgressData;
 
-  constructor() {
+  constructor(private wallet?: EconomyWallet) {
     this.data = this.load();
   }
 
   get coins(): number {
-    return this.data.coins;
+    return this.wallet?.coins ?? this.data.coins;
   }
 
   get selectedBoatId(): string | null {
@@ -41,10 +42,18 @@ export class BoatProgress {
       this.select(id);
       return { ok: true, message: `เลือก ${definition.name} แล้ว` };
     }
-    if (this.data.coins < definition.price) {
-      return { ok: false, message: `ต้องการอีก ${definition.price - this.data.coins} เหรียญ` };
+    if (this.coins < definition.price) {
+      return { ok: false, message: `ต้องการอีก ${definition.price - this.coins} เหรียญ` };
     }
-    this.data.coins -= definition.price;
+    if (definition.price > 0) {
+      if (this.wallet) {
+        if (!this.wallet.spendCoins(definition.price, `boat:${id}`)) {
+          return { ok: false, message: 'เหรียญไม่พอ' };
+        }
+      } else {
+        this.data.coins -= definition.price;
+      }
+    }
     this.data.ownedBoatIds.push(id);
     this.data.selectedBoatId = id;
     this.save();
@@ -84,6 +93,7 @@ export class BoatProgress {
 
   private save(): void {
     try {
+      this.data.coins = this.coins;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     } catch {
       // เกมยังเล่นต่อได้แม้ storage ถูกปิด

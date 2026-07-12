@@ -7,6 +7,7 @@ import { mulberry32 } from '../world/props';
 import { BossBar } from '../ui/BossBar';
 import { Monster } from './Monster';
 import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWN, type MonsterType } from './MonsterData';
+import type { CombatRewardSource } from '../combat/CombatData';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
@@ -16,6 +17,7 @@ export interface AttackOptions {
   /** cos ของครึ่งมุมกรวยหน้า */
   arcCos: number;
   knockback?: number;
+  source?: CombatRewardSource;
 }
 
 /** ข้อมูลท่าที่ตีเข้าผู้เล่นหนึ่งครั้ง — ให้ PlayerCombat ตัดสิน Block/Guard/ผลัก */
@@ -37,7 +39,12 @@ export interface MonsterCallbacks {
   /** แจ้งเมื่อมอนสเตอร์โดนดาเมจ (ไว้โชว์ตัวเลขดาเมจ) */
   onMonsterDamaged?: (monster: Monster, amount: number) => void;
   /** hook สำหรับระบบรางวัล (EXP/เงิน) ใน Phase 6 */
-  onRewardContribution?: (monster: Monster, damage: number, killed: boolean) => void;
+  onRewardContribution?: (
+    monster: Monster,
+    damage: number,
+    killed: boolean,
+    source?: CombatRewardSource,
+  ) => void;
 }
 
 /** ปรับจำนวนมอนสเตอร์ตามระดับกราฟิก เพื่อคุมภาระมือถือ */
@@ -112,21 +119,34 @@ export class MonsterManager {
         const dot = (dx * fx + dz * fz) / dist;
         if (dot < options.arcCos) continue; // อยู่นอกกรวยหน้า
       }
-      this.applyHit(monster, options.damage, position.x, position.z, options.knockback ?? 0);
+      this.applyHit(
+        monster,
+        options.damage,
+        position.x,
+        position.z,
+        options.knockback ?? 0,
+        options.source,
+      );
       hits++;
     }
     return hits;
   }
 
   /** ดาเมจทุกตัวในรัศมีรอบจุด (สกิล AoE) คืนจำนวนตัวที่โดน */
-  damageRadius(center: THREE.Vector3, radius: number, damage: number, knockback = 0): number {
+  damageRadius(
+    center: THREE.Vector3,
+    radius: number,
+    damage: number,
+    knockback = 0,
+    source?: CombatRewardSource,
+  ): number {
     let hits = 0;
     for (const monster of this.monsters) {
       if (!monster.alive) continue;
       const dx = monster.group.position.x - center.x;
       const dz = monster.group.position.z - center.z;
       if (Math.hypot(dx, dz) > radius + monster.type.scale * 0.5) continue;
-      this.applyHit(monster, damage, center.x, center.z, knockback);
+      this.applyHit(monster, damage, center.x, center.z, knockback, source);
       hits++;
     }
     return hits;
@@ -145,11 +165,20 @@ export class MonsterManager {
   }
 
   /** ทำดาเมจ + knockback (บอสต้านทานแรงผลัก/อาการเซ) — ปลายทางเดียวของ damage pipeline ฝั่งศัตรู */
-  applyHit(monster: Monster, damage: number, srcX: number, srcZ: number, knockback: number): void {
+  applyHit(
+    monster: Monster,
+    damage: number,
+    srcX: number,
+    srcZ: number,
+    knockback: number,
+    source?: CombatRewardSource,
+  ): void {
+    const hpBefore = monster.hp;
     const died = monster.takeDamage(damage);
+    const actualDamage = Math.max(0, hpBefore - monster.hp);
     this.effects.spawnHitSpark(monster.group.position);
     this.callbacks.onMonsterDamaged?.(monster, damage);
-    this.callbacks.onRewardContribution?.(monster, damage, died);
+    this.callbacks.onRewardContribution?.(monster, actualDamage, died, source);
     if (!died && knockback > 0) {
       const dx = monster.group.position.x - srcX;
       const dz = monster.group.position.z - srcZ;

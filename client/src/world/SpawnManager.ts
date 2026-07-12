@@ -43,6 +43,7 @@ export class SpawnManager {
 
   respawn(): void {
     this.teleportToDefault();
-    this.controller.hp = Math.max(1, this.controller.hp - 5);
+    this.controller.hp = this.controller.hpMax;
+    this.controller.energy = this.controller.energyMax;
   }
 }

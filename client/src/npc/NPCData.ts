@@ -8,7 +8,7 @@ export interface NPCDefinition {
   z: number;
   color: number;
   dialogue: string[];
-  action?: 'boat-shop';
+  action?: 'boat-shop' | 'quest-board';
 }
 
 export const STARTER_NPCS: NPCDefinition[] = [
@@ -19,10 +19,11 @@ export const STARTER_NPCS: NPCDefinition[] = [
     x: WORLD_POIS.village.x + 2.5,
     z: WORLD_POIS.village.z + 4,
     color: 0x2d7694,
+    action: 'quest-board',
     dialogue: [
       'ยินดีต้อนรับสู่เกาะเริ่มต้น นักเดินทาง! ที่นี่คือที่พักของเหล่าโจรสลัดฝึกหัด',
       'ลองสำรวจหาดฝึกฝน สวนผลไม้ลึกลับ และท่าเรือให้ทั่ว ก่อนออกเดินทางสู่ทะเลใหญ่',
-      'ตอนนี้เกาะยังเป็นเขตปลอดภัย ระบบภารกิจและศัตรูจะตามมาใน Phase ถัดไป',
+      'เลือกงานที่เหมาะกับระดับของเจ้า แล้วกลับมารับงานใหม่ได้เมื่อทำสำเร็จ',
     ],
   },
   {
