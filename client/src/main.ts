@@ -21,7 +21,6 @@ import { ProgressionManager } from './progression/ProgressionManager';
 import { QuestManager } from './quest/QuestManager';
 import { ProgressionHUD } from './ui/ProgressionHUD';
 import { StatsPanel } from './ui/StatsPanel';
-import { MasteryPanel } from './ui/MasteryPanel';
 import { QuestTracker } from './ui/QuestTracker';
 import { RewardFeed } from './ui/RewardFeed';
 import { QuestBoard } from './ui/QuestBoard';
@@ -189,13 +188,14 @@ async function main(): Promise<void> {
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
 
-  new ProgressionHUD(progression);
+  const progressionHud = new ProgressionHUD(progression, controller);
   let controlsBeforeStats = true;
   new StatsPanel(progression, (open) => {
     if (open) controlsBeforeStats = controller.inputEnabled;
     controller.setControlsEnabled(open ? false : controlsBeforeStats);
+  }, () => playerCombat?.activeItem ?? {
+    itemId: 'basic-brawl', category: 'style', name: 'หมัด',
   });
-  const masteryPanel = new MasteryPanel(progression, () => playerCombat!.activeItem);
   const questTracker = new QuestTracker(questManager);
   const rewardFeed = new RewardFeed(progression);
   const progressionDebug = new ProgressionDebugPanel(
@@ -231,7 +231,7 @@ async function main(): Promise<void> {
   game.add(monsterManager);
   game.add(saveSystem);
   game.add(progression);
-  game.add({ update: () => masteryPanel.update() });
+  game.add(progressionHud);
   game.add(questTracker);
   game.add(rewardFeed);
   game.add(progressionDebug);

@@ -3,13 +3,9 @@ import type { Game } from '../engine/Game';
 import { TouchControls } from './TouchControls';
 
 /**
- * HUD พื้นฐาน (HTML overlay): แถบ HP, แถบ Energy, พิกัด, FPS และคำแนะนำปุ่ม
+ * HUD พื้นฐาน (HTML overlay): Guard, พิกัด, FPS และคำแนะนำปุ่ม
  */
 export class HUD {
-  private hpFill: HTMLDivElement;
-  private energyFill: HTMLDivElement;
-  private hpText: HTMLSpanElement;
-  private energyText: HTMLSpanElement;
   private posText: HTMLDivElement;
   private fpsText: HTMLDivElement;
   private timeText: HTMLDivElement;
@@ -24,15 +20,7 @@ export class HUD {
     style.textContent = `
       .hud { position: fixed; pointer-events: none; color: #fff;
              text-shadow: 0 1px 3px rgba(0,0,0,.7); z-index: 10; }
-      .hud-bars { left: 50%; transform: translateX(-50%); bottom: 10px; width: 180px; }
-      .hud-bar { height: 13px; border-radius: 7px; background: rgba(0,0,0,.45);
-                 border: 1px solid rgba(255,255,255,.35); margin-top: 4px;
-                 position: relative; overflow: hidden; }
-      .hud-bar-fill { height: 100%; border-radius: 6px; transition: width .1s linear; }
-      .hud-bar-label { position: absolute; inset: 0; font-size: 9px; line-height: 13px;
-                       text-align: center; font-weight: 600; }
-      .hp-fill { background: linear-gradient(#ff7a6b, #d92f1f); }
-      .energy-fill { background: linear-gradient(#ffe97a, #e8b820); }
+      .hud-bars { left: 50%; transform: translateX(-50%); bottom: 72px; width: 180px; }
       .hud-guard { height: 6px; margin-top: 3px; border-radius: 4px; overflow: hidden;
                    background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.25);
                    opacity: 0; transition: opacity .25s; }
@@ -48,9 +36,7 @@ export class HUD {
         box-shadow: inset 0 0 120px 30px rgba(200,20,20,.65); }
       .hud-damage.hit { opacity:1; transition:opacity .04s; }
       @media(max-width:700px){
-        .hud-bars { bottom:92px; width:170px; }
-        .hud-bar { height:11px; }
-        .hud-bar-label { font-size:8px; line-height:11px; }
+        .hud-bars { bottom:74px; width:160px; }
       }
     `;
     document.head.appendChild(style);
@@ -61,18 +47,8 @@ export class HUD {
 
     const bars = document.createElement('div');
     bars.className = 'hud hud-bars';
-    bars.innerHTML = `
-      <div class="hud-bar"><div class="hud-bar-fill hp-fill"></div>
-        <div class="hud-bar-label">HP <span class="hp-num"></span></div></div>
-      <div class="hud-bar"><div class="hud-bar-fill energy-fill"></div>
-        <div class="hud-bar-label">Energy <span class="energy-num"></span></div></div>
-      <div class="hud-guard"><div class="guard-fill"></div></div>
-    `;
+    bars.innerHTML = '<div class="hud-guard"><div class="guard-fill"></div></div>';
     document.body.appendChild(bars);
-    this.hpFill = bars.querySelector('.hp-fill')!;
-    this.energyFill = bars.querySelector('.energy-fill')!;
-    this.hpText = bars.querySelector('.hp-num')!;
-    this.energyText = bars.querySelector('.energy-num')!;
 
     const info = document.createElement('div');
     info.className = 'hud hud-info';
@@ -117,11 +93,6 @@ export class HUD {
 
   update(): void {
     const c = this.controller;
-    this.hpFill.style.width = `${(c.hp / c.hpMax) * 100}%`;
-    this.energyFill.style.width = `${(c.energy / c.energyMax) * 100}%`;
-    this.hpText.textContent = `${Math.round(c.hp)}/${c.hpMax}`;
-    this.energyText.textContent = `${Math.round(c.energy)}/${c.energyMax}`;
-
     // แถบ Guard: โชว์เฉพาะตอนบล็อกหรือ guard ยังไม่เต็ม
     if (this.getGuardFraction) {
       const fraction = this.getGuardFraction();

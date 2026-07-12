@@ -1,6 +1,8 @@
 import type { ProgressionManager } from '../progression/ProgressionManager';
-import type { PlayerStatId } from '../progression/ProgressionTypes';
+import type { ActiveLoadoutItem, PlayerStatId } from '../progression/ProgressionTypes';
 import { PROGRESSION_CONFIG } from '../progression/ProgressionData';
+import { SKILLS } from '../combat/CombatData';
+import { getMasteryExpRequired } from '../progression/MasterySystem';
 
 const STAT_LABELS: Record<PlayerStatId, string> = {
   combat: 'Combat',
@@ -19,6 +21,7 @@ export class StatsPanel {
   constructor(
     private progression: ProgressionManager,
     private onVisibilityChanged: (open: boolean) => void,
+    private getActiveItem: () => ActiveLoadoutItem,
   ) {
     this.injectStyles();
     this.openButton = document.createElement('button');
@@ -53,6 +56,8 @@ export class StatsPanel {
     });
     progression.events.on('player:stat-spent', () => this.render());
     progression.events.on('player:level-up', () => this.render());
+    progression.events.on('mastery:exp-gained', () => this.render());
+    progression.events.on('mastery:level-up', () => this.render());
     this.root.style.display = 'none';
   }
 
@@ -98,6 +103,25 @@ export class StatsPanel {
     derived.className = 'stats-derived';
     derived.textContent = `Max HP ${this.progression.getMaxHp()} · Max Energy ${this.progression.getMaxEnergy()}`;
     this.content.appendChild(derived);
+
+    const item = this.getActiveItem();
+    const mastery = state.mastery[item.itemId];
+    const masteryLevel = mastery?.level ?? 1;
+    const masteryExp = mastery?.exp ?? 0;
+    const masteryRequired = getMasteryExpRequired(masteryLevel);
+    const masterySkills = SKILLS.filter((skill) => skill.category === item.category).map((skill) =>
+      `<div>${masteryLevel >= skill.masteryRequired ? '✓' : '🔒'} ${skill.id} · ` +
+      `${skill.masteryRequired === 0 || masteryLevel >= skill.masteryRequired
+        ? 'ปลดล็อกแล้ว'
+        : `Mastery ${skill.masteryRequired}`}</div>`,
+    ).join('');
+    const masterySection = document.createElement('section');
+    masterySection.className = 'stats-mastery';
+    masterySection.innerHTML = `<div class="stats-mastery-title">${item.name}</div>
+      <div class="stats-mastery-level">Mastery ${masteryLevel}</div>
+      <div class="stats-mastery-exp">EXP ${masteryExp} / ${masteryRequired}</div>
+      <div class="stats-mastery-skills">${masterySkills || '<div>ยังไม่มีสกิลสำหรับอุปกรณ์นี้</div>'}</div>`;
+    this.content.appendChild(masterySection);
   }
 
   private injectStyles(): void {
@@ -124,6 +148,12 @@ export class StatsPanel {
         background:#ffdb78; font-size:18px; font-weight:900; cursor:pointer; }
       .stats-row button:disabled { opacity:.35; cursor:not-allowed; }
       .stats-derived { margin-top:12px; color:#9fe6cc; font-size:12px; text-align:center; }
+      .stats-mastery { margin-top:13px; padding:10px 11px; border-radius:11px; background:rgba(28,15,48,.42);
+        border:1px solid rgba(169,126,239,.34); }
+      .stats-mastery-title { color:#dec5ff; font-weight:800; font-size:13px; }
+      .stats-mastery-level { margin-top:3px; color:#fff; font-size:12px; }
+      .stats-mastery-exp { color:#b8c5ce; font-size:10px; }
+      .stats-mastery-skills { margin-top:6px; color:#a9c3c9; font-size:10px; line-height:1.5; }
       .stats-panel footer { margin-top:12px; color:#82a5ac; font-size:10px; text-align:center; }
       @media(max-width:700px){ .stats-open-button{right:8px;top:88px;width:30px;height:30px;font-size:14px}
         .stats-panel-root{align-items:flex-end;padding:8px}.stats-panel{max-height:74vh;overflow:auto} }
