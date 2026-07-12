@@ -23,6 +23,8 @@ export class Input {
   private attackQueue = 0;
   private interactQueue = 0;
   private anchorQueue = 0;
+  private skillQueue = 0; // 1-3 = สกิลที่กด, 0 = ไม่มี
+  private weaponSwitchQueue = 0;
   private mode: ControlMode = 'player';
 
   private touch: TouchControls | null = null;
@@ -36,6 +38,10 @@ export class Input {
       if (e.code === 'KeyQ' && !e.repeat) this.dashQueue++;
       if (e.code === 'KeyE' && !e.repeat) this.interactQueue++;
       if (e.code === 'Space' && !e.repeat) this.anchorQueue++;
+      if (e.code === 'KeyR' && !e.repeat) this.weaponSwitchQueue++;
+      if (!e.repeat && (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3')) {
+        this.skillQueue = Number(e.code.slice(-1));
+      }
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -111,6 +117,30 @@ export class Input {
 
   get sprint(): boolean {
     return this.isDown('ShiftLeft') || this.isDown('ShiftRight') || (this.touch?.sprintOn ?? false);
+  }
+
+  /** ถือ Block อยู่ไหม (F บน PC / ปุ่ม 🛡 บนมือถือ) */
+  get block(): boolean {
+    return this.isDown('KeyF') || (this.touch?.blockHeld ?? false);
+  }
+
+  /** อ่านสกิลที่กดหนึ่งครั้ง คืน 1-3 หรือ 0 ถ้าไม่มี */
+  consumeSkill(): number {
+    const fromTouch = this.touch?.consumeSkill() ?? 0;
+    if (fromTouch > 0) return fromTouch;
+    const n = this.skillQueue;
+    this.skillQueue = 0;
+    return n;
+  }
+
+  /** อ่านคำสั่งสลับอาวุธหนึ่งครั้ง */
+  consumeWeaponSwitch(): boolean {
+    if (this.touch?.consumeWeaponSwitch()) return true;
+    if (this.weaponSwitchQueue > 0) {
+      this.weaponSwitchQueue = 0;
+      return true;
+    }
+    return false;
   }
 
   /** อ่านคำสั่ง dash หนึ่งครั้ง (คืน true ครั้งเดียวต่อการกด) */

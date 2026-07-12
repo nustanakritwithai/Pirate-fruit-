@@ -121,6 +121,11 @@ export class Monster {
   respawnTimer = 0;
   wanderAngle = Math.random() * Math.PI * 2;
   wanderTimer = 0;
+  /** ความเร็วผลักจาก knockback (ลดทอนเองใน manager) */
+  kbX = 0;
+  kbZ = 0;
+  /** ระหว่างเซอยู่ AI ขยับเข้าตีไม่ได้ */
+  staggerTimer = 0;
   private hitFlash = 0;
   private deathTimer = 0;
 

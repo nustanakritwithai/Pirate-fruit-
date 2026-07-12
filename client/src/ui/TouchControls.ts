@@ -33,7 +33,15 @@ export class TouchControls {
   private dashQueue = 0;
   private attackQueue = 0;
   private anchorQueue = 0;
+  private skillTapQueue = 0;
+  private weaponQueue = 0;
+  private skillsUnlocked = false;
+  private blockHeldRaw = false;
   private mode: ControlMode = 'player';
+
+  get blockHeld(): boolean {
+    return this.blockHeldRaw && this.mode === 'player';
+  }
 
   private joyPointerId: number | null = null;
   private camPointerId: number | null = null;
@@ -50,6 +58,8 @@ export class TouchControls {
   private attackBtn: HTMLDivElement;
   private dashBtn: HTMLDivElement;
   private jumpBtn: HTMLDivElement;
+  private blockBtn: HTMLDivElement;
+  private weaponBtn: HTMLDivElement;
   private skillButtons: HTMLDivElement[] = [];
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
@@ -112,12 +122,16 @@ export class TouchControls {
     jump.addEventListener('pointercancel', jumpOff);
     jump.addEventListener('pointerleave', jumpOff);
 
-    // สกิล 1-3 (ล็อก รอ Phase 5)
+    // สกิล 1-3 (ปลดล็อกผ่าน unlockSkills โดย PlayerCombat)
     for (let i = 1; i <= 3; i++) {
       this.skillButtons.push(
-        this.makeButton(`tc-skill tc-skill${i}`, '🔒', () =>
-          this.showToast(`สกิล ${i} ปลดล็อกใน Phase 5 (Combat)`),
-        ),
+        this.makeButton(`tc-skill tc-skill${i}`, '🔒', () => {
+          if (this.skillsUnlocked) {
+            this.skillTapQueue = i;
+          } else {
+            this.showToast(`สกิล ${i} ปลดล็อกใน Phase 5 (Combat)`);
+          }
+        }),
       );
     }
     // ไม้ตาย (ล็อก รอ Phase 7)
@@ -126,6 +140,23 @@ export class TouchControls {
         this.showToast('ไม้ตายปลดล็อกใน Phase 7 (ผลไม้ปีศาจ)'),
       ),
     );
+
+    // ---------- Block (กดค้างเพื่อกัน) + สลับอาวุธ ----------
+    this.blockBtn = this.makeButton('tc-block', '🛡️', null);
+    this.blockBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.blockHeldRaw = true;
+      this.blockBtn.classList.add('tc-on');
+    });
+    const blockOff = () => {
+      this.blockHeldRaw = false;
+      this.blockBtn.classList.remove('tc-on');
+    };
+    this.blockBtn.addEventListener('pointerup', blockOff);
+    this.blockBtn.addEventListener('pointercancel', blockOff);
+    this.blockBtn.addEventListener('pointerleave', blockOff);
+
+    this.weaponBtn = this.makeButton('tc-weapon', '👊', () => (this.weaponQueue = 1));
 
     // ---------- ปุ่มสลับวิ่ง (ข้างจอยสติ๊ก) ----------
     this.sprintBtn = this.makeButton('tc-sprint', '🏃', () => {
@@ -147,17 +178,23 @@ export class TouchControls {
   setMode(mode: ControlMode): void {
     this.mode = mode;
     this.jumpHeldRaw = false;
+    this.blockHeldRaw = false;
+    this.blockBtn.classList.remove('tc-on');
     this.anchorQueue = 0;
     this.dashQueue = 0;
+    this.skillTapQueue = 0;
     if (mode === 'boat') {
       this.sprintOn = false;
       this.sprintBtn.classList.remove('tc-on');
     }
     this.setButtonLabel(this.dashBtn, mode === 'boat' ? '⚡' : '💨');
     this.setButtonLabel(this.jumpBtn, mode === 'boat' ? '⚓' : '⬆️');
-    this.attackBtn.style.display = mode === 'boat' ? 'none' : 'flex';
-    this.sprintBtn.style.display = mode === 'boat' ? 'none' : 'flex';
-    for (const button of this.skillButtons) button.style.display = mode === 'boat' ? 'none' : 'flex';
+    const display = mode === 'boat' ? 'none' : 'flex';
+    this.attackBtn.style.display = display;
+    this.sprintBtn.style.display = display;
+    this.blockBtn.style.display = display;
+    this.weaponBtn.style.display = display;
+    for (const button of this.skillButtons) button.style.display = display;
     this.dashBtn.classList.toggle('tc-boat-boost', mode === 'boat');
   }
 
@@ -165,6 +202,45 @@ export class TouchControls {
   bindCooldowns(dash: CooldownGetter, attack: CooldownGetter): void {
     this.cooldownRings.set(this.dashBtn, dash);
     this.cooldownRings.set(this.attackBtn, attack);
+  }
+
+  /** ปลดล็อกปุ่มสกิล 1-3 พร้อมตั้งไอคอน (เรียกโดย PlayerCombat) */
+  unlockSkills(icons: [string, string, string]): void {
+    this.skillsUnlocked = true;
+    for (let i = 0; i < 3; i++) {
+      this.setButtonLabel(this.skillButtons[i], icons[i]);
+      this.skillButtons[i].classList.add('tc-skill-ready');
+    }
+  }
+
+  /** ผูกวงแหวนคูลดาวน์ของสกิล 1-3 */
+  bindSkillCooldowns(getters: [CooldownGetter, CooldownGetter, CooldownGetter]): void {
+    for (let i = 0; i < 3; i++) {
+      this.cooldownRings.set(this.skillButtons[i], getters[i]);
+    }
+  }
+
+  /** อ่านสกิลที่แตะหนึ่งครั้ง คืน 1-3 หรือ 0 */
+  consumeSkill(): number {
+    const n = this.skillTapQueue;
+    this.skillTapQueue = 0;
+    return n;
+  }
+
+  consumeWeaponSwitch(): boolean {
+    if (this.weaponQueue <= 0) return false;
+    this.weaponQueue = 0;
+    return true;
+  }
+
+  /** อัปเดตไอคอนปุ่มอาวุธให้ตรงกับอาวุธปัจจุบัน */
+  setWeaponIcon(icon: string): void {
+    this.setButtonLabel(this.weaponBtn, icon);
+  }
+
+  /** ข้อความแจ้งเตือนสั้น ๆ (เช่น พลังงานไม่พอ) */
+  notify(message: string): void {
+    this.showToast(message);
   }
 
   consumeDash(): boolean {
@@ -324,9 +400,16 @@ export class TouchControls {
       .tc-skill2 { right: 92px;  bottom: 188px; width: 56px; height: 56px; font-size: 20px; }
       .tc-skill3 { right: 176px; bottom: 158px; width: 56px; height: 56px; font-size: 20px; }
       .tc-skill  { opacity: .55; }
+      .tc-skill.tc-skill-ready { opacity: .95; border-color: rgba(140,235,190,.85);
+                   background: rgba(14,66,48,.6); }
       .tc-ult    { right: 216px; bottom: 26px;  width: 70px; height: 70px; font-size: 24px;
                    border-color: rgba(200,120,255,.85); background: rgba(70,25,110,.55);
                    opacity: .65; }
+      .tc-block  { right: 296px; bottom: 28px; width: 60px; height: 60px; font-size: 24px;
+                   border-color: rgba(150,200,255,.8); }
+      .tc-block.tc-on { background: rgba(90,160,255,.55); border-color: #bfe0ff; }
+      .tc-weapon { right: 254px; bottom: 106px; width: 48px; height: 48px; font-size: 20px;
+                   opacity: .9; border-color: rgba(255,215,140,.8); }
       .tc-sprint { left: 180px; bottom: 40px; width: 58px; height: 58px; font-size: 24px;
                    opacity: .8; }
       .tc-sprint.tc-on { background: rgba(255,215,90,.55); border-color: #ffd76b; }

@@ -16,8 +16,7 @@ import { SpawnManager } from './world/SpawnManager';
 import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
 import { MonsterManager } from './monster/MonsterManager';
-
-const ATTACK_COOLDOWN = 0.5;
+import { PlayerCombat } from './combat/PlayerCombat';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -86,6 +85,17 @@ async function main(): Promise<void> {
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
     openBoatShop: () => boatManager.openShop(),
   });
+  new GraphicsSettings(graphics);
+
+  // ระบบบังคับบนจอสัมผัสแบบ RoV (เฉพาะอุปกรณ์มีจอสัมผัส หรือ ?touch=1)
+  let touchControls: TouchControls | null = null;
+  if (TouchControls.isTouchDevice()) {
+    touchControls = new TouchControls(input);
+    input.attachTouch(touchControls);
+  }
+
+  // มอนสเตอร์ + ระบบต่อสู้ (Phase 4-5) — callbacks อ้าง playerCombat แบบ late-bind
+  let playerCombat: PlayerCombat;
   const monsterManager = new MonsterManager(
     game.scene,
     controller,
@@ -94,6 +104,9 @@ async function main(): Promise<void> {
     graphics,
     {
       onPlayerHit: () => hud.flashDamage(),
+      modifyIncomingDamage: (amount) => playerCombat.modifyIncomingDamage(amount),
+      onMonsterDamaged: (monster, amount) =>
+        effects.spawnDamageNumber(monster.group.position, amount),
       onPlayerDefeated: () => {
         spawnManager.teleportToDefault();
         controller.hp = controller.hpMax;
@@ -101,34 +114,22 @@ async function main(): Promise<void> {
       },
     },
   );
-  new GraphicsSettings(graphics);
+  playerCombat = new PlayerCombat(
+    game.scene,
+    input,
+    controller,
+    monsterManager,
+    effects,
+    touchControls,
+  );
 
-  // โจมตีพื้นฐาน (placeholder — ดาเมจจริงมาใน Phase 5)
-  let attackCooldown = 0;
-  const combat = {
-    update(dt: number) {
-      attackCooldown = Math.max(0, attackCooldown - dt);
-      const requested = input.consumeAttack();
-      if (requested && controller.inputEnabled && attackCooldown === 0) {
-        attackCooldown = ATTACK_COOLDOWN;
-        effects.spawnSlash(controller.position, controller.heading);
-        monsterManager.playerAttack(controller.position, controller.heading);
-      }
-    },
-  };
-
-  // ระบบบังคับบนจอสัมผัสแบบ RoV (เฉพาะอุปกรณ์มีจอสัมผัส หรือ ?touch=1)
-  let touchControls: TouchControls | null = null;
-  if (TouchControls.isTouchDevice()) {
-    touchControls = new TouchControls(input);
-    input.attachTouch(touchControls);
-    touchControls.bindCooldowns(
-      () => input.controlMode === 'boat'
+  touchControls?.bindCooldowns(
+    () =>
+      input.controlMode === 'boat'
         ? boatManager.boostCooldownFraction
         : controller.dashCooldownFraction,
-      () => attackCooldown / ATTACK_COOLDOWN,
-    );
-  }
+    () => playerCombat.attackCooldownFraction,
+  );
 
   // ตกทะเล → กลับ Safe Zone ของหมู่บ้าน ไม่วนเกิดซ้ำในตำแหน่งอันตราย
   controller.onDrown = () => {
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
   game.add(boatManager);
   game.add(player);
   game.add(camera);
-  game.add(combat);
+  game.add(playerCombat);
   game.add(effects);
   game.add(npcManager);
   game.add(monsterManager);

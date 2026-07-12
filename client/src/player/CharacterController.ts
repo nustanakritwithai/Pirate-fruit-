@@ -59,6 +59,7 @@ export class CharacterController {
   private dashTimer = 0;
   private dashCooldownTimer = 0;
   private dashDir = new THREE.Vector3(0, 0, 1);
+  private dashSpeed = DASH_SPEED;
   private controlsEnabled = true;
   private mounted = false;
 
@@ -88,6 +89,14 @@ export class CharacterController {
 
   setControlsEnabled(enabled: boolean): void {
     this.controlsEnabled = enabled;
+  }
+
+  /** สั่งพุ่งไปทิศที่กำหนด (ใช้โดยสกิล เช่น พุ่งฟัน — ไม่กินคูลดาวน์/พลังงานของ dash ปกติ) */
+  startDash(dirX: number, dirZ: number, speed: number, duration: number): void {
+    const len = Math.hypot(dirX, dirZ) || 1;
+    this.dashDir.set(dirX / len, 0, dirZ / len);
+    this.dashSpeed = speed;
+    this.dashTimer = duration;
   }
 
   get inputEnabled(): boolean {
@@ -154,6 +163,7 @@ export class CharacterController {
     ) {
       this.energy -= DASH_ENERGY_COST;
       this.dashTimer = DASH_DURATION;
+      this.dashSpeed = DASH_SPEED;
       this.dashCooldownTimer = DASH_COOLDOWN;
       // พุ่งไปทางที่กำลังเดิน ถ้ายืนเฉยๆ พุ่งไปทางที่ตัวละครหันหน้า
       if (hasInput) {
@@ -168,9 +178,9 @@ export class CharacterController {
     let speed = 0;
     if (dashing) {
       this.dashTimer -= dt;
-      speed = DASH_SPEED;
-      this.position.x += this.dashDir.x * DASH_SPEED * dt;
-      this.position.z += this.dashDir.z * DASH_SPEED * dt;
+      speed = this.dashSpeed;
+      this.position.x += this.dashDir.x * this.dashSpeed * dt;
+      this.position.z += this.dashDir.z * this.dashSpeed * dt;
       this.faceToward(this.dashDir.x, this.dashDir.z, dt, 20);
     } else if (hasInput) {
       const base = inWater ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;

@@ -8,14 +8,23 @@ import { BossBar } from '../ui/BossBar';
 import { Monster } from './Monster';
 import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWN, type MonsterType } from './MonsterData';
 
-const PLAYER_ATTACK_RANGE = 3.4;
-const PLAYER_ATTACK_ARC_COS = Math.cos(THREE.MathUtils.degToRad(70)); // กรวยหน้า ~140°
-const PLAYER_ATTACK_DAMAGE = 34;
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
+
+export interface AttackOptions {
+  damage: number;
+  range: number;
+  /** cos ของครึ่งมุมกรวยหน้า */
+  arcCos: number;
+  knockback?: number;
+}
 
 export interface MonsterCallbacks {
   onPlayerHit?: () => void;
   onPlayerDefeated?: () => void;
+  /** ให้ระบบภายนอก (เช่น Block) ปรับดาเมจก่อนเข้าตัวผู้เล่น */
+  modifyIncomingDamage?: (amount: number) => number;
+  /** แจ้งเมื่อมอนสเตอร์โดนดาเมจ (ไว้โชว์ตัวเลขดาเมจ) */
+  onMonsterDamaged?: (monster: Monster, amount: number) => void;
 }
 
 /** ปรับจำนวนมอนสเตอร์ตามระดับกราฟิก เพื่อคุมภาระมือถือ */
@@ -75,24 +84,68 @@ export class MonsterManager {
     return { x: cx, z: cz };
   }
 
-  /** โจมตีของผู้เล่น: ดาเมจมอนสเตอร์ในกรวยหน้าตัวละคร */
-  playerAttack(position: THREE.Vector3, heading: number): void {
+  /** โจมตีของผู้เล่น: ดาเมจมอนสเตอร์ในกรวยหน้าตัวละคร คืนจำนวนตัวที่โดน */
+  playerAttack(position: THREE.Vector3, heading: number, options: AttackOptions): number {
     const fx = Math.sin(heading);
     const fz = Math.cos(heading);
+    let hits = 0;
     for (const monster of this.monsters) {
       if (!monster.alive) continue;
       const dx = monster.group.position.x - position.x;
       const dz = monster.group.position.z - position.z;
       const dist = Math.hypot(dx, dz);
-      if (dist > PLAYER_ATTACK_RANGE + monster.type.scale * 0.6) continue;
+      if (dist > options.range + monster.type.scale * 0.6) continue;
       if (dist > 0.001) {
         const dot = (dx * fx + dz * fz) / dist;
-        if (dot < PLAYER_ATTACK_ARC_COS) continue; // อยู่นอกกรวยหน้า
+        if (dot < options.arcCos) continue; // อยู่นอกกรวยหน้า
       }
-      const died = monster.takeDamage(PLAYER_ATTACK_DAMAGE);
-      this.effects.spawnHitSpark(monster.group.position);
-      if (died && monster === this.boss) this.bossBar.hide();
+      this.applyHit(monster, options.damage, position.x, position.z, options.knockback ?? 0);
+      hits++;
     }
+    return hits;
+  }
+
+  /** ดาเมจทุกตัวในรัศมีรอบจุด (สกิล AoE) คืนจำนวนตัวที่โดน */
+  damageRadius(center: THREE.Vector3, radius: number, damage: number, knockback = 0): number {
+    let hits = 0;
+    for (const monster of this.monsters) {
+      if (!monster.alive) continue;
+      const dx = monster.group.position.x - center.x;
+      const dz = monster.group.position.z - center.z;
+      if (Math.hypot(dx, dz) > radius + monster.type.scale * 0.5) continue;
+      this.applyHit(monster, damage, center.x, center.z, knockback);
+      hits++;
+    }
+    return hits;
+  }
+
+  /** มอนสเตอร์ที่ยังไม่ตายภายในรัศมีจากจุด (ใช้กับ projectile) */
+  monstersNear(x: number, z: number, radius: number): Monster[] {
+    const found: Monster[] = [];
+    for (const monster of this.monsters) {
+      if (!monster.alive) continue;
+      const dx = monster.group.position.x - x;
+      const dz = monster.group.position.z - z;
+      if (Math.hypot(dx, dz) <= radius + monster.type.scale * 0.5) found.push(monster);
+    }
+    return found;
+  }
+
+  /** ทำดาเมจ + knockback (บอสต้านทานแรงผลัก/อาการเซ) */
+  applyHit(monster: Monster, damage: number, srcX: number, srcZ: number, knockback: number): void {
+    const died = monster.takeDamage(damage);
+    this.effects.spawnHitSpark(monster.group.position);
+    this.callbacks.onMonsterDamaged?.(monster, damage);
+    if (!died && knockback > 0) {
+      const dx = monster.group.position.x - srcX;
+      const dz = monster.group.position.z - srcZ;
+      const len = Math.hypot(dx, dz) || 1;
+      const resist = monster.type.kind === 'boss' ? 0.25 : 1;
+      monster.kbX += (dx / len) * knockback * resist;
+      monster.kbZ += (dz / len) * knockback * resist;
+      monster.staggerTimer = Math.max(monster.staggerTimer, monster.type.kind === 'boss' ? 0.15 : 0.35);
+    }
+    if (died && monster === this.boss) this.bossBar.hide();
   }
 
   update(dt: number): void {
@@ -116,6 +169,28 @@ export class MonsterManager {
       }
 
       monster.attackCooldown = Math.max(0, monster.attackCooldown - dt);
+
+      // ---------- Knockback: ไถลตามแรงผลักแล้วหน่วงลง ----------
+      if (Math.hypot(monster.kbX, monster.kbZ) > 0.05) {
+        const nx = monster.group.position.x + monster.kbX * dt;
+        const nz = monster.group.position.z + monster.kbZ * dt;
+        const ground = this.collision.heightAt(nx, nz);
+        if (ground >= GROUND_MIN) {
+          monster.group.position.x = nx;
+          monster.group.position.z = nz;
+          monster.group.position.y = ground;
+        }
+        const damp = Math.exp(-6 * dt);
+        monster.kbX *= damp;
+        monster.kbZ *= damp;
+      } else {
+        monster.kbX = 0;
+        monster.kbZ = 0;
+      }
+      if (monster.staggerTimer > 0) {
+        monster.staggerTimer -= dt;
+        continue; // เซอยู่ ขยับ/ตีไม่ได้หนึ่งจังหวะ
+      }
 
       const dx = player.x - monster.group.position.x;
       const dz = player.z - monster.group.position.z;
@@ -160,7 +235,8 @@ export class MonsterManager {
   }
 
   private damagePlayer(amount: number): void {
-    this.controller.hp = Math.max(0, this.controller.hp - amount);
+    const final = this.callbacks.modifyIncomingDamage?.(amount) ?? amount;
+    this.controller.hp = Math.max(0, this.controller.hp - final);
     this.callbacks.onPlayerHit?.();
     if (this.controller.hp <= 0) {
       this.bossBar.hide();
