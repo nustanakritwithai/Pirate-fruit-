@@ -92,8 +92,8 @@ export class PlayerCombat {
   private pendingCast: PendingCast | null = null;
   private stateTimer = 0;
   private guardBroken = false;
-  /** คูลดาวน์ 4 สลอต: 0-2 สกิลธรรมดา, 3 ไม้ตาย */
-  private skillCooldowns = [0, 0, 0, 0];
+  /** คูลดาวน์รายสกิล (key = skill.id) — เดินตามเวลาจริง ไม่รีเซ็ตตอนสลับชุดสกิล */
+  private readonly skillCooldowns = new Map<string, number>();
   private timeSinceDamaged = 99;
 
   private readonly projectiles: WaveProjectile[] = [];
@@ -173,7 +173,7 @@ export class PlayerCombat {
   skillCooldownFraction(slot: number): number {
     const skill = this.set.slots[slot];
     if (!skill) return 0;
-    return Math.max(0, this.skillCooldowns[slot]) / skill.cooldown;
+    return Math.max(0, this.skillCooldowns.get(skill.id) ?? 0) / skill.cooldown;
   }
 
   get guardFraction(): number {
@@ -247,8 +247,11 @@ export class PlayerCombat {
   // ------------------------------------------------------------------
 
   update(dt: number): void {
-    for (let i = 0; i < this.skillCooldowns.length; i++) {
-      this.skillCooldowns[i] = Math.max(0, this.skillCooldowns[i] - dt);
+    // คูลดาวน์ทุกสกิล (ทั้งชุดอาวุธและผลไม้) เดินถอยหลังพร้อมกันตามเวลาจริง
+    for (const [id, remaining] of this.skillCooldowns) {
+      const next = remaining - dt;
+      if (next <= 0) this.skillCooldowns.delete(id);
+      else this.skillCooldowns.set(id, next);
     }
     this.comboWindowTimer -= dt;
     if (this.comboWindowTimer <= 0 && !this.swing) this.comboIndex = 0;
@@ -422,18 +425,19 @@ export class PlayerCombat {
   // ------------------------------------------------------------------
 
   private beginCastSkill(slot: number): void {
-    if (this.skillCooldowns[slot] > 0) return;
     const skill = this.set.slots[slot];
     if (!skill) {
       this.touch?.notify(slot === ULTIMATE_SLOT ? 'ยังไม่มีไม้ตาย' : 'ยังไม่มีสกิลช่องนี้');
       return;
     }
+    // คูลดาวน์รายสกิล — สกิลชุดอื่นที่สลอตเดียวกันจะไม่บล็อกกัน
+    if ((this.skillCooldowns.get(skill.id) ?? 0) > 0) return;
     if (this.controller.energy < skill.energyCost) {
       this.touch?.notify('พลังงานไม่พอ ⚡');
       return;
     }
     this.controller.energy -= skill.energyCost;
-    this.skillCooldowns[slot] = skill.cooldown;
+    this.skillCooldowns.set(skill.id, skill.cooldown);
     this.swing = null;
     this.comboIndex = 0;
     this.pendingCast = { skill, slot, timer: skill.castTime };
