@@ -1,7 +1,6 @@
 import type { ProgressionManager } from '../progression/ProgressionManager';
 import type { ActiveLoadoutItem, PlayerStatId } from '../progression/ProgressionTypes';
 import { PROGRESSION_CONFIG } from '../progression/ProgressionData';
-import { SKILLS } from '../combat/CombatData';
 import { getMasteryExpRequired } from '../progression/MasterySystem';
 import {
   STAT_DEFINITIONS,
@@ -28,7 +27,8 @@ export class StatsPanel {
   constructor(
     private progression: ProgressionManager,
     private onVisibilityChanged: (open: boolean) => void,
-    private getActiveItem: () => ActiveLoadoutItem,
+    /** ไอเทมที่ติดตั้งแยกต่อชิ้น (อาวุธ + ผลไม้) เพื่อโชว์ mastery ต่อชิ้น */
+    private getMasteryItems: () => ActiveLoadoutItem[],
   ) {
     this.injectStyles();
     this.openButton = document.createElement('button');
@@ -140,24 +140,28 @@ export class StatsPanel {
     derived.textContent = `Max HP ${this.progression.getMaxHp()} · Max Energy ${this.progression.getMaxEnergy()}`;
     this.content.appendChild(derived);
 
-    const item = this.getActiveItem();
-    const mastery = state.mastery[item.itemId];
-    const masteryLevel = mastery?.level ?? 1;
-    const masteryExp = mastery?.exp ?? 0;
-    const masteryRequired = getMasteryExpRequired(masteryLevel);
-    const masterySkills = SKILLS.filter((skill) => skill.category === item.category).map((skill) =>
-      `<div>${masteryLevel >= skill.masteryRequired ? '✓' : '🔒'} ${skill.id} · ` +
-      `${skill.masteryRequired === 0 || masteryLevel >= skill.masteryRequired
-        ? 'ปลดล็อกแล้ว'
-        : `Mastery ${skill.masteryRequired}`}</div>`,
-    ).join('');
-    const masterySection = document.createElement('section');
-    masterySection.className = 'stats-mastery';
-    masterySection.innerHTML = `<div class="stats-mastery-title">${item.name}</div>
-      <div class="stats-mastery-level">Mastery ${masteryLevel}/${PROGRESSION_CONFIG.masteryMaxLevel}</div>
-      <div class="stats-mastery-exp">EXP ${masteryExp} / ${masteryRequired}</div>
-      <div class="stats-mastery-skills">${masterySkills || '<div>ยังไม่มีสกิลสำหรับอุปกรณ์นี้</div>'}</div>`;
-    this.content.appendChild(masterySection);
+    // Mastery แยกต่อชิ้น — โชว์อาวุธที่ถือ + ผลไม้พร้อมกัน (แต่ละชิ้นเก็บเลเวลของตัวเอง)
+    const heading = document.createElement('div');
+    heading.className = 'stats-mastery-heading';
+    heading.textContent = 'ความชำนาญ (Mastery) — แยกต่อชิ้น';
+    this.content.appendChild(heading);
+
+    const ICON: Record<string, string> = { style: '👊', sword: '🗡️', gun: '🔫', fruit: '🍎' };
+    for (const item of this.getMasteryItems()) {
+      const mastery = state.mastery[item.itemId];
+      const masteryLevel = mastery?.level ?? 1;
+      const masteryExp = mastery?.exp ?? 0;
+      const masteryRequired = getMasteryExpRequired(masteryLevel);
+      const progress = Math.min(100, Math.round((masteryExp / masteryRequired) * 100));
+      const section = document.createElement('section');
+      section.className = 'stats-mastery';
+      section.innerHTML = `
+        <div class="stats-mastery-title">${ICON[item.category] ?? '⚔️'} ${item.name}</div>
+        <div class="stats-mastery-level">Mastery ${masteryLevel}<span>/${PROGRESSION_CONFIG.masteryMaxLevel}</span></div>
+        <div class="stats-mastery-bar"><i style="width:${progress}%"></i></div>
+        <div class="stats-mastery-exp">EXP ${masteryExp} / ${masteryRequired}</div>`;
+      this.content.appendChild(section);
+    }
   }
 
   private injectStyles(): void {
@@ -189,12 +193,16 @@ export class StatsPanel {
       .stats-effect { margin-top:6px; color:#8ff0cd; font-size:12px; font-weight:700; }
       .stats-desc { margin-top:3px; color:#93b0b7; font-size:10px; line-height:1.45; }
       .stats-derived { margin-top:12px; color:#9fe6cc; font-size:12px; text-align:center; font-weight:700; }
-      .stats-mastery { margin-top:13px; padding:10px 11px; border-radius:11px; background:rgba(28,15,48,.42);
+      .stats-mastery-heading { margin:16px 0 4px; color:#dec5ff; font-size:12px; font-weight:800; }
+      .stats-mastery { margin-top:8px; padding:10px 11px; border-radius:11px; background:rgba(28,15,48,.42);
         border:1px solid rgba(169,126,239,.34); }
-      .stats-mastery-title { color:#dec5ff; font-weight:800; font-size:13px; }
-      .stats-mastery-level { margin-top:3px; color:#fff; font-size:12px; }
-      .stats-mastery-exp { color:#b8c5ce; font-size:10px; }
-      .stats-mastery-skills { margin-top:6px; color:#a9c3c9; font-size:10px; line-height:1.5; }
+      .stats-mastery-title { color:#f0e4ff; font-weight:800; font-size:13px; }
+      .stats-mastery-level { margin-top:3px; color:#fff; font-size:13px; font-weight:800; }
+      .stats-mastery-level span { color:#9a86b8; font-size:10px; font-weight:600; }
+      .stats-mastery-bar { margin-top:5px; height:6px; border-radius:4px; background:rgba(0,0,0,.35); overflow:hidden; }
+      .stats-mastery-bar i { display:block; height:100%; border-radius:4px;
+        background:linear-gradient(90deg,#b98cff,#e8c2ff); }
+      .stats-mastery-exp { margin-top:4px; color:#b8c5ce; font-size:10px; }
       .stats-panel footer { margin-top:12px; color:#82a5ac; font-size:10px; text-align:center; }
       @media(max-width:700px){ .stats-open-button{right:8px;top:88px;width:30px;height:30px;font-size:14px}
         .stats-panel-root{align-items:flex-end;padding:8px}.stats-panel{max-height:80vh} }

@@ -224,9 +224,7 @@ async function main(): Promise<void> {
   new StatsPanel(progression, (open) => {
     if (open) controlsBeforeStats = controller.inputEnabled;
     controller.setControlsEnabled(open ? false : controlsBeforeStats);
-  }, () => playerCombat?.activeItem ?? {
-    itemId: 'basic-brawl', category: 'style', name: 'หมัด',
-  });
+  }, () => playerCombat?.masteryItems ?? [{ itemId: 'combat', category: 'style', name: 'มือเปล่า' }]);
   const questTracker = new QuestTracker(questManager);
   const rewardFeed = new RewardFeed(progression);
   const progressionDebug = new ProgressionDebugPanel(

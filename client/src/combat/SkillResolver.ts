@@ -6,6 +6,7 @@
 import type { SkillLoadout } from './SkillLoadout';
 import type { SkillSlotIndex } from './types';
 import type { LoadoutCategory } from './CombatData';
+import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import {
   toCastable,
   WEAPON_M1,
@@ -111,4 +112,36 @@ export function resolveActiveSet(loadout: SkillLoadout): ActiveSkillSet {
     weaponId: weapon.id,
     weaponCategory: weapon.category,
   };
+}
+
+/**
+ * ไอเทมที่ผู้เล่นติดตั้งแยกต่อชิ้น (อาวุธที่ถือ + ผลไม้) สำหรับโชว์ mastery ต่อชิ้น
+ * ไม่ขึ้นกับชุดสกิลที่ active — เห็น mastery ของทั้งสองพร้อมกัน
+ */
+export function resolveEquippedItems(loadout: SkillLoadout): {
+  weapon: ActiveLoadoutItem;
+  fruit: ActiveLoadoutItem | null;
+} {
+  const state = loadout.snapshot;
+  let weapon: ActiveLoadoutItem;
+  switch (loadout.equippedWeaponKind) {
+    case 'sword': {
+      const s = state.equippedSwordId ? getSword(state.equippedSwordId) : undefined;
+      weapon = { itemId: state.equippedSwordId ?? 'sword', category: 'sword', name: s?.nameTh ?? 'ดาบ' };
+      break;
+    }
+    case 'gun': {
+      const g = state.equippedGunId ? getGun(state.equippedGunId) : undefined;
+      weapon = { itemId: state.equippedGunId ?? 'gun', category: 'gun', name: g?.nameTh ?? 'ปืน' };
+      break;
+    }
+    default: {
+      const st = state.equippedFightingStyleId ? getFightingStyle(state.equippedFightingStyleId) : undefined;
+      weapon = { itemId: state.equippedFightingStyleId ?? 'combat', category: 'style', name: st?.nameTh ?? 'มือเปล่า' };
+    }
+  }
+  const fruit: ActiveLoadoutItem | null = state.equippedFruitId
+    ? { itemId: state.equippedFruitId, category: 'fruit', name: getFruit(state.equippedFruitId)?.nameTh ?? 'ผลไม้' }
+    : null;
+  return { weapon, fruit };
 }

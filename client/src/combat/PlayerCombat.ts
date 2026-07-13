@@ -25,7 +25,7 @@ import {
   type LoadoutCategory,
 } from './CombatData';
 import type { SkillLoadout } from './SkillLoadout';
-import { resolveActiveSet, type ActiveSkillSet } from './SkillResolver';
+import { resolveActiveSet, resolveEquippedItems, type ActiveSkillSet } from './SkillResolver';
 import type { CastableSkill } from './SkillCasting';
 import {
   type CombatState,
@@ -178,6 +178,12 @@ export class PlayerCombat {
   /** ชุดสกิลที่ active ('weapon' หรือ 'fruit') */
   get activeSkillSource(): 'weapon' | 'fruit' {
     return this.set.kind;
+  }
+
+  /** ไอเทมที่ติดตั้งแยกต่อชิ้น (อาวุธ + ผลไม้) — สำหรับโชว์ mastery ต่อชิ้นพร้อมกัน */
+  get masteryItems(): ActiveLoadoutItem[] {
+    const { weapon, fruit } = resolveEquippedItems(this.loadout);
+    return fruit ? [weapon, fruit] : [weapon];
   }
 
   get attackCooldownFraction(): number {
