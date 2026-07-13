@@ -3,36 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { createCrabVisual, createHumanoidVisual } from '../../art/CharacterVisuals';
 import { PlayerActionAnimator } from '../PlayerActionAnimator';
 import { ProceduralCharacterAnimator } from '../ProceduralCharacterAnimator';
-import { resolveMixamoPlayerRig } from '../../art/CharacterRig';
+import { createPiratePlayerVisual } from '../../art/PiratePlayerVisual';
 
 function quaternionChanged(before: THREE.Quaternion, after: THREE.Quaternion): boolean {
   return before.angleTo(after) > 0.001;
-}
-
-function makeMixamoMock(): { root: THREE.Group; nodes: Map<string, THREE.Object3D> } {
-  const root = new THREE.Group();
-  const names = [
-    'mixamorig:Hips',
-    'mixamorig:Spine',
-    'mixamorig:Spine2',
-    'mixamorig:Head',
-    'mixamorig:LeftArm',
-    'mixamorig:LeftForeArm',
-    'mixamorig:LeftHand',
-    'mixamorig:RightArm',
-    'mixamorig:RightForeArm',
-    'mixamorig:RightHand',
-    'mixamorig:LeftUpLeg',
-    'mixamorig:RightUpLeg',
-  ];
-  const nodes = new Map<string, THREE.Object3D>();
-  for (const name of names) {
-    const node = new THREE.Object3D();
-    node.name = name;
-    root.add(node);
-    nodes.set(name, node);
-  }
-  return { root, nodes };
 }
 
 describe('Procedural character assets', () => {
@@ -75,26 +49,74 @@ describe('Procedural character assets', () => {
   });
 });
 
-describe('Mixamo player action overlay', () => {
-  it('finds the Soldier rig and applies block/attack overlays', () => {
-    const blocking = makeMixamoMock();
-    const rig = resolveMixamoPlayerRig(blocking.root);
-    const blockAnimator = new PlayerActionAnimator(rig);
-    const blockArm = blocking.nodes.get('mixamorig:RightArm')!;
-    const beforeBlock = blockArm.quaternion.clone();
+describe('Pirate V1 player rig', () => {
+  it('builds a new mobile-PBR player with explicit palm and hip sockets', () => {
+    const visual = createPiratePlayerVisual();
 
-    blockAnimator.update(0.1, { combatState: 'blocking', category: 'style', onGround: true });
-    expect(blockAnimator.rigReady).toBe(true);
-    expect(rig.leftHand).toBe(blocking.nodes.get('mixamorig:LeftHand'));
-    expect(rig.rightHand).toBe(blocking.nodes.get('mixamorig:RightHand'));
-    expect(quaternionChanged(beforeBlock, blockArm.quaternion)).toBe(true);
+    expect(visual.group.name).toBe('player:pirate-v1');
+    expect(visual.group.getObjectByName('socket:left-palm')).toBe(visual.rig.leftPalmSocket);
+    expect(visual.group.getObjectByName('socket:right-palm')).toBe(visual.rig.rightPalmSocket);
+    expect(visual.group.getObjectByName('socket:hips')).toBe(visual.rig.hipsSocket);
+    expect(visual.group.getObjectByName('mixamorig:RightHand')).toBeUndefined();
+  });
 
-    const attacking = makeMixamoMock();
-    const attackAnimator = new PlayerActionAnimator(attacking.root);
-    const attackArm = attacking.nodes.get('mixamorig:RightArm')!;
-    const beforeAttack = attackArm.quaternion.clone();
-    attackAnimator.update(0.12, { combatState: 'attack1', category: 'sword', onGround: true });
-    attackAnimator.update(0.12, { combatState: 'attack1', category: 'sword', onGround: true });
-    expect(quaternionChanged(beforeAttack, attackArm.quaternion)).toBe(true);
+  it('keeps the new player inside the mobile hero geometry budget and human proportions', () => {
+    const visual = createPiratePlayerVisual();
+    const bounds = new THREE.Box3().setFromObject(visual.group);
+    let triangles = 0;
+    let meshes = 0;
+    const materialSlots = new Set<THREE.Material>();
+    visual.group.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      meshes++;
+      const geometry = mesh.geometry;
+      triangles += geometry.index
+        ? geometry.index.count / 3
+        : geometry.getAttribute('position').count / 3;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      expect(materials.every((material) => material instanceof THREE.MeshStandardMaterial)).toBe(true);
+      for (const material of materials) materialSlots.add(material);
+    });
+
+    const size = bounds.getSize(new THREE.Vector3());
+    expect(meshes).toBeGreaterThan(12);
+    expect(meshes).toBeLessThanOrEqual(20);
+    expect(materialSlots.size).toBeLessThanOrEqual(3);
+    expect(triangles).toBeLessThan(20_000);
+    expect(size.y).toBeGreaterThan(1.9);
+    expect(size.y).toBeLessThan(2.6);
+    expect(size.y / size.x).toBeGreaterThan(1.45);
+    expect(bounds.min.y).toBeGreaterThan(-0.12);
+  });
+
+  it('animates locomotion and combat while restoring bind pose without drift', () => {
+    const visual = createPiratePlayerVisual();
+    const animator = new PlayerActionAnimator(visual.rig);
+    const gameplayRootBefore = visual.group.position.clone();
+    const legBefore = visual.rig.leftLeg.quaternion.clone();
+
+    animator.update(0.12, {
+      combatState: 'idle', category: 'style', locomotion: 'run', onGround: true,
+    });
+    expect(quaternionChanged(legBefore, visual.rig.leftLeg.quaternion)).toBe(true);
+
+    animator.update(0.12, {
+      combatState: 'attack1', category: 'sword', locomotion: 'idle', onGround: true,
+    });
+    const armAtWindup = visual.rig.rightArm.quaternion.clone();
+    animator.update(0.12, {
+      combatState: 'attack1', category: 'sword', locomotion: 'idle', onGround: true,
+    });
+    expect(quaternionChanged(armAtWindup, visual.rig.rightArm.quaternion)).toBe(true);
+    expect(animator.rigReady).toBe(true);
+    expect(visual.group.position.equals(gameplayRootBefore)).toBe(true);
+
+    for (let i = 0; i < 240; i++) {
+      animator.update(1 / 60, {
+        combatState: 'idle', category: 'style', locomotion: 'idle', onGround: true,
+      });
+    }
+    expect(visual.rig.rightArm.quaternion.length()).toBeCloseTo(1, 5);
   });
 });

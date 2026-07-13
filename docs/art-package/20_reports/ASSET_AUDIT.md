@@ -27,7 +27,7 @@
 
 | Asset | Usage | Poly/Texture | Material | Reuse | Optimize/Replace | LOD | Collider | License | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `Soldier.glb` | Player | ~11,376 tris; 2 meshes/materials/textures; 4 clips | embedded PBR enhanced runtime | Single hero | compress mesh/textures | Missing LOD | controller capsule | UNKNOWN | OPTIMIZE |
+| Pirate V1 procedural rig | Player | 4,238 tris; 18 merged meshes; shared 64px micro maps | 3 Mobile PBR atlas materials + vertex colors | Single hero | runtime-ready; add distant LOD later | Missing LOD | controller capsule; visual rig separate | project code | READY |
 | Articulated procedural NPC human | 4 NPCs; idle/talk/wave | runtime benchmark pending | skin/cloth/leather/metal PBR | standard 7-pivot rig | shared geometry/cache later | Missing LOD | radius proxy; visual rig separate | code | OPTIMIZE |
 
 ## Monsters
@@ -58,8 +58,8 @@
 
 ## Priority
 
-1. เพิ่ม LOD ให้ Soldier, Boss, boats และ huts
-2. เพิ่ม license/provenance files สำหรับ texture และ Soldier GLB
+1. เพิ่ม LOD ให้ Pirate V1, Boss, boats และ huts
+2. เพิ่ม license/provenance files สำหรับ texture ภายนอกที่ยังเป็น UNKNOWN
 3. แปลง texture เป็น KTX2/Basis หลัง benchmark
 4. เปลี่ยน emoji UI เป็น icon atlas ที่มี license
 5. เปลี่ยน Boss procedural เป็น authored Mobile PBR GLB เมื่อ P7 integration คงที่

@@ -11,35 +11,10 @@ const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
   utility: 'equipment:utility',
 };
 
-/** จุดกึ่งกลางฝ่ามือจาก bind-pose skin weights ของ Soldier.glb (หน่วยเมตรใน bone local) */
-export const SOLDIER_PALM_OFFSETS: Record<'left' | 'right', THREE.Vector3Tuple> = {
-  left: [0.00226, 0.06461, 0.01123],
-  right: [0.00159, 0.06183, -0.00765],
-};
-
 const TRAINING_SWORD_SCALE = 0.85;
 const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [0, 0, -0.08];
-const TRAINING_SWORD_GRIP_CENTER: THREE.Vector3Tuple = [0, -0.06, 0];
-
-/** วาง group origin ให้จุดกึ่งกลางด้ามตรงกับ palm ไม่ใช่ wrist bone origin */
-function alignGripToPalm(
-  palm: THREE.Vector3Tuple,
-  gripCenter: THREE.Vector3Tuple,
-  rotation: THREE.Vector3Tuple,
-  scale: number,
-): THREE.Vector3Tuple {
-  const gripFromOrigin = new THREE.Vector3(...gripCenter)
-    .multiplyScalar(scale)
-    .applyEuler(new THREE.Euler(...rotation));
-  return new THREE.Vector3(...palm).sub(gripFromOrigin).toArray() as THREE.Vector3Tuple;
-}
-
-const TRAINING_SWORD_SOCKET_POSITION = alignGripToPalm(
-  SOLDIER_PALM_OFFSETS.right,
-  TRAINING_SWORD_GRIP_CENTER,
-  TRAINING_SWORD_ROTATION,
-  TRAINING_SWORD_SCALE,
-);
+/** อาวุธทุกชิ้นใช้ origin เป็นจุดจับ ส่วน socket ของ Pirate V1 อยู่กลางฝ่ามือ */
+const GRIP_ORIGIN: THREE.Vector3Tuple = [0, 0, 0];
 
 function colorFromId(id: string): THREE.Color {
   let hash = 2166136261;
@@ -125,17 +100,17 @@ export class EquipmentVisuals {
 
     // ดาบฝึก: สันคมโลหะ + guard ทองเหลือง อ่าน silhouette ได้แม้จอเล็ก
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.9, 0.035), steel);
-    blade.position.y = 0.62;
+    blade.position.y = 0.68;
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.052, 0.22, 4), steel);
-    tip.position.y = 1.18;
+    tip.position.y = 1.24;
     tip.rotation.y = Math.PI / 4;
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.09), brass);
-    guard.position.y = 0.13;
+    guard.position.y = 0.19;
     const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.32, 9), leather);
     grip.name = 'equipment:sword:grip';
-    grip.position.y = -0.06;
+    grip.position.y = 0;
     const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), brass);
-    pommel.position.y = -0.25;
+    pommel.position.y = -0.19;
     this.sword.add(blade, tip, guard, grip, pommel);
     this.sword.position.set(0.58, 1, 0.12);
     this.sword.rotation.set(0.08, 0.04, -0.16);
@@ -152,24 +127,25 @@ export class EquipmentVisuals {
         hand.add(wrap);
       }
     }
-    // fallback สำหรับ asset ที่ไม่มี Mixamo hand bones
+    // fallback เมื่อ visual asset ไม่มี palm socket
     this.leftWrap.position.set(-0.62, 0.76, 0.04);
     this.rightWrap.position.set(0.62, 0.76, 0.04);
     this.wraps.add(this.leftWrap, this.rightWrap);
 
     // ปืน flintlock แบบ procedural — ใช้ geometry ต่ำและวัสดุร่วม
     const gunGrip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, 0.13), darkLeather);
-    gunGrip.position.set(0, -0.18, 0);
+    gunGrip.name = 'equipment:gun:grip';
+    gunGrip.position.set(0, 0, 0);
     gunGrip.rotation.z = -0.28;
     const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.58), leather);
-    gunBody.position.z = 0.23;
+    gunBody.position.set(0, 0.2, 0.23);
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.72, 10), steel);
     barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.08, 0.48);
+    barrel.position.set(0, 0.28, 0.48);
     const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.018, 6, 10), brass);
-    muzzle.position.set(0, 0.08, 0.84);
+    muzzle.position.set(0, 0.28, 0.84);
     const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.08), brass);
-    hammer.position.set(0, 0.2, 0.05);
+    hammer.position.set(0, 0.38, 0.05);
     hammer.rotation.x = -0.42;
     this.gun.add(gunGrip, gunBody, barrel, muzzle, hammer);
     this.gun.position.set(-0.58, 1.02, 0.04);
@@ -263,26 +239,26 @@ export class EquipmentVisuals {
     if (item.category === 'fruit') this.applyFruitPalette(item.itemId);
   }
 
-  /** ผูก visual กับ socket หลัง mixer/action overlay อัปเดต โดยไม่แก้ skeleton */
+  /** ผูก visual กับ calibrated socket หลัง animation อัปเดต โดยไม่แตะ gameplay state */
   private updateSocketTransforms(): boolean {
-    this.followSocket(this.leftWrap, this.sockets.leftHand, SOLDIER_PALM_OFFSETS.left, [0, 0, 0], 0.9);
-    this.followSocket(this.rightWrap, this.sockets.rightHand, SOLDIER_PALM_OFFSETS.right, [0, 0, 0], 0.9);
+    this.followSocket(this.leftWrap, this.sockets.leftHand, GRIP_ORIGIN, [0, 0, 0], 0.9);
+    this.followSocket(this.rightWrap, this.sockets.rightHand, GRIP_ORIGIN, [0, 0, 0], 0.9);
     this.followSocket(
       this.sword,
       this.sockets.rightHand,
-      TRAINING_SWORD_SOCKET_POSITION,
+      GRIP_ORIGIN,
       TRAINING_SWORD_ROTATION,
       TRAINING_SWORD_SCALE,
     );
-    this.followSocket(this.gun, this.sockets.rightHand, [0, 0.02, 0], [-Math.PI / 2, 0, 0], 0.75);
+    this.followSocket(this.gun, this.sockets.rightHand, GRIP_ORIGIN, [0, 0, 0], 0.75);
     const fruitMounted = this.followSocket(
       this.fruit,
       this.sockets.leftHand,
-      [0, 0.12, 0],
+      [0, 0.2, 0],
       [0, 0, 0],
       0.85,
     );
-    this.followSocket(this.utility, this.sockets.hips, [-0.38, 0, 0.18], [0, 0, 0], 0.9);
+    this.followSocket(this.utility, this.sockets.hips, GRIP_ORIGIN, [0, 0, 0], 0.9);
     return fruitMounted;
   }
 

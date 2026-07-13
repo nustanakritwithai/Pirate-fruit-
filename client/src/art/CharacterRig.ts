@@ -14,21 +14,32 @@ export interface CharacterRig {
   rightLeg: THREE.Group;
 }
 
-/** Bone adapter ของ Soldier.glb — resolve ครั้งเดียวแล้วแชร์ให้ animation กับ equipment */
-export interface MixamoPlayerRig {
+/**
+ * Rig ของผู้เล่น Pirate V1 ที่สร้างในโปรเจกต์เอง
+ * ทุก pivot ใช้แกนเดียวกัน และ hand socket คือจุดกึ่งกลางฝ่ามือจริง ไม่ใช่ข้อมือ
+ */
+export interface PiratePlayerRig {
   modelRoot: THREE.Object3D;
-  hips: THREE.Object3D | null;
-  spine: THREE.Object3D | null;
-  spine2: THREE.Object3D | null;
-  head: THREE.Object3D | null;
-  leftArm: THREE.Object3D | null;
-  leftForeArm: THREE.Object3D | null;
-  leftHand: THREE.Object3D | null;
-  rightArm: THREE.Object3D | null;
-  rightForeArm: THREE.Object3D | null;
-  rightHand: THREE.Object3D | null;
-  leftLeg: THREE.Object3D | null;
-  rightLeg: THREE.Object3D | null;
+  root: THREE.Group;
+  hips: THREE.Group;
+  spine: THREE.Group;
+  chest: THREE.Group;
+  head: THREE.Group;
+  leftArm: THREE.Group;
+  leftForeArm: THREE.Group;
+  leftHand: THREE.Group;
+  rightArm: THREE.Group;
+  rightForeArm: THREE.Group;
+  rightHand: THREE.Group;
+  leftLeg: THREE.Group;
+  leftLowerLeg: THREE.Group;
+  leftFoot: THREE.Group;
+  rightLeg: THREE.Group;
+  rightLowerLeg: THREE.Group;
+  rightFoot: THREE.Group;
+  leftPalmSocket: THREE.Group;
+  rightPalmSocket: THREE.Group;
+  hipsSocket: THREE.Group;
 }
 
 /** Socket ที่ระบบ art ใช้ได้ โดยไม่เปิด skeleton ทั้งชุดให้ gameplay */
@@ -36,37 +47,15 @@ export interface CharacterAttachmentSockets {
   leftHand: THREE.Object3D | null;
   rightHand: THREE.Object3D | null;
   hips: THREE.Object3D | null;
+  /** true เมื่อ object เป็น anchor ที่ศิลปินวางตรงจุดจับแล้ว ไม่ต้องใช้ bone offset */
+  calibrated?: boolean;
 }
 
-const MIXAMO_BONE_NAMES: Omit<Record<keyof MixamoPlayerRig, string>, 'modelRoot'> = {
-  hips: 'mixamorig:Hips',
-  spine: 'mixamorig:Spine',
-  spine2: 'mixamorig:Spine2',
-  head: 'mixamorig:Head',
-  leftArm: 'mixamorig:LeftArm',
-  leftForeArm: 'mixamorig:LeftForeArm',
-  leftHand: 'mixamorig:LeftHand',
-  rightArm: 'mixamorig:RightArm',
-  rightForeArm: 'mixamorig:RightForeArm',
-  rightHand: 'mixamorig:RightHand',
-  leftLeg: 'mixamorig:LeftUpLeg',
-  rightLeg: 'mixamorig:RightUpLeg',
-};
-
-export function resolveMixamoPlayerRig(modelRoot: THREE.Object3D): MixamoPlayerRig {
-  const resolved = Object.fromEntries(
-    Object.entries(MIXAMO_BONE_NAMES).map(([key, name]) => [
-      key,
-      modelRoot.getObjectByName(name) ?? null,
-    ]),
-  ) as unknown as Omit<MixamoPlayerRig, 'modelRoot'>;
-  return { modelRoot, ...resolved };
-}
-
-export function attachmentSocketsFromRig(rig: MixamoPlayerRig): CharacterAttachmentSockets {
+export function attachmentSocketsFromPirateRig(rig: PiratePlayerRig): CharacterAttachmentSockets {
   return {
-    leftHand: rig.leftHand,
-    rightHand: rig.rightHand,
-    hips: rig.hips,
+    leftHand: rig.leftPalmSocket,
+    rightHand: rig.rightPalmSocket,
+    hips: rig.hipsSocket,
+    calibrated: true,
   };
 }

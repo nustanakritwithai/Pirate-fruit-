@@ -1,18 +1,18 @@
 [
   {
-    "id": "PF_CHAR_PLAYER_SOLDIER_001",
+    "id": "PF_CHAR_PLAYER_PIRATE_V1",
     "category": "character",
-    "sourcePath": "client/public/assets/models/Soldier.glb",
+    "sourcePath": "client/src/art/PiratePlayerVisual.ts",
     "lod": false,
     "collider": true,
-    "license": "UNKNOWN",
-    "artist": "",
-    "polycount": 11376,
-    "texture": "embedded",
-    "materialSlots": 2,
-    "status": "OPTIMIZE",
+    "license": "project-code",
+    "artist": "Pirate Fruit project",
+    "polycount": 4238,
+    "texture": "shared-64px-procedural-micro-maps",
+    "materialSlots": 3,
+    "status": "READY",
     "mobileTested": true,
-    "notes": "Mixamo locomotion plus Phase A2 procedural CombatState bone overlay"
+    "notes": "Project-authored articulated Pirate V1 with calibrated palm sockets, 18 merged meshes and procedural locomotion/combat actions"
   },
   {
     "id": "PF_CHAR_NPC_HUMANOID_001",
