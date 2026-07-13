@@ -28,15 +28,15 @@
 | Asset | Usage | Poly/Texture | Material | Reuse | Optimize/Replace | LOD | Collider | License | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | `Soldier.glb` | Player | ~11,376 tris; 2 meshes/materials/textures; 4 clips | embedded PBR enhanced runtime | Single hero | compress mesh/textures | Missing LOD | controller capsule | UNKNOWN | OPTIMIZE |
-| Procedural NPC human | 4 NPCs | estimated 2k–4k each | skin/cloth/leather/metal PBR | material presets | shared geometry/cache later | Missing LOD | radius proxy | procedural | OPTIMIZE |
+| Articulated procedural NPC human | 4 NPCs; idle/talk/wave | runtime benchmark pending | skin/cloth/leather/metal PBR | standard 7-pivot rig | shared geometry/cache later | Missing LOD | radius proxy; visual rig separate | code | OPTIMIZE |
 
 ## Monsters
 
 | Asset | Usage | Poly | Material | Reuse | Optimize/Replace | LOD | Collider | License | Status |
 |---|---|---:|---|---|---|---|---|---|---|
-| PBR Crab | normal camps | estimated 3k–5k | shell/leather PBR | per type | cache geometry/material | Missing LOD | gameplay radius | procedural | OPTIMIZE |
-| PBR Pirate | grunt | estimated 3k–6k | cloth/skin/leather/iron | per type | cache geometry/material | Missing LOD | gameplay radius | procedural | OPTIMIZE |
-| PBR Captain | boss | estimated 5k–8k | same + cape/armor | one | authored boss GLB later | Missing LOD | boss radius | procedural | REPLACE |
+| Articulated PBR Crab | normal camps; scuttle/attack/heavy/hit/death | runtime benchmark pending | shell/leather PBR | standard crab rig | cache geometry/material | Missing LOD | gameplay radius; visual rig separate | code | OPTIMIZE |
+| Articulated PBR Pirate | grunt; chase/attack/heavy/hit/death | runtime benchmark pending | cloth/skin/leather/iron | standard humanoid rig | cache geometry/material | Missing LOD | gameplay radius; visual rig separate | code | OPTIMIZE |
+| Articulated PBR Captain | boss; chase/attack/heavy/hit/death | runtime benchmark pending | same + cape/armor | standard humanoid rig | authored boss GLB later | Missing LOD | boss radius; visual rig separate | code | REPLACE |
 
 ## Boat
 

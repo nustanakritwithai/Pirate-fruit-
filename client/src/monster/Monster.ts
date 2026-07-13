@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import type { MonsterType } from './MonsterData';
-import { createCrabVisual, createHumanoidVisual } from '../art/CharacterVisuals';
+import {
+  createCrabVisual,
+  createHumanoidVisual,
+  type CharacterVisualResult,
+} from '../art/CharacterVisuals';
+import { ProceduralCharacterAnimator, type ProceduralLoopAction } from '../animation/ProceduralCharacterAnimator';
 
 export type MonsterState = 'idle' | 'chase' | 'attack' | 'return' | 'dead';
 
 /** สร้าง visual แบบ Mobile PBR คืน group + hull (ตัวหลักไว้แฟลชตอนโดนตี) */
-function createModel(type: MonsterType): { group: THREE.Group; hull: THREE.Mesh } {
+function createModel(type: MonsterType): CharacterVisualResult {
   const visual = type.kind === 'crab'
     ? createCrabVisual(type.color)
     : createHumanoidVisual({
@@ -15,10 +20,10 @@ function createModel(type: MonsterType): { group: THREE.Group; hull: THREE.Mesh 
         pirate: true,
         boss: type.kind === 'boss',
       });
-  const { group, hull } = visual;
+  const { group } = visual;
 
   group.scale.setScalar(type.scale);
-  return { group, hull };
+  return visual;
 }
 
 /** แถบ HP ลอยหัวมอนสเตอร์ (canvas sprite) */
@@ -75,6 +80,7 @@ export class Monster {
   readonly group: THREE.Group;
   private readonly hull: THREE.Mesh;
   private readonly healthBar: HealthBar;
+  private readonly animator: ProceduralCharacterAnimator;
 
   hp: number;
   state: MonsterState = 'idle';
@@ -108,6 +114,8 @@ export class Monster {
     const model = createModel(type);
     this.group = model.group;
     this.hull = model.hull;
+    const phase = Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * Math.PI * 2;
+    this.animator = new ProceduralCharacterAnimator(model.rig, phase);
     this.group.position.set(x, y, z);
     this.home.set(x, z);
     this.hp = type.maxHp;
@@ -130,6 +138,7 @@ export class Monster {
     this.hp = Math.max(0, this.hp - amount);
     this.healthBar.draw(this.hpFraction);
     this.hitFlash = 0.18;
+    this.animator.triggerHit();
     const material = this.hull.material as THREE.MeshStandardMaterial;
     material.emissive.setHex(0xff3a20);
     material.emissiveIntensity = 1.4;
@@ -147,6 +156,11 @@ export class Monster {
     this.healthBar.sprite.visible = false;
   }
 
+  /** visual event จาก MonsterManager เท่านั้น ไม่เปลี่ยน hit timing หรือ damage */
+  playAttackAnimation(heavy = false): void {
+    this.animator.triggerAttack(heavy);
+  }
+
   /** ตั้งค่ากลับมาเกิดใหม่ที่บ้าน */
   respawn(y: number): void {
     this.hp = this.type.maxHp;
@@ -160,6 +174,9 @@ export class Monster {
     this.staggerTimer = 0;
     this.group.position.set(this.home.x, y, this.home.y);
     this.group.scale.setScalar(this.type.scale);
+    this.group.rotation.x = 0;
+    this.group.rotation.z = 0;
+    this.animator.reset();
     this.group.visible = true;
     this.healthBar.sprite.visible = true;
     this.healthBar.draw(1);
@@ -182,11 +199,22 @@ export class Monster {
         material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 6);
       }
     }
+    let deathProgress = 0;
     if (this.state === 'dead') {
       this.deathTimer -= dt;
-      const t = Math.max(0, this.deathTimer / 0.7);
-      this.group.scale.setScalar(this.type.scale * t);
-      this.group.rotation.z += dt * 4;
+      deathProgress = 1 - Math.max(0, this.deathTimer / 0.7);
+    }
+
+    const action: ProceduralLoopAction = this.pendingHeavy
+      ? 'heavy'
+      : this.state === 'chase'
+        ? 'run'
+        : this.state === 'return'
+          ? 'walk'
+          : 'idle';
+    this.animator.update(dt, action, deathProgress);
+
+    if (this.state === 'dead') {
       if (this.deathTimer <= 0) {
         this.group.visible = false;
         return true;

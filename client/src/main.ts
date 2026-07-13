@@ -202,6 +202,10 @@ async function main(): Promise<void> {
     () => itemInventory.save(),
     progression,
   );
+  player.bindActionState(() => ({
+    combatState: playerCombat?.state ?? 'idle',
+    category: playerCombat?.activeItem.category ?? 'style',
+  }));
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
