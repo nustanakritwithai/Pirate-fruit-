@@ -1,0 +1,15 @@
+{
+  "id": "PF_TREE_001",
+  "category": "environment",
+  "sourcePath": "",
+  "lod": true,
+  "collider": true,
+  "license": "UNKNOWN",
+  "artist": "",
+  "polycount": 0,
+  "texture": "1024",
+  "materialSlots": 1,
+  "status": "OPTIMIZE",
+  "mobileTested": false,
+  "notes": ""
+}

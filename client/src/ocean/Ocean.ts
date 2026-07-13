@@ -17,13 +17,15 @@ export class Ocean {
 
   constructor(waterNormal: THREE.Texture, graphics: GraphicsProfile) {
     waterNormal.repeat.set(42, 42);
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x0c526d,
-      roughness: 0.18,
+    const material = new THREE.MeshPhysicalMaterial({
+      color: 0x0a526c,
+      roughness: 0.2,
       metalness: 0,
       normalMap: waterNormal,
       normalScale: new THREE.Vector2(0.72, 0.72),
-      envMapIntensity: 0.8,
+      envMapIntensity: graphics.tier === 'low' ? 0.68 : 0.98,
+      clearcoat: graphics.tier === 'low' ? 0.12 : 0.52,
+      clearcoatRoughness: 0.16,
     });
     const time = this.time;
     material.onBeforeCompile = (shader) => {

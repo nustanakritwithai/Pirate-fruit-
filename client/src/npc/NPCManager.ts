@@ -5,6 +5,7 @@ import type { CollisionSystem } from '../world/Collision';
 import { DialogueUI } from '../ui/DialogueUI';
 import { InteractionPrompt } from '../ui/InteractionPrompt';
 import { STARTER_NPCS, type NPCDefinition } from './NPCData';
+import { createHumanoidVisual } from '../art/CharacterVisuals';
 
 const INTERACTION_RANGE = 4.2;
 
@@ -50,25 +51,13 @@ function makeNPC(definition: NPCDefinition, y: number): NPCInstance {
   const group = new THREE.Group();
   group.position.set(definition.x, y, definition.z);
   const visual = new THREE.Group();
-  const cloth = new THREE.MeshStandardMaterial({ color: definition.color, roughness: 0.82 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xc98f68, roughness: 0.9 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x27231f, roughness: 0.92 });
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.54, 1.35, 8), cloth);
-  body.position.y = 1.55;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 10, 8), skin);
-  head.position.y = 2.55;
-  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.58, 0.18, 10), dark);
-  hat.position.y = 2.88;
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.34), dark);
-    leg.position.set(side * 0.22, 0.48, 0);
-    visual.add(leg);
-  }
-  visual.add(body, head, hat);
-  visual.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (mesh.isMesh) mesh.castShadow = true;
+  const character = createHumanoidVisual({
+    clothColor: definition.color,
+    accentColor: definition.action === 'boat-shop' ? 0xb58a4d : 0x6b3d56,
+    skinColor: 0xc98f68,
+    pirate: definition.action === 'boat-shop',
   });
+  visual.add(character.group);
   group.add(visual, makeNameSprite(definition.name));
   return { definition, group, visual };
 }

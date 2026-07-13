@@ -3,6 +3,11 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { WORLD_POIS } from '../world/WorldPOI';
+import {
+  createGlassMaterial,
+  createMobileMaterial,
+  tiledTexture,
+} from '../art/MobilePBRMaterials';
 
 export interface StarterIslandResult {
   nightMaterial: THREE.MeshStandardMaterial;
@@ -16,14 +21,61 @@ interface BuildContext {
   graphics: GraphicsProfile;
   nightMaterial: THREE.MeshStandardMaterial;
   nightLights: THREE.PointLight[];
+  materials: BuildMaterials;
 }
 
-const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xc69b67, roughness: 0.92 });
-const darkWoodMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2d1c, roughness: 0.9 });
-const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x7b3024, roughness: 0.88 });
-const ropeMaterial = new THREE.MeshStandardMaterial({ color: 0x9f8658, roughness: 1 });
-const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x747a78, roughness: 1 });
+interface BuildMaterials {
+  wall: THREE.MeshStandardMaterial;
+  darkWood: THREE.MeshStandardMaterial;
+  wood: THREE.MeshStandardMaterial;
+  roof: THREE.MeshStandardMaterial;
+  rope: THREE.MeshStandardMaterial;
+  stone: THREE.MeshStandardMaterial;
+  foliage: THREE.MeshStandardMaterial;
+  fruit: THREE.MeshStandardMaterial;
+  window: THREE.MeshPhysicalMaterial;
+}
+
 const safeMaterial = new THREE.MeshBasicMaterial({ color: 0x64e7c6, transparent: true, opacity: 0.68 });
+
+function createBuildingMaterials(textures: WorldTextures): BuildMaterials {
+  return {
+    wall: createMobileMaterial('plaster', {
+      color: 0xd7b17e,
+      map: tiledTexture(textures.sandColor, 2.2, 1.6),
+      normalMap: tiledTexture(textures.sandNormal, 2.2, 1.6),
+      normalStrength: 0.34,
+    }),
+    darkWood: createMobileMaterial('darkWood', {
+      color: 0x4a2d1c,
+      map: tiledTexture(textures.planksColor, 1.2, 2.4),
+      normalMap: tiledTexture(textures.planksNormal, 1.2, 2.4),
+      normalStrength: 0.52,
+    }),
+    wood: createMobileMaterial('wood', {
+      color: 0xb88a58,
+      map: tiledTexture(textures.planksColor, 1.3, 1.3),
+      normalMap: tiledTexture(textures.planksNormal, 1.3, 1.3),
+      normalStrength: 0.58,
+    }),
+    roof: createMobileMaterial('terracotta', { color: 0x8a3929 }),
+    rope: createMobileMaterial('rope', { color: 0xa58a5e }),
+    stone: createMobileMaterial('stone', {
+      color: 0x858b88,
+      map: tiledTexture(textures.rockColor, 2.4, 2.4),
+      normalMap: tiledTexture(textures.rockNormal, 2.4, 2.4),
+      normalStrength: 0.7,
+    }),
+    foliage: createMobileMaterial('foliage', { color: 0x34764a, roughness: 0.82 }),
+    fruit: createMobileMaterial('shell', {
+      color: 0xb75cff,
+      emissive: 0x351050,
+      emissiveIntensity: 0.7,
+      roughness: 0.38,
+    }),
+    window: createGlassMaterial(0x7eb6c8),
+  };
+}
 
 function shadow(mesh: THREE.Mesh | THREE.InstancedMesh, graphics: GraphicsProfile, receive = true): void {
   mesh.castShadow = graphics.shadows;
@@ -44,38 +96,47 @@ function makeHut(
 
   const foundation = new THREE.Mesh(
     new THREE.CylinderGeometry(3.15 * scale, 3.35 * scale, 0.55, 8),
-    stoneMaterial,
+    ctx.materials.stone,
   );
   foundation.position.y = 0.15;
   shadow(foundation, ctx.graphics);
   group.add(foundation);
 
-  const walls = new THREE.Mesh(new THREE.BoxGeometry(5.3 * scale, 3.1, 4.4 * scale), wallMaterial);
+  const walls = new THREE.Mesh(new THREE.BoxGeometry(5.3 * scale, 3.1, 4.4 * scale), ctx.materials.wall);
   walls.position.y = 1.85;
   shadow(walls, ctx.graphics);
   group.add(walls);
 
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2 * scale, 2.15, 4), roofMaterial);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2 * scale, 2.15, 4), ctx.materials.roof);
   roof.position.y = 4.15;
   roof.rotation.y = Math.PI / 4;
   roof.scale.z = 0.82;
   shadow(roof, ctx.graphics, false);
   group.add(roof);
 
-  const door = new THREE.Mesh(new THREE.BoxGeometry(1.25, 2.25, 0.14), darkWoodMaterial);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.25, 2.25, 0.14), ctx.materials.darkWood);
   door.position.set(0, 1.25, 2.27 * scale);
   group.add(door);
 
-  const windowMaterial = new THREE.MeshStandardMaterial({
-    color: 0x87b6c7,
-    emissive: 0x162b31,
-    roughness: 0.35,
-  });
   for (const side of [-1, 1]) {
-    const window = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.75, 0.1), windowMaterial);
+    const window = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.75, 0.1), ctx.materials.window);
     window.position.set(side * 1.55 * scale, 2.05, 2.3 * scale);
     group.add(window);
   }
+
+  const beamGeometry = new THREE.BoxGeometry(0.18, 3.25, 0.2);
+  const beams = new THREE.InstancedMesh(beamGeometry, ctx.materials.darkWood, 4);
+  const beamDummy = new THREE.Object3D();
+  let beamIndex = 0;
+  for (const sideX of [-1, 1]) {
+    for (const sideZ of [-1, 1]) {
+      beamDummy.position.set(sideX * 2.47 * scale, 1.85, sideZ * 2.02 * scale);
+      beamDummy.updateMatrix();
+      beams.setMatrixAt(beamIndex++, beamDummy.matrix);
+    }
+  }
+  shadow(beams, ctx.graphics);
+  group.add(beams);
 
   ctx.scene.add(group);
   ctx.collision.addCollider({
@@ -103,9 +164,9 @@ function buildVillage(ctx: BuildContext): void {
   const sign = new THREE.Group();
   const signY = ctx.collision.heightAt(-4.5, 3.5);
   sign.position.set(-4.5, signY, 3.5);
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 2.2, 6), darkWoodMaterial);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 2.2, 8), ctx.materials.darkWood);
   post.position.y = 1.1;
-  const board = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.16), darkWoodMaterial);
+  const board = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.16), ctx.materials.darkWood);
   board.position.y = 1.85;
   board.rotation.z = -0.05;
   sign.add(post, board);
@@ -124,7 +185,7 @@ function buildVillage(ctx: BuildContext): void {
 function buildLanterns(ctx: BuildContext, positions: [number, number][]): void {
   const postGeo = new THREE.CylinderGeometry(0.075, 0.1, 2.7, 6);
   const bulbGeo = new THREE.SphereGeometry(0.19, 8, 6);
-  const posts = new THREE.InstancedMesh(postGeo, darkWoodMaterial, positions.length);
+  const posts = new THREE.InstancedMesh(postGeo, ctx.materials.darkWood, positions.length);
   const bulbs = new THREE.InstancedMesh(bulbGeo, ctx.nightMaterial, positions.length);
   const dummy = new THREE.Object3D();
 
@@ -153,13 +214,7 @@ function buildHarbor(ctx: BuildContext): void {
   const dockY = 0.42;
   const boardCount = 34;
   const boardGeo = new THREE.BoxGeometry(4.6, 0.16, 0.92);
-  const dockMaterial = new THREE.MeshStandardMaterial({
-    map: ctx.textures.planksColor,
-    normalMap: ctx.textures.planksNormal,
-    color: 0xb88a58,
-    roughness: 0.88,
-  });
-  const boards = new THREE.InstancedMesh(boardGeo, dockMaterial, boardCount);
+  const boards = new THREE.InstancedMesh(boardGeo, ctx.materials.wood, boardCount);
   const dummy = new THREE.Object3D();
   for (let i = 0; i < boardCount; i++) {
     dummy.position.set(0, dockY, -28.3 - i * 0.9);
@@ -173,7 +228,7 @@ function buildHarbor(ctx: BuildContext): void {
   const postCount = 16;
   const posts = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.13, 0.17, 3.1, 7),
-    darkWoodMaterial,
+    ctx.materials.darkWood,
     postCount,
   );
   for (let i = 0; i < postCount; i++) {
@@ -198,11 +253,11 @@ function buildTrainingBeach(ctx: BuildContext): void {
     const y = ctx.collision.heightAt(dx, dz);
     const dummy = new THREE.Group();
     dummy.position.set(dx, y, dz);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 2.5, 6), darkWoodMaterial);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 2.5, 8), ctx.materials.darkWood);
     pole.position.y = 1.25;
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.58, 1.25, 7), ropeMaterial);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.58, 1.25, 10), ctx.materials.rope);
     body.position.y = 1.55;
-    const arms = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.9, 5), darkWoodMaterial);
+    const arms = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.9, 7), ctx.materials.darkWood);
     arms.position.y = 1.9;
     arms.rotation.z = Math.PI / 2;
     dummy.add(pole, body, arms);
@@ -216,11 +271,10 @@ function buildFruitGrove(ctx: BuildContext): void {
   const y = ctx.collision.heightAt(x, z);
   const tree = new THREE.Group();
   tree.position.set(x, y, z);
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.72, 5.6, 9), darkWoodMaterial);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.72, 5.6, 12), ctx.materials.darkWood);
   trunk.position.y = 2.8;
-  const crownMaterial = new THREE.MeshStandardMaterial({ color: 0x2d7c45, roughness: 0.9 });
   for (const offset of [[0, 5.7, 0], [-1.3, 5.2, 0.2], [1.2, 5.15, -0.3]] as const) {
-    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 1), crownMaterial);
+    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 2), ctx.materials.foliage);
     crown.position.set(offset[0], offset[1], offset[2]);
     shadow(crown, ctx.graphics, false);
     tree.add(crown);
@@ -228,13 +282,7 @@ function buildFruitGrove(ctx: BuildContext): void {
   tree.add(trunk);
   ctx.scene.add(tree);
 
-  const fruitMaterial = new THREE.MeshStandardMaterial({
-    color: 0xb75cff,
-    emissive: 0x351050,
-    emissiveIntensity: 1.2,
-    roughness: 0.45,
-  });
-  const fruits = new THREE.InstancedMesh(new THREE.SphereGeometry(0.24, 8, 6), fruitMaterial, 8);
+  const fruits = new THREE.InstancedMesh(new THREE.SphereGeometry(0.24, 12, 8), ctx.materials.fruit, 8);
   const dummy = new THREE.Object3D();
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
@@ -251,15 +299,15 @@ function buildHillShrine(ctx: BuildContext): void {
   const y = ctx.collision.heightAt(x, z);
   const group = new THREE.Group();
   group.position.set(x, y, z);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.35, 0.42, 8), stoneMaterial);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.35, 0.42, 12), ctx.materials.stone);
   base.position.y = 0.2;
   const beam = new THREE.BoxGeometry(0.35, 3.2, 0.35);
   for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(beam, roofMaterial);
+    const pillar = new THREE.Mesh(beam, ctx.materials.roof);
     pillar.position.set(side * 1.7, 1.9, 0);
     group.add(pillar);
   }
-  const top = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.38, 0.48), roofMaterial);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.38, 0.48), ctx.materials.roof);
   top.position.y = 3.45;
   group.add(base, top);
   ctx.scene.add(group);
@@ -272,14 +320,23 @@ export function buildStarterIsland(
   textures: WorldTextures,
   graphics: GraphicsProfile,
 ): StarterIslandResult {
-  const nightMaterial = new THREE.MeshStandardMaterial({
+  const nightMaterial = createMobileMaterial('shell', {
     color: 0xffc66e,
     emissive: 0xff9d36,
     emissiveIntensity: 0.1,
     roughness: 0.35,
   });
   const nightLights: THREE.PointLight[] = [];
-  const ctx: BuildContext = { scene, collision, textures, graphics, nightMaterial, nightLights };
+  const materials = createBuildingMaterials(textures);
+  const ctx: BuildContext = {
+    scene,
+    collision,
+    textures,
+    graphics,
+    nightMaterial,
+    nightLights,
+    materials,
+  };
   buildVillage(ctx);
   buildHarbor(ctx);
   buildTrainingBeach(ctx);

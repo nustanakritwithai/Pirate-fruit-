@@ -17,6 +17,12 @@ export interface GraphicsProfile {
   crateCount: number;
   cloudCount: number;
   pointLights: number;
+  grassPatchCount: number;
+  shrubCount: number;
+  textureAnisotropy: number;
+  exposure: number;
+  maxDrawCalls: number;
+  maxVisibleTriangles: number;
 }
 
 const STORAGE_KEY = 'pirate-fruit:graphics-v1';
@@ -24,7 +30,7 @@ const STORAGE_KEY = 'pirate-fruit:graphics-v1';
 const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
   low: {
     label: 'ประหยัด',
-    pixelRatio: 1,
+    pixelRatio: 0.75,
     antialias: false,
     shadows: false,
     shadowMapSize: 512,
@@ -36,13 +42,19 @@ const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
     crateCount: 7,
     cloudCount: 5,
     pointLights: 0,
+    grassPatchCount: 90,
+    shrubCount: 12,
+    textureAnisotropy: 1,
+    exposure: 0.92,
+    maxDrawCalls: 85,
+    maxVisibleTriangles: 150_000,
   },
   medium: {
     label: 'สมดุล',
-    pixelRatio: 1.25,
+    pixelRatio: 1,
     antialias: true,
     shadows: true,
-    shadowMapSize: 768,
+    shadowMapSize: 1024,
     terrainSegments: 100,
     waterSegments: 48,
     palmCount: 32,
@@ -51,10 +63,16 @@ const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
     crateCount: 9,
     cloudCount: 7,
     pointLights: 1,
+    grassPatchCount: 180,
+    shrubCount: 20,
+    textureAnisotropy: 4,
+    exposure: 0.98,
+    maxDrawCalls: 120,
+    maxVisibleTriangles: 220_000,
   },
   high: {
     label: 'สวย',
-    pixelRatio: 1.75,
+    pixelRatio: 1.25,
     antialias: true,
     shadows: true,
     shadowMapSize: 1536,
@@ -66,6 +84,12 @@ const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
     crateCount: 10,
     cloudCount: 10,
     pointLights: 3,
+    grassPatchCount: 280,
+    shrubCount: 28,
+    textureAnisotropy: 8,
+    exposure: 1.04,
+    maxDrawCalls: 150,
+    maxVisibleTriangles: 300_000,
   },
 };
 

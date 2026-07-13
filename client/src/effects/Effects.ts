@@ -32,6 +32,7 @@ export class Effects {
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      toneMapped: false,
     });
     const mesh = new THREE.Mesh(this.slashGeo, mat);
     mesh.position.copy(position);
@@ -54,6 +55,7 @@ export class Effects {
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      toneMapped: false,
     });
     const mesh = new THREE.Mesh(new THREE.RingGeometry(radius * 0.35, radius * 0.5, 40), mat);
     mesh.position.copy(position);
@@ -80,7 +82,13 @@ export class Effects {
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }),
+      new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
     );
     sprite.scale.set(1.5, 0.75, 1);
     sprite.position.copy(position);
@@ -99,6 +107,7 @@ export class Effects {
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      toneMapped: false,
     });
     const geometry = destructive
       ? new THREE.IcosahedronGeometry(1.1, 1)
@@ -120,6 +129,7 @@ export class Effects {
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      toneMapped: false,
     });
     const mesh = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.5, 16), mat);
     mesh.position.copy(position);
