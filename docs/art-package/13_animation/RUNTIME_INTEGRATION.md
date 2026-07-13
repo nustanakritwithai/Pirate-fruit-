@@ -4,11 +4,10 @@
 
 ## Player Pipeline
 
-1. `Player` โหลด `Soldier.glb`
-2. `resolveMixamoPlayerRig()` resolve bone มาตรฐานเพียงครั้งเดียว
-3. `AnimationMixer` เล่น Idle/Walk/Run จากไฟล์ GLB
-4. `PlayerActionAnimator` เติม pose จาก `CombatState` หลัง locomotion
-5. `EquipmentVisuals` อ่าน active loadout และตาม hand/hips sockets หลัง bone update
+1. `Player` สร้าง Pirate V1 จาก `PiratePlayerVisual.ts`; ไม่มีการโหลด Soldier GLB
+2. `PiratePlayerRig` กำหนด pivot และ calibrated palm/hips sockets ที่โปรเจกต์ควบคุมเอง
+3. `PlayerActionAnimator` restore bind pose แล้ววาด Idle/Walk/Run/Swim และ `CombatState`
+4. `EquipmentVisuals` อ่าน active loadout และตาม palm/hips sockets หลัง animation update
 
 | Loadout | Socket | Visual |
 |---|---|---|
@@ -18,9 +17,7 @@
 | Fruit | LeftHand | active fruit |
 | Utility | Hips | utility pouch/compass |
 
-หาก model ไม่มี socket ระบบใช้ตำแหน่ง fallback เดิมและเกมยังเริ่มได้
-
-`Soldier.glb` ใช้ palm offset ที่วัดจาก bind-pose skin weights และวางจุดกึ่งกลางด้ามดาบตรงกับ palm แทนการวาง group origin ตรง wrist bone เพื่อป้องกันอาวุธลอยข้างมือ
+ดาบและปืนสร้างโดยให้ group origin เป็นกึ่งกลางด้ามจับ ส่วน socket อยู่กลางฝ่ามือจริง จึงไม่ต้องคำนวณ wrist/palm offset และอาวุธไม่แยกจากมือเมื่อแขนหมุน หาก visual asset ไม่มี socket ระบบยังใช้ตำแหน่ง fallback เพื่อให้เกมเริ่มได้
 
 ## NPC Pipeline
 
@@ -49,6 +46,7 @@
 
 - socket test ตรวจว่าอุปกรณ์ตามมือเมื่อมือเคลื่อนและหมุน
 - socket test ตรวจว่า gameplay root ไม่ถูกเปลี่ยน
-- rig test ตรวจชื่อ Mixamo hands ที่ใช้จริง
+- rig test ตรวจชื่อ calibrated Pirate V1 sockets และยืนยันว่าไม่มี Mixamo node ในผู้เล่นใหม่
 - animation tests ตรวจ Player/NPC/Monster poses
+- budget test ตรวจ 4,238 triangles, ≤20 meshes และ ≤3 material slots
 - production build และ full logic suite ต้องผ่านก่อน merge

@@ -4,10 +4,13 @@ Phase A2 เพิ่มตัวละครแบบ articulated โดยค�
 
 ## Player
 
-- ใช้ `Soldier.glb` และคลิป Mixamo เดิมสำหรับ `Idle`, `Walk`, `Run`
-- เพิ่ม procedural bone overlay สำหรับ `Jump/Airborne`, `Attack 1–4`, `Cast`, `Block`, `Stunned`, `Knockback`, `Knockdown` และ `Death`
+- ใช้ `PiratePlayerVisual.ts` ซึ่งสร้างใหม่ในโปรเจกต์แทนโมเดล Soldier เดิมทั้งหมด
+- Human-proportion Pirate V1: เสื้อโค้ต กางเกง บูต ผ้าโพกหัว ใบหน้า และวัสดุ Mobile PBR
+- rig มี spine, arms, forearms, hands, upper/lower legs และ feet ที่ควบคุม pivot ได้เอง
+- มี calibrated `socket:left-palm`, `socket:right-palm` และ `socket:hips`
+- รองรับ `Idle`, `Walk`, `Run`, `Swim`, `Jump/Airborne`, `Attack 1–4`, `Cast`, `Block`, `Stunned`, `Knockback`, `Knockdown` และ `Death`
 - ท่าโจมตีแยก silhouette ตามหมวด `style`, `sword`, `gun` และ `fruit`
-- overlay อ่าน `CombatState` และ active loadout เท่านั้น ไม่กำหนด damage, hitbox, cooldown หรือ timing
+- animator อ่าน `CombatState` และ active loadout เท่านั้น ไม่กำหนด damage, hitbox, cooldown หรือ timing
 
 ## NPC
 
@@ -20,12 +23,14 @@ Phase A2 เพิ่มตัวละครแบบ articulated โดยค�
 
 - `CharacterVisualResult.group` คือ world/gameplay root
 - `CharacterVisualResult.rig` คือ visual pivots ที่ animator แก้ได้
+- `PiratePlayerRig` คือ visual rig ของผู้เล่นและเป็นเจ้าของ calibrated equipment sockets
 - Animation ห้ามย้าย world root หรือแก้ collider
 - อุปกรณ์ของมอนสเตอร์ผูกกับ bone/pivot เช่น `attachment:cutlass`
 
 ## Optimization
 
 - ไม่มี geometry/material allocation ใน animation update
-- ตัว procedural ใช้ pivot หลัก 7 จุดต่อหนึ่งตัว
+- Pirate V1 ใช้ 4,238 triangles, 18 merged meshes และ 3 material slots
+- สีเสื้อผ้าถูก bake เป็น vertex color บน PBR atlas materials เพื่อลด material switch
 - geometry และ material cache เป็นงาน optimization รอบถัดไป
-- `Soldier.glb` ยังต้องมี LOD และ texture compression ตาม Asset Audit
+- Soldier GLB ไม่ถูกโหลดใน runtime แล้ว

@@ -25,7 +25,7 @@
 ## Current Status
 
 - READY: runtime material foundation, terrain/ocean, shared presets, Phase 7/8 equipment visuals, registry/checklist
-- OPTIMIZE: Soldier GLB, common monsters, boats, huts, texture compression/LOD
+- OPTIMIZE: Pirate V1 distant LOD, common monsters, boats, huts และ texture compression/LOD
 - REPLACE: authored Boss model และ emoji UI ในรอบ asset production
 - MISSING: verified license files, KTX2 pipeline, authored LOD packs, preview thumbnails
 

@@ -16,16 +16,16 @@
 
 ## Runtime Rules
 
-1. `AnimationMixer` อัปเดต locomotion ของ Player ก่อน
-2. `PlayerActionAnimator` เติม bone overlay หลัง mixer
-3. `ProceduralCharacterAnimator` restore base pose แล้วคำนวณ pose ใหม่ทุก frame
+1. `PlayerActionAnimator` restore Pirate V1 bind pose ทุก frame
+2. animator วาด Idle/Walk/Run/Swim ก่อน แล้วจึงเติม pose จาก `CombatState`
+3. `ProceduralCharacterAnimator` restore base pose ของ NPC/Monster แล้วคำนวณ pose ใหม่ทุก frame
 4. visual animation ห้ามสร้าง hitbox, apply damage, consume energy หรือเริ่ม cooldown
 5. visual animation ห้ามย้าย gameplay/world root
-6. Equipment ใช้ shared Mixamo socket adapter และมีตำแหน่ง fallback เมื่อ bone ขาด
+6. Equipment วาง grip origin ตรง calibrated palm socket โดยตรงและมีตำแหน่ง fallback เมื่อ socket ขาด
 
 ## Transition Policy
 
-- Locomotion ใช้ crossfade 0.2 วินาทีจากระบบเดิม
+- Locomotion ใช้รอบการเคลื่อนไหวต่อเนื่องจาก elapsed time และคืน bind pose ก่อนเปลี่ยนท่า
 - Combat overlay เริ่มตาม `CombatState` ที่มีอยู่ ไม่มี animation-owned timing
 - Heavy telegraph ค้างตาม `pendingHeavy`; release animation เริ่มจาก event เดิม
 - Death/respawn reset internal rig เพื่อป้องกัน pose ค้าง
@@ -34,5 +34,6 @@
 
 - Unit test ตรวจ standard rig nodes และ attachment
 - Unit test ตรวจ locomotion/attack/death โดย world root ไม่ขยับ
-- Unit test ตรวจ Mixamo block และ sword attack overlays
+- Unit test ตรวจ Pirate V1 locomotion, block, sword attack และ quaternion drift
+- Unit test ตรวจว่า sword/gun grip อยู่ตรง palm socket ระหว่างหมุนแขน
 - Full build และ logic test suite ต้องผ่านก่อน merge
