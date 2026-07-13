@@ -60,8 +60,14 @@ describe('Pirate V1 player rig', () => {
     expect(visual.group.name).toBe('player:pirate-v1');
     expect(visual.group.getObjectByName('socket:left-palm')).toBe(visual.rig.leftPalmSocket);
     expect(visual.group.getObjectByName('socket:right-palm')).toBe(visual.rig.rightPalmSocket);
+    expect(visual.group.getObjectByName('player:right-palm-up')).toBe(visual.rig.rightPalmVisual);
     expect(visual.group.getObjectByName('socket:hips')).toBe(visual.rig.hipsSocket);
     expect(visual.group.getObjectByName('mixamorig:RightHand')).toBeUndefined();
+
+    const authoredPalmNormal = new THREE.Vector3(0, 0, 1)
+      .applyQuaternion(visual.rig.rightPalmVisual.quaternion);
+    expect(authoredPalmNormal.y).toBeGreaterThan(0.99);
+    expect(visual.rig.rightPalmSocket.position.z).toBeGreaterThan(0);
   });
 
   it('keeps the new player inside the mobile hero geometry budget and human proportions', () => {
@@ -92,6 +98,23 @@ describe('Pirate V1 player rig', () => {
     expect(size.y).toBeLessThan(2.6);
     expect(size.y / size.x).toBeGreaterThan(1.45);
     expect(bounds.min.y).toBeGreaterThan(-0.12);
+  });
+
+  it('keeps the sword-side palm visibly facing upward in the ready stance', () => {
+    const visual = createPiratePlayerVisual();
+    const animator = new PlayerActionAnimator(visual.rig);
+    animator.update(1 / 60, {
+      combatState: 'idle',
+      category: 'sword',
+      locomotion: 'idle',
+      onGround: true,
+    });
+    visual.group.updateMatrixWorld(true);
+
+    const palmNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(
+      visual.rig.rightPalmVisual.getWorldQuaternion(new THREE.Quaternion()),
+    );
+    expect(palmNormal.y).toBeGreaterThan(0.6);
   });
 
   it('animates locomotion and combat while restoring bind pose without drift', () => {

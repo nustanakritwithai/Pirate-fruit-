@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Input } from '../engine/Input';
 import type { CharacterController } from '../player/CharacterController';
 import type { MonsterManager, IncomingAttack } from '../monster/MonsterManager';
-import type { Effects } from '../effects/Effects';
+import { getForwardArcRotation, type Effects } from '../effects/Effects';
 import type { TouchControls } from '../ui/TouchControls';
 import type { Monster } from '../monster/Monster';
 import {
@@ -482,7 +482,7 @@ export class PlayerCombat {
       mesh.scale.setScalar(scale);
       mesh.position.set(position.x + dirX * 1.2, position.y + 1.15, position.z + dirZ * 1.2);
       mesh.rotation.set(-Math.PI / 2, 0, 0);
-      mesh.rotateZ(heading - Math.PI * 0.4);
+      mesh.rotateZ(getForwardArcRotation(heading, Math.PI * 0.8));
       this.scene.add(mesh);
       this.projectiles.push({
         mesh,

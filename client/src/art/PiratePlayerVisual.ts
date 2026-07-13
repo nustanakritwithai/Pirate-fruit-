@@ -232,6 +232,7 @@ export function createPiratePlayerVisual(): PiratePlayerVisualResult {
     arm: THREE.Group;
     foreArm: THREE.Group;
     hand: THREE.Group;
+    palmVisual: THREE.Group;
     palmSocket: THREE.Group;
   } => {
     const arm = namedGroup(
@@ -261,20 +262,34 @@ export function createPiratePlayerVisual(): PiratePlayerVisualResult {
       side < 0 ? 'player-rig:left-hand' : 'player-rig:right-hand',
       [0, -0.42, 0],
     );
+
+    // ฝ่ามือจริงหงายขึ้นและยื่นไปข้างหน้า ไม่ใช่ capsule ที่ห้อยคว่ำตามปลายแขน
+    // แยก visual จาก socket เพื่อคงจุดจับอาวุธแบบ deterministic ทุก animation
+    const palmVisual = namedGroup(
+      side < 0 ? 'player:left-palm-up' : 'player:right-palm-up',
+      [0, -0.075, 0],
+    );
+    palmVisual.rotation.x = -Math.PI / 2;
+    palmVisual.userData.palmSurfaceNormal = [0, 1, 0];
     const palm = capsule(0.105, 0.055, skin, 8);
     palm.name = side < 0 ? 'player:left-palm' : 'player:right-palm';
-    palm.position.y = -0.075;
+    palm.position.y = -0.06;
     palm.scale.set(0.88, 1, 0.75);
-    hand.add(palm);
+    const thumb = capsule(0.042, 0.05, skin, 7);
+    thumb.name = side < 0 ? 'player:left-thumb' : 'player:right-thumb';
+    thumb.position.set(-side * 0.095, -0.035, 0.035);
+    thumb.rotation.z = side * 0.62;
+    palmVisual.add(palm, thumb);
+    hand.add(palmVisual);
     foreArm.add(hand);
 
     const palmSocket = namedGroup(
       side < 0 ? 'socket:left-palm' : 'socket:right-palm',
-      [0, -0.075, 0],
+      [0, -0.075, 0.06],
     );
     palmSocket.userData.equipmentAnchor = true;
     hand.add(palmSocket);
-    return { arm, foreArm, hand, palmSocket };
+    return { arm, foreArm, hand, palmVisual, palmSocket };
   };
 
   const left = createArm(-1);
@@ -335,9 +350,11 @@ export function createPiratePlayerVisual(): PiratePlayerVisualResult {
     leftArm: left.arm,
     leftForeArm: left.foreArm,
     leftHand: left.hand,
+    leftPalmVisual: left.palmVisual,
     rightArm: right.arm,
     rightForeArm: right.foreArm,
     rightHand: right.hand,
+    rightPalmVisual: right.palmVisual,
     leftLeg: leftLeg.leg,
     leftLowerLeg: leftLeg.lowerLeg,
     leftFoot: leftLeg.foot,
@@ -356,9 +373,11 @@ export function createPiratePlayerVisual(): PiratePlayerVisualResult {
     left.arm,
     left.foreArm,
     left.hand,
+    left.palmVisual,
     right.arm,
     right.foreArm,
     right.hand,
+    right.palmVisual,
     leftLeg.leg,
     leftLeg.lowerLeg,
     leftLeg.foot,
