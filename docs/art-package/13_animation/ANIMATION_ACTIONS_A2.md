@@ -21,6 +21,7 @@
 3. `ProceduralCharacterAnimator` restore base pose แล้วคำนวณ pose ใหม่ทุก frame
 4. visual animation ห้ามสร้าง hitbox, apply damage, consume energy หรือเริ่ม cooldown
 5. visual animation ห้ามย้าย gameplay/world root
+6. Equipment ใช้ shared Mixamo socket adapter และมีตำแหน่ง fallback เมื่อ bone ขาด
 
 ## Transition Policy
 

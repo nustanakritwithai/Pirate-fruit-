@@ -1,38 +1,16 @@
 import * as THREE from 'three';
 import type { CombatState } from '../combat/CombatState';
 import type { LoadoutCategory } from '../progression/ProgressionTypes';
+import {
+  resolveMixamoPlayerRig,
+  type MixamoPlayerRig,
+} from '../art/CharacterRig';
 
 export interface PlayerActionSnapshot {
   combatState: CombatState;
   category: LoadoutCategory;
   onGround: boolean;
 }
-
-interface PlayerBones {
-  hips: THREE.Object3D | null;
-  spine: THREE.Object3D | null;
-  spine2: THREE.Object3D | null;
-  head: THREE.Object3D | null;
-  leftArm: THREE.Object3D | null;
-  leftForeArm: THREE.Object3D | null;
-  rightArm: THREE.Object3D | null;
-  rightForeArm: THREE.Object3D | null;
-  leftLeg: THREE.Object3D | null;
-  rightLeg: THREE.Object3D | null;
-}
-
-const BONE_NAMES: Record<keyof PlayerBones, string> = {
-  hips: 'mixamorig:Hips',
-  spine: 'mixamorig:Spine',
-  spine2: 'mixamorig:Spine2',
-  head: 'mixamorig:Head',
-  leftArm: 'mixamorig:LeftArm',
-  leftForeArm: 'mixamorig:LeftForeArm',
-  rightArm: 'mixamorig:RightArm',
-  rightForeArm: 'mixamorig:RightForeArm',
-  leftLeg: 'mixamorig:LeftUpLeg',
-  rightLeg: 'mixamorig:RightUpLeg',
-};
 
 function isAttack(state: CombatState): boolean {
   return state === 'attack1' || state === 'attack2' || state === 'attack3' || state === 'attack4';
@@ -41,17 +19,29 @@ function isAttack(state: CombatState): boolean {
 /** เติม action บน Mixamo rig หลัง AnimationMixer อัปเดต locomotion แล้ว */
 export class PlayerActionAnimator {
   readonly rigReady: boolean;
-  private readonly bones: PlayerBones;
+  private readonly bones: MixamoPlayerRig;
   private readonly euler = new THREE.Euler();
   private readonly delta = new THREE.Quaternion();
   private stateKey = '';
   private actionTime = 0;
 
-  constructor(model: THREE.Object3D) {
-    this.bones = Object.fromEntries(
-      Object.entries(BONE_NAMES).map(([key, name]) => [key, model.getObjectByName(name) ?? null]),
-    ) as unknown as PlayerBones;
-    this.rigReady = Object.values(this.bones).filter(Boolean).length >= 8;
+  constructor(modelOrRig: THREE.Object3D | MixamoPlayerRig) {
+    this.bones = 'modelRoot' in modelOrRig
+      ? modelOrRig
+      : resolveMixamoPlayerRig(modelOrRig);
+    const actionBones = [
+      this.bones.hips,
+      this.bones.spine,
+      this.bones.spine2,
+      this.bones.head,
+      this.bones.leftArm,
+      this.bones.leftForeArm,
+      this.bones.rightArm,
+      this.bones.rightForeArm,
+      this.bones.leftLeg,
+      this.bones.rightLeg,
+    ];
+    this.rigReady = actionBones.filter(Boolean).length >= 8;
   }
 
   update(dt: number, snapshot: PlayerActionSnapshot): void {

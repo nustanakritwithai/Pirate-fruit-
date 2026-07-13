@@ -212,6 +212,7 @@ async function main(): Promise<void> {
   const equipmentVisuals = new EquipmentVisuals(
     player.group,
     () => playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
+    player.equipmentSockets,
   );
   const pbrPerformance = new PBRPerformanceMonitor(game);
 
