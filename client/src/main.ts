@@ -143,9 +143,11 @@ async function main(): Promise<void> {
     effects,
     graphics,
     {
-      onPlayerHit: () => {
+      onPlayerHit: (amount) => {
         playerCombat?.notifyDamaged();
         hud.flashDamage();
+        // ตัวเลขดาเมจแดงเด้งเหนือหัวผู้เล่น (แยกสีจากเลขทำมอนสเตอร์ที่เป็นเหลือง)
+        if (amount > 0) effects.spawnDamageNumber(controller.position, amount, '#ff6b6b');
       },
       modifyIncomingDamage: (attack) =>
         playerCombat?.modifyIncomingDamage(attack) ?? attack.amount,

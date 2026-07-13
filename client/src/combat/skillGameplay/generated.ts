@@ -2,7 +2,7 @@
  * AUTO-GENERATED โดย scripts/gen-skill-gameplay.ts — ห้ามแก้ไฟล์นี้ด้วยมือ
  * จูนท่าเด่นที่ overrides.ts / ปรับสูตรที่ derive.ts แล้วรัน `npm run gen:skills`
  *
- * 429 สกิลจากตาราง Wiki (fruit 270 · sword 88 · gun 34 · style 37)
+ * 431 สกิลจากตาราง Wiki (fruit 270 · sword 88 · gun 34 · style 39)
  */
 
 import type { SkillGameplay } from './types';
@@ -402,6 +402,8 @@ export const SKILL_GAMEPLAY: Record<string, SkillGameplay> = {
   'venom-bow-x': { id: 'venom-bow-x', slot: 'X', archetype: 'dash', damage: 140, hitCount: 1, range: 8, radius: 2.3, castTime: 0.2, cc: [{ type: 'stun', power: 0, duration: 1 }], vfxColor: 0xd9c27a, cooldown: 15, energy: 60, source: 'derived' },
   'combat-z': { id: 'combat-z', slot: 'Z', archetype: 'dash', damage: 56, hitCount: 1, range: 8, radius: 2.3, castTime: 0.15, cc: [], vfxColor: 0xffcf8e, cooldown: 7.5, energy: 15, source: 'derived' },
   'combat-x': { id: 'combat-x', slot: 'X', archetype: 'aoe', damage: 86, hitCount: 1, range: 0, radius: 4.8, castTime: 0.2, cc: [{ type: 'launch', power: 7, duration: 0.4 }], vfxColor: 0xffcf8e, cooldown: 12, energy: 25, source: 'derived' },
+  'combat-c': { id: 'combat-c', slot: 'C', archetype: 'projectile', damage: 113, hitCount: 1, range: 18, radius: 2, projectileSpeed: 17, castTime: 0.22, cc: [], vfxColor: 0xffcf8e, cooldown: 14, energy: 30, source: 'derived' },
+  'combat-v': { id: 'combat-v', slot: 'V', archetype: 'aoe', damage: 233, hitCount: 1, range: 0, radius: 6.5, castTime: 0.3, cc: [{ type: 'knockback', power: 8, duration: 0.25 }], vfxColor: 0xffcf8e, cooldown: 22, energy: 60, source: 'derived' },
   'dark-step-z': { id: 'dark-step-z', slot: 'Z', archetype: 'projectile', damage: 75, hitCount: 1, range: 18, radius: 2, projectileSpeed: 17, castTime: 0.15, cc: [], vfxColor: 0xffcf8e, cooldown: 10, energy: 15, source: 'derived' },
   'dark-step-x': { id: 'dark-step-x', slot: 'X', archetype: 'aoe', damage: 117, hitCount: 1, range: 0, radius: 4.8, castTime: 0.2, cc: [{ type: 'stun', power: 0, duration: 1 }, { type: 'disable', power: 0, duration: 1.5 }], vfxColor: 0xffcf8e, cooldown: 15, energy: 25, source: 'derived' },
   'dark-step-c': { id: 'dark-step-c', slot: 'C', archetype: 'melee', damage: 170, hitCount: 1, range: 3.2, radius: 2.2, castTime: 0.22, cc: [], vfxColor: 0xffcf8e, cooldown: 20, energy: 55, source: 'derived' },

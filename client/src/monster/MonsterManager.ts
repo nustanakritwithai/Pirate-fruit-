@@ -32,7 +32,8 @@ export interface IncomingAttack {
 }
 
 export interface MonsterCallbacks {
-  onPlayerHit?: () => void;
+  /** แจ้งเมื่อผู้เล่นโดนตี (amount = ดาเมจสุทธิหลัง Block/Guard) ไว้โชว์ตัวเลข/แฟลช */
+  onPlayerHit?: (amount: number) => void;
   onPlayerDefeated?: () => void;
   /** ให้ระบบภายนอก (Block/Guard) ปรับดาเมจก่อนเข้าตัวผู้เล่น คืนดาเมจสุดท้าย */
   modifyIncomingDamage?: (attack: IncomingAttack) => number;
@@ -328,7 +329,7 @@ export class MonsterManager {
   private damagePlayer(attack: IncomingAttack): void {
     const final = this.callbacks.modifyIncomingDamage?.(attack) ?? attack.amount;
     this.controller.hp = Math.max(0, this.controller.hp - final);
-    this.callbacks.onPlayerHit?.();
+    this.callbacks.onPlayerHit?.(final);
     if (this.controller.hp <= 0) {
       this.bossBar.hide();
       for (const monster of this.monsters) monster.attackCooldown = 1.2;

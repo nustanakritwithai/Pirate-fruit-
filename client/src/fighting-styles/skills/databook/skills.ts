@@ -26,6 +26,30 @@ export const FIGHTING_STYLE_SKILLS: readonly FightingStyleSkillDefinition[] = [
     "description": "The user stomps their foot on the ground with devastating force, creating a medium shockwave that will knock away anyone within radius, leaving a huge crack on the floor and fragments of the ground tossed up in the air from the impact."
   },
   {
+    "id": "combat-c",
+    "styleId": "combat",
+    "key": "C",
+    "name": "Shockwave Punch",
+    "version": "base",
+    "mastery": 50,
+    "cooldown": 14,
+    "energy": 30,
+    "breaksInstinct": true,
+    "description": "The user throws a heavy straight punch that sends a shockwave of air forward, damaging the first enemy it hits and knocking them back a fair distance."
+  },
+  {
+    "id": "combat-v",
+    "styleId": "combat",
+    "key": "V",
+    "name": "Meteor Crash",
+    "version": "base",
+    "mastery": 150,
+    "cooldown": 22,
+    "energy": 60,
+    "breaksInstinct": true,
+    "description": "The user leaps high into the sky and crashes down with both fists, creating a massive explosion around the impact point that deals heavy damage and knocks back all enemies caught in the blast."
+  },
+  {
     "id": "dark-step-z",
     "styleId": "dark-step",
     "key": "Z",

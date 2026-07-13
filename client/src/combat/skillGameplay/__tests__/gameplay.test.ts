@@ -26,8 +26,8 @@ const ALL_SOURCE_SKILLS = [
 ];
 
 describe('Skill Gameplay Databook — coverage', () => {
-  it('ครอบทุกสกิลจากตารางต้นทางทั้ง 4 หมวด (429 ท่า)', () => {
-    expect(ALL_SOURCE_SKILLS.length).toBe(429);
+  it('ครอบทุกสกิลจากตารางต้นทางทั้ง 4 หมวด (431 ท่า)', () => {
+    expect(ALL_SOURCE_SKILLS.length).toBe(431);
     expect(ALL_SKILL_GAMEPLAY.length).toBe(ALL_SOURCE_SKILLS.length);
     for (const skill of ALL_SOURCE_SKILLS) {
       expect(SKILL_GAMEPLAY[skill.id], `missing record: ${skill.id}`).toBeDefined();
@@ -89,6 +89,18 @@ describe('classifier spot checks', () => {
     const record = getSkillGameplay('bisento-v1-z')!;
     expect(record.archetype).toBe('ground');
     expect(record.hitCount).toBe(3);
+  });
+
+  it('หมัดเริ่มต้น (combat) มีครบ 4 ท่า Z/X/C/V ใช้งานได้', () => {
+    const combo = ['combat-z', 'combat-x', 'combat-c', 'combat-v'].map((id) => getSkillGameplay(id));
+    for (const record of combo) {
+      expect(record).toBeDefined();
+      expect(record!.damage).toBeGreaterThan(0);
+    }
+    expect(getSkillGameplay('combat-c')!.slot).toBe('C');
+    expect(getSkillGameplay('combat-c')!.archetype).toBe('projectile');
+    expect(getSkillGameplay('combat-v')!.slot).toBe('V');
+    expect(getSkillGameplay('combat-v')!.archetype).toBe('aoe');
   });
 
   it('ท่า key F ส่วนใหญ่เป็น mobility/dash และท่า mobility ล้วนดาเมจ 0', () => {

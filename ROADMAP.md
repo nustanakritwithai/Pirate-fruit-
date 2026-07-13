@@ -115,7 +115,7 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 ## Phase 8 — Fruit Framework ต่อยอด ⬜
 
 - [x] โครงผลไม้ปีศาจ + Fruit Dealer + สุ่ม (Gacha) + ความหายาก (ทำใน Phase 7)
-- [x] **Skill Gameplay Databook ครบ 429 ท่า** (`combat/skillGameplay/`) — generate จากตาราง Wiki:
+- [x] **Skill Gameplay Databook ครบ 431 ท่า** (`combat/skillGameplay/`) — generate จากตาราง Wiki:
   classifier อ่านคำอธิบาย → archetype (projectile/aoe/ground/dash/melee/mobility/buff/summon),
   CC (stun/knockback/launch/pull/disable/slow), DoT, จำนวนฮิต; ดาเมจจากสูตร
   (สลอต × คูลดาวน์ × mastery × ความหายาก); จูนท่าเด่นที่ `overrides.ts` แล้ว `npm run gen:skills`
