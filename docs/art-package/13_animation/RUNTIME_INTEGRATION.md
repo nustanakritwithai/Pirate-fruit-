@@ -20,6 +20,8 @@
 
 หาก model ไม่มี socket ระบบใช้ตำแหน่ง fallback เดิมและเกมยังเริ่มได้
 
+`Soldier.glb` ใช้ palm offset ที่วัดจาก bind-pose skin weights และวางจุดกึ่งกลางด้ามดาบตรงกับ palm แทนการวาง group origin ตรง wrist bone เพื่อป้องกันอาวุธลอยข้างมือ
+
 ## NPC Pipeline
 
 - `NPCManager` สร้าง articulated humanoid จาก `CharacterVisuals`

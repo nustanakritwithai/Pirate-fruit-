@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { ActiveLoadoutItem, LoadoutCategory } from '../../progression/ProgressionTypes';
-import { EquipmentVisuals } from '../EquipmentVisuals';
+import { EquipmentVisuals, SOLDIER_PALM_OFFSETS } from '../EquipmentVisuals';
 
 function item(category: LoadoutCategory, itemId: string = category): ActiveLoadoutItem {
   return { category, itemId, name: itemId };
@@ -54,13 +54,18 @@ describe('EquipmentVisuals', () => {
     visuals.update(1 / 60);
 
     const sword = root.getObjectByName('equipment:sword')!;
-    expect(sword.position.distanceTo(rightHand.position)).toBeLessThan(0.08);
+    const grip = root.getObjectByName('equipment:sword:grip')!;
+    const expectedPalm = rightHand.localToWorld(new THREE.Vector3(...SOLDIER_PALM_OFFSETS.right));
+    const gripPosition = grip.getWorldPosition(new THREE.Vector3());
+    expect(gripPosition.distanceTo(expectedPalm)).toBeLessThan(0.005);
 
     rightHand.position.x += 0.35;
     rightHand.rotation.z = 0.65;
     const beforeRotation = sword.quaternion.clone();
     visuals.update(1 / 60);
-    expect(sword.position.distanceTo(rightHand.position)).toBeLessThan(0.08);
+    const movedPalm = rightHand.localToWorld(new THREE.Vector3(...SOLDIER_PALM_OFFSETS.right));
+    grip.getWorldPosition(gripPosition);
+    expect(gripPosition.distanceTo(movedPalm)).toBeLessThan(0.005);
     expect(beforeRotation.angleTo(sword.quaternion)).toBeGreaterThan(0.1);
     expect(root.position.equals(rootBefore)).toBe(true);
 
@@ -68,7 +73,9 @@ describe('EquipmentVisuals', () => {
     visuals.update(1 / 60);
     const leftWrap = root.getObjectByName('equipment:style:left-hand')!;
     const rightWrap = root.getObjectByName('equipment:style:right-hand')!;
-    expect(leftWrap.position.distanceTo(leftHand.position)).toBeLessThan(0.08);
-    expect(rightWrap.position.distanceTo(rightHand.position)).toBeLessThan(0.08);
+    const leftPalm = leftHand.localToWorld(new THREE.Vector3(...SOLDIER_PALM_OFFSETS.left));
+    const rightPalm = rightHand.localToWorld(new THREE.Vector3(...SOLDIER_PALM_OFFSETS.right));
+    expect(leftWrap.getWorldPosition(new THREE.Vector3()).distanceTo(leftPalm)).toBeLessThan(0.005);
+    expect(rightWrap.getWorldPosition(new THREE.Vector3()).distanceTo(rightPalm)).toBeLessThan(0.005);
   });
 });
