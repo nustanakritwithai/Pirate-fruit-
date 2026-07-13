@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PiratePlayerRig } from '../art/CharacterRig';
 import type { CombatState } from '../combat/CombatState';
+import type { SkillRenderType } from '../combat/SkillCasting';
 import type { LoadoutCategory } from '../progression/ProgressionTypes';
 
 export type PlayerLocomotion = 'idle' | 'walk' | 'run' | 'swim';
@@ -20,6 +21,14 @@ export interface PlayerActionSnapshot {
   hitReactionId?: number;
   /** มุมแหล่งโจมตีใน local space: 0 หน้า, +PI/2 ขวา */
   hitReactionAngle?: number;
+  /** visual-only timeline ของสกิล ไม่เปลี่ยน castTime/cooldown/hitbox */
+  skillAnimationProgress?: number;
+  /** normalized จุดปล่อยผลจริงจาก Combat Core */
+  skillAnimationReleaseProgress?: number;
+  skillAnimationType?: SkillRenderType;
+  skillAnimationVariant?: number;
+  skillAnimationUltimate?: boolean;
+  skillAnimationCategory?: LoadoutCategory;
 }
 
 interface BindPose {
@@ -123,15 +132,36 @@ export class PlayerActionAnimator {
     }
 
     const state = snapshot.combatState;
+    const skillProgress = Number.isFinite(snapshot.skillAnimationProgress)
+      ? THREE.MathUtils.clamp(snapshot.skillAnimationProgress!, 0, 1)
+      : 1;
+    const skillActive = Boolean(snapshot.skillAnimationType) && skillProgress < 1;
     const stanceLocomotion = dashActive || !snapshot.onGround ? 'run' : snapshot.locomotion;
-    if (state === 'idle') this.applyReadyStance(snapshot.category, stanceLocomotion);
+    if (state === 'idle' && !skillActive) {
+      this.applyReadyStance(snapshot.category, stanceLocomotion);
+    }
     if (isAttack(state)) this.applyAttack(state, snapshot.category, snapshot.attackProgress);
-    else if (state === 'casting') this.applyCasting(snapshot.category);
+    else if (state === 'casting' && !skillActive) this.applyCasting(snapshot.category);
     else if (state === 'blocking') this.applyBlocking(snapshot.category);
     else if (state === 'stunned') this.applyStunned();
     else if (state === 'knockback') this.applyKnockback();
     else if (state === 'knockdown') this.applyKnockdown();
     else if (state === 'dead') this.applyDeath();
+
+    if (
+      skillActive &&
+      (state === 'casting' || state === 'idle') &&
+      !hitState
+    ) {
+      this.applySkillAnimation(
+        snapshot.skillAnimationType!,
+        snapshot.skillAnimationCategory ?? snapshot.category,
+        skillProgress,
+        snapshot.skillAnimationReleaseProgress ?? 0.3,
+        snapshot.skillAnimationVariant ?? 0,
+        Boolean(snapshot.skillAnimationUltimate),
+      );
+    }
 
     if (
       this.hitReactionTime < 0.3 &&
@@ -222,8 +252,30 @@ export class PlayerActionAnimator {
     this.rotate(this.rig.head, 0, Math.sin(this.elapsed * 0.62) * 0.035, 0);
 
     if (locomotion === 'idle') {
-      this.rotate(this.rig.leftArm, breath * 0.018, 0, 0);
-      this.rotate(this.rig.rightArm, -breath * 0.018, 0, 0);
+      // ท่ายืนผ่อนแรง: ถ่ายน้ำหนักช้า ๆ, เข่าไม่ล็อก, สะโพก/ไหล่สวนกันเล็กน้อย
+      const weight = Math.sin(this.elapsed * 0.82);
+      const settle = Math.sin(this.elapsed * 1.37 + 0.65);
+      const glance = Math.sin(this.elapsed * 0.43 + 0.8);
+      this.rig.root.position.x += weight * 0.018;
+      this.rig.root.position.y -= 0.007 + Math.max(0, settle) * 0.004;
+      this.rotate(this.rig.hips, 0.035 + settle * 0.008, weight * 0.03, weight * 0.042);
+      this.rotate(this.rig.spine, -0.018 - breath * 0.008, -weight * 0.026, -weight * 0.032);
+      this.rotate(this.rig.chest, -breath * 0.012, weight * 0.018, weight * 0.022);
+      this.rotate(this.rig.head, -0.012 + breath * 0.008, glance * 0.022, -weight * 0.014);
+
+      this.rotate(this.rig.leftLeg, -0.045 - settle * 0.012, 0, -0.024 - weight * 0.012);
+      this.rotate(this.rig.rightLeg, -0.024 + settle * 0.008, 0, 0.024 - weight * 0.012);
+      this.rotate(this.rig.leftLowerLeg, 0.105 + settle * 0.012, 0, 0);
+      this.rotate(this.rig.rightLowerLeg, 0.075 - settle * 0.008, 0, 0);
+      this.rotate(this.rig.leftFoot, -0.028, 0, weight * 0.008);
+      this.rotate(this.rig.rightFoot, -0.018, 0, weight * 0.006);
+
+      this.rotate(this.rig.leftArm, 0.018 + breath * 0.026, 0, -0.018 - weight * 0.012);
+      this.rotate(this.rig.rightArm, -0.012 - breath * 0.022, 0, 0.028 - weight * 0.01);
+      this.rotate(this.rig.leftForeArm, -0.045 - settle * 0.014, 0, 0);
+      this.rotate(this.rig.rightForeArm, -0.07 + settle * 0.012, 0, 0);
+      this.rotate(this.rig.leftHand, breath * 0.01, 0, -weight * 0.008);
+      this.rotate(this.rig.rightHand, -breath * 0.012, 0, -weight * 0.006);
       return;
     }
 
@@ -526,6 +578,199 @@ export class PlayerActionAnimator {
     } else {
       this.rig.root.position.z += a * 0.13;
     }
+  }
+
+  /**
+   * แปลง timeline จาก Combat Core เป็น anticipation → release → recovery
+   * ทุกค่าด้านล่างเป็น pose visual เท่านั้น จึงไม่ขยับ gameplay root/collider
+   */
+  private applySkillAnimation(
+    renderType: SkillRenderType,
+    category: LoadoutCategory,
+    progress: number,
+    releaseProgress: number,
+    variant: number,
+    ultimate: boolean,
+  ): void {
+    const releasePoint = THREE.MathUtils.clamp(releaseProgress, 0.04, 0.82);
+    const beforeRelease = progress < releasePoint;
+    const anticipationProgress = THREE.MathUtils.clamp(progress / releasePoint, 0, 1);
+    const followProgress = THREE.MathUtils.clamp(
+      (progress - releasePoint) / Math.max(0.001, 1 - releasePoint),
+      0,
+      1,
+    );
+    const snap = THREE.MathUtils.smoothstep(followProgress, 0, 0.18);
+    const envelope = 1 - THREE.MathUtils.smoothstep(followProgress, 0.46, 1);
+    const anticipation = beforeRelease
+      ? THREE.MathUtils.smoothstep(anticipationProgress, 0, 1)
+      : (1 - snap) * envelope;
+    const strike = beforeRelease ? 0 : snap * envelope;
+    const side = variant % 2 === 0 ? 1 : -1;
+    const power = ultimate ? 1.22 : 1;
+
+    if (renderType === 'projectile') {
+      this.applyProjectileSkill(category, anticipation, strike, side, power);
+    } else if (renderType === 'aoe') {
+      this.applyAreaSkill(category, anticipation, strike, side, power, ultimate);
+    } else {
+      this.applyDashSkill(category, anticipation, strike, side, power);
+    }
+  }
+
+  /** ยิง/ปล่อยคลื่น: เก็บแรงข้างลำตัวแล้วส่งไหล่ สะโพก และมือไปข้างหน้า */
+  private applyProjectileSkill(
+    category: LoadoutCategory,
+    anticipation: number,
+    strike: number,
+    side: number,
+    power: number,
+  ): void {
+    const a = anticipation * power;
+    const s = strike * power;
+    this.rig.root.position.y -= 0.045 * a;
+    this.rig.root.position.z += 0.14 * s;
+    this.rotate(this.rig.hips, 0.12 * a - 0.05 * s, -side * 0.3 * a + side * 0.34 * s, 0);
+    this.rotate(this.rig.spine, 0.08 * a + 0.2 * s, -side * 0.4 * a + side * 0.46 * s, side * 0.08 * a);
+    this.rotate(this.rig.head, -0.05 * s, side * 0.13 * a - side * 0.11 * s, 0);
+    this.rotate(this.rig.leftLeg, -0.13 * a - 0.08 * s, 0, -0.045 * a);
+    this.rotate(this.rig.rightLeg, -0.05 * a + 0.08 * s, 0, 0.045 * a);
+    this.rotate(this.rig.leftLowerLeg, 0.24 * a, 0, 0);
+    this.rotate(this.rig.rightLowerLeg, 0.14 * a, 0, 0);
+
+    if (category === 'sword') {
+      // ง้างดาบเหนือไหล่ แล้วฟันปล่อยคลื่นเฉียงไปด้านหน้า
+      this.rotate(this.rig.rightArm, -0.56 * a - 1.46 * s, -0.2 * a + 0.18 * s, 0.78 * a - 0.92 * s);
+      this.rotate(this.rig.rightForeArm, -0.48 * a - 0.28 * s, 0, 0.16 * a - 0.2 * s);
+      this.rotate(this.rig.rightHand, 0.12 * a - 0.16 * s, 0, 0.26 * a - 0.34 * s);
+      this.rotate(this.rig.leftArm, -0.48 * a - 0.72 * s, 0, -0.28 * a + 0.34 * s);
+      this.rotate(this.rig.leftForeArm, -0.68 * a + 0.18 * s, 0, 0);
+      return;
+    }
+
+    if (category === 'gun') {
+      // ตั้งศูนย์สองมือก่อนยิง แล้วถอยไหล่/ศีรษะรับแรงรีคอยล์
+      this.rig.root.position.z -= 0.08 * s;
+      this.rotate(this.rig.spine, -0.06 * a - 0.2 * s, 0, 0);
+      this.rotate(this.rig.rightArm, -1.04 * a - 1.34 * s, -0.12 * (a + s), -0.1 * (a + s));
+      this.rotate(this.rig.rightForeArm, -0.52 * a + 0.24 * s, 0, 0);
+      this.rotate(this.rig.leftArm, -0.88 * a - 1.08 * s, 0.18, 0.3);
+      this.rotate(this.rig.leftForeArm, -0.76 * a + 0.16 * s, 0, 0);
+      this.rotate(this.rig.head, 0.12 * s, -side * 0.045 * s, 0);
+      return;
+    }
+
+    if (category === 'fruit') {
+      // รวมพลังระหว่างฝ่ามือแล้วผลักสองมือออกพร้อมกัน
+      this.rotate(this.rig.leftArm, -0.72 * a - 1.34 * s, 0.12 * a, -0.46 * a + 0.16 * s);
+      this.rotate(this.rig.rightArm, -0.72 * a - 1.34 * s, -0.12 * a, 0.46 * a - 0.16 * s);
+      this.rotate(this.rig.leftForeArm, -0.9 * a + 0.48 * s, 0, 0);
+      this.rotate(this.rig.rightForeArm, -0.9 * a + 0.48 * s, 0, 0);
+      this.rotate(this.rig.leftHand, 0, -0.5 * a + 0.7 * s, -0.18 * s);
+      this.rotate(this.rig.rightHand, 0, 0.5 * a - 0.7 * s, 0.18 * s);
+      return;
+    }
+
+    // style/utility: สลับมือหลักตามช่องสกิลเพื่อไม่ให้ทุกท่าเหมือนกัน
+    const leadArm = side > 0 ? this.rig.rightArm : this.rig.leftArm;
+    const leadForeArm = side > 0 ? this.rig.rightForeArm : this.rig.leftForeArm;
+    const offArm = side > 0 ? this.rig.leftArm : this.rig.rightArm;
+    const offForeArm = side > 0 ? this.rig.leftForeArm : this.rig.rightForeArm;
+    this.rotate(leadArm, -0.58 * a - 1.46 * s, 0, side * (0.38 * a - 0.34 * s));
+    this.rotate(leadForeArm, -0.86 * a + 0.5 * s, 0, 0);
+    this.rotate(offArm, -0.62 * a - 0.44 * s, 0, -side * (0.28 * a + 0.08 * s));
+    this.rotate(offForeArm, -0.82 * a, 0, 0);
+  }
+
+  /** พลังพื้นที่: ย่อตัวสะสมแรง แล้วเปิดลำตัว/แขนให้เกิด silhouette กว้างตอนระเบิด */
+  private applyAreaSkill(
+    category: LoadoutCategory,
+    anticipation: number,
+    strike: number,
+    side: number,
+    power: number,
+    ultimate: boolean,
+  ): void {
+    const a = anticipation * power;
+    const s = strike * power;
+    this.rig.root.position.y -= 0.14 * a;
+    this.rig.root.position.y += 0.075 * s;
+    this.rig.root.position.z += 0.07 * s;
+    this.rotate(this.rig.root, 0, side * s * (ultimate ? 0.56 : 0.16), 0);
+    this.rotate(this.rig.hips, 0.28 * a - 0.1 * s, -side * 0.18 * a, side * 0.04 * s);
+    this.rotate(this.rig.spine, 0.42 * a - 0.32 * s, side * 0.18 * a, -side * 0.12 * s);
+    this.rotate(this.rig.head, -0.18 * a + 0.14 * s, -side * 0.1 * s, 0);
+    this.rotate(this.rig.leftLeg, -0.34 * a + 0.12 * s, 0, -0.09 * a);
+    this.rotate(this.rig.rightLeg, -0.3 * a + 0.08 * s, 0, 0.09 * a);
+    this.rotate(this.rig.leftLowerLeg, 0.68 * a - 0.18 * s, 0, 0);
+    this.rotate(this.rig.rightLowerLeg, 0.62 * a - 0.16 * s, 0, 0);
+
+    if (category === 'sword') {
+      // เก็บดาบข้างสะโพกแล้วกวาดวงกว้างตามแนวพื้น
+      this.rotate(this.rig.rightArm, -0.42 * a - 0.96 * s, -0.2 * a, 0.72 * a - 1.12 * s);
+      this.rotate(this.rig.rightForeArm, -0.64 * a - 0.32 * s, 0, 0.22 * a - 0.26 * s);
+      this.rotate(this.rig.rightHand, 0, 0, 0.28 * a - 0.4 * s);
+      this.rotate(this.rig.leftArm, -0.5 * a - 0.76 * s, 0, -0.38 * a + 0.66 * s);
+      this.rotate(this.rig.leftForeArm, -0.7 * a, 0, 0);
+      return;
+    }
+
+    if (category === 'fruit') {
+      // ดึงพลังเข้ากลางอก ก่อนกางแขนระเบิดรัศมีรอบตัว
+      this.rotate(this.rig.leftArm, -0.58 * a - 0.64 * s, 0, -0.48 * a - 0.78 * s);
+      this.rotate(this.rig.rightArm, -0.58 * a - 0.64 * s, 0, 0.48 * a + 0.78 * s);
+      this.rotate(this.rig.leftForeArm, -1.02 * a + 0.26 * s, 0, 0);
+      this.rotate(this.rig.rightForeArm, -1.02 * a + 0.26 * s, 0, 0);
+      this.rotate(this.rig.leftHand, 0, -a * 0.6 - s * 0.8, 0);
+      this.rotate(this.rig.rightHand, 0, a * 0.6 + s * 0.8, 0);
+      return;
+    }
+
+    // style/gun/utility: ชูแขนง้างแล้วทุบลง เกิดน้ำหนักชัดที่เข่าและหลัง
+    this.rotate(this.rig.leftArm, -1.28 * a + 0.46 * s, 0, -0.32 * a - 0.38 * s);
+    this.rotate(this.rig.rightArm, -1.28 * a + 0.46 * s, 0, 0.32 * a + 0.38 * s);
+    this.rotate(this.rig.leftForeArm, -0.48 * a - 0.62 * s, 0, 0);
+    this.rotate(this.rig.rightForeArm, -0.48 * a - 0.62 * s, 0, 0);
+  }
+
+  /** สกิลพุ่ง: ก่อนปล่อยย่อเก็บแรง หลังปล่อยเหยียดตัวเป็นแนวลูกศรไปด้านหน้า */
+  private applyDashSkill(
+    category: LoadoutCategory,
+    anticipation: number,
+    strike: number,
+    side: number,
+    power: number,
+  ): void {
+    const a = anticipation * power;
+    const s = strike * power;
+    this.rig.root.position.y -= 0.11 * a + 0.04 * s;
+    this.rig.root.position.z += 0.16 * s;
+    this.rotate(this.rig.hips, 0.34 * a + 0.18 * s, -side * 0.24 * a, 0);
+    this.rotate(this.rig.spine, 0.26 * a + 0.42 * s, side * 0.22 * a, -side * 0.05 * s);
+    this.rotate(this.rig.head, -0.13 * a - 0.16 * s, -side * 0.08 * a, 0);
+    this.rotate(this.rig.leftLeg, -0.48 * a - 0.32 * s, 0, -0.08);
+    this.rotate(this.rig.leftLowerLeg, 0.86 * a + 0.42 * s, 0, 0);
+    this.rotate(this.rig.rightLeg, -0.28 * a + 0.54 * s, 0, 0.08);
+    this.rotate(this.rig.rightLowerLeg, 0.58 * a + 0.12 * s, 0, 0);
+
+    if (category === 'sword' || category === 'gun') {
+      // มือถืออาวุธเป็นหัวลูกศร อีกแขนถ่วงไปด้านหลัง
+      this.rotate(this.rig.rightArm, -0.62 * a - 1.12 * s, -0.08 * (a + s), 0.34 * a - 0.2 * s);
+      this.rotate(this.rig.rightForeArm, -0.52 * a + 0.34 * s, 0, 0);
+      this.rotate(this.rig.rightHand, -0.12 * s, 0, -0.18 * s);
+      this.rotate(this.rig.leftArm, 0.36 * a + 0.64 * s, 0, -0.24 * a - 0.34 * s);
+      this.rotate(this.rig.leftForeArm, -0.28 * a, 0, 0);
+      return;
+    }
+
+    const leadArm = side > 0 ? this.rig.rightArm : this.rig.leftArm;
+    const leadForeArm = side > 0 ? this.rig.rightForeArm : this.rig.leftForeArm;
+    const trailArm = side > 0 ? this.rig.leftArm : this.rig.rightArm;
+    const trailForeArm = side > 0 ? this.rig.leftForeArm : this.rig.rightForeArm;
+    this.rotate(leadArm, -0.62 * a - 1.18 * s, 0, side * (0.28 * a - 0.18 * s));
+    this.rotate(leadForeArm, -0.76 * a + 0.42 * s, 0, 0);
+    this.rotate(trailArm, 0.34 * a + 0.68 * s, 0, -side * (0.22 * a + 0.36 * s));
+    this.rotate(trailForeArm, -0.26 * a, 0, 0);
   }
 
   private applyCasting(category: LoadoutCategory): void {

@@ -208,6 +208,12 @@ async function main(): Promise<void> {
     attackProgress: playerCombat ? 1 - playerCombat.attackCooldownFraction : 0,
     hitReactionId: playerCombat?.hitReactionId ?? 0,
     hitReactionAngle: playerCombat?.hitReactionAngle ?? 0,
+    skillAnimationProgress: playerCombat?.skillAnimationProgress ?? 1,
+    skillAnimationReleaseProgress: playerCombat?.skillAnimationReleaseProgress ?? 0.3,
+    skillAnimationType: playerCombat?.skillAnimationType,
+    skillAnimationVariant: playerCombat?.skillAnimationVariant ?? 0,
+    skillAnimationUltimate: playerCombat?.skillAnimationUltimate ?? false,
+    skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
   }));
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)

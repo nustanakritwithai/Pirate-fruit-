@@ -7,6 +7,7 @@ import {
   type PlayerLocomotion,
 } from '../animation/PlayerActionAnimator';
 import type { CombatState } from '../combat/CombatState';
+import type { SkillRenderType } from '../combat/SkillCasting';
 import type { LoadoutCategory } from '../progression/ProgressionTypes';
 import {
   attachmentSocketsFromPirateRig,
@@ -32,6 +33,12 @@ export class Player {
     attackProgress?: number;
     hitReactionId?: number;
     hitReactionAngle?: number;
+    skillAnimationProgress?: number;
+    skillAnimationReleaseProgress?: number;
+    skillAnimationType?: SkillRenderType;
+    skillAnimationVariant?: number;
+    skillAnimationUltimate?: boolean;
+    skillAnimationCategory?: LoadoutCategory;
   } = () => ({
     combatState: 'idle',
     category: 'style',
@@ -60,6 +67,12 @@ export class Player {
       attackProgress?: number;
       hitReactionId?: number;
       hitReactionAngle?: number;
+      skillAnimationProgress?: number;
+      skillAnimationReleaseProgress?: number;
+      skillAnimationType?: SkillRenderType;
+      skillAnimationVariant?: number;
+      skillAnimationUltimate?: boolean;
+      skillAnimationCategory?: LoadoutCategory;
     },
   ): void {
     this.getActionState = provider;
@@ -96,6 +109,12 @@ export class Player {
       attackProgress: action.attackProgress,
       hitReactionId: action.hitReactionId,
       hitReactionAngle: action.hitReactionAngle,
+      skillAnimationProgress: action.skillAnimationProgress,
+      skillAnimationReleaseProgress: action.skillAnimationReleaseProgress,
+      skillAnimationType: action.skillAnimationType,
+      skillAnimationVariant: action.skillAnimationVariant,
+      skillAnimationUltimate: action.skillAnimationUltimate,
+      skillAnimationCategory: action.skillAnimationCategory,
     };
     this.actionAnimator?.update(dt, snapshot);
   }

@@ -26,7 +26,7 @@ import {
 } from './CombatData';
 import type { SkillLoadout } from './SkillLoadout';
 import { resolveActiveSet, resolveEquippedItems, type ActiveSkillSet } from './SkillResolver';
-import type { CastableSkill } from './SkillCasting';
+import type { CastableSkill, SkillRenderType } from './SkillCasting';
 import {
   type CombatState,
   ATTACK_STATES,
@@ -113,6 +113,17 @@ export class PlayerCombat {
   private timeSinceDamaged = 99;
   private damageReactionSerial = 0;
   private damageReactionAngle = 0;
+  /**
+   * visual-only skill lifecycle: ยาวกว่าช่วง cast เล็กน้อยเพื่อให้ Animator วาด follow-through
+   * โดยไม่ยืด castTime, cooldown, movement lock หรือจังหวะปล่อย hitbox
+   */
+  private skillVisualElapsed = 1;
+  private skillVisualDuration = 1;
+  private skillVisualReleaseProgress = 0.3;
+  private skillVisualType: SkillRenderType = 'projectile';
+  private skillVisualVariant = 0;
+  private skillVisualUltimate = false;
+  private skillVisualCategory: LoadoutCategory = 'style';
 
   private readonly projectiles: WaveProjectile[] = [];
   private readonly shield: THREE.Mesh;
@@ -218,6 +229,33 @@ export class PlayerCombat {
     return this.damageReactionAngle;
   }
 
+  /** 0..1 สำหรับ animation เท่านั้น; 1 หมายถึงจบท่าแล้ว */
+  get skillAnimationProgress(): number {
+    if (this.skillVisualDuration <= 0) return 1;
+    return THREE.MathUtils.clamp(this.skillVisualElapsed / this.skillVisualDuration, 0, 1);
+  }
+
+  /** จุดที่ Combat Core ปล่อยผลสกิลจริงใน normalized animation timeline */
+  get skillAnimationReleaseProgress(): number {
+    return this.skillVisualReleaseProgress;
+  }
+
+  get skillAnimationType(): SkillRenderType {
+    return this.skillVisualType;
+  }
+
+  get skillAnimationVariant(): number {
+    return this.skillVisualVariant;
+  }
+
+  get skillAnimationUltimate(): boolean {
+    return this.skillVisualUltimate;
+  }
+
+  get skillAnimationCategory(): LoadoutCategory {
+    return this.skillVisualCategory;
+  }
+
   // ------------------------------------------------------------------
   // Damage pipeline ขาเข้า (มอนสเตอร์ → ผู้เล่น)
   // ------------------------------------------------------------------
@@ -289,6 +327,11 @@ export class PlayerCombat {
   // ------------------------------------------------------------------
 
   update(dt: number): void {
+    this.skillVisualElapsed = Math.min(
+      this.skillVisualDuration,
+      this.skillVisualElapsed + Math.max(0, dt),
+    );
+
     // คูลดาวน์ทุกสกิล (ทั้งชุดอาวุธและผลไม้) เดินถอยหลังพร้อมกันตามเวลาจริง
     for (const [id, remaining] of this.skillCooldowns) {
       const next = remaining - dt;
@@ -408,6 +451,9 @@ export class PlayerCombat {
     this.stateTimer = duration;
     this.swing = null;
     this.pendingCast = null;
+    if (state === 'stunned' || state === 'knockback' || state === 'knockdown' || state === 'dead') {
+      this.skillVisualElapsed = this.skillVisualDuration;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -483,6 +529,22 @@ export class PlayerCombat {
     this.swing = null;
     this.comboIndex = 0;
     this.pendingCast = { skill, slot, timer: skill.castTime };
+    const followThrough = skill.renderType === 'aoe'
+      ? 0.56
+      : skill.renderType === 'dash'
+        ? 0.38
+        : 0.46;
+    this.skillVisualDuration = Math.max(0.44, skill.castTime + followThrough);
+    this.skillVisualElapsed = 0;
+    this.skillVisualReleaseProgress = THREE.MathUtils.clamp(
+      skill.castTime / this.skillVisualDuration,
+      0.08,
+      0.68,
+    );
+    this.skillVisualType = skill.renderType;
+    this.skillVisualVariant = slot;
+    this.skillVisualUltimate = skill.isUltimate;
+    this.skillVisualCategory = skill.category;
     this.combatState = 'casting';
   }
 

@@ -314,6 +314,121 @@ describe('Pirate V1 player rig', () => {
     }
   });
 
+  it('uses a relaxed asymmetric idle with soft knees and slow weight transfer', () => {
+    const visual = createPiratePlayerVisual();
+    const animator = new PlayerActionAnimator(visual.rig);
+    const gameplayRootBefore = visual.group.position.clone();
+    const leftKneeBind = visual.rig.leftLowerLeg.quaternion.clone();
+    const rightKneeBind = visual.rig.rightLowerLeg.quaternion.clone();
+    const snapshot = {
+      combatState: 'idle' as const,
+      category: 'utility' as const,
+      locomotion: 'idle' as const,
+      onGround: true,
+    };
+
+    animator.update(0.1, snapshot);
+    const earlyPose = [
+      visual.rig.hips.quaternion.clone(),
+      visual.rig.spine.quaternion.clone(),
+      visual.rig.leftLowerLeg.quaternion.clone(),
+      visual.rig.rightLowerLeg.quaternion.clone(),
+    ];
+    expect(leftKneeBind.angleTo(visual.rig.leftLowerLeg.quaternion)).toBeGreaterThan(0.08);
+    expect(rightKneeBind.angleTo(visual.rig.rightLowerLeg.quaternion)).toBeGreaterThan(0.05);
+    expect(
+      visual.rig.leftLowerLeg.quaternion.angleTo(visual.rig.rightLowerLeg.quaternion),
+    ).toBeGreaterThan(0.015);
+
+    animator.update(0.9, snapshot);
+    const shiftedPose = [
+      visual.rig.hips.quaternion.clone(),
+      visual.rig.spine.quaternion.clone(),
+      visual.rig.leftLowerLeg.quaternion.clone(),
+      visual.rig.rightLowerLeg.quaternion.clone(),
+    ];
+    expect(poseDistance(earlyPose, shiftedPose)).toBeGreaterThan(0.035);
+    expect(Math.abs(visual.rig.root.position.x)).toBeGreaterThan(0.008);
+    expect(visual.group.position.equals(gameplayRootBefore)).toBe(true);
+  });
+
+  it('uses distinct full-body animations for projectile, area and dash skills', () => {
+    const poseAt = (
+      skillAnimationType: 'projectile' | 'aoe' | 'dash',
+      category: 'style' | 'sword' | 'fruit',
+    ): THREE.Quaternion[] => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      animator.update(1 / 60, {
+        combatState: 'casting',
+        category,
+        locomotion: 'idle',
+        onGround: true,
+        skillAnimationType,
+        skillAnimationCategory: category,
+        skillAnimationProgress: 0.52,
+        skillAnimationReleaseProgress: 0.3,
+        skillAnimationVariant: 0,
+      });
+      return [
+        visual.rig.root.quaternion.clone(),
+        visual.rig.hips.quaternion.clone(),
+        visual.rig.spine.quaternion.clone(),
+        visual.rig.leftArm.quaternion.clone(),
+        visual.rig.rightArm.quaternion.clone(),
+        visual.rig.leftLeg.quaternion.clone(),
+        visual.rig.rightLeg.quaternion.clone(),
+      ];
+    };
+
+    const projectile = poseAt('projectile', 'fruit');
+    const area = poseAt('aoe', 'style');
+    const dash = poseAt('dash', 'sword');
+    expect(poseDistance(projectile, area)).toBeGreaterThan(1.2);
+    expect(poseDistance(projectile, dash)).toBeGreaterThan(0.8);
+    expect(poseDistance(area, dash)).toBeGreaterThan(1.1);
+  });
+
+  it('changes a sword skill from readable windup to forward release and recovery', () => {
+    const poseAt = (skillAnimationProgress: number) => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      const gameplayRootBefore = visual.group.position.clone();
+      animator.update(1 / 60, {
+        combatState: skillAnimationProgress < 0.35 ? 'casting' : 'idle',
+        category: 'sword',
+        locomotion: 'idle',
+        onGround: true,
+        skillAnimationType: 'projectile',
+        skillAnimationCategory: 'sword',
+        skillAnimationProgress,
+        skillAnimationReleaseProgress: 0.35,
+        skillAnimationVariant: 0,
+      });
+      return {
+        pose: [
+          visual.rig.hips.quaternion.clone(),
+          visual.rig.spine.quaternion.clone(),
+          visual.rig.rightArm.quaternion.clone(),
+          visual.rig.rightForeArm.quaternion.clone(),
+          visual.rig.leftArm.quaternion.clone(),
+        ],
+        visualRootZ: visual.rig.root.position.z,
+        gameplayRoot: visual.group.position.clone(),
+        gameplayRootBefore,
+      };
+    };
+
+    const windup = poseAt(0.24);
+    const release = poseAt(0.52);
+    const recovery = poseAt(0.9);
+    expect(poseDistance(windup.pose, release.pose)).toBeGreaterThan(1.1);
+    expect(poseDistance(release.pose, recovery.pose)).toBeGreaterThan(1.1);
+    expect(release.visualRootZ).toBeGreaterThan(windup.visualRootZ + 0.08);
+    expect(windup.gameplayRoot.equals(windup.gameplayRootBefore)).toBe(true);
+    expect(release.gameplayRoot.equals(release.gameplayRootBefore)).toBe(true);
+  });
+
   it('uses a jab, hook, uppercut and spinning kick for the style combo', () => {
     const states = ['attack1', 'attack2', 'attack3', 'attack4'] as const;
     const poses = states.map((combatState) => {
