@@ -18,6 +18,8 @@ export interface AttackOptions {
   arcCos: number;
   knockback?: number;
   source?: CombatRewardSource;
+  /** visual-only callback หลังเป้าผ่านกรวยโจมตี ไม่เปลี่ยน damage pipeline */
+  onHit?: (monster: Monster) => void;
 }
 
 /** ข้อมูลท่าที่ตีเข้าผู้เล่นหนึ่งครั้ง — ให้ PlayerCombat ตัดสิน Block/Guard/ผลัก */
@@ -128,6 +130,7 @@ export class MonsterManager {
         options.knockback ?? 0,
         options.source,
       );
+      options.onHit?.(monster);
       hits++;
     }
     return hits;

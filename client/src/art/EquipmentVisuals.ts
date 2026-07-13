@@ -146,6 +146,7 @@ export class EquipmentVisuals {
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, 0.28, 0.48);
     const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.018, 6, 10), brass);
+    muzzle.name = 'equipment:gun:muzzle';
     muzzle.position.set(0, 0.28, 0.84);
     const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.08), brass);
     hammer.position.set(0, 0.38, 0.05);
@@ -231,6 +232,37 @@ export class EquipmentVisuals {
     const itemKey = `${item.category}:${item.itemId}`;
     if (itemKey === this.lastItemKey) return;
     this.render();
+  }
+
+  /**
+   * คืนแนวใบดาบจริงใน world space ณ pose ปัจจุบันให้ระบบ VFX วาด blade trail
+   * ใช้สำเนา Vector3 เพื่อไม่เปิดให้ combat แก้ transform ของอุปกรณ์
+   */
+  getSwordBladeWorldSegment(): { base: THREE.Vector3; tip: THREE.Vector3 } | null {
+    const blade = this.sword.getObjectByName('equipment:sword:blade');
+    const tipMesh = this.sword.getObjectByName('equipment:sword:tip');
+    if (!blade || !tipMesh) return null;
+    this.updateSocketTransforms();
+    this.playerRoot.updateMatrixWorld(true);
+    return {
+      // ใบดาบ BoxGeometry เริ่มเหนือ guard ที่ local y=0.23
+      base: this.sword.localToWorld(new THREE.Vector3(0, 0.23, 0)),
+      // ปลาย ConeGeometry สูง 0.22 และมี center ที่ local y=1.24
+      tip: tipMesh.localToWorld(new THREE.Vector3(0, 0.11, 0)),
+    };
+  }
+
+  /** จุดปากกระบอกและแนวลำกล้องจริงใน world space สำหรับ muzzle flash/tracer */
+  getGunMuzzleWorldRay(): { origin: THREE.Vector3; direction: THREE.Vector3 } | null {
+    const muzzle = this.gun.getObjectByName('equipment:gun:muzzle');
+    if (!muzzle) return null;
+    this.updateSocketTransforms();
+    this.playerRoot.updateMatrixWorld(true);
+    const quaternion = this.gun.getWorldQuaternion(new THREE.Quaternion());
+    return {
+      origin: muzzle.localToWorld(new THREE.Vector3(0, 0, 0.05)),
+      direction: new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize(),
+    };
   }
 
   private render(): void {
