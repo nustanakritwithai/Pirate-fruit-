@@ -13,13 +13,28 @@ interface DamageNumber {
   maxLife: number;
 }
 
+export const SLASH_ARC_LENGTH = Math.PI * 0.85;
+
+/**
+ * RingGeometry เริ่มจากแกน +X และถูกวางราบด้วย rotation.x = -PI/2
+ * จึงต้องชดเชยมุมกึ่งกลางของ arc เพื่อให้มันหันตรงกับ forward ของตัวละคร
+ */
+export function getForwardArcRotation(
+  heading: number,
+  thetaLength = SLASH_ARC_LENGTH,
+  thetaStart = 0,
+): number {
+  const arcMidpoint = thetaStart + thetaLength / 2;
+  return heading - Math.PI / 2 - arcMidpoint;
+}
+
 /**
  * เอฟเฟกต์ชั่วคราวในฉาก — ตอนนี้มีคลื่นฟันโจมตี (placeholder ก่อนถึง Phase 5 Combat)
  */
 export class Effects {
   private active: ActiveEffect[] = [];
   private numbers: DamageNumber[] = [];
-  private slashGeo = new THREE.RingGeometry(0.5, 1.5, 24, 1, 0, Math.PI * 0.85);
+  private slashGeo = new THREE.RingGeometry(0.5, 1.5, 24, 1, 0, SLASH_ARC_LENGTH);
 
   constructor(private scene: THREE.Scene) {}
 
@@ -41,7 +56,7 @@ export class Effects {
     mesh.position.z += Math.cos(heading) * 0.9;
     // วางแนวนอน แล้วหมุนให้ส่วนโค้งชี้ไปทางที่ตัวละครหัน
     mesh.rotation.set(-Math.PI / 2, 0, 0);
-    mesh.rotateZ(heading - Math.PI * 0.4);
+    mesh.rotateZ(getForwardArcRotation(heading));
     this.scene.add(mesh);
     this.active.push({ mesh, life: 0.22, maxLife: 0.22, baseScale: scale });
   }

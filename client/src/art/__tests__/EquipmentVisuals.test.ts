@@ -142,7 +142,13 @@ describe('EquipmentVisuals', () => {
     const blade = root.getObjectByName('equipment:sword:blade')!;
     const bladeBounds = new THREE.Box3().setFromObject(blade);
     const bladeCenter = bladeBounds.getCenter(new THREE.Vector3());
+    const grip = root.getObjectByName('equipment:sword:grip')!;
+    const gripPosition = grip.getWorldPosition(new THREE.Vector3());
+    const bladeDirection = bladeCenter.clone().sub(gripPosition).normalize();
     expect(bladeBounds.intersectsBox(torsoBounds)).toBe(false);
     expect(bladeCenter.x).toBeGreaterThan(torsoBounds.max.x + 0.08);
+    expect(bladeDirection.z).toBeGreaterThan(0.5);
+    expect(bladeDirection.y).toBeGreaterThan(0.35);
+    expect(bladeDirection.z).toBeGreaterThan(Math.abs(bladeDirection.x));
   });
 });

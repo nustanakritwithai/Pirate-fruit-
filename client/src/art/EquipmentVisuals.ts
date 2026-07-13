@@ -13,7 +13,7 @@ const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
 
 const TRAINING_SWORD_SCALE = 0.85;
 /** เฉียงใบดาบออกจากลำตัว (+Z ด้านหน้า, +X ด้านขวาของผู้เล่น) */
-const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [0.24, 0.08, -0.62];
+const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [1.34, 0.08, -0.28];
 /** อาวุธทุกชิ้นใช้ origin เป็นจุดจับ ส่วน socket ของ Pirate V1 อยู่กลางฝ่ามือ */
 const GRIP_ORIGIN: THREE.Vector3Tuple = [0, 0, 0];
 

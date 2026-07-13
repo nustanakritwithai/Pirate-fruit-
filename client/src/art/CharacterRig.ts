@@ -28,9 +28,11 @@ export interface PiratePlayerRig {
   leftArm: THREE.Group;
   leftForeArm: THREE.Group;
   leftHand: THREE.Group;
+  leftPalmVisual: THREE.Group;
   rightArm: THREE.Group;
   rightForeArm: THREE.Group;
   rightHand: THREE.Group;
+  rightPalmVisual: THREE.Group;
   leftLeg: THREE.Group;
   leftLowerLeg: THREE.Group;
   leftFoot: THREE.Group;
