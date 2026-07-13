@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createCrabVisual, createHumanoidVisual } from '../../art/CharacterVisuals';
 import { PlayerActionAnimator } from '../PlayerActionAnimator';
 import { ProceduralCharacterAnimator } from '../ProceduralCharacterAnimator';
+import { resolveMixamoPlayerRig } from '../../art/CharacterRig';
 
 function quaternionChanged(before: THREE.Quaternion, after: THREE.Quaternion): boolean {
   return before.angleTo(after) > 0.001;
@@ -17,8 +18,10 @@ function makeMixamoMock(): { root: THREE.Group; nodes: Map<string, THREE.Object3
     'mixamorig:Head',
     'mixamorig:LeftArm',
     'mixamorig:LeftForeArm',
+    'mixamorig:LeftHand',
     'mixamorig:RightArm',
     'mixamorig:RightForeArm',
+    'mixamorig:RightHand',
     'mixamorig:LeftUpLeg',
     'mixamorig:RightUpLeg',
   ];
@@ -75,12 +78,15 @@ describe('Procedural character assets', () => {
 describe('Mixamo player action overlay', () => {
   it('finds the Soldier rig and applies block/attack overlays', () => {
     const blocking = makeMixamoMock();
-    const blockAnimator = new PlayerActionAnimator(blocking.root);
+    const rig = resolveMixamoPlayerRig(blocking.root);
+    const blockAnimator = new PlayerActionAnimator(rig);
     const blockArm = blocking.nodes.get('mixamorig:RightArm')!;
     const beforeBlock = blockArm.quaternion.clone();
 
     blockAnimator.update(0.1, { combatState: 'blocking', category: 'style', onGround: true });
     expect(blockAnimator.rigReady).toBe(true);
+    expect(rig.leftHand).toBe(blocking.nodes.get('mixamorig:LeftHand'));
+    expect(rig.rightHand).toBe(blocking.nodes.get('mixamorig:RightHand'));
     expect(quaternionChanged(beforeBlock, blockArm.quaternion)).toBe(true);
 
     const attacking = makeMixamoMock();

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ActiveLoadoutItem, LoadoutCategory } from '../progression/ProgressionTypes';
 import { createMobileMaterial } from './MobilePBRMaterials';
+import type { CharacterAttachmentSockets } from './CharacterRig';
 
 const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
   style: 'equipment:style',
@@ -37,6 +38,8 @@ function addShadowFlags(root: THREE.Object3D): void {
 export class EquipmentVisuals {
   private readonly sword = new THREE.Group();
   private readonly wraps = new THREE.Group();
+  private readonly leftWrap = new THREE.Group();
+  private readonly rightWrap = new THREE.Group();
   private readonly gun = new THREE.Group();
   private readonly fruit = new THREE.Group();
   private readonly utility = new THREE.Group();
@@ -44,12 +47,24 @@ export class EquipmentVisuals {
   private readonly fruitBodyMaterial: THREE.MeshStandardMaterial;
   private readonly fruitAccentMaterial: THREE.MeshStandardMaterial;
   private readonly fruitRestY = 0.94;
+  private readonly socketWorldPosition = new THREE.Vector3();
+  private readonly socketWorldQuaternion = new THREE.Quaternion();
+  private readonly rootWorldQuaternion = new THREE.Quaternion();
+  private readonly socketLocalQuaternion = new THREE.Quaternion();
+  private readonly socketOffset = new THREE.Vector3();
+  private readonly socketOffsetQuaternion = new THREE.Quaternion();
+  private readonly socketOffsetEuler = new THREE.Euler();
   private elapsed = 0;
   private lastItemKey = '';
 
   constructor(
-    playerRoot: THREE.Group,
+    private readonly playerRoot: THREE.Group,
     private getActiveItem: () => ActiveLoadoutItem,
+    private readonly sockets: Readonly<CharacterAttachmentSockets> = {
+      leftHand: null,
+      rightHand: null,
+      hips: null,
+    },
   ) {
     this.sword.name = EQUIPMENT_NAME.sword;
     this.wraps.name = EQUIPMENT_NAME.style;
@@ -96,14 +111,20 @@ export class EquipmentVisuals {
 
     // ผ้าพันหมัดสำหรับ Fighting Style
     const wrapMaterial = createMobileMaterial('cloth', { color: 0xa97448, roughness: 0.96 });
-    for (const side of [-1, 1]) {
+    this.leftWrap.name = 'equipment:style:left-hand';
+    this.rightWrap.name = 'equipment:style:right-hand';
+    for (const hand of [this.leftWrap, this.rightWrap]) {
       for (let ring = 0; ring < 2; ring++) {
         const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.035, 6, 12), wrapMaterial);
-        wrap.position.set(side * 0.62, 0.72 + ring * 0.09, 0.04);
+        wrap.position.y = -0.04 + ring * 0.09;
         wrap.rotation.x = Math.PI / 2;
-        this.wraps.add(wrap);
+        hand.add(wrap);
       }
     }
+    // fallback สำหรับ asset ที่ไม่มี Mixamo hand bones
+    this.leftWrap.position.set(-0.62, 0.76, 0.04);
+    this.rightWrap.position.set(0.62, 0.76, 0.04);
+    this.wraps.add(this.leftWrap, this.rightWrap);
 
     // ปืน flintlock แบบ procedural — ใช้ geometry ต่ำและวัสดุร่วม
     const gunGrip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, 0.13), darkLeather);
@@ -185,9 +206,15 @@ export class EquipmentVisuals {
 
   update(dt = 0): void {
     this.elapsed += dt;
+    const fruitMounted = this.updateSocketTransforms();
     if (this.fruit.visible) {
-      this.fruit.rotation.y += dt * 0.85;
-      this.fruit.position.y = this.fruitRestY + Math.sin(this.elapsed * 2.4) * 0.035;
+      if (fruitMounted) {
+        this.fruit.rotateY(this.elapsed * 0.85);
+        this.fruit.position.y += Math.sin(this.elapsed * 2.4) * 0.035;
+      } else {
+        this.fruit.rotation.y = this.elapsed * 0.85;
+        this.fruit.position.y = this.fruitRestY + Math.sin(this.elapsed * 2.4) * 0.035;
+      }
     }
 
     const item = this.getActiveItem();
@@ -203,6 +230,51 @@ export class EquipmentVisuals {
       group.visible = category === item.category;
     }
     if (item.category === 'fruit') this.applyFruitPalette(item.itemId);
+  }
+
+  /** ผูก visual กับ socket หลัง mixer/action overlay อัปเดต โดยไม่แก้ skeleton */
+  private updateSocketTransforms(): boolean {
+    this.followSocket(this.leftWrap, this.sockets.leftHand, [0, 0.02, 0], [0, 0, 0], 0.9);
+    this.followSocket(this.rightWrap, this.sockets.rightHand, [0, 0.02, 0], [0, 0, 0], 0.9);
+    this.followSocket(this.sword, this.sockets.rightHand, [0, 0.02, 0], [0, 0, -0.08], 0.85);
+    this.followSocket(this.gun, this.sockets.rightHand, [0, 0.02, 0], [-Math.PI / 2, 0, 0], 0.75);
+    const fruitMounted = this.followSocket(
+      this.fruit,
+      this.sockets.leftHand,
+      [0, 0.12, 0],
+      [0, 0, 0],
+      0.85,
+    );
+    this.followSocket(this.utility, this.sockets.hips, [-0.38, 0, 0.18], [0, 0, 0], 0.9);
+    return fruitMounted;
+  }
+
+  private followSocket(
+    visual: THREE.Object3D,
+    socket: THREE.Object3D | null,
+    positionOffset: THREE.Vector3Tuple,
+    rotationOffset: THREE.Vector3Tuple,
+    scale: number,
+  ): boolean {
+    if (!socket) return false;
+
+    socket.getWorldPosition(this.socketWorldPosition);
+    this.playerRoot.worldToLocal(this.socketWorldPosition);
+    socket.getWorldQuaternion(this.socketWorldQuaternion);
+    this.playerRoot.getWorldQuaternion(this.rootWorldQuaternion).invert();
+    this.socketLocalQuaternion
+      .copy(this.rootWorldQuaternion)
+      .multiply(this.socketWorldQuaternion);
+
+    visual.position.copy(this.socketWorldPosition);
+    this.socketOffset.set(...positionOffset).applyQuaternion(this.socketLocalQuaternion);
+    visual.position.add(this.socketOffset);
+    this.socketOffsetQuaternion.setFromEuler(this.socketOffsetEuler.set(...rotationOffset));
+    visual.quaternion
+      .copy(this.socketLocalQuaternion)
+      .multiply(this.socketOffsetQuaternion);
+    visual.scale.setScalar(scale);
+    return true;
   }
 
   private applyFruitPalette(itemId: string): void {

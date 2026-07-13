@@ -6,6 +6,11 @@ import { enhanceLoadedModel } from '../art/ModelEnhancer';
 import { PlayerActionAnimator, type PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
 import type { CombatState } from '../combat/CombatState';
 import type { LoadoutCategory } from '../progression/ProgressionTypes';
+import {
+  attachmentSocketsFromRig,
+  resolveMixamoPlayerRig,
+  type CharacterAttachmentSockets,
+} from '../art/CharacterRig';
 
 type AnimName = 'Idle' | 'Walk' | 'Run';
 
@@ -22,6 +27,11 @@ export class Player {
   private actionAnimator: PlayerActionAnimator | null = null;
   private actions = new Map<AnimName, THREE.AnimationAction>();
   private current: AnimName = 'Idle';
+  private readonly sockets: CharacterAttachmentSockets = {
+    leftHand: null,
+    rightHand: null,
+    hips: null,
+  };
   private getActionState: () => { combatState: CombatState; category: LoadoutCategory } = () => ({
     combatState: 'idle',
     category: 'style',
@@ -40,7 +50,9 @@ export class Player {
     model.rotation.y = MODEL_YAW_OFFSET;
     this.group.add(model);
     scene.add(this.group);
-    this.actionAnimator = new PlayerActionAnimator(model);
+    const rig = resolveMixamoPlayerRig(model);
+    Object.assign(this.sockets, attachmentSocketsFromRig(rig));
+    this.actionAnimator = new PlayerActionAnimator(rig);
 
     this.mixer = new THREE.AnimationMixer(model);
     for (const name of ['Idle', 'Walk', 'Run'] as const) {
@@ -57,6 +69,11 @@ export class Player {
     provider: () => { combatState: CombatState; category: LoadoutCategory },
   ): void {
     this.getActionState = provider;
+  }
+
+  /** visual-only sockets สำหรับอุปกรณ์ ไม่เปิดให้ระบบ combat แก้ bone */
+  get equipmentSockets(): Readonly<CharacterAttachmentSockets> {
+    return this.sockets;
   }
 
   private setAnimation(name: AnimName): void {
