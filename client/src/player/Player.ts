@@ -26,7 +26,11 @@ export class Player {
     rightHand: null,
     hips: null,
   };
-  private getActionState: () => { combatState: CombatState; category: LoadoutCategory } = () => ({
+  private getActionState: () => {
+    combatState: CombatState;
+    category: LoadoutCategory;
+    attackProgress?: number;
+  } = () => ({
     combatState: 'idle',
     category: 'style',
   });
@@ -48,7 +52,11 @@ export class Player {
 
   /** late-bind หลัง PlayerCombat ถูกสร้าง เพื่อไม่ให้ Player เป็นเจ้าของ combat logic */
   bindActionState(
-    provider: () => { combatState: CombatState; category: LoadoutCategory },
+    provider: () => {
+      combatState: CombatState;
+      category: LoadoutCategory;
+      attackProgress?: number;
+    },
   ): void {
     this.getActionState = provider;
   }
@@ -79,6 +87,7 @@ export class Player {
       category: action.category,
       locomotion,
       onGround: moveState.onGround,
+      attackProgress: action.attackProgress,
     };
     this.actionAnimator?.update(dt, snapshot);
   }

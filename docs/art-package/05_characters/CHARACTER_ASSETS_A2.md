@@ -9,7 +9,9 @@ Phase A2 เพิ่มตัวละครแบบ articulated โดยค�
 - rig มี spine, arms, forearms, hands, upper/lower legs และ feet ที่ควบคุม pivot ได้เอง
 - มี calibrated `socket:left-palm`, `socket:right-palm` และ `socket:hips`
 - รองรับ `Idle`, `Walk`, `Run`, `Swim`, `Jump/Airborne`, `Attack 1–4`, `Cast`, `Block`, `Stunned`, `Knockback`, `Knockdown` และ `Death`
-- ท่าโจมตีแยก silhouette ตามหมวด `style`, `sword`, `gun` และ `fruit`
+- มี ready stance แยกตาม `style`, `sword`, `gun` และ `fruit`
+- Sword Combo: ฟันเฉียง, ฟันย้อน, ฟันเสย, หมุนปิดคอมโบ
+- Style Combo: jab, left hook, uppercut, spinning kick
 - animator อ่าน `CombatState` และ active loadout เท่านั้น ไม่กำหนด damage, hitbox, cooldown หรือ timing
 
 ## NPC

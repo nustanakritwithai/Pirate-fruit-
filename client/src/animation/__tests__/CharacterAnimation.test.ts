@@ -9,6 +9,10 @@ function quaternionChanged(before: THREE.Quaternion, after: THREE.Quaternion): b
   return before.angleTo(after) > 0.001;
 }
 
+function poseDistance(a: THREE.Quaternion[], b: THREE.Quaternion[]): number {
+  return a.reduce((sum, quaternion, index) => sum + quaternion.angleTo(b[index]), 0);
+}
+
 describe('Procedural character assets', () => {
   it('builds a humanoid with standard articulated pivots', () => {
     const visual = createHumanoidVisual({ clothColor: 0x446688, pirate: true, boss: true });
@@ -118,5 +122,60 @@ describe('Pirate V1 player rig', () => {
       });
     }
     expect(visual.rig.rightArm.quaternion.length()).toBeCloseTo(1, 5);
+  });
+
+  it('gives all four sword combo steps visibly different full-body poses', () => {
+    const states = ['attack1', 'attack2', 'attack3', 'attack4'] as const;
+    const poses = states.map((combatState) => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      animator.update(1 / 60, {
+        combatState,
+        category: 'sword',
+        locomotion: 'idle',
+        onGround: true,
+        attackProgress: 0.52,
+      });
+      return [
+        visual.rig.root.quaternion.clone(),
+        visual.rig.spine.quaternion.clone(),
+        visual.rig.rightArm.quaternion.clone(),
+        visual.rig.leftArm.quaternion.clone(),
+        visual.rig.rightLeg.quaternion.clone(),
+      ];
+    });
+
+    for (let i = 0; i < poses.length; i++) {
+      for (let j = i + 1; j < poses.length; j++) {
+        expect(poseDistance(poses[i], poses[j])).toBeGreaterThan(0.35);
+      }
+    }
+  });
+
+  it('uses a jab, hook, uppercut and spinning kick for the style combo', () => {
+    const states = ['attack1', 'attack2', 'attack3', 'attack4'] as const;
+    const poses = states.map((combatState) => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      animator.update(1 / 60, {
+        combatState,
+        category: 'style',
+        locomotion: 'idle',
+        onGround: true,
+        attackProgress: 0.55,
+      });
+      return [
+        visual.rig.root.quaternion.clone(),
+        visual.rig.leftArm.quaternion.clone(),
+        visual.rig.rightArm.quaternion.clone(),
+        visual.rig.rightLeg.quaternion.clone(),
+      ];
+    });
+
+    for (let i = 0; i < poses.length; i++) {
+      for (let j = i + 1; j < poses.length; j++) {
+        expect(poseDistance(poses[i], poses[j])).toBeGreaterThan(0.3);
+      }
+    }
   });
 });
