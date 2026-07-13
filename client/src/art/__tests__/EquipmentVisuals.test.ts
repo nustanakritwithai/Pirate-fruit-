@@ -105,6 +105,18 @@ describe('EquipmentVisuals', () => {
         locomotion: 'idle' as const,
         onGround: true,
       })),
+      ...(['projectile', 'aoe', 'dash'] as const).flatMap((skillAnimationType) =>
+        [0.22, 0.52, 0.88].map((skillAnimationProgress) => ({
+          combatState: skillAnimationProgress < 0.3 ? 'casting' as const : 'idle' as const,
+          category: 'sword' as const,
+          locomotion: 'idle' as const,
+          onGround: true,
+          skillAnimationType,
+          skillAnimationCategory: 'sword' as const,
+          skillAnimationProgress,
+          skillAnimationReleaseProgress: 0.3,
+        })),
+      ),
     ];
 
     for (const snapshot of snapshots) {
