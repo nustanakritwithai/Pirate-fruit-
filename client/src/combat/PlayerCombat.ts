@@ -71,6 +71,22 @@ export interface CombatProgressionAdapter {
   getMasteryLevel(itemId: string): number;
 }
 
+/** มุมแหล่งโจมตีในแกน local ของผู้เล่น: 0 = หน้า, +PI/2 = ขวา */
+export function getRelativeHitAngle(
+  playerX: number,
+  playerZ: number,
+  heading: number,
+  sourceX: number,
+  sourceZ: number,
+): number {
+  const dx = sourceX - playerX;
+  const dz = sourceZ - playerZ;
+  if (Math.hypot(dx, dz) < 0.0001) return 0;
+  const localRight = dx * Math.cos(heading) - dz * Math.sin(heading);
+  const localForward = dx * Math.sin(heading) + dz * Math.cos(heading);
+  return Math.atan2(localRight, localForward);
+}
+
 /**
  * Combat Framework ของผู้เล่น (Phase 5 → Phase 7)
  * - State machine: idle/attack1-4/casting/blocking/stunned/knockback/knockdown/dead
@@ -95,6 +111,8 @@ export class PlayerCombat {
   /** คูลดาวน์รายสกิล (key = skill.id) — เดินตามเวลาจริง ไม่รีเซ็ตตอนสลับชุดสกิล */
   private readonly skillCooldowns = new Map<string, number>();
   private timeSinceDamaged = 99;
+  private damageReactionSerial = 0;
+  private damageReactionAngle = 0;
 
   private readonly projectiles: WaveProjectile[] = [];
   private readonly shield: THREE.Mesh;
@@ -184,6 +202,16 @@ export class PlayerCombat {
     return this.combatState === 'blocking';
   }
 
+  /** visual-only nonce: เปลี่ยนทุกครั้งที่รับ hit โดยไม่สร้าง CombatState ใหม่ */
+  get hitReactionId(): number {
+    return this.damageReactionSerial;
+  }
+
+  /** มุมแหล่งโจมตีเทียบกับด้านหน้าผู้เล่น ใช้เลือกทิศสะดุ้ง */
+  get hitReactionAngle(): number {
+    return this.damageReactionAngle;
+  }
+
   // ------------------------------------------------------------------
   // Damage pipeline ขาเข้า (มอนสเตอร์ → ผู้เล่น)
   // ------------------------------------------------------------------
@@ -191,6 +219,14 @@ export class PlayerCombat {
   /** เรียกจาก MonsterManager ก่อนหักเลือด — ตัดสิน Block/Guard/unblockable/ผลัก คืนดาเมจสุดท้าย */
   modifyIncomingDamage(attack: IncomingAttack): number {
     this.timeSinceDamaged = 0;
+    this.damageReactionSerial++;
+    this.damageReactionAngle = getRelativeHitAngle(
+      this.controller.position.x,
+      this.controller.position.z,
+      this.controller.heading,
+      attack.sourceX,
+      attack.sourceZ,
+    );
     let amount = attack.amount;
 
     if (this.combatState === 'blocking' && !attack.unblockable) {

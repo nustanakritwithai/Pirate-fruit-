@@ -30,6 +30,8 @@ export class Player {
     combatState: CombatState;
     category: LoadoutCategory;
     attackProgress?: number;
+    hitReactionId?: number;
+    hitReactionAngle?: number;
   } = () => ({
     combatState: 'idle',
     category: 'style',
@@ -56,6 +58,8 @@ export class Player {
       combatState: CombatState;
       category: LoadoutCategory;
       attackProgress?: number;
+      hitReactionId?: number;
+      hitReactionAngle?: number;
     },
   ): void {
     this.getActionState = provider;
@@ -80,14 +84,18 @@ export class Player {
       action.combatState === 'dead';
     let locomotion: PlayerLocomotion = 'idle';
     if (!locomotionLocked && moveState.swimming) locomotion = 'swim';
-    else if (!locomotionLocked && moveState.speed > 5) locomotion = 'run';
-    else if (!locomotionLocked && moveState.speed > 0.1) locomotion = 'walk';
+    else if (!locomotionLocked && !moveState.dashing && moveState.speed > 5) locomotion = 'run';
+    else if (!locomotionLocked && !moveState.dashing && moveState.speed > 0.1) locomotion = 'walk';
     const snapshot: PlayerActionSnapshot = {
       combatState: action.combatState,
       category: action.category,
       locomotion,
       onGround: moveState.onGround,
+      dashing: moveState.dashing,
+      verticalVelocity: this.controller.verticalSpeed,
       attackProgress: action.attackProgress,
+      hitReactionId: action.hitReactionId,
+      hitReactionAngle: action.hitReactionAngle,
     };
     this.actionAnimator?.update(dt, snapshot);
   }
