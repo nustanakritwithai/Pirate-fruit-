@@ -163,4 +163,32 @@ describe('EquipmentVisuals', () => {
     expect(bladeDirection.y).toBeGreaterThan(0.35);
     expect(bladeDirection.z).toBeGreaterThan(Math.abs(bladeDirection.x));
   });
+
+  it('exposes copied world-space blade and muzzle anchors for combat VFX', () => {
+    const root = new THREE.Group();
+    root.position.set(4, 1.5, -3);
+    root.rotation.y = 0.65;
+    const player = createPiratePlayerVisual();
+    root.add(player.group);
+    let active = item('sword', 'training-sword');
+    const visuals = new EquipmentVisuals(
+      root,
+      () => active,
+      attachmentSocketsFromPirateRig(player.rig),
+    );
+    visuals.update(1 / 60);
+
+    const blade = visuals.getSwordBladeWorldSegment()!;
+    expect(blade.tip.distanceTo(blade.base)).toBeGreaterThan(0.9);
+    const copiedBase = blade.base.clone();
+    blade.base.set(999, 999, 999);
+    expect(visuals.getSwordBladeWorldSegment()!.base.distanceTo(copiedBase)).toBeLessThan(0.0001);
+
+    active = item('gun', 'flintlock');
+    visuals.update(1 / 60);
+    const muzzle = visuals.getGunMuzzleWorldRay()!;
+    const muzzleMesh = root.getObjectByName('equipment:gun:muzzle')!;
+    expect(muzzle.origin.distanceTo(muzzleMesh.getWorldPosition(new THREE.Vector3()))).toBeLessThan(0.08);
+    expect(muzzle.direction.length()).toBeCloseTo(1, 6);
+  });
 });

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Input } from '../engine/Input';
 import type { CharacterController } from '../player/CharacterController';
 import type { MonsterManager, IncomingAttack } from '../monster/MonsterManager';
-import { getForwardArcRotation, type Effects } from '../effects/Effects';
+import type { Effects, EnergyProjectileVisual } from '../effects/Effects';
 import type { TouchControls } from '../ui/TouchControls';
 import type { Monster } from '../monster/Monster';
 import {
@@ -41,7 +41,7 @@ import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 const ULTIMATE_SLOT = 3;
 
 interface WaveProjectile {
-  mesh: THREE.Mesh;
+  visual: EnergyProjectileVisual;
   dirX: number;
   dirZ: number;
   life: number;
@@ -49,6 +49,12 @@ interface WaveProjectile {
   hit: Set<Monster>;
   damage: number;
   source: CombatRewardSource;
+}
+
+/** visual-only socket bridge — EquipmentVisuals คืนสำเนาพิกัด world โดยไม่ให้ combat แก้ rig */
+export interface CombatVisualAnchorProvider {
+  getSwordBladeWorldSegment(): { base: THREE.Vector3; tip: THREE.Vector3 } | null;
+  getGunMuzzleWorldRay(): { origin: THREE.Vector3; direction: THREE.Vector3 } | null;
 }
 
 /** สกิลที่ร่ายค้างอยู่ (state = casting) รอ castTime ครบแล้วปล่อยผล */
@@ -127,7 +133,7 @@ export class PlayerCombat {
 
   private readonly projectiles: WaveProjectile[] = [];
   private readonly shield: THREE.Mesh;
-  private readonly waveGeo = new THREE.RingGeometry(0.6, 1.7, 22, 1, 0, Math.PI * 0.8);
+  private visualAnchors: CombatVisualAnchorProvider | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -153,7 +159,7 @@ export class PlayerCombat {
       }),
     );
     this.shield.visible = false;
-    scene.add(this.shield);
+    this.scene.add(this.shield);
 
     if (touch) {
       touch.unlockSkills(['❔', '❔', '❔']);
@@ -254,6 +260,11 @@ export class PlayerCombat {
 
   get skillAnimationCategory(): LoadoutCategory {
     return this.skillVisualCategory;
+  }
+
+  /** late-bind หลังสร้าง EquipmentVisuals เพื่อเลี่ยง ownership/circular dependency */
+  bindVisualAnchors(provider: CombatVisualAnchorProvider): void {
+    this.visualAnchors = provider;
   }
 
   // ------------------------------------------------------------------
@@ -489,14 +500,56 @@ export class PlayerCombat {
       const isFinisher = this.swing.comboIndex === combo.length - 1;
       const position = this.controller.position;
       const heading = this.controller.heading;
-      this.effects.spawnSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
+      const forward = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading));
+      let nearestHit: THREE.Vector3 | null = null;
+      let nearestDistanceSq = Number.POSITIVE_INFINITY;
       this.monsters.playerAttack(position, heading, {
         damage: m1.damage * hit.multiplier * this.damageMultiplier(this.set.weaponCategory),
         range: m1.range,
         arcCos: Math.cos(THREE.MathUtils.degToRad(m1.arcDeg / 2)),
         knockback: hit.knockback,
         source: this.weaponSource(),
+        onHit: (monster) => {
+          const distanceSq = monster.group.position.distanceToSquared(position);
+          if (distanceSq >= nearestDistanceSq) return;
+          nearestDistanceSq = distanceSq;
+          nearestHit = monster.group.position.clone();
+          nearestHit.y += monster.type.kind === 'crab' ? 0.65 : 1.05 * monster.type.scale;
+        },
       });
+
+      if (this.set.weaponCategory === 'sword') {
+        const blade = this.visualAnchors?.getSwordBladeWorldSegment();
+        if (blade) {
+          this.effects.spawnBladeTrail(
+            blade.base,
+            blade.tip,
+            position,
+            heading,
+            this.swing.comboIndex,
+            m1.color,
+            isFinisher,
+          );
+        } else {
+          this.effects.spawnSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
+        }
+      } else if (this.set.weaponCategory === 'gun') {
+        const muzzle = this.visualAnchors?.getGunMuzzleWorldRay();
+        const origin = muzzle?.origin ?? position.clone().add(new THREE.Vector3(0, 1.2, 0)).addScaledVector(forward, 0.65);
+        const muzzleDirection = muzzle?.direction && muzzle.direction.dot(forward) > 0.35
+          ? muzzle.direction
+          : forward;
+        const endpoint = nearestHit ?? origin.clone().addScaledVector(muzzleDirection, m1.range);
+        this.effects.spawnGunShot(
+          origin,
+          endpoint,
+          m1.color,
+          nearestHit !== null,
+          isFinisher ? 1.25 : 1,
+        );
+      } else {
+        this.effects.spawnSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
+      }
     }
 
     if (this.swing.timer <= 0) {
@@ -571,25 +624,19 @@ export class PlayerCombat {
     const scaledDamage = skill.damage * this.damageMultiplier(skill.category);
 
     if (skill.renderType === 'projectile') {
-      const mesh = new THREE.Mesh(
-        this.waveGeo,
-        new THREE.MeshBasicMaterial({
-          color: skill.isUltimate ? 0xffd45a : 0x74e8ff,
-          transparent: true,
-          opacity: 0.9,
-          side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
+      const color = skill.isUltimate
+        ? new THREE.Color(skill.color).lerp(new THREE.Color(0xffd45a), 0.35).getHex()
+        : skill.color;
       const scale = skill.isUltimate ? 1.7 : 1;
-      mesh.scale.setScalar(scale);
-      mesh.position.set(position.x + dirX * 1.2, position.y + 1.15, position.z + dirZ * 1.2);
-      mesh.rotation.set(-Math.PI / 2, 0, 0);
-      mesh.rotateZ(getForwardArcRotation(heading, Math.PI * 0.8));
-      this.scene.add(mesh);
+      const direction = new THREE.Vector3(dirX, 0, dirZ);
+      const start = new THREE.Vector3(
+        position.x + dirX * 1.2,
+        position.y + 1.15,
+        position.z + dirZ * 1.2,
+      );
+      const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
       this.projectiles.push({
-        mesh,
+        visual,
         dirX,
         dirZ,
         life: WAVE_LIFETIME,
@@ -598,7 +645,7 @@ export class PlayerCombat {
         damage: scaledDamage,
         source,
       });
-      this.effects.spawnSlash(position, heading, skill.isUltimate ? 0xffd45a : 0x74e8ff, scale * 1.3);
+      this.effects.spawnEnergyLaunch(start, direction, color, scale * 1.15);
     } else if (skill.renderType === 'aoe') {
       this.effects.spawnShockwave(position, skill.radius);
       // ท่า utility (buff/summon ที่ยังไม่มีผลจริง) ดาเมจ 0 → โชว์เอฟเฟกต์อย่างเดียว
@@ -630,14 +677,13 @@ export class PlayerCombat {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const wave = this.projectiles[i];
       wave.life -= dt;
-      wave.mesh.position.x += wave.dirX * WAVE_SPEED * dt;
-      wave.mesh.position.z += wave.dirZ * WAVE_SPEED * dt;
-      (wave.mesh.material as THREE.MeshBasicMaterial).opacity =
-        Math.min(1, wave.life / WAVE_LIFETIME + 0.35) * 0.9;
+      wave.visual.root.position.x += wave.dirX * WAVE_SPEED * dt;
+      wave.visual.root.position.z += wave.dirZ * WAVE_SPEED * dt;
+      this.effects.updateEnergyProjectile(wave.visual, dt, wave.life / WAVE_LIFETIME);
 
       for (const monster of this.monsters.monstersNear(
-        wave.mesh.position.x,
-        wave.mesh.position.z,
+        wave.visual.root.position.x,
+        wave.visual.root.position.z,
         wave.radius,
       )) {
         if (wave.hit.has(monster)) continue;
@@ -645,16 +691,22 @@ export class PlayerCombat {
         this.monsters.applyHit(
           monster,
           wave.damage,
-          wave.mesh.position.x - wave.dirX,
-          wave.mesh.position.z - wave.dirZ,
+          wave.visual.root.position.x - wave.dirX,
+          wave.visual.root.position.z - wave.dirZ,
           5,
           wave.source,
+        );
+        const impactPosition = monster.group.position.clone();
+        impactPosition.y += monster.type.kind === 'crab' ? 0.65 : 1.05 * monster.type.scale;
+        this.effects.spawnEnergyImpact(
+          impactPosition,
+          wave.visual.color,
+          wave.visual.scale * 0.7,
         );
       }
 
       if (wave.life <= 0) {
-        this.scene.remove(wave.mesh);
-        (wave.mesh.material as THREE.Material).dispose();
+        this.effects.destroyEnergyProjectile(wave.visual);
         this.projectiles.splice(i, 1);
       }
     }

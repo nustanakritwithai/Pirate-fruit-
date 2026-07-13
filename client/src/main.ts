@@ -223,6 +223,7 @@ async function main(): Promise<void> {
     () => playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
     player.equipmentSockets,
   );
+  playerCombat.bindVisualAnchors(equipmentVisuals);
   const pbrPerformance = new PBRPerformanceMonitor(game);
 
   const progressionHud = new ProgressionHUD(progression, controller);
