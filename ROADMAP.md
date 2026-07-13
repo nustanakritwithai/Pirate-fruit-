@@ -8,7 +8,7 @@
 Combat Framework → Level/Stats/Mastery → Quest/Reward Loop
 
 วงจรเกมเป้าหมาย:
-รับ Quest → ต่อสู้ → ได้ EXP และเงิน → เพิ่ม Level → อัป Stats → เพิ่ม Mastery
+รับ Quest → ต่อสู้ → ได้ EXP และเงิน → เพิ่ม Level → อัป Stats (สเกลเต็มตาม Wiki) → เพิ่ม Mastery
 → ปลดล็อก Skill → สู้ Boss → เดินทางไปเกาะต่อไป
 
 สถานะ: ✅ เสร็จแล้ว · 🔨 กำลังทำ · ⬜ ยังไม่เริ่ม
@@ -88,9 +88,13 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 
 ## Phase 6 — Level, Stats, Mastery และ Quest พื้นฐาน ✅
 
-- [x] Player Level + EXP พร้อม multi-level up, EXP curve และ Level Cap 100
-- [x] Stat Points 3 แต้มต่อ Level — **Combat / Vitality / Blade / Ranged / Fruit Power**
-- [x] Max HP / Energy และ Damage Multiplier ผ่าน provider ของ Damage Pipeline เดิม
+- [x] Player Level + EXP พร้อม multi-level up — **สเกลเต็มตาม Wiki**: Level Cap 2800,
+  EXP curve `floor(2·L^2.3 + 84)` (ดึงจาก databook `levels/`)
+- [x] **สเตตัส 5 แบบตาม Blox Fruits Wiki**: Melee/มือเปล่า · Defense/พลังป้องกัน · Sword/ดาบ ·
+  Gun/ปืน · Blox Fruit/ผลไม้ปีศาจ (3 แต้ม/Level, cap 2800/สเตต, max ได้ 3 สเตต)
+- [x] ผลตามสูตร Wiki: Defense +5 HP · Melee +5 Energy + ดาเมจหมัด · Sword/Gun/Fruit ดาเมจสูงสุด ~78.26x
+  — `PROGRESSION_CONFIG` ดึงค่าจาก databook `stats/` เป็น single source of truth
+- [x] StatsPanel โชว์ชื่อ+ผลตาม Wiki + ค่าจริงสด (Max HP/Energy, ตัวคูณดาเมจต่อหมวด)
 - [x] Mastery แยกตาม Item ID และบังคับใช้ `SkillDefinition.masteryRequired`
 - [x] Reward Contribution ต่อศัตรู: 70% ให้อุปกรณ์ที่ทำดาเมจสูงสุด, 30% ให้ last hit
 - [x] Enemy/Boss Reward พร้อมลด EXP/Mastery เมื่อเลเวลต่างกันมาก

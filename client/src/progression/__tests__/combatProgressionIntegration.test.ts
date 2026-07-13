@@ -45,7 +45,7 @@ describe('Combat Framework v2 + Phase 6 integration', () => {
       }),
     );
     const progression = new ProgressionManager({ storage });
-    expect(progression.getDamageMultiplier('sword')).toBeCloseTo(1.588);
+    expect(progression.getDamageMultiplier('sword')).toBeCloseTo(2.352);
     expect(progression.getDamageMultiplier('style')).toBe(1);
   });
 });

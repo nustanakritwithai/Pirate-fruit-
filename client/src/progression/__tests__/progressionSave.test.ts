@@ -37,17 +37,17 @@ describe('ProgressionSave', () => {
   it('sanitizes malformed and out-of-range save values', () => {
     const state = sanitizeProgressionState({
       player: {
-        level: 999,
+        level: 9_999_999,
         exp: -10,
         statPoints: Number.NaN,
-        stats: { combat: 0, vitality: 999, blade: 3, ranged: 1, fruitPower: 1 },
+        stats: { combat: 0, vitality: 9_999_999, blade: 3, ranged: 1, fruitPower: 1 },
       },
       coins: -400,
     });
-    expect(state.player.level).toBe(100);
+    expect(state.player.level).toBe(2800); // clamp ที่ maxLevel (wiki)
     expect(state.player.exp).toBe(0);
     expect(state.player.stats.combat).toBe(1);
-    expect(state.player.stats.vitality).toBe(100);
+    expect(state.player.stats.vitality).toBe(2800); // clamp ที่ maxStatPerCategory (wiki)
     expect(state.coins).toBe(0);
   });
 });

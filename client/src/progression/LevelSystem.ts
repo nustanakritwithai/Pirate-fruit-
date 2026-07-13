@@ -1,9 +1,10 @@
 import { PROGRESSION_CONFIG } from './ProgressionData';
 import type { LevelUpResult, PlayerProgression } from './ProgressionTypes';
 
+/** EXP ต่อเลเวล — สูตร Blox Fruits Wiki: floor(2 × level^2.3 + 84) */
 export function getExpRequiredForLevel(level: number): number {
   const safeLevel = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1));
-  return Math.floor(80 + safeLevel * 35 + safeLevel * safeLevel * 4);
+  return Math.floor(2 * safeLevel ** 2.3 + 84);
 }
 
 /** Pure progression operation; UI และ combat ไม่ควรคำนวณ level เอง */

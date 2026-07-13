@@ -9,20 +9,20 @@ import { createDefaultProgressionState } from '../ProgressionSave';
 import type { PlayerStatId } from '../ProgressionTypes';
 
 describe('StatSystem', () => {
-  it('does not count the initial stat point above base HP/Energy', () => {
+  it('does not count the initial stat point above base HP/Energy (wiki +5/pt)', () => {
     const stats = createDefaultProgressionState().player.stats;
     expect(getMaxHp(stats)).toBe(100);
     expect(getMaxEnergy(stats)).toBe(100);
-    stats.vitality = 10;
-    stats.combat = 10;
-    expect(getMaxHp(stats)).toBe(172);
-    expect(getMaxEnergy(stats)).toBe(136);
+    stats.vitality = 10; // Defense +5 HP ต่อแต้ม
+    stats.combat = 10; // Melee +5 Energy ต่อแต้ม
+    expect(getMaxHp(stats)).toBe(145);
+    expect(getMaxEnergy(stats)).toBe(145);
   });
 
   it('maps damage scaling to the correct equipment category', () => {
     const stats = createDefaultProgressionState().player.stats;
     stats.blade = 50;
-    expect(getStatDamageMultiplier(stats, 'sword')).toBeCloseTo(1.588);
+    expect(getStatDamageMultiplier(stats, 'sword')).toBeCloseTo(2.352);
     expect(getStatDamageMultiplier(stats, 'style')).toBe(1);
     expect(getStatDamageMultiplier(stats, 'utility')).toBe(1);
   });

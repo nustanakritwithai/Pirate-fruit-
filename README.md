@@ -68,8 +68,11 @@ npm run dev
 ### ระบบความก้าวหน้า (Phase 6)
 
 - กำจัดมอนสเตอร์เพื่อรับ **Player EXP, Mastery EXP และ Coins**; มอนสเตอร์ที่ต่ำกว่าผู้เล่นมากจะให้ EXP ลดลง
-- Level สูงสุดของ prototype คือ **100** และทุกครั้งที่ Level Up ได้ **3 Stat Points** พร้อมฟื้น HP/Energy เต็ม
-- Stats 5 หมวด: **Combat, Vitality, Blade, Ranged, Fruit Power**; กด `K` หรือปุ่ม 📊 เพื่ออัปค่า
+- **ระบบสเตตัสสเกลเต็มตาม Blox Fruits Wiki**: Level สูงสุด **2800**, EXP curve `floor(2·L^2.3+84)`,
+  3 Stat Points ต่อ Level, ลงได้สูงสุด **2800 แต้ม/สเตต** (max ได้ 3 สเตต)
+- สเตตัส 5 แบบตาม Wiki: **Melee/มือเปล่า · Defense/พลังป้องกัน · Sword/ดาบ · Gun/ปืน · Blox Fruit/ผลไม้ปีศาจ**
+  — Defense +5 HP · Melee +5 Energy + ดาเมจหมัด · Sword/Gun/Fruit ดาเมจสูงสุด ~78x; กด `K` หรือปุ่ม 📊
+  เปิดหน้า Stats (โชว์ชื่อ+ผล+ค่าจริงตาม Wiki) · ค่ากลางอยู่ที่ `stats/` + `levels/` databook
 - Mastery แยกตามอุปกรณ์ที่ทำดาเมจจริง โดยแบ่งรางวัล 70% ให้ชิ้นที่ทำดาเมจสูงสุด และ 30% ให้ชิ้นที่ปิดท้าย
 - คุยกับ **หัวหน้ามะลิ** เพื่อรับ Quest กำจัดปู, โจรสลัด หรือบอส; รางวัลเข้าทันทีเมื่อทำครบ
 - Progression และ Quest บันทึกอัตโนมัติใน `localStorage`; เงินเดิมจากระบบเรือถูก migrate มาใช้กระเป๋าเดียวกัน

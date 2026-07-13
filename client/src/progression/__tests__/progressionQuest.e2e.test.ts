@@ -45,14 +45,15 @@ describe('Phase 6 reward loop E2E', () => {
 
     const state = progression.getState();
     expect(state.activeQuestId).toBeNull();
-    expect(state.player.level).toBe(2);
-    expect(state.player.statPoints).toBe(3);
+    // เส้น EXP wiki (floor(2·L^2.3+84)) ต้นเกมไต่เร็วกว่าเดิม → ถึง Lv 3
+    expect(state.player.level).toBe(3);
+    expect(state.player.statPoints).toBe(6);
     expect(state.coins).toBe(120);
     expect(state.mastery['basic-brawl'].level).toBe(2);
     progression.save();
 
     const reloaded = new ProgressionManager({ storage }).getState();
-    expect(reloaded.player.level).toBe(2);
+    expect(reloaded.player.level).toBe(3);
     expect(reloaded.coins).toBe(120);
     expect(reloaded.mastery['basic-brawl'].level).toBe(2);
     expect(reloaded.completedQuestIds).toContain('starter-crabs');
