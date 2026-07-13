@@ -12,6 +12,7 @@ export type MobileSurface =
   | 'cloth'
   | 'leather'
   | 'shell'
+  | 'fruit'
   | 'iron'
   | 'paintedMetal';
 
@@ -34,6 +35,7 @@ const PRESETS: Record<MobileSurface, SurfacePreset> = {
   cloth: { roughness: 0.9, metalness: 0, normalStrength: 0.4, envMapIntensity: 0.24 },
   leather: { roughness: 0.68, metalness: 0, normalStrength: 0.36, envMapIntensity: 0.48 },
   shell: { roughness: 0.38, metalness: 0.02, normalStrength: 0.3, envMapIntensity: 0.72 },
+  fruit: { roughness: 0.42, metalness: 0, normalStrength: 0.24, envMapIntensity: 0.7 },
   iron: { roughness: 0.38, metalness: 0.82, normalStrength: 0.24, envMapIntensity: 0.92 },
   paintedMetal: { roughness: 0.48, metalness: 0.52, normalStrength: 0.2, envMapIntensity: 0.76 },
 };

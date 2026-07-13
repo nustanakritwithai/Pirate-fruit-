@@ -99,19 +99,30 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 - [x] Save migration จาก Phase 1–5 และ Coins ชุดเดียวกับ BoatProgress
 - [x] Logic tests + progression/quest integration E2E
 
-## Phase 7 — Fighting Style, Sword และ Loadout เต็มรูปแบบ ⬜
+## Phase 7 — ระบบผลไม้ + 2 ชุดสกิล + ร้านสุ่ม (Gacha) ✅
 
-- [ ] Fighting Style หลายสาย + ครูฝึกสอน (ซื้อ/เปลี่ยน)
-- [ ] ดาบหลายเล่ม (ดรอปจากบอส/ร้าน)
-- [ ] UI จัดการ Loadout 5 ช่อง + สลับของในช่องเดียวกัน
-- [ ] สกิลต่อของแต่ละชิ้น ปลดตาม Mastery
+แนวคิด: **ไอเทม 1 ชิ้น = 1 ชุดสกิล** ตัวละครถือ 2 ชุด — ของอาวุธที่ถือ + ของผลไม้ที่ติดตั้ง
 
-## Phase 8 — Fruit Framework ⬜
+- [x] Databook จาก Blox Fruits Wiki: ผลไม้ 41 ชนิด, ดาบ, ปืน, สไตล์ต่อสู้, สกิลครบทุกกลุ่ม
+- [x] `SkillLoadout` — ถืออาวุธ 1 (ดาบ/ปืน/สไตล์) + ผลไม้ 1, สลับชุดสกิลด้วยปุ่มอาวุธ/`R`
+- [x] เชื่อมชุดสกิลเข้าเกมจริง (`combat/SkillCasting.ts` + `SkillResolver.ts`) — ปุ่มสกิล 1-3 + ไม้ตายยิงได้
+- [x] **M1 (คอมโบ) ใช้อาวุธที่ถือเสมอ** ไม่ขึ้นกับชุดสกิลที่ active
+- [x] ไม้ตาย (Ultimate) ใช้งานได้จริง — ปุ่มมือถือ `tc-ult` + คีย์ `4`/`G`
+- [x] ร้านสุ่ม (Gacha) ดึงของจาก databook + ความหายาก Common → Mythic (ถ่วงน้ำหนัก) + ดีลเลอร์หลิน
+- [x] อินเวนทอรี: เป็นเจ้าของ/ติดตั้งของ + persist (`shop/ItemInventory.ts`)
+- [x] Logic tests (gacha weight, ownership/equip/toggle, adapter, resolver) + Playwright E2E
 
-- [ ] โครงผลไม้ปีศาจ: กิน → เปลี่ยนสายพลัง → สกิลเฉพาะ (หมวด fruit ใน Loadout)
-- [ ] Fruit Dealer + สุ่ม (Gacha) + ความหายาก Common → Mythic
-- [ ] Fruit Spawn ตามจุดบนเกาะ
-- [ ] Mastery ต่อผล + ปลดสกิลตามระดับ
+## Phase 8 — Fruit Framework ต่อยอด ⬜
+
+- [x] โครงผลไม้ปีศาจ + Fruit Dealer + สุ่ม (Gacha) + ความหายาก (ทำใน Phase 7)
+- [x] **Skill Gameplay Databook ครบ 431 ท่า** (`combat/skillGameplay/`) — generate จากตาราง Wiki:
+  classifier อ่านคำอธิบาย → archetype (projectile/aoe/ground/dash/melee/mobility/buff/summon),
+  CC (stun/knockback/launch/pull/disable/slow), DoT, จำนวนฮิต; ดาเมจจากสูตร
+  (สลอต × คูลดาวน์ × mastery × ความหายาก); จูนท่าเด่นที่ `overrides.ts` แล้ว `npm run gen:skills`
+- [x] `SkillCasting` อ่านค่าจาก databook แทน heuristic (fallback เดิมยังอยู่กันพัง)
+- [ ] จูน override รายท่าเพิ่ม (เอฟเฟกต์เฉพาะผล เช่น หลุมดำ Dark, กรงเหล็ก ฯลฯ)
+- [ ] Mastery จริงต่อผล/อาวุธ (ผูกกับ Progression) + Awakening (moveset V2)
+- [ ] Fruit Spawn ตามจุดบนเกาะ + ครูฝึกสไตล์ต่อสู้
 
 ## Phase 9 — หลายเกาะและ World Progression ⬜
 

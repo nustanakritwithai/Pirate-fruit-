@@ -8,7 +8,7 @@ export interface NPCDefinition {
   z: number;
   color: number;
   dialogue: string[];
-  action?: 'boat-shop' | 'quest-board';
+  action?: 'boat-shop' | 'quest-board' | 'dealer-shop';
 }
 
 export const STARTER_NPCS: NPCDefinition[] = [
@@ -43,14 +43,15 @@ export const STARTER_NPCS: NPCDefinition[] = [
   {
     id: 'fruit-researcher-lin',
     name: 'หลิน',
-    role: 'นักวิจัยผลไม้',
+    role: 'ดีลเลอร์ผลไม้ปีศาจ',
     x: WORLD_POIS.fruitGrove.x - 3,
     z: WORLD_POIS.fruitGrove.z + 1,
     color: 0x78489b,
+    action: 'dealer-shop',
     dialogue: [
-      'ต้นไม้เรืองแสงต้นนี้ให้ผลที่มีพลังประหลาด แต่ผลจริงยังไม่ตื่นขึ้นในตอนนี้',
-      'ในอนาคต ผลไม้แต่ละชนิดจะเปลี่ยนสายพลัง และมี Mastery ของตัวเอง',
-      'ยิ่งใช้พลังนั้นมาก เจ้าก็จะปลดล็อกสกิลระดับสูงขึ้นเรื่อย ๆ',
+      'ต้นไม้เรืองแสงต้นนี้ให้ผลที่มีพลังประหลาด และข้าสกัดพลังมันมาใส่กล่องสุ่มได้แล้ว!',
+      'จ่ายเหรียญเพื่อสุ่มดาบ ปืน สไตล์ต่อสู้ หรือผลไม้ปีศาจ แต่ละชิ้นมีชุดสกิลของตัวเอง',
+      'ติดตั้งอาวุธ 1 อย่างและผลไม้ 1 ลูก แล้วกดปุ่มสลับ (R) เพื่อสลับชุดสกิลระหว่างสองอย่าง',
     ],
   },
   {

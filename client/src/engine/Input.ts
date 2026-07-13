@@ -24,6 +24,7 @@ export class Input {
   private interactQueue = 0;
   private anchorQueue = 0;
   private skillQueue = 0; // 1-3 = สกิลที่กด, 0 = ไม่มี
+  private ultimateQueue = 0;
   private weaponSwitchQueue = 0;
   private mode: ControlMode = 'player';
 
@@ -42,6 +43,7 @@ export class Input {
       if (!e.repeat && (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3')) {
         this.skillQueue = Number(e.code.slice(-1));
       }
+      if (!e.repeat && (e.code === 'Digit4' || e.code === 'KeyG')) this.ultimateQueue++;
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -135,6 +137,16 @@ export class Input {
     const n = this.skillQueue;
     this.skillQueue = 0;
     return n;
+  }
+
+  /** อ่านคำสั่งไม้ตายหนึ่งครั้ง (Digit4/KeyG บน PC / ปุ่มไม้ตายบนมือถือ) */
+  consumeUltimate(): boolean {
+    if (this.touch?.consumeUltimate()) return true;
+    if (this.ultimateQueue > 0) {
+      this.ultimateQueue = 0;
+      return true;
+    }
+    return false;
   }
 
   /** อ่านคำสั่งสลับอาวุธหนึ่งครั้ง */

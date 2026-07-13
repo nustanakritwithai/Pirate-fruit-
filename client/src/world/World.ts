@@ -192,14 +192,14 @@ export class World {
       shader.uniforms.uRockNormal = { value: t.rockNormal };
 
       shader.vertexShader =
-        'attribute vec3 splat;\nvarying vec3 vSplat;\n' +
+        'attribute vec3 splat;\nvarying vec3 vSplat;\nvarying float vTerrainHeight;\n' +
         shader.vertexShader.replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\n\tvSplat = splat;',
+          '#include <begin_vertex>\n\tvSplat = splat;\n\tvTerrainHeight = transformed.y;',
         );
 
       shader.fragmentShader =
-        'varying vec3 vSplat;\n' +
+        'varying vec3 vSplat;\nvarying float vTerrainHeight;\n' +
         'uniform sampler2D uSandMap;\nuniform sampler2D uRockMap;\n' +
         'uniform sampler2D uSandNormal;\nuniform sampler2D uRockNormal;\n' +
         shader.fragmentShader
@@ -213,6 +213,8 @@ export class World {
 	diffuseColor *= splatColor;
 	float macroShade = sin( vMapUv.x * 0.19 ) * cos( vMapUv.y * 0.17 );
 	diffuseColor.rgb *= 0.965 + macroShade * 0.035;
+	float wetShore = ( 1.0 - smoothstep( -0.2, 0.5, vTerrainHeight ) ) * vSplat.x;
+	diffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.68, 0.79, 0.82 ), wetShore * 0.58 );
 `,
           )
           .replace(
@@ -228,8 +230,9 @@ export class World {
           )
           .replace(
             '#include <roughnessmap_fragment>',
-            // ทรายด้านสุด หญ้ารองลงมา หินเงาขึ้นนิด
-            'float roughnessFactor = dot( vSplat, vec3( 1.0, 0.95, 0.82 ) );',
+            // ทรายแห้งด้าน แต่แนวชายฝั่งเปียกสะท้อนแสงมากขึ้นโดยไม่เพิ่ม texture
+            `float terrainRoughness = dot( vSplat, vec3( 1.0, 0.95, 0.82 ) );
+	float roughnessFactor = mix( terrainRoughness, 0.48, wetShore );`,
           );
     };
 

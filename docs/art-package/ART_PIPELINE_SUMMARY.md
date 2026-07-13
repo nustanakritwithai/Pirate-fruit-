@@ -12,18 +12,19 @@
 ## Runtime Visual Upgrade
 
 - ACES/sRGB/tier exposure และ environment intensity ตามกลางวันกลางคืน
-- terrain splat + macro variation
+- terrain splat + macro variation + wet-sand shoreline response
 - Physical ocean clearcoat + dual normal + shoreline foam
 - instanced grass/shrubs/palms/rocks/crates
 - PBR village materials และรายละเอียดโครงไม้
 - Stylized-realistic NPC, crab, pirate และ boss silhouettes
 - PBR boat hull details, sail, rope, metal, barrel และ wake
-- GLB material enhancement และ visible style/sword equipment
+- GLB material enhancement และ visible equipment ครบ style/sword/gun/fruit/utility
+- Procedural fruit palette ผูกกับ item ID จึงรองรับ Fruit Databook โดยไม่เพิ่ม texture ต่อผล
 - VFX ตั้ง `toneMapped=false` ให้สี additive คงที่
 
 ## Current Status
 
-- READY: runtime material foundation, terrain/ocean, shared presets, equipment VFX, registry/checklist
+- READY: runtime material foundation, terrain/ocean, shared presets, Phase 7/8 equipment visuals, registry/checklist
 - OPTIMIZE: Soldier GLB, common monsters, boats, huts, texture compression/LOD
 - REPLACE: authored Boss model และ emoji UI ในรอบ asset production
 - MISSING: verified license files, KTX2 pipeline, authored LOD packs, preview thumbnails

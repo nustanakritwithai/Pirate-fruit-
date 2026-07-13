@@ -1,6 +1,6 @@
 # Current Asset Audit
 
-วันที่ audit: 2026-07-12 — ตรวจจากไฟล์และ runtime source ใน repository เท่านั้น ค่า poly procedural เป็นค่าประมาณ ส่วน license ที่ไม่มีไฟล์หลักฐานเป็น `UNKNOWN`
+วันที่ audit: 2026-07-13 — ตรวจจากไฟล์และ runtime source หลังรวม Phase 7/8 เท่านั้น ค่า poly procedural เป็นค่าประมาณ ส่วน license ที่ไม่มีไฟล์หลักฐานเป็น `UNKNOWN`
 
 ## Environment
 
@@ -50,6 +50,9 @@
 |---|---|---|---|---|
 | Training sword visual | active sword | procedural PBR metal/leather | procedural | READY |
 | Fighting wraps | active style | procedural cloth | procedural | READY |
+| Flintlock visual | active gun | procedural PBR wood/iron/brass | procedural | READY |
+| Fruit visual | active fruit; palette from item ID | procedural PBR fruit/foliage | procedural | READY |
+| Utility pouch/compass | utility visual foundation | procedural PBR leather/brass | procedural | READY |
 | HUD/UI icons | touch/progression | emoji + DOM/CSS | platform font dependent | REPLACE |
 | Combat VFX | slash/shockwave/impact | shared/additive geometry, unlit | procedural | READY |
 

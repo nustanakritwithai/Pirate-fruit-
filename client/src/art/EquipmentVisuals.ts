@@ -1,17 +1,69 @@
 import * as THREE from 'three';
-import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
+import type { ActiveLoadoutItem, LoadoutCategory } from '../progression/ProgressionTypes';
 import { createMobileMaterial } from './MobilePBRMaterials';
 
-/** visual equipment แยกจาก Combat/Loadout logic — อ่าน active item อย่างเดียว */
+const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
+  style: 'equipment:style',
+  sword: 'equipment:sword',
+  gun: 'equipment:gun',
+  fruit: 'equipment:fruit',
+  utility: 'equipment:utility',
+};
+
+function colorFromId(id: string): THREE.Color {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const hue = (hash >>> 0) / 0xffffffff;
+  return new THREE.Color().setHSL(hue, 0.72, 0.48);
+}
+
+function addShadowFlags(root: THREE.Object3D): void {
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.frustumCulled = true;
+  });
+}
+
+/**
+ * อุปกรณ์ 3D บนตัวผู้เล่นตามชุดสกิลที่ active
+ * เป็น visual adapter อย่างเดียว: อ่าน ActiveLoadoutItem แต่ไม่แก้ Loadout/Combat
+ */
 export class EquipmentVisuals {
   private readonly sword = new THREE.Group();
   private readonly wraps = new THREE.Group();
-  private lastItemId = '';
+  private readonly gun = new THREE.Group();
+  private readonly fruit = new THREE.Group();
+  private readonly utility = new THREE.Group();
+  private readonly groups: Record<LoadoutCategory, THREE.Group>;
+  private readonly fruitBodyMaterial: THREE.MeshStandardMaterial;
+  private readonly fruitAccentMaterial: THREE.MeshStandardMaterial;
+  private readonly fruitRestY = 0.94;
+  private elapsed = 0;
+  private lastItemKey = '';
 
   constructor(
     playerRoot: THREE.Group,
     private getActiveItem: () => ActiveLoadoutItem,
   ) {
+    this.sword.name = EQUIPMENT_NAME.sword;
+    this.wraps.name = EQUIPMENT_NAME.style;
+    this.gun.name = EQUIPMENT_NAME.gun;
+    this.fruit.name = EQUIPMENT_NAME.fruit;
+    this.utility.name = EQUIPMENT_NAME.utility;
+    this.groups = {
+      style: this.wraps,
+      sword: this.sword,
+      gun: this.gun,
+      fruit: this.fruit,
+      utility: this.utility,
+    };
+
     const steel = createMobileMaterial('iron', {
       color: 0xc7d0d4,
       metalness: 0.9,
@@ -19,12 +71,14 @@ export class EquipmentVisuals {
       envMapIntensity: 1.1,
     });
     const leather = createMobileMaterial('leather', { color: 0x4a2c1c, roughness: 0.64 });
+    const darkLeather = createMobileMaterial('leather', { color: 0x241813, roughness: 0.74 });
     const brass = createMobileMaterial('paintedMetal', {
       color: 0xc59a47,
       metalness: 0.72,
       roughness: 0.36,
     });
 
+    // ดาบฝึก: สันคมโลหะ + guard ทองเหลือง อ่าน silhouette ได้แม้จอเล็ก
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.9, 0.035), steel);
     blade.position.y = 0.62;
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.052, 0.22, 4), steel);
@@ -37,37 +91,126 @@ export class EquipmentVisuals {
     const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), brass);
     pommel.position.y = -0.25;
     this.sword.add(blade, tip, guard, grip, pommel);
-    this.sword.position.set(0.58, 1.0, 0.12);
+    this.sword.position.set(0.58, 1, 0.12);
     this.sword.rotation.set(0.08, 0.04, -0.16);
 
+    // ผ้าพันหมัดสำหรับ Fighting Style
     const wrapMaterial = createMobileMaterial('cloth', { color: 0xa97448, roughness: 0.96 });
     for (const side of [-1, 1]) {
-      const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.045, 6, 12), wrapMaterial);
-      wrap.position.set(side * 0.62, 0.76, 0.04);
-      wrap.rotation.x = Math.PI / 2;
-      this.wraps.add(wrap);
+      for (let ring = 0; ring < 2; ring++) {
+        const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.035, 6, 12), wrapMaterial);
+        wrap.position.set(side * 0.62, 0.72 + ring * 0.09, 0.04);
+        wrap.rotation.x = Math.PI / 2;
+        this.wraps.add(wrap);
+      }
     }
 
-    for (const root of [this.sword, this.wraps]) {
-      root.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.isMesh) mesh.castShadow = true;
-      });
+    // ปืน flintlock แบบ procedural — ใช้ geometry ต่ำและวัสดุร่วม
+    const gunGrip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, 0.13), darkLeather);
+    gunGrip.position.set(0, -0.18, 0);
+    gunGrip.rotation.z = -0.28;
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.58), leather);
+    gunBody.position.z = 0.23;
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.72, 10), steel);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.08, 0.48);
+    const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.018, 6, 10), brass);
+    muzzle.position.set(0, 0.08, 0.84);
+    const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.08), brass);
+    hammer.position.set(0, 0.2, 0.05);
+    hammer.rotation.x = -0.42;
+    this.gun.add(gunGrip, gunBody, barrel, muzzle, hammer);
+    this.gun.position.set(-0.58, 1.02, 0.04);
+    this.gun.rotation.set(0.05, -0.2, 0.12);
+
+    // ผลไม้พลัง: palette สร้างจาก itemId จึงแยกสีได้ครบทั้ง databook โดยไม่เพิ่ม texture
+    this.fruitBodyMaterial = createMobileMaterial('fruit', {
+      color: 0xb85cff,
+      emissive: 0x281040,
+      emissiveIntensity: 0.32,
+    });
+    this.fruitAccentMaterial = createMobileMaterial('fruit', {
+      color: 0xffc2ff,
+      roughness: 0.32,
+      emissive: 0x4a1b50,
+      emissiveIntensity: 0.42,
+    });
+    const fruitBody = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 12), this.fruitBodyMaterial);
+    fruitBody.scale.set(1, 1.12, 0.96);
+    const spiralPoints: THREE.Vector3[] = [];
+    for (let i = 0; i <= 28; i++) {
+      const t = i / 28;
+      const y = (t - 0.5) * 0.43;
+      const radius = 0.245 * Math.sqrt(Math.max(0.08, 1 - (y / 0.25) ** 2));
+      const angle = t * Math.PI * 6;
+      spiralPoints.push(new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius));
+    }
+    const spiral = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(spiralPoints), 36, 0.014, 4, false),
+      this.fruitAccentMaterial,
+    );
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.2, 7), darkLeather);
+    stem.position.y = 0.34;
+    stem.rotation.z = 0.22;
+    const leaf = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 8, 5),
+      createMobileMaterial('foliage', { color: 0x3b8b55, roughness: 0.78 }),
+    );
+    leaf.scale.set(1.5, 0.28, 0.65);
+    leaf.position.set(0.11, 0.4, 0);
+    leaf.rotation.z = -0.35;
+    this.fruit.add(fruitBody, spiral, stem, leaf);
+    this.fruit.position.set(0.7, this.fruitRestY, 0.18);
+
+    // Utility placeholder ที่ดูเป็นของจริง: กระเป๋าหนัง + เข็มทิศโลหะ
+    const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.38, 0.16), leather);
+    pouch.position.y = -0.06;
+    const flap = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.18), darkLeather);
+    flap.position.set(0, 0.12, 0.01);
+    const compass = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.05, 16), brass);
+    compass.rotation.x = Math.PI / 2;
+    compass.position.set(0, 0.38, 0.04);
+    const needle = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.2, 3), steel);
+    needle.position.set(0, 0.41, 0.08);
+    needle.rotation.z = -0.2;
+    this.utility.add(pouch, flap, compass, needle);
+    this.utility.position.set(-0.45, 1.02, 0.34);
+
+    for (const root of Object.values(this.groups)) {
+      addShadowFlags(root);
       playerRoot.add(root);
     }
     this.render();
   }
 
-  update(): void {
+  update(dt = 0): void {
+    this.elapsed += dt;
+    if (this.fruit.visible) {
+      this.fruit.rotation.y += dt * 0.85;
+      this.fruit.position.y = this.fruitRestY + Math.sin(this.elapsed * 2.4) * 0.035;
+    }
+
     const item = this.getActiveItem();
-    if (item.itemId === this.lastItemId) return;
+    const itemKey = `${item.category}:${item.itemId}`;
+    if (itemKey === this.lastItemKey) return;
     this.render();
   }
 
   private render(): void {
     const item = this.getActiveItem();
-    this.lastItemId = item.itemId;
-    this.sword.visible = item.category === 'sword';
-    this.wraps.visible = item.category === 'style';
+    this.lastItemKey = `${item.category}:${item.itemId}`;
+    for (const [category, group] of Object.entries(this.groups) as [LoadoutCategory, THREE.Group][]) {
+      group.visible = category === item.category;
+    }
+    if (item.category === 'fruit') this.applyFruitPalette(item.itemId);
+  }
+
+  private applyFruitPalette(itemId: string): void {
+    const base = colorFromId(itemId);
+    const accent = base.clone().offsetHSL(0.1, -0.08, 0.2);
+    this.fruitBodyMaterial.color.copy(base);
+    this.fruitBodyMaterial.emissive.copy(base).multiplyScalar(0.2);
+    this.fruitAccentMaterial.color.copy(accent);
+    this.fruitAccentMaterial.emissive.copy(accent).multiplyScalar(0.22);
   }
 }
