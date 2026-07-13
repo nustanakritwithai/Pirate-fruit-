@@ -11,6 +11,36 @@ const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
   utility: 'equipment:utility',
 };
 
+/** จุดกึ่งกลางฝ่ามือจาก bind-pose skin weights ของ Soldier.glb (หน่วยเมตรใน bone local) */
+export const SOLDIER_PALM_OFFSETS: Record<'left' | 'right', THREE.Vector3Tuple> = {
+  left: [0.00226, 0.06461, 0.01123],
+  right: [0.00159, 0.06183, -0.00765],
+};
+
+const TRAINING_SWORD_SCALE = 0.85;
+const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [0, 0, -0.08];
+const TRAINING_SWORD_GRIP_CENTER: THREE.Vector3Tuple = [0, -0.06, 0];
+
+/** วาง group origin ให้จุดกึ่งกลางด้ามตรงกับ palm ไม่ใช่ wrist bone origin */
+function alignGripToPalm(
+  palm: THREE.Vector3Tuple,
+  gripCenter: THREE.Vector3Tuple,
+  rotation: THREE.Vector3Tuple,
+  scale: number,
+): THREE.Vector3Tuple {
+  const gripFromOrigin = new THREE.Vector3(...gripCenter)
+    .multiplyScalar(scale)
+    .applyEuler(new THREE.Euler(...rotation));
+  return new THREE.Vector3(...palm).sub(gripFromOrigin).toArray() as THREE.Vector3Tuple;
+}
+
+const TRAINING_SWORD_SOCKET_POSITION = alignGripToPalm(
+  SOLDIER_PALM_OFFSETS.right,
+  TRAINING_SWORD_GRIP_CENTER,
+  TRAINING_SWORD_ROTATION,
+  TRAINING_SWORD_SCALE,
+);
+
 function colorFromId(id: string): THREE.Color {
   let hash = 2166136261;
   for (let i = 0; i < id.length; i++) {
@@ -102,6 +132,7 @@ export class EquipmentVisuals {
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.09), brass);
     guard.position.y = 0.13;
     const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.32, 9), leather);
+    grip.name = 'equipment:sword:grip';
     grip.position.y = -0.06;
     const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), brass);
     pommel.position.y = -0.25;
@@ -234,9 +265,15 @@ export class EquipmentVisuals {
 
   /** ผูก visual กับ socket หลัง mixer/action overlay อัปเดต โดยไม่แก้ skeleton */
   private updateSocketTransforms(): boolean {
-    this.followSocket(this.leftWrap, this.sockets.leftHand, [0, 0.02, 0], [0, 0, 0], 0.9);
-    this.followSocket(this.rightWrap, this.sockets.rightHand, [0, 0.02, 0], [0, 0, 0], 0.9);
-    this.followSocket(this.sword, this.sockets.rightHand, [0, 0.02, 0], [0, 0, -0.08], 0.85);
+    this.followSocket(this.leftWrap, this.sockets.leftHand, SOLDIER_PALM_OFFSETS.left, [0, 0, 0], 0.9);
+    this.followSocket(this.rightWrap, this.sockets.rightHand, SOLDIER_PALM_OFFSETS.right, [0, 0, 0], 0.9);
+    this.followSocket(
+      this.sword,
+      this.sockets.rightHand,
+      TRAINING_SWORD_SOCKET_POSITION,
+      TRAINING_SWORD_ROTATION,
+      TRAINING_SWORD_SCALE,
+    );
     this.followSocket(this.gun, this.sockets.rightHand, [0, 0.02, 0], [-Math.PI / 2, 0, 0], 0.75);
     const fruitMounted = this.followSocket(
       this.fruit,
