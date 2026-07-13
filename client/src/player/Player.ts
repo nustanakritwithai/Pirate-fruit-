@@ -3,6 +3,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { CharacterController } from './CharacterController';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { enhanceLoadedModel } from '../art/ModelEnhancer';
+import { PlayerActionAnimator, type PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
+import type { CombatState } from '../combat/CombatState';
+import type { LoadoutCategory } from '../progression/ProgressionTypes';
 
 type AnimName = 'Idle' | 'Walk' | 'Run';
 
@@ -16,8 +19,13 @@ export class Player {
   readonly group = new THREE.Group();
 
   private mixer: THREE.AnimationMixer | null = null;
+  private actionAnimator: PlayerActionAnimator | null = null;
   private actions = new Map<AnimName, THREE.AnimationAction>();
   private current: AnimName = 'Idle';
+  private getActionState: () => { combatState: CombatState; category: LoadoutCategory } = () => ({
+    combatState: 'idle',
+    category: 'style',
+  });
 
   constructor(
     private controller: CharacterController,
@@ -32,6 +40,7 @@ export class Player {
     model.rotation.y = MODEL_YAW_OFFSET;
     this.group.add(model);
     scene.add(this.group);
+    this.actionAnimator = new PlayerActionAnimator(model);
 
     this.mixer = new THREE.AnimationMixer(model);
     for (const name of ['Idle', 'Walk', 'Run'] as const) {
@@ -41,6 +50,13 @@ export class Player {
       }
     }
     this.actions.get('Idle')?.play();
+  }
+
+  /** late-bind หลัง PlayerCombat ถูกสร้าง เพื่อไม่ให้ Player เป็นเจ้าของ combat logic */
+  bindActionState(
+    provider: () => { combatState: CombatState; category: LoadoutCategory },
+  ): void {
+    this.getActionState = provider;
   }
 
   private setAnimation(name: AnimName): void {
@@ -55,12 +71,19 @@ export class Player {
 
   update(dt: number): void {
     const { position, heading, moveState } = this.controller;
+    const action = this.getActionState();
     this.group.position.copy(position);
     this.group.rotation.y = heading;
 
-    if (moveState.speed > 5) {
+    const locomotionLocked = action.combatState === 'casting' ||
+      action.combatState === 'blocking' ||
+      action.combatState === 'stunned' ||
+      action.combatState === 'knockback' ||
+      action.combatState === 'knockdown' ||
+      action.combatState === 'dead';
+    if (!locomotionLocked && moveState.speed > 5) {
       this.setAnimation('Run');
-    } else if (moveState.speed > 0.1) {
+    } else if (!locomotionLocked && moveState.speed > 0.1) {
       this.setAnimation('Walk');
     } else {
       this.setAnimation('Idle');
@@ -72,5 +95,11 @@ export class Player {
       this.mixer.timeScale = timeScale;
       this.mixer.update(dt);
     }
+    const snapshot: PlayerActionSnapshot = {
+      combatState: action.combatState,
+      category: action.category,
+      onGround: moveState.onGround,
+    };
+    this.actionAnimator?.update(dt, snapshot);
   }
 }

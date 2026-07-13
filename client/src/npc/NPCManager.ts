@@ -6,13 +6,14 @@ import { DialogueUI } from '../ui/DialogueUI';
 import { InteractionPrompt } from '../ui/InteractionPrompt';
 import { STARTER_NPCS, type NPCDefinition } from './NPCData';
 import { createHumanoidVisual } from '../art/CharacterVisuals';
+import { ProceduralCharacterAnimator } from '../animation/ProceduralCharacterAnimator';
 
 const INTERACTION_RANGE = 4.2;
 
 interface NPCInstance {
   definition: NPCDefinition;
   group: THREE.Group;
-  visual: THREE.Group;
+  animator: ProceduralCharacterAnimator;
 }
 
 export interface NPCActions {
@@ -59,7 +60,12 @@ function makeNPC(definition: NPCDefinition, y: number): NPCInstance {
   });
   visual.add(character.group);
   group.add(visual, makeNameSprite(definition.name));
-  return { definition, group, visual };
+  const phase = Math.abs(Math.sin(definition.x * 12.9898 + definition.z * 78.233)) * Math.PI * 2;
+  return {
+    definition,
+    group,
+    animator: new ProceduralCharacterAnimator(character.rig, phase),
+  };
 }
 
 /** NPC Phase 2: ค้นหาตัวใกล้สุด หันหาผู้เล่น และเปิดบทสนทนา */
@@ -67,7 +73,6 @@ export class NPCManager {
   private readonly npcs: NPCInstance[];
   private readonly prompt = new InteractionPrompt();
   private readonly dialogue = new DialogueUI();
-  private time = 0;
   private reopenCooldown = 0;
 
   constructor(
@@ -92,27 +97,15 @@ export class NPCManager {
   }
 
   update(dt: number): void {
-    this.time += dt;
     this.reopenCooldown = Math.max(0, this.reopenCooldown - dt);
-    if (this.dialogue.isOpen) {
-      this.prompt.hide();
-      return;
-    }
-    if (!this.controller.inputEnabled) {
-      this.prompt.hide();
-      if (this.input.controlMode === 'player') this.input.consumeInteract();
-      return;
-    }
-
     const player = this.controller.position;
     let nearest: NPCInstance | null = null;
     let nearestDistance = INTERACTION_RANGE;
-    for (let i = 0; i < this.npcs.length; i++) {
-      const npc = this.npcs[i];
-      npc.visual.position.y = Math.sin(this.time * 1.35 + i) * 0.025;
+    for (const npc of this.npcs) {
       const dx = player.x - npc.group.position.x;
       const dz = player.z - npc.group.position.z;
       const distance = Math.hypot(dx, dz);
+      npc.animator.update(dt, distance < INTERACTION_RANGE + 0.8 ? 'talk' : 'idle');
       if (distance < 7) {
         const target = Math.atan2(dx, dz);
         let difference = target - npc.group.rotation.y;
@@ -124,6 +117,16 @@ export class NPCManager {
         nearest = npc;
         nearestDistance = distance;
       }
+    }
+
+    if (this.dialogue.isOpen) {
+      this.prompt.hide();
+      return;
+    }
+    if (!this.controller.inputEnabled) {
+      this.prompt.hide();
+      if (this.input.controlMode === 'player') this.input.consumeInteract();
+      return;
     }
 
     if (!nearest) {

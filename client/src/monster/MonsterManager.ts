@@ -259,6 +259,7 @@ export class MonsterManager {
           monster.attackCount++;
           monster.attackCooldown = type.attackCooldown * 1.25;
           const heavy = type.heavyAttack!;
+          monster.playAttackAnimation(true);
           // ปล่อยท่า: โดนเฉพาะถ้าผู้เล่นยังอยู่ในระยะ (หลบทัน = พลาด)
           if (engageable && distToPlayer <= type.attackRange * 1.6) {
             this.damagePlayer({
@@ -288,6 +289,7 @@ export class MonsterManager {
             } else {
               monster.attackCooldown = type.attackCooldown;
               monster.attackCount++;
+              monster.playAttackAnimation(false);
               this.damagePlayer({
                 amount: type.damage,
                 unblockable: false,
