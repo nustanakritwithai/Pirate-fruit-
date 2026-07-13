@@ -17,6 +17,8 @@ import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
 import { MonsterManager } from './monster/MonsterManager';
 import { PlayerCombat } from './combat/PlayerCombat';
+import { ItemInventory } from './shop/ItemInventory';
+import { DealerShopUI } from './ui/DealerShopUI';
 import { ProgressionManager } from './progression/ProgressionManager';
 import { QuestManager } from './quest/QuestManager';
 import { ProgressionHUD } from './ui/ProgressionHUD';
@@ -61,6 +63,8 @@ async function main(): Promise<void> {
     () => camera.yaw,
   );
   const progression = new ProgressionManager({ resources: controller });
+  // อินเวนทอรีอาวุธ/ผลไม้ + สถานะ SkillLoadout (Phase 7) — ProgressionManager เป็นกระเป๋าเงินร่วม
+  const itemInventory = new ItemInventory(progression);
 
   const spawnManager = new SpawnManager(controller, world.collision);
 
@@ -108,11 +112,17 @@ async function main(): Promise<void> {
     () => spawnManager.respawn(),
     progression,
   );
+  // ร้านสุ่มของดีลเลอร์ (Phase 7) — onChange รีเฟรชชุดสกิลของ PlayerCombat หลัง equip/สุ่ม
+  const dealerShop = new DealerShopUI(itemInventory, () => playerCombat?.refreshLoadout());
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
     openBoatShop: () => boatManager.openShop(),
     openQuestBoard: () => {
       controller.setControlsEnabled(false);
       questBoard.open(() => controller.setControlsEnabled(true));
+    },
+    openDealerShop: () => {
+      controller.setControlsEnabled(false);
+      dealerShop.open(() => controller.setControlsEnabled(true));
     },
   });
   new GraphicsSettings(graphics);
@@ -182,6 +192,8 @@ async function main(): Promise<void> {
     monsterManager,
     effects,
     touchControls,
+    itemInventory.loadout,
+    () => itemInventory.save(),
     progression,
   );
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);

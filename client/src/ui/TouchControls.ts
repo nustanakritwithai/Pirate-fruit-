@@ -44,11 +44,15 @@ export class TouchControls {
   private attackQueue = 0;
   private anchorQueue = 0;
   private skillTapQueue = 0;
+  private ultTapQueue = 0;
   private weaponQueue = 0;
   private skillsUnlocked = false;
   private skillIcons: [string, string, string] = ['🔒', '🔒', '🔒'];
   private skillMasteryRequirements = [0, 0, 0];
   private activeMasteryLevel = 1;
+  private ultUnlocked = false;
+  private ultIcon = '🔒';
+  private ultRequirement = 0;
   private blockHeldRaw = false;
   private mode: ControlMode = 'player';
 
@@ -74,6 +78,7 @@ export class TouchControls {
   private jumpBtn: HTMLDivElement;
   private blockBtn: HTMLDivElement;
   private weaponBtn: HTMLDivElement;
+  private ultBtn: HTMLDivElement;
   private skillButtons: HTMLDivElement[] = [];
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
@@ -151,12 +156,17 @@ export class TouchControls {
         }),
       );
     }
-    // ไม้ตาย (ล็อก รอ Phase 7)
-    this.skillButtons.push(
-      this.makeButton('tc-ult', '🔒', () =>
-        this.showToast('ไม้ตายปลดล็อกใน Phase 7 (ผลไม้ปีศาจ)'),
-      ),
-    );
+    // ไม้ตาย (Ultimate) — ใช้งานได้จริงตั้งแต่ Phase 7
+    this.ultBtn = this.makeButton('tc-ult', '🔒', () => {
+      if (!this.ultUnlocked) {
+        this.showToast('ยังไม่มีไม้ตาย');
+      } else if (this.activeMasteryLevel < this.ultRequirement) {
+        this.showToast(`ต้องการ Mastery ${this.ultRequirement}`);
+      } else {
+        this.ultTapQueue = 1;
+      }
+    });
+    this.skillButtons.push(this.ultBtn);
 
     // ---------- Block (กดค้างเพื่อกัน) + สลับอาวุธ ----------
     this.blockBtn = this.makeButton('tc-block', '🛡️', null);
@@ -202,6 +212,7 @@ export class TouchControls {
     this.anchorQueue = 0;
     this.dashQueue = 0;
     this.skillTapQueue = 0;
+    this.ultTapQueue = 0;
     if (mode === 'boat') {
       this.autoRunOn = false;
       this.autoRunBtn.classList.remove('tc-on', 'tc-visible');
@@ -231,6 +242,45 @@ export class TouchControls {
     this.renderSkillMasteryState();
   }
 
+  /** อัปเดตไอคอนสกิล 1-3 (เช่น ตอนสลับชุดสกิลอาวุธ↔ผลไม้) */
+  setSkillIcons(icons: [string, string, string]): void {
+    this.skillsUnlocked = true;
+    this.skillIcons = icons;
+    this.renderSkillMasteryState();
+  }
+
+  /** ปลดล็อกปุ่มไม้ตายพร้อมตั้งไอคอน */
+  unlockUltimate(icon: string): void {
+    this.ultUnlocked = true;
+    this.ultIcon = icon;
+    this.renderUltimateState();
+  }
+
+  /** อัปเดตไอคอนไม้ตาย (ตอนสลับชุดสกิล) */
+  setUltimateIcon(icon: string): void {
+    this.ultUnlocked = true;
+    this.ultIcon = icon;
+    this.renderUltimateState();
+  }
+
+  /** ตั้ง Mastery ขั้นต่ำของไม้ตายที่ active */
+  setUltimateMastery(requirement: number): void {
+    this.ultRequirement = requirement;
+    this.renderUltimateState();
+  }
+
+  /** ผูกวงแหวนคูลดาวน์ของไม้ตาย */
+  bindUltimateCooldown(getter: CooldownGetter): void {
+    this.cooldownRings.set(this.ultBtn, getter);
+  }
+
+  /** อ่านคำสั่งไม้ตายหนึ่งครั้ง */
+  consumeUltimate(): boolean {
+    if (this.ultTapQueue <= 0) return false;
+    this.ultTapQueue = 0;
+    return true;
+  }
+
   /** Phase 6: แสดงล็อกและเลข Mastery โดยไม่เพิ่มปุ่มมือถือใหม่ */
   setSkillMasteryState(masteryLevel: number, requirements: readonly number[]): void {
     this.activeMasteryLevel = masteryLevel;
@@ -240,6 +290,7 @@ export class TouchControls {
       requirements[2] ?? 0,
     ];
     this.renderSkillMasteryState();
+    this.renderUltimateState();
   }
 
   /** ผูกวงแหวนคูลดาวน์ของสกิล 1-3 */
@@ -428,6 +479,20 @@ export class TouchControls {
       this.skillButtons[i].classList.toggle('tc-skill-ready', !locked);
       this.skillButtons[i].classList.toggle('tc-skill-locked', locked);
     }
+  }
+
+  private renderUltimateState(): void {
+    const locked = !this.ultUnlocked || this.activeMasteryLevel < this.ultRequirement;
+    this.setButtonLabel(
+      this.ultBtn,
+      locked && this.ultRequirement > 0
+        ? `🔒${this.ultRequirement}`
+        : this.ultUnlocked
+          ? this.ultIcon
+          : '🔒',
+    );
+    this.ultBtn.classList.toggle('tc-skill-ready', !locked);
+    this.ultBtn.classList.toggle('tc-skill-locked', locked);
   }
 
   private showToast(msg: string): void {
