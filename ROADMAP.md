@@ -115,7 +115,12 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 ## Phase 8 — Fruit Framework ต่อยอด ⬜
 
 - [x] โครงผลไม้ปีศาจ + Fruit Dealer + สุ่ม (Gacha) + ความหายาก (ทำใน Phase 7)
-- [ ] จูนค่าดาเมจ/ชนิดสกิลต่อท่าให้ตรงคาแรกเตอร์แต่ละผล (ตอนนี้ derive แบบ heuristic จาก databook)
+- [x] **Skill Gameplay Databook ครบ 429 ท่า** (`combat/skillGameplay/`) — generate จากตาราง Wiki:
+  classifier อ่านคำอธิบาย → archetype (projectile/aoe/ground/dash/melee/mobility/buff/summon),
+  CC (stun/knockback/launch/pull/disable/slow), DoT, จำนวนฮิต; ดาเมจจากสูตร
+  (สลอต × คูลดาวน์ × mastery × ความหายาก); จูนท่าเด่นที่ `overrides.ts` แล้ว `npm run gen:skills`
+- [x] `SkillCasting` อ่านค่าจาก databook แทน heuristic (fallback เดิมยังอยู่กันพัง)
+- [ ] จูน override รายท่าเพิ่ม (เอฟเฟกต์เฉพาะผล เช่น หลุมดำ Dark, กรงเหล็ก ฯลฯ)
 - [ ] Mastery จริงต่อผล/อาวุธ (ผูกกับ Progression) + Awakening (moveset V2)
 - [ ] Fruit Spawn ตามจุดบนเกาะ + ครูฝึกสไตล์ต่อสู้
 

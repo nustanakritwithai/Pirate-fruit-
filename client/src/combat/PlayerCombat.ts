@@ -493,13 +493,16 @@ export class PlayerCombat {
       this.effects.spawnSlash(position, heading, skill.isUltimate ? 0xffd45a : 0x74e8ff, scale * 1.3);
     } else if (skill.renderType === 'aoe') {
       this.effects.spawnShockwave(position, skill.radius);
-      this.monsters.damageRadius(position, skill.radius, scaledDamage, skill.isUltimate ? 10 : 6, source);
+      // ท่า utility (buff/summon ที่ยังไม่มีผลจริง) ดาเมจ 0 → โชว์เอฟเฟกต์อย่างเดียว
+      if (scaledDamage > 0) {
+        this.monsters.damageRadius(position, skill.radius, scaledDamage, skill.isUltimate ? 10 : 6, source);
+      }
     } else {
-      // dash
+      // dash (รวม mobility จาก databook — ดาเมจ 0 = แค่เคลื่อนที่)
       this.controller.startDash(dirX, dirZ, skill.range / LUNGE_DURATION, LUNGE_DURATION);
       const samplePoint = new THREE.Vector3();
       const damaged = new Set<Monster>();
-      for (let step = 0; step <= 3; step++) {
+      for (let step = 0; scaledDamage > 0 && step <= 3; step++) {
         samplePoint.set(
           position.x + (dirX * skill.range * step) / 3,
           position.y,

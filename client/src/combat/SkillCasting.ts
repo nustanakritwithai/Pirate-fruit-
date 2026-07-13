@@ -8,6 +8,7 @@
 
 import { LOADOUT_ITEMS, type ComboHit, type LoadoutCategory } from './CombatData';
 import type { SkillSlotIndex, WeaponKind } from './types';
+import { getSkillGameplay, type SkillArchetype, type SkillGameplay } from './skillGameplay';
 
 /** สกิลดิบจาก databook (รูปแบบร่วมของทุกหมวด) */
 export interface RawSkill {
@@ -111,13 +112,70 @@ export function inferRenderType(raw: RawSkill, slot: SkillSlotIndex): SkillRende
 
 const SLOT_INDEX: Record<Exclude<SkillSlotIndex, 'ultimate'>, number> = { 1: 0, 2: 1, 3: 2 };
 
-/** แปลงสกิลดิบ → สกิลที่ยิงได้ */
+/** map archetype ของ Skill Gameplay Databook → ชนิดการยิงที่ combat core รองรับ */
+export function archetypeToRenderType(archetype: SkillArchetype): SkillRenderType {
+  switch (archetype) {
+    case 'projectile':
+      return 'projectile';
+    case 'dash':
+    case 'mobility':
+      return 'dash';
+    // ground/melee/summon/buff → ปล่อยผลรอบตัว (โซนใกล้ตัวละคร) ไปก่อน
+    default:
+      return 'aoe';
+  }
+}
+
+function iconFor(renderType: SkillRenderType, isUltimate: boolean): string {
+  if (isUltimate) return '🌟';
+  return renderType === 'projectile' ? '🌀' : renderType === 'aoe' ? '💥' : '⚡';
+}
+
+/** สร้าง CastableSkill จาก record ของ Skill Gameplay Databook (Phase 8) */
+function fromGameplay(
+  raw: RawSkill,
+  gameplay: SkillGameplay,
+  isUltimate: boolean,
+  category: LoadoutCategory,
+): CastableSkill {
+  const renderType = archetypeToRenderType(gameplay.archetype);
+  let range = gameplay.range;
+  let radius = gameplay.radius;
+  if (renderType === 'aoe') {
+    // ground/melee มี range หน้าตัว — ประมาณเป็นวงรอบตัวที่ใหญ่ขึ้น
+    radius = Math.min(7.5, gameplay.radius + gameplay.range * 0.5);
+    range = 0;
+  } else if (renderType === 'dash' && range <= 0) {
+    // mobility ที่ไม่มีระยะระบุ → วาร์ปสั้นไปข้างหน้า
+    range = 6;
+  }
+  return {
+    id: gameplay.id,
+    name: raw.name,
+    icon: iconFor(renderType, isUltimate),
+    cooldown: gameplay.cooldown,
+    energyCost: gameplay.energy,
+    castTime: gameplay.castTime,
+    damage: gameplay.damage,
+    range,
+    radius,
+    renderType,
+    isUltimate,
+    category,
+    color: gameplay.vfxColor,
+  };
+}
+
+/** แปลงสกิลดิบ → สกิลที่ยิงได้ (อ่าน Skill Gameplay Databook ก่อน, ไม่มีค่อย fallback heuristic) */
 export function toCastable(
   raw: RawSkill,
   slot: SkillSlotIndex,
   category: LoadoutCategory,
 ): CastableSkill {
   const isUltimate = slot === 'ultimate';
+  const gameplay = getSkillGameplay(raw.id);
+  if (gameplay) return fromGameplay(raw, gameplay, isUltimate, category);
+
   const idx = isUltimate ? 3 : SLOT_INDEX[slot];
   const renderType = inferRenderType(raw, slot);
   const cooldown = raw.cooldown ?? [5, 8, 11, 20][idx];

@@ -61,7 +61,9 @@ npm run dev
 - **ร้านสุ่ม (Gacha)**: คุยกับดีลเลอร์ **หลิน** ที่สวนผลไม้ → จ่ายเหรียญสุ่มของตามความหายาก
   (Common → Mythic) แล้ว **ติดตั้ง** เพื่อใช้ชุดสกิลของชิ้นนั้น
 - เริ่มเกมมีแค่ **สไตล์มือเปล่า** — ของอื่นต้องไปสุ่มที่ร้าน (บันทึก ownership อัตโนมัติ)
-- ค่าดาเมจ/ชนิดสกิลของแต่ละท่า derive จาก databook (คูลดาวน์/พลังงาน/คำอธิบาย) — ปรับจูนได้ที่ `combat/SkillCasting.ts`
+- **Skill Gameplay Databook (429 ท่า)** ที่ `combat/skillGameplay/generated.ts` — ค่าต่อสู้จริงของทุกท่า
+  (archetype/ดาเมจ/ระยะ/CC/DoT/จำนวนฮิต) generate จากตาราง Wiki ด้วย `npm run gen:skills`
+  · จูนท่าเด่น → `combat/skillGameplay/overrides.ts` · ปรับสูตร/classifier → `combat/skillGameplay/derive.ts`
 
 ### ระบบความก้าวหน้า (Phase 6)
 
