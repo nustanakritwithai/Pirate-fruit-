@@ -117,4 +117,32 @@ describe('EquipmentVisuals', () => {
       }
     }
   });
+
+  it('holds the idle sword clear of the Pirate V1 torso instead of hiding the blade in the body', () => {
+    const root = new THREE.Group();
+    const player = createPiratePlayerVisual();
+    root.add(player.group);
+    const animator = new PlayerActionAnimator(player.rig);
+    const visuals = new EquipmentVisuals(
+      root,
+      () => item('sword', 'training-sword'),
+      attachmentSocketsFromPirateRig(player.rig),
+    );
+
+    animator.update(1 / 60, {
+      combatState: 'idle',
+      category: 'sword',
+      locomotion: 'idle',
+      onGround: true,
+    });
+    visuals.update(1 / 60);
+    root.updateMatrixWorld(true);
+
+    const torsoBounds = new THREE.Box3().setFromObject(player.hull);
+    const blade = root.getObjectByName('equipment:sword:blade')!;
+    const bladeBounds = new THREE.Box3().setFromObject(blade);
+    const bladeCenter = bladeBounds.getCenter(new THREE.Vector3());
+    expect(bladeBounds.intersectsBox(torsoBounds)).toBe(false);
+    expect(bladeCenter.x).toBeGreaterThan(torsoBounds.max.x + 0.08);
+  });
 });

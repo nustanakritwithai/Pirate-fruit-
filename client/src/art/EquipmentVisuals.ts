@@ -12,7 +12,8 @@ const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
 };
 
 const TRAINING_SWORD_SCALE = 0.85;
-const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [0, 0, -0.08];
+/** เฉียงใบดาบออกจากลำตัว (+Z ด้านหน้า, +X ด้านขวาของผู้เล่น) */
+const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [0.24, 0.08, -0.62];
 /** อาวุธทุกชิ้นใช้ origin เป็นจุดจับ ส่วน socket ของ Pirate V1 อยู่กลางฝ่ามือ */
 const GRIP_ORIGIN: THREE.Vector3Tuple = [0, 0, 0];
 
@@ -100,8 +101,10 @@ export class EquipmentVisuals {
 
     // ดาบฝึก: สันคมโลหะ + guard ทองเหลือง อ่าน silhouette ได้แม้จอเล็ก
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.9, 0.035), steel);
+    blade.name = 'equipment:sword:blade';
     blade.position.y = 0.68;
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.052, 0.22, 4), steel);
+    tip.name = 'equipment:sword:tip';
     tip.position.y = 1.24;
     tip.rotation.y = Math.PI / 4;
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.09), brass);

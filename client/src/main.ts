@@ -205,6 +205,7 @@ async function main(): Promise<void> {
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',
     category: playerCombat?.activeItem.category ?? 'style',
+    attackProgress: playerCombat ? 1 - playerCombat.attackCooldownFraction : 0,
   }));
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
