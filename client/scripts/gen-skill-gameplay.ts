@@ -111,6 +111,7 @@ function serializeRecord(r: SkillGameplay): string {
     `id: '${r.id}'`,
     `slot: '${r.slot}'`,
     `archetype: '${r.archetype}'`,
+    `icon: '${r.icon}'`,
     `damage: ${num(r.damage)}`,
     `hitCount: ${r.hitCount}`,
     `range: ${num(r.range)}`,

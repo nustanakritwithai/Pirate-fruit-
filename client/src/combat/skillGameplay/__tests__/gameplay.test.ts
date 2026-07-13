@@ -47,7 +47,21 @@ describe('Skill Gameplay Databook — coverage', () => {
       expect(record.radius).toBeGreaterThan(0);
       for (const cc of record.cc) expect(CC_TYPES).toContain(cc.type);
       expect(['derived', 'override']).toContain(record.source);
+      expect(typeof record.icon).toBe('string');
+      expect(record.icon.length).toBeGreaterThan(0);
     }
+  });
+
+  it('ให้ไอคอนเฉพาะสกิลตามธีม (ไม่ใช่ generic ตัวเดียว) — ต่างกันตามอาวุธ', () => {
+    // ท่าเด่นควรได้ไอคอนตามชื่อ/ธาตุ
+    expect(getSkillGameplay('bisento-v1-z')!.icon).toBe('🌪️'); // Wind Breaker
+    expect(getSkillGameplay('bisento-v1-x')!.icon).toBe('🪨'); // Quake Sphere
+    expect(getSkillGameplay('acidum-rifle-z')!.icon).toBe('💣'); // Spiky Bomb
+    expect(getSkillGameplay('acidum-rifle-x')!.icon).toBe('☠️'); // Acidic Smoke
+    expect(getSkillGameplay('combat-v')!.icon).toBe('☄️'); // Meteor Crash
+    // ชุดไอคอนต้องหลากหลายพอ (ไม่ใช่ 3-4 แบบเหมือนเดิม)
+    const uniqueIcons = new Set(ALL_SKILL_GAMEPLAY.map((r) => r.icon));
+    expect(uniqueIcons.size).toBeGreaterThanOrEqual(10);
   });
 
   it('ท่าที่ไม่ใช่ utility ต้องมีดาเมจ > 0', () => {

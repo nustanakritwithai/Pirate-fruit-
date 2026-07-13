@@ -152,7 +152,8 @@ function fromGameplay(
   return {
     id: gameplay.id,
     name: raw.name,
-    icon: iconFor(renderType, isUltimate),
+    // ไอคอนเฉพาะสกิลจาก databook (ต่างกันตามชื่อ/ธาตุ) — fallback generic ถ้าไม่มี
+    icon: gameplay.icon || iconFor(renderType, isUltimate),
     cooldown: gameplay.cooldown,
     energyCost: gameplay.energy,
     castTime: gameplay.castTime,

@@ -254,6 +254,60 @@ export function deriveVfxColor(ctx: DeriveContext): number {
 }
 
 // ---------------------------------------------------------------
+// ไอคอนเฉพาะสกิล — เดาจากชื่อ/ธาตุ ให้แต่ละท่าต่างกันชัด (ไม่ใช่ generic ตาม archetype)
+// ---------------------------------------------------------------
+
+/** กฎ keyword → emoji เรียงตามลำดับความสำคัญ (เจอก่อนชนะ) */
+const ICON_RULES: [RegExp, string][] = [
+  [/\b(meteor|comet)\b/i, '☄️'],
+  [/\bshock ?wave\b/i, '💥'],
+  [/\b(flame|flames|fireball|fiery|blaz|inferno|lava|magma|scorch|ember|combust|burn)/i, '🔥'],
+  [/\b(ice|frost|freez|glaci|blizzard|snow|frozen|chill|hail)/i, '❄️'],
+  [/\b(water|aqua|tsunami|geyser|tidal|ocean|torrent|splash|wave of water|rain)/i, '🌊'],
+  [/\b(wind|aero|gale|gust|tornado|cyclone|typhoon|hurricane|breez)/i, '🌪️'],
+  [/\b(lightning|thunder|electric|volt|spark|bolt|plasma|discharge)/i, '⚡'],
+  [/\b(quake|earth|ground|rock|stone|boulder|tremor|seismic|sand|dust|crater)/i, '🪨'],
+  [/\b(bomb|explos|blast|grenade|missile|rocket|detonat|dynamite|nuke)/i, '💣'],
+  [/\b(poison|acid|toxic|venom|corros|gas|smoke|sludge)/i, '☠️'],
+  [/\b(dark|shadow|void|abyss|death|soul|ghost|reaper|hell|curse)/i, '🌑'],
+  [/\b(light|holy|radian|beam|laser|photon|shine|solar|divine|prism|glow)/i, '✨'],
+  [/\b(dragon|drake|wyrm|serpent)/i, '🐲'],
+  [/\b(spin|spiral|vortex|whirl|twister)/i, '🌀'],
+  [/\b(slash|blade|cut|sever|cleav|katana|edge|sword)/i, '⚔️'],
+  [/\b(bullet|shoot|shot|rifle|pistol|snip|revolver|shotgun|gun)/i, '🔫'],
+  [/\b(punch|fist|jab|hook|uppercut|kick|tackle|smash|palm|elbow|knee)/i, '👊'],
+  [/\b(heal|regen|restore|cure|mend)/i, '💚'],
+  [/\b(shield|guard|barrier|block|aegis|bulwark)/i, '🛡️'],
+  [/\b(fly|flight|soar|hover|glide|levitat|teleport|flash step|blitz|warp)/i, '💨'],
+  [/\b(summon|clone|spawn|conjure)/i, '🌟'],
+];
+
+const ARCHETYPE_ICON: Record<SkillArchetype, string> = {
+  projectile: '🌀',
+  aoe: '💥',
+  ground: '🪨',
+  dash: '💨',
+  melee: '👊',
+  mobility: '💨',
+  buff: '💚',
+  summon: '🌟',
+};
+
+/** ไอคอนเฉพาะท่า: ดูชื่อก่อน (สื่อธีมสุด) → คำอธิบาย → fallback ตาม archetype/หมวด */
+export function deriveIcon(raw: RawDatabookSkill, archetype: SkillArchetype, ctx: DeriveContext): string {
+  for (const source of [raw.name, raw.description]) {
+    for (const [re, emoji] of ICON_RULES) {
+      if (re.test(source)) return emoji;
+    }
+  }
+  if (archetype === 'projectile' || archetype === 'aoe') {
+    if (ctx.category === 'gun') return '🔫';
+    if (ctx.category === 'sword') return '⚔️';
+  }
+  return ARCHETYPE_ICON[archetype];
+}
+
+// ---------------------------------------------------------------
 // รวมทุกอย่าง → SkillGameplay หนึ่ง record
 // ---------------------------------------------------------------
 
@@ -266,6 +320,7 @@ export function deriveSkillGameplay(raw: RawDatabookSkill, ctx: DeriveContext): 
     id: raw.id,
     slot,
     archetype,
+    icon: deriveIcon(raw, archetype, ctx),
     damage: deriveDamage(raw, ctx),
     hitCount: deriveHitCount(raw),
     range: shape.range,

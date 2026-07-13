@@ -52,6 +52,8 @@ export interface SkillGameplay {
   id: string;
   slot: SkillSlotKey;
   archetype: SkillArchetype;
+  /** ไอคอนเฉพาะสกิล (emoji) เดาจากชื่อ/ธาตุ — ให้แต่ละท่าต่างกันชัด */
+  icon: string;
   /** ดาเมจรวมทั้งท่า (ก่อนคูณสเตต) — 0 = ท่า utility ล้วน */
   damage: number;
   /** จำนวนฮิตที่แบ่งดาเมจ (1-8) */
