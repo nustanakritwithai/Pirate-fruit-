@@ -147,6 +147,145 @@ describe('Pirate V1 player rig', () => {
     expect(visual.rig.rightArm.quaternion.length()).toBeCloseTo(1, 5);
   });
 
+  it('uses a dedicated forward-leaning pose while dashing', () => {
+    const visual = createPiratePlayerVisual();
+    const animator = new PlayerActionAnimator(visual.rig);
+    const gameplayRootBefore = visual.group.position.clone();
+    animator.update(1 / 60, {
+      combatState: 'idle', category: 'sword', locomotion: 'idle', onGround: true,
+    });
+    const spineBefore = visual.rig.spine.quaternion.clone();
+
+    animator.update(1 / 60, {
+      combatState: 'idle',
+      category: 'sword',
+      locomotion: 'idle',
+      onGround: true,
+      dashing: true,
+      verticalVelocity: 0,
+    });
+
+    expect(quaternionChanged(spineBefore, visual.rig.spine.quaternion)).toBe(true);
+    expect(visual.rig.root.position.z).toBeGreaterThan(0.03);
+    expect(visual.rig.leftLeg.quaternion.angleTo(visual.rig.rightLeg.quaternion)).toBeGreaterThan(0.6);
+    expect(visual.group.position.equals(gameplayRootBefore)).toBe(true);
+  });
+
+  it('uses distinct rising, apex and falling jump silhouettes', () => {
+    const poseAt = (verticalVelocity: number): THREE.Quaternion[] => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      animator.update(1 / 60, {
+        combatState: 'idle',
+        category: 'style',
+        locomotion: 'idle',
+        onGround: false,
+        verticalVelocity,
+      });
+      return [
+        visual.rig.spine.quaternion.clone(),
+        visual.rig.leftArm.quaternion.clone(),
+        visual.rig.leftLeg.quaternion.clone(),
+        visual.rig.leftLowerLeg.quaternion.clone(),
+      ];
+    };
+
+    const rising = poseAt(7.5);
+    const apex = poseAt(0);
+    const falling = poseAt(-7.5);
+    expect(poseDistance(rising, apex)).toBeGreaterThan(0.55);
+    expect(poseDistance(apex, falling)).toBeGreaterThan(0.45);
+    expect(poseDistance(rising, falling)).toBeGreaterThan(0.65);
+  });
+
+  it('squashes on landing and settles back to the bind-height envelope', () => {
+    const visual = createPiratePlayerVisual();
+    const animator = new PlayerActionAnimator(visual.rig);
+    animator.update(1 / 60, {
+      combatState: 'idle',
+      category: 'style',
+      locomotion: 'idle',
+      onGround: false,
+      verticalVelocity: -8,
+    });
+    animator.update(1 / 60, {
+      combatState: 'idle',
+      category: 'style',
+      locomotion: 'idle',
+      onGround: true,
+      verticalVelocity: 0,
+    });
+    expect(visual.rig.root.position.y).toBeLessThan(-0.07);
+    expect(visual.rig.root.scale.y).toBeLessThan(0.97);
+
+    for (let frame = 0; frame < 18; frame++) {
+      animator.update(1 / 60, {
+        combatState: 'idle',
+        category: 'style',
+        locomotion: 'idle',
+        onGround: true,
+        verticalVelocity: 0,
+      });
+    }
+    expect(visual.rig.root.position.y).toBeGreaterThan(-0.02);
+    expect(visual.rig.root.scale.y).toBeCloseTo(1, 4);
+  });
+
+  it('plays directional hit reactions without replacing the current combat state', () => {
+    const reactionAt = (hitReactionAngle: number) => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      animator.update(1 / 60, {
+        combatState: 'idle',
+        category: 'style',
+        locomotion: 'idle',
+        onGround: true,
+        hitReactionId: 1,
+        hitReactionAngle,
+      });
+      return {
+        rootPosition: visual.rig.root.position.clone(),
+        spine: visual.rig.spine.quaternion.clone(),
+      };
+    };
+
+    const front = reactionAt(0);
+    const right = reactionAt(Math.PI / 2);
+    const left = reactionAt(-Math.PI / 2);
+    expect(front.rootPosition.z).toBeLessThan(-0.05);
+    expect(front.spine.angleTo(new THREE.Quaternion())).toBeGreaterThan(0.2);
+    expect(right.rootPosition.x).toBeLessThan(-0.04);
+    expect(left.rootPosition.x).toBeGreaterThan(0.04);
+  });
+
+  it('gives stunned, knockback and knockdown their own impact poses', () => {
+    const poseAt = (combatState: 'stunned' | 'knockback' | 'knockdown') => {
+      const visual = createPiratePlayerVisual();
+      const animator = new PlayerActionAnimator(visual.rig);
+      const snapshot = {
+        combatState,
+        category: 'style' as const,
+        locomotion: 'idle' as const,
+        onGround: true,
+      };
+      animator.update(0.08, snapshot);
+      animator.update(0.08, snapshot);
+      return [
+        visual.rig.root.quaternion.clone(),
+        visual.rig.spine.quaternion.clone(),
+        visual.rig.leftArm.quaternion.clone(),
+        visual.rig.rightLeg.quaternion.clone(),
+      ];
+    };
+
+    const stunned = poseAt('stunned');
+    const knockback = poseAt('knockback');
+    const knockdown = poseAt('knockdown');
+    expect(poseDistance(stunned, knockback)).toBeGreaterThan(0.55);
+    expect(poseDistance(stunned, knockdown)).toBeGreaterThan(0.8);
+    expect(poseDistance(knockback, knockdown)).toBeGreaterThan(0.8);
+  });
+
   it('gives all four sword combo steps visibly different full-body poses', () => {
     const states = ['attack1', 'attack2', 'attack3', 'attack4'] as const;
     const poses = states.map((combatState) => {

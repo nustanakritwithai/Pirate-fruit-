@@ -80,6 +80,11 @@ export class CharacterController {
     return this.state;
   }
 
+  /** ความเร็วขึ้น/ลงสำหรับ animation เท่านั้น (+ = ขึ้น, - = ตก) */
+  get verticalSpeed(): number {
+    return this.verticalVelocity;
+  }
+
   get hpMax(): number {
     return this._hpMax;
   }
