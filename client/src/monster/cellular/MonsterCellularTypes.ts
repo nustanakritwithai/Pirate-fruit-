@@ -1,0 +1,81 @@
+/** Phase M1 — Living Monster Cellular AI thought states */
+export type MonsterThoughtState =
+  | 'idle'
+  | 'alert'
+  | 'hunt'
+  | 'attack'
+  | 'flee'
+  | 'regroup'
+  | 'rest'
+  | 'dead';
+
+export interface MonsterCellPosition {
+  x: number;
+  z: number;
+}
+
+export interface MonsterCell {
+  id: string;
+  speciesId: string;
+  position: MonsterCellPosition;
+  currentState: MonsterThoughtState;
+  nextState: MonsterThoughtState;
+  hp: number;
+  maxHp: number;
+  energy: number;
+  hunger: number;
+  lastStateChangeTick: number;
+  homeX: number;
+  homeZ: number;
+  attackRange: number;
+  perceptionRadius: number;
+  moveSpeed: number;
+}
+
+export interface NeighborSnapshot {
+  idleCount: number;
+  alertCount: number;
+  huntCount: number;
+  attackCount: number;
+  fleeCount: number;
+  regroupCount: number;
+  restCount: number;
+  deadCount: number;
+  playerNearby: boolean;
+  nearestPlayerDistance: number;
+  playerInAttackRange: boolean;
+  monsterDensity: number;
+  neighborCount: number;
+}
+
+export type MonsterLocomotion = 'idle' | 'walk' | 'run' | 'flee' | 'regroup' | 'rest';
+
+export interface MonsterBehaviorIntent {
+  locomotion: MonsterLocomotion;
+  shouldAttack: boolean;
+  shouldFacePlayer: boolean;
+  speedMultiplier: number;
+  returningHome: boolean;
+  /** maps to legacy MonsterState for animation */
+  legacyState: 'idle' | 'chase' | 'attack' | 'return' | 'dead';
+}
+
+export interface CellularTickMetrics {
+  tick: number;
+  monsterCount: number;
+  stateCounts: Record<MonsterThoughtState, number>;
+  transitionCount: number;
+  averageNeighborCount: number;
+  lastTickDurationMs: number;
+}
+
+export const THOUGHT_STATES: readonly MonsterThoughtState[] = [
+  'idle',
+  'alert',
+  'hunt',
+  'attack',
+  'flee',
+  'regroup',
+  'rest',
+  'dead',
+] as const;

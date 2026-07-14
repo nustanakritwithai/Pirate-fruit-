@@ -8,6 +8,12 @@ import { BossBar } from '../ui/BossBar';
 import { Monster } from './Monster';
 import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWNS, type MonsterType } from './MonsterData';
 import type { CombatRewardSource } from '../combat/CombatData';
+import {
+  MonsterCellularWorld,
+  fleeDirection,
+  regroupTarget,
+} from './cellular';
+import type { MonsterThoughtMarker } from './cellular/MonsterThoughtMarker';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
@@ -61,6 +67,8 @@ export class MonsterManager {
   private readonly bossBar = new BossBar();
   private readonly rand = mulberry32(20260712);
   private readonly tmp = new THREE.Vector2();
+  readonly cellularWorld = new MonsterCellularWorld();
+  private thoughtMarker: MonsterThoughtMarker | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -93,7 +101,22 @@ export class MonsterManager {
     const monster = new Monster(type, x, z, y, respawnDelay);
     this.scene.add(monster.group);
     this.monsters.push(monster);
+    this.cellularWorld.bindMonster(monster);
     return monster;
+  }
+
+  attachThoughtMarkers(marker: MonsterThoughtMarker): void {
+    this.thoughtMarker = marker;
+  }
+
+  cellularTick(playerX: number, playerZ: number): void {
+    this.cellularWorld.cellularUpdate(playerX, playerZ);
+    if (this.thoughtMarker && this.cellularWorld.debugMarkersEnabled) {
+      for (const monster of this.monsters) {
+        if (!monster.alive || !monster.group.visible) continue;
+        this.thoughtMarker.sync(monster, this.cellularWorld.getThoughtState(monster));
+      }
+    }
   }
 
   /** สุ่มจุดพื้นดินรอบ ๆ center ที่ heightAt สูงพอ (ไม่จมน้ำ) */
@@ -181,6 +204,16 @@ export class MonsterManager {
     const hpBefore = monster.hp;
     const died = monster.takeDamage(damage);
     const actualDamage = Math.max(0, hpBefore - monster.hp);
+    if (died) {
+      const cell = monster.cellularId
+        ? this.cellularWorld.getCell(monster.cellularId)
+        : undefined;
+      if (cell) {
+        cell.hp = 0;
+        cell.currentState = 'dead';
+        cell.nextState = 'dead';
+      }
+    }
     this.effects.spawnHitSpark(monster.group.position);
     this.callbacks.onMonsterDamaged?.(monster, damage);
     this.callbacks.onRewardContribution?.(monster, actualDamage, died, source);
@@ -216,6 +249,7 @@ export class MonsterManager {
           monster.respawnTimer -= dt;
           if (monster.respawnTimer <= 0) {
             monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
+            this.cellularWorld.resetCellOnRespawn(monster);
             monster.group.visible = false;
           }
         }
@@ -228,6 +262,7 @@ export class MonsterManager {
         monster.respawnTimer -= dt;
         if (finishedDeath && monster.respawnTimer <= 0) {
           monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
+          this.cellularWorld.resetCellOnRespawn(monster);
         }
         continue;
       }
@@ -260,8 +295,11 @@ export class MonsterManager {
       const dz = player.z - monster.group.position.z;
       const distToPlayer = Math.hypot(dx, dz);
       const type = monster.type;
+      const intent = this.cellularWorld.getIntent(monster);
+      monster.state = intent.legacyState;
+      monster.returningHome = intent.returningHome;
 
-      // ---------- Leash: ไล่ไกลจากบ้านเกินขอบเขต → บังคับกลับก่อน (กันมอนตามเข้าหมู่บ้าน) ----------
+      // ---------- Leash: ไล่ไกลจากบ้านเกินขอบเขต → บังคับกลับก่อน ----------
       const distFromHome = Math.hypot(
         monster.group.position.x - monster.home.x,
         monster.group.position.z - monster.home.y,
@@ -280,7 +318,6 @@ export class MonsterManager {
           monster.attackCooldown = type.attackCooldown * 1.25;
           const heavy = type.heavyAttack!;
           monster.playAttackAnimation(true);
-          // ปล่อยท่า: โดนเฉพาะถ้าผู้เล่นยังอยู่ในระยะ (หลบทัน = พลาด)
           if (engageable && distToPlayer <= type.attackRange * 1.6) {
             this.damagePlayer({
               amount: type.damage * heavy.multiplier,
@@ -295,42 +332,23 @@ export class MonsterManager {
         continue;
       }
 
-      if (engageable && distToPlayer < type.aggroRange && !monster.returningHome) {
-        // ---------- ไล่/โจมตีผู้เล่น ----------
-        this.faceTo(monster, dx, dz, dt);
-        if (distToPlayer <= type.attackRange) {
-          monster.state = 'attack';
-          if (monster.attackCooldown <= 0) {
-            const heavy = type.heavyAttack;
-            if (heavy && (monster.attackCount + 1) % heavy.everyNth === 0) {
-              // เริ่มง้างท่าหนัก (แฟลชเตือนใน updateVisual)
-              monster.pendingHeavy = true;
-              monster.telegraphTimer = heavy.telegraph;
-            } else {
-              monster.attackCooldown = type.attackCooldown;
-              monster.attackCount++;
-              monster.playAttackAnimation(false);
-              this.damagePlayer({
-                amount: type.damage,
-                unblockable: false,
-                knockback: 0,
-                sourceX: monster.group.position.x,
-                sourceZ: monster.group.position.z,
-                tags: [],
-              });
-            }
-          }
-        } else {
-          monster.state = 'chase';
-          this.moveToward(monster, dx, dz, type.moveSpeed, dt);
-        }
-        if (this.bosses.has(monster)) {
+      if (engageable && !monster.returningHome) {
+        this.applyCellularIntent(
+          monster,
+          intent,
+          dx,
+          dz,
+          distToPlayer,
+          type,
+          dt,
+          engageable,
+        );
+        if (this.bosses.has(monster) && intent.legacyState !== 'idle' && intent.legacyState !== 'return') {
           engagedBoss = monster;
           this.bossBar.show(type.name, type.level);
           this.bossBar.setFraction(monster.hpFraction);
         }
-      } else {
-        // ---------- กลับบ้าน / เดินวน ----------
+      } else if (monster.returningHome || intent.returningHome) {
         const hx = monster.home.x - monster.group.position.x;
         const hz = monster.home.y - monster.group.position.z;
         const distHome = Math.hypot(hx, hz);
@@ -342,10 +360,100 @@ export class MonsterManager {
           monster.state = 'idle';
           this.wander(monster, dt);
         }
+      } else {
+        monster.state = 'idle';
+        this.wander(monster, dt);
       }
     }
 
     if (!engagedBoss || !engagedBoss.alive) this.bossBar.hide();
+  }
+
+  private applyCellularIntent(
+    monster: Monster,
+    intent: ReturnType<MonsterCellularWorld['getIntent']>,
+    dx: number,
+    dz: number,
+    distToPlayer: number,
+    type: MonsterType,
+    dt: number,
+    engageable: boolean,
+  ): void {
+    const speed = type.moveSpeed * intent.speedMultiplier;
+
+    if (intent.locomotion === 'flee') {
+      const flee = fleeDirection(
+        monster.group.position.x,
+        monster.group.position.z,
+        this.controller.position.x,
+        this.controller.position.z,
+      );
+      this.moveToward(monster, flee.dx, flee.dz, speed, dt);
+      return;
+    }
+
+    if (intent.locomotion === 'regroup') {
+      const pack = monster.cellularId
+        ? this.cellularWorld.getPackCenter(monster.cellularId)
+        : null;
+      const cell = monster.cellularId
+        ? this.cellularWorld.getCell(monster.cellularId)
+        : undefined;
+      const target = cell
+        ? regroupTarget(cell, pack)
+        : { x: monster.home.x, z: monster.home.y };
+      const rx = target.x - monster.group.position.x;
+      const rz = target.z - monster.group.position.z;
+      this.moveToward(monster, rx, rz, speed, dt);
+      this.faceTo(monster, rx, rz, dt);
+      return;
+    }
+
+    if (intent.locomotion === 'rest') {
+      return;
+    }
+
+    if (intent.shouldFacePlayer) {
+      this.faceTo(monster, dx, dz, dt);
+    }
+
+    if (intent.shouldAttack && distToPlayer <= type.attackRange) {
+      monster.state = 'attack';
+      if (monster.attackCooldown <= 0 && engageable) {
+        const heavy = type.heavyAttack;
+        if (heavy && (monster.attackCount + 1) % heavy.everyNth === 0) {
+          monster.pendingHeavy = true;
+          monster.telegraphTimer = heavy.telegraph;
+        } else {
+          monster.attackCooldown = type.attackCooldown;
+          monster.attackCount++;
+          monster.playAttackAnimation(false);
+          this.damagePlayer({
+            amount: type.damage,
+            unblockable: false,
+            knockback: 0,
+            sourceX: monster.group.position.x,
+            sourceZ: monster.group.position.z,
+            tags: [],
+          });
+        }
+      }
+      return;
+    }
+
+    if (
+      intent.locomotion === 'run'
+      || intent.locomotion === 'walk'
+      || distToPlayer < type.aggroRange
+    ) {
+      if (distToPlayer > type.attackRange * 0.9) {
+        monster.state = intent.locomotion === 'run' ? 'chase' : 'return';
+        this.moveToward(monster, dx, dz, speed, dt);
+      }
+      return;
+    }
+
+    this.wander(monster, dt);
   }
 
   private damagePlayer(attack: IncomingAttack): void {

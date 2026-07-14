@@ -39,6 +39,12 @@ import { IslandManager } from './island/IslandManager';
 import { TradeManager } from './trade/TradeManager';
 import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
+import {
+  MonsterCellularDebugPanel,
+  MonsterThoughtMarker,
+  MONSTER_CELLULAR_CONFIG,
+  type MonsterCellularWorld,
+} from './monster/cellular';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
 import { EconomyMobileHUD } from './ui/EconomyMobileHUD';
@@ -409,6 +415,23 @@ async function main(): Promise<void> {
   game.add(effects);
   game.add(npcManager);
   game.add(monsterManager);
+  const monsterThoughtMarker = new MonsterThoughtMarker(game.scene);
+  monsterManager.attachThoughtMarkers(monsterThoughtMarker);
+  const monsterCellularDebug = new MonsterCellularDebugPanel(monsterManager.cellularWorld);
+  let monsterCellularAccum = 0;
+  game.add({
+    update: (dt: number) => {
+      monsterCellularAccum += dt * 1000;
+      if (monsterCellularAccum >= MONSTER_CELLULAR_CONFIG.tickIntervalMs) {
+        monsterCellularAccum = 0;
+        const p = controller.position;
+        monsterManager.cellularTick(p.x, p.z);
+        monsterCellularDebug.refresh();
+      }
+    },
+  });
+  (window as unknown as { __monsterCellular?: MonsterCellularWorld }).__monsterCellular =
+    monsterManager.cellularWorld;
   game.add(saveSystem);
   game.add(progression);
   game.add(progressionHud);
