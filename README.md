@@ -189,9 +189,9 @@ repo นี้พร้อม deploy เป็น **Static Site** บน [Render
 3. เลือก repo `Pirate-fruit-` และ branch (เช่น `claude/blox-fruits-three-js-roadmap-1f2f5u` หรือ PR branch)
 4. Render อ่าน `render.yaml` แล้วตั้งค่าให้อัตโนมัติ:
    - **Root Directory:** `client`
-   - **Build Command:** `npm ci && npm run build`
-   - **Publish Directory:** `client/dist` (ใน Blueprint อ้างอิงจาก root ของ repo)
-   - **Node:** 22
+   - **Build Command:** `npm install && npm run build`
+   - **Publish Directory:** `dist` (เมื่อ rootDir = `client`)
+   - **Node:** 22 (จาก `client/.node-version`)
 5. กด **Apply** — รอ build เสร็จได้ URL เช่น `https://pirate-fruit.onrender.com`
 
 ### วิธีที่ 2 — Static Site แบบตั้งเอง
@@ -200,7 +200,7 @@ repo นี้พร้อม deploy เป็น **Static Site** บน [Render
 |-----|----------|
 | Environment | Static Site |
 | Root Directory | `client` |
-| Build Command | `npm ci && npm run build` |
+| Build Command | `npm install && npm run build` |
 | Publish Directory | `dist` |
 | Rewrite | `/*` → `/index.html` |
 
