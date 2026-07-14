@@ -2,6 +2,8 @@
 
 Pirate Fruit — cellular automata economy for inter-island trade. This document locks the **v1.0** scope: a stable simulation stack from basic trade through evolutionary genome bias, without population, districts, technology trees, or political systems.
 
+**Parent architecture:** [SIMULATION_CORE_V1.md](SIMULATION_CORE_V1.md) — *Everything emerges from Local Rules.*
+
 ## Stack overview
 
 | Phase | Name | Role |
@@ -82,7 +84,7 @@ Do **not** implement unless real playtesting demands it:
 - Civilization AI
 - Political economy
 
-Next major vertical: **Living Monster Cellular AI** (separate from economy depth).
+Next major vertical: **Living Monster Cellular AI** (separate from economy depth) — now shipped as [LIVING_MONSTER_V1.md](LIVING_MONSTER_V1.md). Both cores are locked under [SIMULATION_CORE_V1.md](SIMULATION_CORE_V1.md).
 
 ## Module map
 
