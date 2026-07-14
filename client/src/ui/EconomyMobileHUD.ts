@@ -15,10 +15,6 @@ import type { EconomyPanel } from './EconomyPanel';
 
 const TOAST_DURATION_S = 2.5;
 
-function isCompactHud(): boolean {
-  return window.innerWidth < 600 || isTouchDevice();
-}
-
 function rectsOverlap(a: DOMRect, b: DOMRect, pad = 6): boolean {
   return !(
     a.right + pad < b.left
@@ -194,46 +190,44 @@ export class EconomyMobileHUD {
     this.toast.style.display = 'none';
   }
 
-  /** วาง toast มุมซ้ายบน ใต้ chip — ไม่ใช้กลางจอ */
+  /** วาง toast ข้างขวา chip แถวเดียวกัน — ไม่บังกลางจอ */
   private positionToast(): void {
     if (this.toast.style.display === 'none') return;
 
-    const minimapSize = isTouchDevice() ? 112 : 144;
-    const chipTop = 14 + minimapSize + 8;
-    const safeTop = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-top)') || '0',
-      10,
-    );
-    let top = chipTop + 40 + safeTop;
-    const left = 14;
+    const chipEl = this.chip;
+    const chipRect = chipEl.getBoundingClientRect();
+    const gap = 8;
 
+    let left = chipRect.right + gap;
+    let top = chipRect.top;
+
+    const maxWidth = Math.min(260, window.innerWidth - left - 12);
+    this.toast.style.maxWidth = `${Math.max(120, maxWidth)}px`;
     this.toast.style.left = `${left}px`;
     this.toast.style.right = 'auto';
     this.toast.style.top = `${top}px`;
     this.toast.style.transform = 'none';
 
-    const blockers = ['.game-minimap', '.eco-chip', '.eco-open-btn'];
+    const blockers = ['.hud-info', '.graphics-setting', '.trade-route-hint', '.eco-open-btn'];
 
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
       const toastRect = this.toast.getBoundingClientRect();
-      let hit = false;
-      for (const sel of blockers) {
-        const el = document.querySelector(sel);
-        if (!el) continue;
-        if (rectsOverlap(toastRect, el.getBoundingClientRect())) {
-          hit = true;
-          break;
+      if (toastRect.right <= window.innerWidth - 8) {
+        let hit = false;
+        for (const sel of blockers) {
+          const el = document.querySelector(sel);
+          if (!el) continue;
+          if (rectsOverlap(toastRect, el.getBoundingClientRect())) {
+            hit = true;
+            break;
+          }
         }
+        if (!hit) return;
       }
-      if (!hit) return;
-      top += 36;
-      this.toast.style.top = `${top}px`;
+      // ไม่พอที่ขวา → วางซ้าย chip แทน
+      left = Math.max(8, chipRect.left - toastRect.width - gap);
+      this.toast.style.left = `${left}px`;
     }
-
-    // fallback มุมขวาบน ใต้ trade hint
-    this.toast.style.left = 'auto';
-    this.toast.style.right = '12px';
-    this.toast.style.top = `${safeTop + (isCompactHud() ? 88 : 96)}px`;
   }
 
   private injectStyles(): void {
@@ -254,8 +248,8 @@ export class EconomyMobileHUD {
         border-radius:8px;padding:2px 7px;font:inherit;cursor:pointer;white-space:nowrap;
         touch-action:manipulation}
       .eco-chip-alert:active{transform:scale(.95)}
-      .eco-toast{position:fixed;z-index:30;left:14px;right:auto;
-        max-width:min(260px,78vw);height:38px;max-height:42px;
+      .eco-toast{position:fixed;z-index:30;left:auto;right:auto;
+        max-width:min(260px,52vw);height:34px;max-height:36px;
         display:none;align-items:center;justify-content:center;padding:0 12px;box-sizing:border-box;
         background:rgba(8,32,38,.92);border:1px solid rgba(140,220,190,.4);border-radius:10px;
         color:#e8f8f0;font:600 10px 'Segoe UI',Tahoma,sans-serif;pointer-events:none;
@@ -271,7 +265,7 @@ export class EconomyMobileHUD {
       .eco-open-btn:active{transform:scale(.94)}
       @media(max-width:599px){
         .eco-chip{height:32px;font-size:9px;gap:8px}
-        .eco-toast{height:36px;font-size:9px;max-width:min(260px,82vw)}
+        .eco-toast{height:32px;font-size:9px;max-width:min(220px,48vw)}
       }
       @media(min-width:701px){
         .eco-chip{max-width:300px;height:32px;font-size:11px}
