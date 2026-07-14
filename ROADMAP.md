@@ -136,7 +136,10 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 - [x] โจรป่าพงไพร Lv.16, ผู้พิทักษ์ศิลา Lv.22, บอสวานรพิษโบราณ Lv.28
 - [x] NPC ใหม่ 4 คน + ภารกิจเกาะใหม่ 4 งาน (รวม multi-objective)
 - [x] Checkpoint ต่อเกาะ + Save v3 migration จากเซฟเดิม + LOD simulation ระยะไกล
-- [ ] เกาะที่ 3 และเส้นทาง World Progression ช่วง Lv.31+
+- [x] เกาะที่ 3 **เกาะทะเลทรายสุริยะ** (Lv.31-50): นครคาราวาน โอเอซิส เหมืองหิน พีระมิด และเส้นทางเดินเรือสามเกาะ
+- [x] แมงป่องทะเลทราย Lv.31, โจรทะเลทราย Lv.34, โกเลมทราย Lv.41, บอสผู้พิทักษ์สุริยะ Lv.48
+- [x] NPC ทะเลทราย 4 คน + ภารกิจ 4 งาน + Ocean Overview/Save/Checkpoint รองรับสามเกาะ
+- [ ] เกาะที่ 4 และเส้นทาง World Progression ช่วง Lv.51+
 - [ ] ร้านค้าเฉพาะเกาะ / Fruit Spawn / วัตถุดิบประจำ biome
 
 ## Phase 10 — Server Migration และ Multiplayer ⬜

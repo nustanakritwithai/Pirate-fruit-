@@ -1,4 +1,5 @@
 import type { EnemyRewardDefinition } from '../progression/ProgressionTypes';
+import type { IslandId } from '../island/IslandTypes';
 
 /** ชนิดของมอนสเตอร์และแคมป์ที่เกิดบนเกาะ (Phase 4) */
 
@@ -141,11 +142,78 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
       tags: ['unblockable', 'knockdown'],
     },
   },
+  'dune-scorpion': {
+    id: 'dune-scorpion',
+    name: 'แมงป่องเนินทราย',
+    kind: 'crab',
+    level: 31,
+    maxHp: 520,
+    damage: 27,
+    moveSpeed: 3.4,
+    aggroRange: 15,
+    attackRange: 2.35,
+    attackCooldown: 1.05,
+    scale: 1.25,
+    color: 0xc18438,
+    reward: { playerExp: 260, masteryExp: 120, coins: 160 },
+  },
+  'desert-raider': {
+    id: 'desert-raider',
+    name: 'โจรคาราวาน',
+    kind: 'grunt',
+    level: 34,
+    maxHp: 620,
+    damage: 30,
+    moveSpeed: 3.7,
+    aggroRange: 17,
+    attackRange: 2.15,
+    attackCooldown: 1,
+    scale: 1.2,
+    color: 0x9a4d34,
+    reward: { playerExp: 310, masteryExp: 145, coins: 195 },
+  },
+  'sand-golem': {
+    id: 'sand-golem',
+    name: 'โกเลมศิลาทราย',
+    kind: 'grunt',
+    level: 41,
+    maxHp: 880,
+    damage: 38,
+    moveSpeed: 2.5,
+    aggroRange: 18,
+    attackRange: 2.65,
+    attackCooldown: 1.3,
+    scale: 1.62,
+    color: 0x9b7b55,
+    reward: { playerExp: 430, masteryExp: 200, coins: 280 },
+  },
+  'sun-guardian-boss': {
+    id: 'sun-guardian-boss',
+    name: 'ผู้พิทักษ์สุริยะ',
+    kind: 'boss',
+    level: 48,
+    maxHp: 3200,
+    damage: 50,
+    moveSpeed: 3.1,
+    aggroRange: 26,
+    attackRange: 3.3,
+    attackCooldown: 1.3,
+    scale: 2.35,
+    color: 0x8c5a2b,
+    reward: { playerExp: 1900, masteryExp: 800, coins: 1450 },
+    heavyAttack: {
+      everyNth: 3,
+      multiplier: 1.8,
+      telegraph: 0.82,
+      knockback: 15,
+      tags: ['unblockable', 'knockdown'],
+    },
+  },
 };
 
 export interface MonsterCamp {
   id: string;
-  islandId: 'starter-island' | 'mist-jungle';
+  islandId: IslandId;
   name: string;
   typeId: string;
   x: number;
@@ -164,13 +232,17 @@ export const MONSTER_CAMPS: MonsterCamp[] = [
   { id: 'jungle-west-patrol', islandId: 'mist-jungle', name: 'กองลาดตระเวนตะวันตก', typeId: 'jungle-bandit', x: 161, z: -55, radius: 4.5, count: 3, recommendedLevel: 16 },
   { id: 'ruin-sentinels', islandId: 'mist-jungle', name: 'ผู้เฝ้าซากวิหาร', typeId: 'ruin-guardian', x: 183, z: -34, radius: 5.5, count: 3, recommendedLevel: 22 },
   { id: 'guardian-terrace-camp', islandId: 'mist-jungle', name: 'ลานผู้พิทักษ์', typeId: 'ruin-guardian', x: 192, z: -45, radius: 5, count: 3, recommendedLevel: 22 },
+  { id: 'oasis-scorpions', islandId: 'sunscar-desert', name: 'รังแมงป่องโอเอซิส', typeId: 'dune-scorpion', x: 151, z: 130, radius: 5.5, count: 4, recommendedLevel: 31 },
+  { id: 'east-dune-scorpions', islandId: 'sunscar-desert', name: 'เนินทรายตะวันออก', typeId: 'dune-scorpion', x: 184, z: 125, radius: 5, count: 3, recommendedLevel: 31 },
+  { id: 'sunscar-raiders', islandId: 'sunscar-desert', name: 'ค่ายโจรคาราวาน', typeId: 'desert-raider', x: 148, z: 142, radius: 6, count: 4, recommendedLevel: 34 },
+  { id: 'sandstone-quarry', islandId: 'sunscar-desert', name: 'เหมืองศิลาทราย', typeId: 'sand-golem', x: 191, z: 141, radius: 5.5, count: 4, recommendedLevel: 41 },
 ];
 
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
 export const BOSS_SPAWN = { typeId: 'boss', x: 24, z: 4 };
 
 export interface BossSpawn {
-  islandId: 'starter-island' | 'mist-jungle';
+  islandId: IslandId;
   typeId: string;
   x: number;
   z: number;
@@ -179,4 +251,5 @@ export interface BossSpawn {
 export const BOSS_SPAWNS: readonly BossSpawn[] = [
   { islandId: 'starter-island', ...BOSS_SPAWN },
   { islandId: 'mist-jungle', typeId: 'venom-ape-boss', x: 190, z: -18 },
+  { islandId: 'sunscar-desert', typeId: 'sun-guardian-boss', x: 170, z: 152 },
 ];

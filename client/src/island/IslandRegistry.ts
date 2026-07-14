@@ -5,6 +5,8 @@ export const SEA_FLOOR_HEIGHT = -0.9;
 export const STARTER_ISLAND_RADIUS = 60;
 export const MIST_JUNGLE_CENTER = { x: 170, z: -40 } as const;
 export const MIST_JUNGLE_RADIUS = 54;
+export const SUNSCAR_DESERT_CENTER = { x: 170, z: 125 } as const;
+export const SUNSCAR_DESERT_RADIUS = 56;
 
 /** สูตรพื้นเกาะเดิม ห้ามเปลี่ยน เพื่อให้เซฟและ collider ของ Phase 1-8 ตรงตำแหน่งเดิม */
 export function starterHeightAt(x: number, z: number): number {
@@ -32,6 +34,21 @@ export function mistJungleHeightAt(x: number, z: number): number {
   return falloff * (4.5 + hills) + SEA_FLOOR_HEIGHT;
 }
 
+/** พื้นเกาะทะเลทรายสุริยะ เนินทรายเตี้ยล้อม mesa หินทรายตรงกลาง */
+export function sunscarDesertHeightAt(x: number, z: number): number {
+  const lx = x - SUNSCAR_DESERT_CENTER.x;
+  const lz = z - SUNSCAR_DESERT_CENTER.z;
+  const d = Math.hypot(lx, lz);
+  const t = THREE.MathUtils.clamp(1 - d / SUNSCAR_DESERT_RADIUS, 0, 1);
+  const falloff = t * t * (3 - 2 * t);
+  const hills =
+    Math.sin(lx * 0.11) * Math.cos(lz * 0.09) * 0.75 +
+    Math.sin(lx * 0.045 + lz * 0.065) * 1.1 +
+    Math.cos(lx * 0.03 - lz * 0.05) * 0.65;
+  const duneRipple = Math.sin((lx + lz) * 0.18) * 0.22 * falloff;
+  return falloff * (4.2 + hills) + duneRipple + SEA_FLOOR_HEIGHT;
+}
+
 export const DOCKS: readonly DockDefinition[] = [
   {
     id: 'starter-harbor',
@@ -48,6 +65,14 @@ export const DOCKS: readonly DockDefinition[] = [
     zone: { minX: 108, maxX: 143, minZ: -48, maxZ: -32 },
     boatSpawn: { x: 113, z: -45, heading: Math.PI / 2 },
     disembark: { fixedAxis: 'z', fixedValue: -37.65, clampAxis: 'x', min: 112, max: 141 },
+  },
+  {
+    id: 'sunscar-desert-harbor',
+    islandId: 'sunscar-desert',
+    name: 'ท่าเรือทะเลทรายสุริยะ',
+    zone: { minX: 160, maxX: 181, minZ: 68, maxZ: 102 },
+    boatSpawn: { x: 175, z: 75, heading: 0 },
+    disembark: { fixedAxis: 'x', fixedValue: 172.1, clampAxis: 'z', min: 72, max: 99 },
   },
 ] as const;
 
@@ -73,6 +98,17 @@ export const ISLANDS: readonly IslandDefinition[] = [
     spawn: { id: 'mist-jungle-camp', x: 153, z: -40, heading: Math.PI / 2 },
     dockIds: ['mist-jungle-harbor'],
     heightAt: mistJungleHeightAt,
+  },
+  {
+    id: 'sunscar-desert',
+    name: 'เกาะทะเลทรายสุริยะ',
+    subtitle: 'นครคาราวานและอารยธรรมใต้ผืนทราย',
+    center: SUNSCAR_DESERT_CENTER,
+    radius: SUNSCAR_DESERT_RADIUS,
+    recommendedLevel: [31, 50],
+    spawn: { id: 'sunscar-caravan-city', x: 170, z: 100, heading: 0 },
+    dockIds: ['sunscar-desert-harbor'],
+    heightAt: sunscarDesertHeightAt,
   },
 ] as const;
 

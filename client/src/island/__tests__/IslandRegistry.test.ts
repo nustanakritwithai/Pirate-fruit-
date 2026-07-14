@@ -6,6 +6,7 @@ import {
   findDockAt,
   getIsland,
   mistJungleHeightAt,
+  sunscarDesertHeightAt,
   starterHeightAt,
   worldHeightAt,
 } from '../IslandRegistry';
@@ -34,16 +35,18 @@ describe('multi-island registry', () => {
     }
   });
 
-  it('leaves navigable sea between the two islands', () => {
+  it('leaves navigable sea between all island routes', () => {
     expect(worldHeightAt(88, -30)).toBe(SEA_FLOOR_HEIGHT);
     expect(worldHeightAt(98, -40)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(170, 43)).toBe(SEA_FLOOR_HEIGHT);
   });
 
-  it('places both checkpoints on dry land', () => {
+  it('places every checkpoint on dry land', () => {
     for (const island of ISLANDS) {
       expect(worldHeightAt(island.spawn.x, island.spawn.z)).toBeGreaterThan(0.25);
     }
     expect(mistJungleHeightAt(170, -40)).toBeGreaterThan(2.5);
+    expect(sunscarDesertHeightAt(170, 125)).toBeGreaterThan(2.5);
   });
 
   it('resolves each dock zone and keeps boat spawns in water', () => {

@@ -11,13 +11,16 @@ export type MonsterState = 'idle' | 'chase' | 'attack' | 'return' | 'dead';
 
 /** สร้าง visual แบบ Mobile PBR คืน group + hull (ตัวหลักไว้แฟลชตอนโดนตี) */
 function createModel(type: MonsterType): CharacterVisualResult {
+  const ancientConstruct = type.id === 'ruin-guardian'
+    || type.id === 'sand-golem'
+    || type.id === 'sun-guardian-boss';
   const visual = type.kind === 'crab'
     ? createCrabVisual(type.color)
     : createHumanoidVisual({
         clothColor: type.color,
-        accentColor: type.kind === 'boss' ? 0x7b2030 : 0x825033,
-        skinColor: type.kind === 'boss' ? 0x9a664b : 0xb9825f,
-        pirate: true,
+        accentColor: ancientConstruct ? 0x5e4934 : type.kind === 'boss' ? 0x7b2030 : 0x825033,
+        skinColor: ancientConstruct ? 0x957c5e : type.kind === 'boss' ? 0x9a664b : 0xb9825f,
+        pirate: !ancientConstruct,
         boss: type.kind === 'boss',
       });
   const { group } = visual;

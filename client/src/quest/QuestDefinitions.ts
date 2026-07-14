@@ -67,6 +67,42 @@ export const QUEST_DEFINITIONS: readonly QuestDefinition[] = [
     objectives: [{ type: 'boss', targetId: 'venom-ape-boss', requiredAmount: 1 }],
     rewards: { playerExp: 2600, coins: 1600, masteryBonus: 320 },
   },
+  {
+    id: 'sunscar-scorpions',
+    name: 'เงาใต้ผืนทราย',
+    description: 'กำจัดแมงป่องเนินทราย 7 ตัวรอบโอเอซิสและเนินตะวันออก',
+    minimumLevel: 31,
+    repeatable: true,
+    objectives: [{ type: 'kill', targetId: 'dune-scorpion', requiredAmount: 7 }],
+    rewards: { playerExp: 1850, coins: 1050, masteryBonus: 220 },
+  },
+  {
+    id: 'sunscar-raider-route',
+    name: 'ชิงเส้นทางคาราวานคืน',
+    description: 'ปราบโจรคาราวาน 6 คนที่ยึดเส้นทางตะวันตก',
+    minimumLevel: 34,
+    repeatable: true,
+    objectives: [{ type: 'kill', targetId: 'desert-raider', requiredAmount: 6 }],
+    rewards: { playerExp: 2300, coins: 1350, masteryBonus: 280 },
+  },
+  {
+    id: 'sunscar-sand-golems',
+    name: 'เสียงคำรามจากเหมือง',
+    description: 'ทำลายโกเลมศิลาทราย 5 ตนในเหมืองตะวันออก',
+    minimumLevel: 40,
+    repeatable: true,
+    objectives: [{ type: 'kill', targetId: 'sand-golem', requiredAmount: 5 }],
+    rewards: { playerExp: 3100, coins: 1900, masteryBonus: 360 },
+  },
+  {
+    id: 'sun-guardian-awakens',
+    name: 'ผู้พิทักษ์แห่งดวงอาทิตย์',
+    description: 'โค่นผู้พิทักษ์สุริยะหน้าพีระมิดทางเหนือ',
+    minimumLevel: 45,
+    repeatable: true,
+    objectives: [{ type: 'boss', targetId: 'sun-guardian-boss', requiredAmount: 1 }],
+    rewards: { playerExp: 5200, coins: 3200, masteryBonus: 650 },
+  },
 ];
 
 export const QUESTS_BY_ID = new Map(QUEST_DEFINITIONS.map((quest) => [quest.id, quest]));
