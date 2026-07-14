@@ -130,6 +130,21 @@ export function createBoatModel(
     }
   }
 
+  // ปืนใหญ่ข้างกราบ (Phase 2 Naval Combat) — กระบอกชี้ออกด้านข้าง
+  const cannonCount = definition.cannonsPerSide ?? 0;
+  if (cannonCount > 0) {
+    const cannonGeometry = new THREE.CylinderGeometry(0.09, 0.12, 0.72, 8);
+    cannonGeometry.rotateZ(Math.PI / 2);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < cannonCount; i++) {
+        const cannon = new THREE.Mesh(cannonGeometry, metal);
+        const zSpread = cannonCount > 1 ? (i - (cannonCount - 1) / 2) * 1.5 : 0.4;
+        cannon.position.set(side * definition.width * 0.46, 0.82, zSpread);
+        root.add(cannon);
+      }
+    }
+  }
+
   const ropeRailGeometry = new THREE.CylinderGeometry(0.035, 0.04, definition.length * 0.64, 6);
   for (const side of [-1, 1]) {
     const ropeRail = new THREE.Mesh(ropeRailGeometry, rope);

@@ -15,6 +15,8 @@ export interface BoatDefinition {
   width: number;
   hasSail: boolean;
   color: number;
+  /** จำนวนปืนใหญ่ต่อกราบ (ซ้าย/ขวา) — 0/ไม่ระบุ = ไม่มีปืน */
+  cannonsPerSide?: number;
 }
 
 /** เกียร์ใบเรือ 4 ระดับ (0 = เก็บใบ … 3 = เต็มใบ) → สัดส่วนของ maxSpeed */
@@ -39,6 +41,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     width: 2.1,
     hasSail: false,
     color: 0x704226,
+    cannonsPerSide: 1,
   },
   {
     id: 'swift-sloop',
@@ -57,6 +60,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     width: 2.35,
     hasSail: true,
     color: 0x8b3929,
+    cannonsPerSide: 2,
   },
 ];
 

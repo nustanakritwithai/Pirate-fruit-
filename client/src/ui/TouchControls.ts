@@ -230,8 +230,10 @@ export class TouchControls {
     }
     this.setButtonLabel(this.dashBtn, mode === 'boat' ? '⚡' : '💨');
     this.setButtonLabel(this.jumpBtn, mode === 'boat' ? '⚓' : '⬆️');
+    // ปุ่มโจมตีคงอยู่ในโหมดเรือ = ยิงปืนใหญ่ (Naval Combat)
+    this.setButtonLabel(this.attackBtn, mode === 'boat' ? '💣' : '⚔️');
     const display = mode === 'boat' ? 'none' : 'flex';
-    this.attackBtn.style.display = display;
+    this.attackBtn.style.display = 'flex';
     // จุด auto-run ใช้ class ควบคุมการแสดงผล เพื่อให้ซ่อนจนกว่าจะดันจอยขึ้น
     this.autoRunBtn.style.display = mode === 'boat' ? 'none' : '';
     this.blockBtn.style.display = display;

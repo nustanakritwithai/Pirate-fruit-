@@ -80,6 +80,16 @@ export class BoatManager {
     return this.progress.selectedBoatId;
   }
 
+  /** โดนกระสุนปืนใหญ่ศัตรู (Naval Combat) — คืน true ถ้าโดนจริง */
+  damageActiveBoat(amount: number): boolean {
+    const boat = this.active;
+    if (!boat || boat.state === 'destroyed') return false;
+    boat.damage(amount);
+    this.hud.notify(`เรือโดนปืนใหญ่! -${amount} HP`, true);
+    if (boat.hp <= 0) this.destroyBoat(boat);
+    return true;
+  }
+
   openShop(dockId = 'starter-harbor'): void {
     if (this.controller.isMounted) {
       this.hud.notify('ต้องลงจากเรือก่อนเปิดร้าน');

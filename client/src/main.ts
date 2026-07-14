@@ -15,6 +15,7 @@ import { GraphicsSettings } from './ui/GraphicsSettings';
 import { SpawnManager } from './world/SpawnManager';
 import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
+import { NavalCombat } from './boat/NavalCombat';
 import { MonsterManager } from './monster/MonsterManager';
 import { PlayerCombat } from './combat/PlayerCombat';
 import { ItemInventory } from './shop/ItemInventory';
@@ -242,6 +243,18 @@ async function main(): Promise<void> {
     input.attachTouch(touchControls);
   }
 
+  // Naval Combat (เรือ Phase 2) — เรือโจรสลัด AI + ปืนใหญ่
+  const navalCombat = new NavalCombat(
+    game.scene,
+    input,
+    boatManager,
+    effects,
+    progression,
+    worldTextures,
+    graphics,
+    (message) => touchControls?.notify(message),
+  );
+
   // คีย์ลัดใช้ยา (Z/X + ปุ่มมือถือ) + แถบ quickslot
   hotkeyManager = new HotkeyManager(
     input,
@@ -345,6 +358,7 @@ async function main(): Promise<void> {
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
   (window as unknown as { __boat?: BoatManager }).__boat = boatManager;
+  (window as unknown as { __naval?: NavalCombat }).__naval = navalCombat;
   const equipmentVisuals = new EquipmentVisuals(
     player.group,
     () => playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
@@ -401,6 +415,7 @@ async function main(): Promise<void> {
   game.add(islandManager);
   game.add(controller);
   game.add(boatManager);
+  game.add(navalCombat);
   game.add(player);
   game.add(camera);
   game.add(playerCombat);
