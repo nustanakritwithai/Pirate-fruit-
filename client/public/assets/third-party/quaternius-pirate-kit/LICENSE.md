@@ -13,6 +13,7 @@ Included runtime models:
 | Local file | Original model |
 | --- | --- |
 | `henry.glb` | Henry |
+| `anne.glb` | Anne |
 | `mako.glb` | Mako |
 | `pirate-captain.glb` | Pirate Captain |
 | `sharky.glb` | Sharky |

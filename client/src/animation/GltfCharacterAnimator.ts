@@ -16,27 +16,43 @@ type ClipSemantic =
   | 'walk'
   | 'wave';
 
-const CLIP_TOKEN: Record<ClipSemantic, string> = {
-  death: 'Death',
-  duck: 'Duck',
-  hit: 'HitReact',
-  idle: 'Idle',
-  'jump-idle': 'Jump_Idle',
-  'jump-land': 'Jump_Land',
-  jump: 'Jump',
-  punch: 'Punch',
-  run: 'Run',
-  sword: 'Sword',
-  walk: 'Walk',
-  wave: 'Wave',
+/**
+ * Alias เรียงจากเฉพาะที่สุดไป fallback เพื่อรองรับทั้ง Pirate Kit,
+ * Ultimate Monsters และ Easy Enemies โดยไม่ผูก AI เข้ากับชื่อ clip ของ asset.
+ */
+const CLIP_TOKEN: Record<ClipSemantic, readonly string[]> = {
+  death: ['death'],
+  duck: ['duck', 'flyingidle', 'idle'],
+  hit: ['hitreact', 'hitrecieve', 'hitreceive'],
+  idle: ['idle', 'flyingidle'],
+  'jump-idle': ['jumpidle', 'flyingidle', 'idle'],
+  'jump-land': ['jumpland', 'idle'],
+  jump: ['jump', 'fastflying'],
+  punch: ['punch', 'bitefront', 'headbutt', 'attack', 'weapon'],
+  run: ['run', 'fastflying', 'walk'],
+  sword: ['sword', 'weapon', 'attack', 'headbutt', 'bitefront', 'punch'],
+  walk: ['walk', 'fastflying', 'flyingidle'],
+  wave: ['wave', 'yes', 'idle'],
 };
+
+function normalizedClipName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
 
 function clipFor(
   clips: readonly THREE.AnimationClip[],
   semantic: ClipSemantic,
 ): THREE.AnimationClip | undefined {
-  const token = CLIP_TOKEN[semantic];
-  return clips.find((clip) => clip.name.includes(`|${token}|`));
+  for (const token of CLIP_TOKEN[semantic]) {
+    const exact = clips.find((clip) => normalizedClipName(clip.name).endsWith(token));
+    if (exact) return exact;
+  }
+  // Pirate Kit บางไฟล์ตัดชื่อท้าย clip แต่ยังมี token เต็มอยู่ช่วงกลางชื่อ
+  for (const token of CLIP_TOKEN[semantic]) {
+    const embedded = clips.find((clip) => normalizedClipName(clip.name).includes(token));
+    if (embedded) return embedded;
+  }
+  return undefined;
 }
 
 /** ตัวเล่น clip เล็ก ๆ ที่ทำ crossfade และกันการ reset animation ซ้ำทุก frame */
@@ -265,6 +281,26 @@ export class GltfMonsterAnimator {
     this.hitTimer = 0;
     this.deathStarted = false;
     this.clips.reset();
+  }
+
+  dispose(): void {
+    this.clips.dispose();
+  }
+}
+
+/** NPC GLB ใช้ idle/talk loop เท่านั้น; action/dialogue ยังคุมจาก NPCManager เดิม */
+export class GltfNPCAnimator {
+  private readonly clips: ClipPlayer;
+
+  constructor(root: THREE.Object3D, animations: readonly THREE.AnimationClip[]) {
+    this.clips = new ClipPlayer(root, animations);
+    this.clips.playLoop('idle');
+  }
+
+  update(dt: number, action: ProceduralLoopAction): void {
+    if (action === 'talk') this.clips.playLoop('wave', 'talk', 0.7, 0.16);
+    else this.clips.playLoop('idle', 'idle', 0.92, 0.16);
+    this.clips.update(dt);
   }
 
   dispose(): void {

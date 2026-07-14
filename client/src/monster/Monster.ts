@@ -155,12 +155,18 @@ export class Monster {
   ) {
     this.group = new THREE.Group();
     this.group.name = `monster:${type.id}`;
-    const assetId = pirateAssetForMonster(type);
-    const external = assetId ? instantiatePirateAsset(assetId) : null;
+    const assetSelection = pirateAssetForMonster(type);
+    const external = assetSelection
+      ? instantiatePirateAsset(assetSelection.id, assetSelection)
+      : null;
+    let externalHeight: number | null = null;
     const phase = Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * Math.PI * 2;
-    if (external) {
+    if (external && assetSelection) {
       this.visualRoot = external.root;
-      this.visualRoot.scale.setScalar(type.scale * 1.35);
+      externalHeight = assetSelection.baseHeight * type.scale;
+      const modelScale = externalHeight / external.bounds.height;
+      this.visualRoot.scale.setScalar(modelScale);
+      this.visualRoot.position.y = -external.bounds.minY * modelScale;
       this.proceduralRoot = null;
       this.animator = new GltfMonsterAnimator(this.visualRoot, external.animations);
       this.disposeExternalMaterials = external.disposeMaterials;
@@ -176,8 +182,8 @@ export class Monster {
     this.group.position.set(x, y, z);
     this.home.set(x, z);
     this.hp = type.maxHp;
-    const headHeight = external
-      ? (type.kind === 'boss' ? 2.05 : 1.82) * type.scale * 1.35
+    const headHeight = externalHeight !== null
+      ? externalHeight + Math.max(0.32, externalHeight * 0.12)
       : (type.kind === 'crab' ? 1.5 : 3.4) * type.scale;
     this.healthBar = new HealthBar(type.level, type.kind === 'boss', headHeight);
     this.group.add(this.healthBar.sprite);
