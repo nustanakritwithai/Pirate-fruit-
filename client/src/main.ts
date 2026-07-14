@@ -45,6 +45,11 @@ import {
   MONSTER_CELLULAR_CONFIG,
   type MonsterCellularWorld,
 } from './monster/cellular';
+import {
+  DevilFruitInfluenceWorld,
+  DevilFruitInfluenceDebugPanel,
+  emitSkillInfluence,
+} from './devilfruit/influence';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
 import { EconomyMobileHUD } from './ui/EconomyMobileHUD';
@@ -350,6 +355,28 @@ async function main(): Promise<void> {
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
+
+  const devilFruitInfluence = new DevilFruitInfluenceWorld();
+  const devilFruitDebug = new DevilFruitInfluenceDebugPanel(devilFruitInfluence);
+  monsterManager.cellularWorld.bindInfluenceWorld(devilFruitInfluence);
+  playerCombat.bindSkillInfluenceHook((skill, x, z) => {
+    emitSkillInfluence(devilFruitInfluence, skill, x, z);
+  });
+  let devilFruitAccum = 0;
+  game.add({
+    update: (dt: number) => {
+      devilFruitAccum += dt * 1000;
+      if (devilFruitAccum >= 250) {
+        devilFruitAccum = 0;
+        devilFruitInfluence.influenceUpdate(250);
+        const pressures = tradeManager.living.applyDevilFruitInfluence(devilFruitInfluence);
+        devilFruitInfluence.recordEconomyPressures(pressures);
+        devilFruitDebug.refresh();
+      }
+    },
+  });
+  (window as unknown as { __devilFruitInfluence?: DevilFruitInfluenceWorld }).__devilFruitInfluence =
+    devilFruitInfluence;
   (window as unknown as { __boat?: BoatManager }).__boat = boatManager;
   const equipmentVisuals = new EquipmentVisuals(
     player.group,

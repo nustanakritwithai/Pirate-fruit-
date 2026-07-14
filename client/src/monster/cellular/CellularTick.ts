@@ -1,5 +1,7 @@
 import { computeCombatMetrics } from './CombatExperienceAdapter';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
+import type { AreaInfluenceSample } from '../../devilfruit/influence/DevilFruitInfluenceTypes';
+import { lightningStunActive } from '../../devilfruit/influence/AreaInfluenceResolver';
 import { buildNeighborSnapshot } from './NeighborResolver';
 import { MonsterRegistry } from './MonsterRegistry';
 import { evaluateNextState } from './StateTransitionRules';
@@ -15,6 +17,7 @@ import type {
 export interface CellularTickContext {
   playerX: number;
   playerZ: number;
+  sampleArea?: (x: number, z: number) => AreaInfluenceSample;
 }
 
 export interface CellularTickResult {
@@ -45,7 +48,7 @@ export function runCellularTick(
   for (const cell of living) {
     snapshots.set(
       cell.id,
-      buildNeighborSnapshot(cell, registry, grid, context.playerX, context.playerZ),
+      buildNeighborSnapshot(cell, registry, grid, context.playerX, context.playerZ, context.sampleArea),
     );
   }
 
@@ -56,6 +59,10 @@ export function runCellularTick(
   for (const cell of living) {
     const snap = snapshots.get(cell.id)!;
     neighborSum += snap.neighborCount;
+    if (context.sampleArea && lightningStunActive(context.sampleArea(cell.position.x, cell.position.z))) {
+      nextStates.set(cell.id, cell.currentState);
+      continue;
+    }
     const next = evaluateNextState(cell, snap);
     nextStates.set(cell.id, next);
     if (next !== cell.currentState) transitions += 1;

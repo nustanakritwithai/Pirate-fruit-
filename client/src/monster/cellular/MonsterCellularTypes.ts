@@ -59,6 +59,16 @@ export interface NeighborSnapshot {
   neighborCount: number;
   /** CE1 — boss cells in perception (weighted) */
   bossInfluence: number;
+  /** DF1 — devil fruit area influence at cell position */
+  fireInfluence: number;
+  iceInfluence: number;
+  lightningInfluence: number;
+  smokeDensity: number;
+  poisonInfluence: number;
+  earthquakeInfluence: number;
+  areaMovementFactor: number;
+  areaCohesionFactor: number;
+  areaVisionFactor: number;
 }
 
 export type MonsterLocomotion = 'idle' | 'walk' | 'run' | 'flee' | 'regroup' | 'rest';

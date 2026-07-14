@@ -69,6 +69,15 @@ function snap(overrides: Partial<NeighborSnapshot> = {}): NeighborSnapshot {
     monsterDensityInfluence: 0,
     neighborCount: 0,
     bossInfluence: 0,
+    fireInfluence: 0,
+    iceInfluence: 0,
+    lightningInfluence: 0,
+    smokeDensity: 0,
+    poisonInfluence: 0,
+    earthquakeInfluence: 0,
+    areaMovementFactor: 1,
+    areaCohesionFactor: 1,
+    areaVisionFactor: 1,
     ...overrides,
   };
 }

@@ -1,7 +1,8 @@
 import type { Monster } from '../Monster';
+import type { DevilFruitInfluenceWorld } from '../../devilfruit/influence/DevilFruitInfluenceWorld';
+import { resolveInfluenceWeight } from './CellularInfluence';
 import { COMBAT_EXPERIENCE_CONFIG } from './CombatExperienceConfig';
 import { applyCombatExperience } from './CombatExperienceAdapter';
-import { resolveInfluenceWeight } from './CellularInfluence';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
 import {
   emptyMetrics,
@@ -50,6 +51,15 @@ function emptySnapshot(): NeighborSnapshot {
     monsterDensityInfluence: 0,
     neighborCount: 0,
     bossInfluence: 0,
+    fireInfluence: 0,
+    iceInfluence: 0,
+    lightningInfluence: 0,
+    smokeDensity: 0,
+    poisonInfluence: 0,
+    earthquakeInfluence: 0,
+    areaMovementFactor: 1,
+    areaCohesionFactor: 1,
+    areaVisionFactor: 1,
   };
 }
 
@@ -57,6 +67,7 @@ export class MonsterCellularWorld {
   readonly registry = new MonsterRegistry();
   private readonly grid = new SpatialGrid(MONSTER_CELLULAR_CONFIG.spatialCellSize);
   private readonly bindings = new Map<string, MonsterCellularBinding>();
+  private influenceWorld: DevilFruitInfluenceWorld | null = null;
   private tick = 0;
   private latestMetrics: CellularTickMetrics = emptyMetrics();
   private lastSnapshots = new Map<string, NeighborSnapshot>();
@@ -65,6 +76,10 @@ export class MonsterCellularWorld {
   debugMarkersEnabled = false;
   /** CE1 — show thought colors when player is in combat range */
   combatSignalsEnabled = true;
+
+  bindInfluenceWorld(world: DevilFruitInfluenceWorld): void {
+    this.influenceWorld = world;
+  }
 
   bindMonster(monster: Monster): string {
     const existing = [...this.bindings.values()].find((b) => b.monster === monster);
@@ -134,7 +149,13 @@ export class MonsterCellularWorld {
     const result = runCellularTick(
       this.registry,
       this.grid,
-      { playerX, playerZ },
+      {
+        playerX,
+        playerZ,
+        sampleArea: this.influenceWorld
+          ? (x, z) => this.influenceWorld!.sampleAt(x, z)
+          : undefined,
+      },
       this.tick,
     );
     this.lastSnapshots = result.snapshots;
@@ -195,7 +216,7 @@ export class MonsterCellularWorld {
     }
     const base = behaviorIntentFromThought(cell);
     const snapshot = this.lastSnapshots.get(id) ?? emptySnapshot();
-    return applyCombatExperience(
+    const intent = applyCombatExperience(
       cell,
       snapshot,
       base,
@@ -204,6 +225,13 @@ export class MonsterCellularWorld {
       this.registry.getAll(),
       this.tick,
     );
+    intent.speedMultiplier *= snapshot.areaMovementFactor;
+    if (snapshot.areaCohesionFactor < 1 && intent.moveTargetX !== undefined && intent.moveTargetZ !== undefined) {
+      const jitter = (1 - snapshot.areaCohesionFactor) * 2.5;
+      intent.moveTargetX += (hashJitter(cell.id) - 0.5) * jitter;
+      intent.moveTargetZ += (hashJitter(`${cell.id}:z`) - 0.5) * jitter;
+    }
+    return intent;
   }
 
   shouldShowCombatSignal(monster: Monster, playerX: number, playerZ: number): boolean {
@@ -267,6 +295,12 @@ export class MonsterCellularWorld {
     cell.hunger = 0.2;
     cell.lastStateChangeTick = this.tick;
   }
+}
+
+function hashJitter(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return ((h >>> 0) % 1000) / 1000;
 }
 
 export { regroupTarget, fleeDirection } from './MonsterBehaviorAdapter';

@@ -26,6 +26,7 @@ Design Principle
 | [LIVING_ECONOMY_V1.md](LIVING_ECONOMY_V1.md) | Economy cellular stack (E1–E4A) |
 | [LIVING_MONSTER_V1.md](LIVING_MONSTER_V1.md) | Monster weighted Conway core (M1) |
 | [COMBAT_EXPERIENCE_V1.md](COMBAT_EXPERIENCE_V1.md) | Combat Experience layer (CE1) |
+| [DEVIL_FRUIT_SIMULATION_V1.md](DEVIL_FRUIT_SIMULATION_V1.md) | Devil Fruit World Influence (DF1) |
 
 ---
 

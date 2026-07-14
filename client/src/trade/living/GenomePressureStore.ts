@@ -28,6 +28,7 @@ function decayRateForSource(source: GenomePressureSource): number {
     case 'factory': return ECONOMY_GENOME_CONFIG.factoryDecayRate;
     case 'trader': return ECONOMY_GENOME_CONFIG.traderDecayRate;
     case 'player': return ECONOMY_GENOME_CONFIG.playerDecayRate;
+    case 'environment': return ECONOMY_GENOME_CONFIG.marketDecayRate * 1.4;
     default: return ECONOMY_GENOME_CONFIG.marketDecayRate;
   }
 }

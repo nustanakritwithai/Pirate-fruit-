@@ -1,5 +1,7 @@
 import { isBossCell } from './CombatExperienceAdapter';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
+import type { AreaInfluenceSample } from '../../devilfruit/influence/DevilFruitInfluenceTypes';
+import { applyAreaToNeighborInfluence } from '../../devilfruit/influence/AreaInfluenceResolver';
 import type { MonsterCell, NeighborSnapshot } from './MonsterCellularTypes';
 import type { MonsterRegistry } from './MonsterRegistry';
 import type { SpatialGrid } from './SpatialGrid';
@@ -35,6 +37,15 @@ function emptySnapshot(): NeighborSnapshot {
     monsterDensityInfluence: 0,
     neighborCount: 0,
     bossInfluence: 0,
+    fireInfluence: 0,
+    iceInfluence: 0,
+    lightningInfluence: 0,
+    smokeDensity: 0,
+    poisonInfluence: 0,
+    earthquakeInfluence: 0,
+    areaMovementFactor: 1,
+    areaCohesionFactor: 1,
+    areaVisionFactor: 1,
   };
 }
 
@@ -90,6 +101,7 @@ export function buildNeighborSnapshot(
   grid: SpatialGrid,
   playerX: number,
   playerZ: number,
+  sampleArea?: (x: number, z: number) => AreaInfluenceSample,
 ): NeighborSnapshot {
   const radius = cell.perceptionRadius;
   const candidateIds = grid.queryNearby(cell.position.x, cell.position.z, radius);
@@ -111,6 +123,10 @@ export function buildNeighborSnapshot(
   snapshot.nearestPlayerDistance = playerDist;
   snapshot.playerNearby = playerDist <= MONSTER_CELLULAR_CONFIG.playerNearbyDistance;
   snapshot.playerInAttackRange = playerDist <= cell.attackRange;
+
+  if (sampleArea) {
+    applyAreaToNeighborInfluence(snapshot, sampleArea(cell.position.x, cell.position.z));
+  }
 
   return snapshot;
 }

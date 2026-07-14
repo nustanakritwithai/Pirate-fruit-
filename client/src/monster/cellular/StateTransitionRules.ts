@@ -1,4 +1,5 @@
 import { MONSTER_CELLULAR_CONFIG as CFG } from './MonsterCellularConfig';
+import { DEVIL_FRUIT_INFLUENCE_CONFIG as DF } from '../../devilfruit/influence/DevilFruitInfluenceConfig';
 import type { MonsterCell, MonsterThoughtState, NeighborSnapshot } from './MonsterCellularTypes';
 
 function hpRatio(cell: MonsterCell): number {
@@ -22,6 +23,20 @@ export function evaluateNextState(
     || cell.hunger > CFG.hungerRestThreshold;
 
   if (lowHp && cell.currentState !== 'flee' && cell.currentState !== 'regroup') {
+    return 'flee';
+  }
+
+  if (
+    snapshot.fireInfluence >= DF.fireFleeThreshold
+    && (cell.currentState === 'hunt' || cell.currentState === 'attack')
+  ) {
+    return 'flee';
+  }
+  if (
+    snapshot.poisonInfluence >= DF.poisonFleeThreshold
+    && cell.currentState !== 'flee'
+    && cell.currentState !== 'regroup'
+  ) {
     return 'flee';
   }
 
