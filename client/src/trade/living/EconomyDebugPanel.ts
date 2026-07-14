@@ -1,0 +1,145 @@
+import type { LivingTradeSimulator } from './LivingTradeSimulator';
+import { LIVING_COMMODITY_IDS } from './LivingTradeConfig';
+import type { LivingCommodityId } from './types';
+
+const COMMODITY_LABELS: Record<LivingCommodityId, string> = {
+  'fresh-fish': 'อาหาร',
+  hardwood: 'ไม้',
+  'iron-ore': 'เหล็ก',
+  'sun-silk': 'ผ้า',
+  sailcloth: 'ชิ้นส่วน',
+};
+
+const STATE_COLORS: Record<string, string> = {
+  surplus: '#7fe0a3',
+  balanced: '#9eb5c8',
+  shortage: '#ffb86c',
+  crisis: '#ff8e8e',
+  collapsed: '#ff4d4d',
+};
+
+/**
+ * แผง debug Economic CA — เปิดด้วย ?economy=1 หรือกด F8
+ */
+export class EconomyDebugPanel {
+  private readonly root: HTMLDivElement;
+  private readonly logEl: HTMLDivElement;
+  private readonly grid: HTMLDivElement;
+  private visible = false;
+
+  constructor(private sim: LivingTradeSimulator) {
+    this.injectStyles();
+    this.root = document.createElement('div');
+    this.root.className = 'eco-debug-root';
+    this.root.innerHTML = `
+      <div class="eco-debug">
+        <div class="eco-debug-head">
+          <h3>🌊 Economic Cellular Automata</h3>
+          <span class="eco-tick">Tick: 0</span>
+          <button type="button" class="eco-close">×</button>
+        </div>
+        <div class="eco-actions">
+          <button type="button" data-action="tick1">+1 Tick</button>
+          <button type="button" data-action="tick5">+5 Tick</button>
+          <button type="button" data-action="shortage">ขาดอาหารเหมือง</button>
+        </div>
+        <div class="eco-grid"></div>
+        <div class="eco-log-title">เหตุการณ์ล่าสุด</div>
+        <div class="eco-log"></div>
+      </div>`;
+    document.body.appendChild(this.root);
+    this.grid = this.root.querySelector('.eco-grid')!;
+    this.logEl = this.root.querySelector('.eco-log')!;
+    this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
+    this.root.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'tick1') this.sim.tick();
+      if (action === 'tick5') this.sim.tickMany(5);
+      if (action === 'shortage') this.sim.injectShortage('mine-island', 'fresh-fish', 40);
+      this.render();
+    });
+    if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'F8') {
+        e.preventDefault();
+        this.setVisible(!this.visible);
+      }
+    });
+    this.root.style.display = 'none';
+  }
+
+  setVisible(show: boolean): void {
+    this.visible = show;
+    this.root.style.display = show ? 'flex' : 'none';
+    if (show) this.render();
+  }
+
+  refresh(): void {
+    if (this.visible) this.render();
+  }
+
+  private render(): void {
+    const world = this.sim.state;
+    this.root.querySelector('.eco-tick')!.textContent = `Tick: ${world.tick} · เรือ ${world.ships.length}`;
+
+    this.grid.innerHTML = world.cells.map((cell) => {
+      const rows = LIVING_COMMODITY_IDS
+        .filter((id) => cell.commodities[id])
+        .map((id) => {
+          const item = cell.commodities[id]!;
+          const color = STATE_COLORS[item.marketState] ?? '#fff';
+          const trend = item.trend === 'rising' ? '↑' : item.trend === 'falling' ? '↓' : '→';
+          return `<tr>
+            <td>${COMMODITY_LABELS[id]}</td>
+            <td>${Math.floor(item.stock)}</td>
+            <td>${item.currentPrice}</td>
+            <td style="color:${color}">${item.marketState}</td>
+            <td>${trend}</td>
+          </tr>`;
+        }).join('');
+      return `<div class="eco-cell">
+        <div class="eco-cell-name">${cell.nameTh}</div>
+        <div class="eco-cell-meta">แรงงาน ${Math.round(cell.workforce * 100)}% · ขนส่ง ${cell.transportCapacity.toFixed(1)}</div>
+        <table><thead><tr><th>สินค้า</th><th>สต็อก</th><th>ราคา</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>`;
+    }).join('');
+
+    this.logEl.innerHTML = world.log.slice(0, 12).map((e) =>
+      `<div class="eco-log-line"><span class="eco-log-tick">T${e.tick}</span> ${e.message}</div>`,
+    ).join('');
+  }
+
+  private injectStyles(): void {
+    if (document.getElementById('eco-debug-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'eco-debug-styles';
+    style.textContent = `
+      .eco-debug-root{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+        background:rgba(2,8,16,.85);padding:10px;box-sizing:border-box}
+      .eco-debug{width:min(920px,98vw);max-height:92vh;overflow:auto;background:#0a1a24;border:1px solid #3a7a6a;
+        border-radius:12px;padding:12px;color:#dff7ee;font:500 11px 'Segoe UI',Tahoma,sans-serif}
+      .eco-debug-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+      .eco-debug-head h3{margin:0;font-size:14px;color:#ffe08a;flex:1}
+      .eco-tick{color:#8ff0c5;font-size:11px}
+      .eco-close{background:0;border:0;color:#fff;font-size:20px;cursor:pointer}
+      .eco-actions{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+      .eco-actions button{padding:4px 10px;border-radius:6px;border:1px solid #4a8a7a;background:#123028;
+        color:#dff7ee;cursor:pointer;font-size:10px;font-weight:700}
+      .eco-actions button:hover{background:#1a4038}
+      .eco-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+      .eco-cell{background:rgba(255,255,255,.04);border-radius:8px;padding:8px}
+      .eco-cell-name{font-weight:700;color:#ffe9a8;margin-bottom:2px}
+      .eco-cell-meta{font-size:9px;color:#8eb5aa;margin-bottom:4px}
+      .eco-cell table{width:100%;border-collapse:collapse;font-size:9px}
+      .eco-cell th{text-align:left;color:#7a9a90;font-weight:600}
+      .eco-cell td{padding:2px 3px;border-top:1px solid rgba(255,255,255,.06)}
+      .eco-log-title{margin-top:10px;font-size:10px;color:#8eb5aa;text-transform:uppercase}
+      .eco-log{max-height:140px;overflow:auto;margin-top:4px;font-size:10px;line-height:1.45}
+      .eco-log-tick{color:#6a9a8a;margin-right:4px}
+    `;
+    document.head.appendChild(style);
+  }
+}

@@ -37,6 +37,12 @@ export interface ProgressionEventMap {
     position: { x: number; y: number; z: number };
     contribution: RewardContribution;
   };
+  'trade:completed': {
+    action: 'buy' | 'sell';
+    islandId: string;
+    commodityId: string;
+    quantity: number;
+  };
 }
 
 type Listener = (payload: unknown) => void;

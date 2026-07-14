@@ -10,8 +10,9 @@ export interface NPCDefinition {
   z: number;
   color: number;
   dialogue: string[];
-  action?: 'boat-shop' | 'quest-board' | 'dealer-shop' | 'potion-shop';
+  action?: 'boat-shop' | 'quest-board' | 'dealer-shop' | 'potion-shop' | 'trade-shop';
   dockId?: string;
+  tradeVendorId?: string;
 }
 
 export const STARTER_NPCS: NPCDefinition[] = [
@@ -69,11 +70,44 @@ export const STARTER_NPCS: NPCDefinition[] = [
     x: 7,
     z: 8.5,
     color: 0xa67935,
+    action: 'potion-shop',
     dialogue: [
       'มีทั้งยาฟื้น HP และ MP นะ ซื้อไปเผื่อไว้ตอนสู้',
       'ซื้อแล้วอย่าลืมจัดลงช่องลัดที่กระเป๋า (B) จะได้กดใช้ตอนสู้ได้ทัน',
+      'ช่างเรือเมฆที่ท่าเรือขายชิ้นส่วนเรือ ถ้าต้องการค้าวัสดุอู่',
     ],
-    action: 'potion-shop',
+  },
+  {
+    id: 'market-trader-nok',
+    islandId: 'starter-island',
+    name: 'นก',
+    role: 'พ่อค้าเกาะใบไม้',
+    x: 9.5,
+    z: 10,
+    color: 0x4a8a5a,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-starter-pao',
+    dialogue: [
+      'ยินดีต้อนรับสู่ตลาดเกาะใบไม้! ราคาอาหารและไม้เปลี่ยนตามสต็อกจริง',
+      'ซื้อถูกเมื่อเกาะล้น แล่นเรือไปขายเกาะที่ขาด — ดูข่าวตลาดด้านล่างจอ',
+      'เถ้าแก่เปาข้างๆ ขายยา ถ้าต้องการเตรียมของก่อนออกเดินทาง',
+    ],
+  },
+  {
+    id: 'shipwright-mek',
+    islandId: 'starter-island',
+    name: 'ช่างเรือเมฆ',
+    role: 'ช่างอู่เรือ',
+    x: 4,
+    z: -33,
+    color: 0x5a8a9a,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-starter-shipyard',
+    dialogue: [
+      'อู่เรือผลิตชิ้นส่วนจากไม้ เหล็ก และผ้า — ราคาขึ้นลงตามวัตถุดิบ',
+      'ถ้าวัตถุดิบขาด การผลิตหยุด ราคาชิ้นส่วนเรือจะพุ่ง',
+      'นำของมาขายหรือซื้อชิ้นส่วนไปค้าต่อที่เกาะอื่นได้',
+    ],
   },
 ];
 
@@ -126,13 +160,31 @@ export const MIST_JUNGLE_NPCS: NPCDefinition[] = [
     id: 'field-medic-sai',
     islandId: 'mist-jungle',
     name: 'สาย',
-    role: 'แพทย์สนาม',
+    role: 'พ่อค้าเกาะเหมือง',
     x: 157,
     z: -43,
     color: 0x8a3653,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-mist-expedition',
     dialogue: [
-      'พักในวงเขียวของค่ายก่อนออกล่า พื้นที่ด้านนอกมีศัตรูแข็งแกร่งกว่าเกาะแรกมาก',
-      'เตรียมค่าสถานะ Vitality และอุปกรณ์ที่มี Mastery ให้พร้อมก่อนสู้บอส',
+      'เกาะเหมืองขาดอาหารบ่อย — ราคาอาหารที่นี่แพงกว่าเกาะใบไม้',
+      'ซื้อเหล็กที่นี่ถูกเมื่อผลิตล้น แล้วขายที่เกาะทอผ้าหรืออู่เรือ',
+      'ดูแถบข่าวตลาดด้านล่างก่อนตัดสินใจเดินทาง',
+    ],
+  },
+  {
+    id: 'dock-trader-lamai',
+    islandId: 'mist-jungle',
+    name: 'ละไม',
+    role: 'พ่อค้าท่าเรือ',
+    x: 141,
+    z: -40,
+    color: 0x4a7a68,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-mist-harbor',
+    dialogue: [
+      'ตลาดท่าเรือ — ราคาสดอัปเดตทุก 5 วินาที',
+      'ลงสินค้าจากเรือก่อนออกเดินทาง อย่าลืมเช็ค cargo มุมขวาล่าง',
     ],
   },
 ];
@@ -181,6 +233,37 @@ export const SUNSCAR_DESERT_NPCS: NPCDefinition[] = [
     dialogue: [
       'คาราวานของข้านำอาวุธและผลไม้หายากข้ามทะเลมา เจ้าสุ่มของจากที่นี่ได้เช่นเดียวกับเกาะแรก',
       'ศัตรูบนเกาะนี้มี HP สูง เตรียม Mastery และค่าสถานะของอุปกรณ์หลักให้พร้อม',
+    ],
+  },
+  {
+    id: 'caravan-trader-sahir',
+    islandId: 'sunscar-desert',
+    name: 'ซาฮีร์',
+    role: 'พ่อค้าเกาะทอผ้า',
+    x: 168,
+    z: 98,
+    color: 0xc47a3a,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-sunscar-bazaar',
+    dialogue: [
+      'เกาะทอผ้า — ผ้าไหมราคาตามตลาดจริง ซื้อถูกเมื่อผลิตล้น',
+      'ต้องการอาหาร ไม้ และเหล็กจากเกาะอื่น — โอกาสทำกำไรสูง',
+      'ชิ้นส่วนเรือจากอู่เรือขายดีที่นี่เมื่ออู่ขาดวัสดุ',
+    ],
+  },
+  {
+    id: 'dock-trader-hadi',
+    islandId: 'sunscar-desert',
+    name: 'ฮาดี',
+    role: 'พ่อค้าท่าเรือทราย',
+    x: 172,
+    z: 95,
+    color: 0x9a6b45,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-sunscar-harbor',
+    dialogue: [
+      'ท่าเรือทะเลทราย — ราคาเปลี่ยนตามเศรษฐกิจภูมิภาค',
+      'ขายของก่อนกลับทะเล หรือเติมสินค้าที่ราคากำลังขึ้น',
     ],
   },
   {

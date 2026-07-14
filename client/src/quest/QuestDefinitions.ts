@@ -103,6 +103,62 @@ export const QUEST_DEFINITIONS: readonly QuestDefinition[] = [
     objectives: [{ type: 'boss', targetId: 'sun-guardian-boss', requiredAmount: 1 }],
     rewards: { playerExp: 5200, coins: 3200, masteryBonus: 650 },
   },
+  {
+    id: 'trade-fish-to-desert',
+    name: 'ส่งอาหารสู่เกาะทอผ้า',
+    description: 'ซื้อปลาสดที่เกาะใบไม้ แล่นเรือไปขายที่เกาะทอผ้า 5 ชิ้น',
+    minimumLevel: 5,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'fresh-fish',
+      requiredAmount: 5,
+      islandId: 'sunscar-desert',
+    }],
+    rewards: { playerExp: 280, coins: 200, masteryBonus: 20 },
+  },
+  {
+    id: 'trade-wood-to-mine',
+    name: 'ส่งไม้สู่เกาะเหมือง',
+    description: 'ซื้อไม้ที่เกาะใบไม้ แล่นเรือไปขายที่เกาะเหมือง 8 ชิ้น',
+    minimumLevel: 8,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'hardwood',
+      requiredAmount: 8,
+      islandId: 'mist-jungle',
+    }],
+    rewards: { playerExp: 420, coins: 320, masteryBonus: 35 },
+  },
+  {
+    id: 'trade-iron-to-desert',
+    name: 'เส้นทางเหล็กสู่ทอผ้า',
+    description: 'ซื้อแร่เหล็กที่เกาะเหมือง แล้วขายที่เกาะทอผ้า 6 ชิ้น',
+    minimumLevel: 18,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'iron-ore',
+      requiredAmount: 6,
+      islandId: 'sunscar-desert',
+    }],
+    rewards: { playerExp: 680, coins: 480, masteryBonus: 55 },
+  },
+  {
+    id: 'trade-silk-route',
+    name: 'เส้นทางผ้าไปอู่เรือ',
+    description: 'ซื้อผ้าไหมที่เกาะทอผ้า แล้วขายที่อู่เรือ (เกาะเริ่มต้น) 6 ชิ้น',
+    minimumLevel: 12,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'sun-silk',
+      requiredAmount: 6,
+      islandId: 'starter-island',
+    }],
+    rewards: { playerExp: 520, coins: 380, masteryBonus: 45 },
+  },
 ];
 
 export const QUESTS_BY_ID = new Map(QUEST_DEFINITIONS.map((quest) => [quest.id, quest]));

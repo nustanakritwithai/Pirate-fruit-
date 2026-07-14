@@ -27,6 +27,10 @@ export class IslandManager {
     document.body.appendChild(this.banner);
   }
 
+  get activeIsland(): IslandId {
+    return this.activeIslandId;
+  }
+
   update(dt: number): void {
     const position = this.controller.position;
     for (const island of ISLANDS) {

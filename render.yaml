@@ -1,10 +1,16 @@
+# Render Blueprint — Static Site สำหรับ Pirate Fruit (Vite + Three.js)
+# https://render.com/docs/blueprint-spec
 services:
   - type: web
     name: pirate-fruit
     runtime: static
     rootDir: client
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    buildCommand: npm ci && npm run build
+    staticPublishPath: client/dist
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
     routes:
       - type: rewrite
         source: /*
@@ -13,3 +19,9 @@ services:
       - path: /assets/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
