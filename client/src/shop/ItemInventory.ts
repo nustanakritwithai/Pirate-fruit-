@@ -137,6 +137,14 @@ export class ItemInventory {
     return true;
   }
 
+  /** รับยาฟรี (รางวัลปล้นเรือ/เควส) */
+  addConsumable(id: string, count = 1): boolean {
+    if (!getPotion(id) || count <= 0) return false;
+    this.data.consumables[id] = this.getConsumableCount(id) + Math.floor(count);
+    this.save();
+    return true;
+  }
+
   /** ใช้ยา 1 ขวด — คืน false ถ้าไม่มี */
   useConsumable(id: string): boolean {
     if (this.getConsumableCount(id) <= 0) return false;

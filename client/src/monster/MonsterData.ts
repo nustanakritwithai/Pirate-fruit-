@@ -37,6 +37,38 @@ export interface MonsterType {
 }
 
 export const MONSTER_TYPES: Record<string, MonsterType> = {
+  // ---------- ลูกเรือโจรสลัด (Boarding — เกิดบนดาดฟ้าเรือศัตรู ไม่มีแคมป์) ----------
+  'pirate-deckhand': {
+    id: 'pirate-deckhand',
+    name: 'ลูกเรือโจรสลัด',
+    kind: 'grunt',
+    level: 9,
+    maxHp: 150,
+    damage: 12,
+    moveSpeed: 2.8,
+    aggroRange: 14,
+    attackRange: 1.9,
+    attackCooldown: 1.4,
+    scale: 0.98,
+    color: 0x424a56,
+    reward: { playerExp: 55, masteryExp: 30, coins: 22 },
+  },
+  'pirate-captain': {
+    id: 'pirate-captain',
+    name: 'กัปตันหนวดดำ',
+    kind: 'grunt',
+    level: 11,
+    maxHp: 320,
+    damage: 18,
+    moveSpeed: 3.1,
+    aggroRange: 14,
+    attackRange: 2.1,
+    attackCooldown: 1.6,
+    scale: 1.18,
+    color: 0x27333e,
+    reward: { playerExp: 150, masteryExp: 70, coins: 60 },
+    heavyAttack: { everyNth: 3, multiplier: 1.8, telegraph: 0.6, knockback: 7, tags: ['unblockable'] },
+  },
   crab: {
     id: 'crab',
     name: 'ปูทะเลดุ',

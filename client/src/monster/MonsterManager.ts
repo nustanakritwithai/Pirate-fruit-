@@ -58,6 +58,8 @@ function countScale(tier: GraphicsProfile['tier']): number {
 export class MonsterManager {
   private readonly monsters: Monster[] = [];
   private readonly bosses = new Set<Monster>();
+  /** มอนแบบ one-shot (ลูกเรือ Boarding) — ตายแล้วถูกถอดออก ไม่เกิดใหม่ */
+  private readonly transient = new Set<Monster>();
   private readonly bossBar = new BossBar();
   private readonly rand = mulberry32(20260712);
   private readonly tmp = new THREE.Vector2();
@@ -94,6 +96,34 @@ export class MonsterManager {
     this.scene.add(monster.group);
     this.monsters.push(monster);
     return monster;
+  }
+
+  /**
+   * เกิดลูกเรือ Boarding บนดาดฟ้าเรือศัตรู (one-shot: ตายแล้วไม่เกิดใหม่)
+   * ต้องลงทะเบียน dynamic ground ของดาดฟ้าก่อน เพื่อให้ heightAt คืนพื้นเรือ
+   */
+  spawnBoardingCrew(entries: { typeId: string; x: number; z: number }[]): Monster[] {
+    const crew: Monster[] = [];
+    for (const entry of entries) {
+      const type = MONSTER_TYPES[entry.typeId];
+      if (!type) continue;
+      const monster = this.spawnMonster(type, entry.x, entry.z, 9999);
+      this.transient.add(monster);
+      crew.push(monster);
+    }
+    return crew;
+  }
+
+  /** ถอดลูกเรือออกทันที (ยกเลิก Boarding / ยึดเรือแล้ว) */
+  despawnCrew(crew: Monster[]): void {
+    for (const monster of crew) {
+      this.transient.delete(monster);
+      this.bosses.delete(monster);
+      const index = this.monsters.indexOf(monster);
+      if (index >= 0) this.monsters.splice(index, 1);
+      this.scene.remove(monster.group);
+      monster.dispose();
+    }
   }
 
   /** สุ่มจุดพื้นดินรอบ ๆ center ที่ heightAt สูงพอ (ไม่จมน้ำ) */
@@ -204,6 +234,7 @@ export class MonsterManager {
       this.collision.heightAt(player.x, player.z) > -0.4;
 
     let engagedBoss: Monster | null = null;
+    const expiredCrew: Monster[] = [];
 
     for (const monster of this.monsters) {
       const distanceFromPlayer = Math.hypot(
@@ -213,6 +244,10 @@ export class MonsterManager {
       if (distanceFromPlayer > 130) {
         monster.group.visible = false;
         if (monster.state === 'dead') {
+          if (this.transient.has(monster)) {
+            expiredCrew.push(monster);
+            continue;
+          }
           monster.respawnTimer -= dt;
           if (monster.respawnTimer <= 0) {
             monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
@@ -225,6 +260,11 @@ export class MonsterManager {
       const finishedDeath = monster.updateVisual(dt);
 
       if (monster.state === 'dead') {
+        // ลูกเรือ Boarding เป็น one-shot: จบอนิเมชันตายแล้วถอดออกเลย
+        if (this.transient.has(monster)) {
+          if (finishedDeath) expiredCrew.push(monster);
+          continue;
+        }
         monster.respawnTimer -= dt;
         if (finishedDeath && monster.respawnTimer <= 0) {
           monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
@@ -344,6 +384,8 @@ export class MonsterManager {
         }
       }
     }
+
+    if (expiredCrew.length > 0) this.despawnCrew(expiredCrew);
 
     if (!engagedBoss || !engagedBoss.alive) this.bossBar.hide();
   }

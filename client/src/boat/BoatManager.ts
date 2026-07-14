@@ -80,6 +80,14 @@ export class BoatManager {
     return this.progress.selectedBoatId;
   }
 
+  /** พาผู้เล่นกลับขึ้นดาดฟ้าเรือตัวเอง (หลังยึดเรือศัตรู) — คืน false ถ้าไม่มีเรือ */
+  returnRiderToDeck(): boolean {
+    const boat = this.active;
+    if (!boat || boat.state === 'destroyed') return false;
+    this.boardDeck(boat);
+    return true;
+  }
+
   /** โดนกระสุนปืนใหญ่ศัตรู (Naval Combat) — คืน true ถ้าโดนจริง */
   damageActiveBoat(amount: number): boolean {
     const boat = this.active;

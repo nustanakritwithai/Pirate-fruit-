@@ -11,10 +11,17 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { Input } from '../engine/Input';
 import { getWaveHeight, WATER_LEVEL } from '../ocean/Ocean';
 import type { WorldTextures } from '../world/textures';
+import type { CollisionSystem, DynamicGroundProvider } from '../world/Collision';
+import type { CharacterController } from '../player/CharacterController';
+import type { Monster } from '../monster/Monster';
+import type { MonsterManager } from '../monster/MonsterManager';
+import type { ItemInventory } from '../shop/ItemInventory';
+import { InteractionPrompt } from '../ui/InteractionPrompt';
 import { worldHeightAt } from '../island/IslandRegistry';
 import type { BoatDefinition } from './BoatData';
 import type { BoatManager } from './BoatManager';
 import { createBoatModel } from './BoatModel';
+import { DECK_TOP_LOCAL_Y, deckBoundsFor, deckHeightAt } from './DeckSpace';
 import {
   aimCannonball,
   CANNONBALL_LIFETIME,
@@ -54,7 +61,27 @@ interface EnemyShip {
   sinkTimer: number;
   respawnTimer: number;
   alive: boolean;
+  /** ถูก Boarding อยู่ — เรือหยุดนิ่ง สู้กันบนดาดฟ้า */
+  boarded: boolean;
 }
+
+/** เฟสของการ Boarding: สู้ลูกเรือ → ปล้นสมบัติ → ยึดเรือ */
+type BoardingPhase = 'fight' | 'loot' | 'capture';
+
+interface BoardingState {
+  ship: EnemyShip;
+  phase: BoardingPhase;
+  crew: Monster[];
+  provider: DynamicGroundProvider;
+}
+
+/** ระยะจากผู้เล่นถึงเรือศัตรูที่ขึ้น Boarding ได้ */
+const BOARDING_RANGE = 10;
+/** เดินหนีไกลเกินนี้ = ยกเลิก Boarding */
+const BOARDING_ABORT_RANGE = 26;
+/** รางวัลปล้นสมบัติ + โบนัสยึดเรือ (ขายซาก) */
+const BOARDING_LOOT = { coins: 180, exp: 120, potionId: 'potion-hp' };
+const CAPTURE_BONUS_COINS = 200;
 
 interface Cannonball extends CannonballState {
   mesh: THREE.Mesh;
@@ -91,13 +118,19 @@ export class NavalCombat {
   private readonly ballGeometry = new THREE.SphereGeometry(0.17, 8, 6);
   private readonly ballMaterial = new THREE.MeshStandardMaterial({ color: 0x22242a, roughness: 0.5 });
   private readonly tempVector = new THREE.Vector3();
+  private readonly prompt = new InteractionPrompt();
+  private boarding: BoardingState | null = null;
   private elapsed = 0;
   private playerFireCooldown = 0;
 
   constructor(
     private scene: THREE.Scene,
     private input: Input,
+    private controller: CharacterController,
+    private collision: CollisionSystem,
     private boats: BoatManager,
+    private monsters: MonsterManager,
+    private inventory: ItemInventory,
     private effects: Effects,
     private rewards: NavalRewardSink,
     textures: WorldTextures,
@@ -160,6 +193,7 @@ export class NavalCombat {
       sinkTimer: 0,
       respawnTimer: 0,
       alive: true,
+      boarded: false,
     };
     this.drawBar(ship);
     this.scene.add(model.root);
@@ -194,6 +228,160 @@ export class NavalCombat {
     for (const ship of this.ships) this.updateShip(ship, dt, playerOnBoat);
     this.updateCannonballs(dt, playerBoat ? playerBoat.group.position : null);
     this.updatePlayerFire(playerOnBoat);
+
+    if (this.boarding) this.updateBoarding();
+    else this.updateBoardingPrompt();
+  }
+
+  // ------------------------------------------------------------------
+  // Boarding: เทียบเรือ → สู้บนดาดฟ้า → ปล้น → ยึดเรือ
+  // ------------------------------------------------------------------
+
+  private updateBoardingPrompt(): void {
+    // เริ่ม Boarding ได้จากดาดฟ้าเรือตัวเอง (เทียบเรือแล้วเดินมาที่กราบ)
+    if (this.boats.riderState !== 'deck') {
+      this.prompt.hide();
+      return;
+    }
+    const player = this.controller.position;
+    let target: EnemyShip | null = null;
+    let best = BOARDING_RANGE;
+    for (const ship of this.ships) {
+      if (!ship.alive) continue;
+      const d = Math.hypot(ship.group.position.x - player.x, ship.group.position.z - player.z);
+      if (d < best) {
+        best = d;
+        target = ship;
+      }
+    }
+    if (!target) {
+      this.prompt.hide();
+      return;
+    }
+    // ไม่ชนกับพรอมป์พวงมาลัยของเรือตัวเอง
+    const own = this.boats.activeBoat;
+    if (own) {
+      this.tempVector.set(0, 1.02, -own.definition.length * 0.21);
+      own.group.localToWorld(this.tempVector);
+      if (player.distanceTo(this.tempVector) <= 2.6) return;
+    }
+    this.prompt.showAction('ขึ้นเรือศัตรู', target.defn.name, '🏴‍☠️');
+    if (this.input.consumeInteract() || this.prompt.consumeRequested()) this.startBoarding(target);
+  }
+
+  private startBoarding(ship: EnemyShip): void {
+    // เรือทั้งสองหยุดนิ่ง (เทียบเรือ)
+    const own = this.boats.activeBoat;
+    if (own) {
+      own.anchor = true;
+      own.sailLevel = 0;
+    }
+    ship.boarded = true;
+    ship.speed = 0;
+    ship.group.updateMatrixWorld();
+
+    // พื้นดาดฟ้าเรือศัตรูเดินได้ (เรือหยุดนิ่ง — ไม่ต้อง carry)
+    const bounds = deckBoundsFor(ship.defn);
+    const provider: DynamicGroundProvider = (x, z) =>
+      ship.boarded ? deckHeightAt(ship.group.matrixWorld, bounds, ship.group.position.y, x, z) : null;
+    this.collision.addDynamicGround(provider);
+
+    // กระโดดขึ้นดาดฟ้าท้ายเรือ
+    this.tempVector.set(0, DECK_TOP_LOCAL_Y + 0.05, -ship.defn.length * 0.2);
+    ship.group.localToWorld(this.tempVector);
+    this.controller.teleport(this.tempVector.x, this.tempVector.y, this.tempVector.z);
+    this.controller.heading = ship.heading;
+
+    // ลูกเรือ 2 + กัปตัน 1 บนดาดฟ้า
+    const crewSpots: { typeId: string; localX: number; localZ: number }[] = [
+      { typeId: 'pirate-deckhand', localX: 0.55, localZ: 0.7 },
+      { typeId: 'pirate-deckhand', localX: -0.55, localZ: 0.1 },
+      { typeId: 'pirate-captain', localX: 0, localZ: 1.4 },
+    ];
+    const entries = crewSpots.map((spot) => {
+      this.tempVector.set(spot.localX, DECK_TOP_LOCAL_Y, spot.localZ);
+      ship.group.localToWorld(this.tempVector);
+      return { typeId: spot.typeId, x: this.tempVector.x, z: this.tempVector.z };
+    });
+    const crew = this.monsters.spawnBoardingCrew(entries);
+
+    this.boarding = { ship, phase: 'fight', crew, provider };
+    this.prompt.hide();
+    this.notify?.('🏴‍☠️ Boarding! กำจัดลูกเรือกับกัปตันให้หมด');
+  }
+
+  private updateBoarding(): void {
+    const boarding = this.boarding!;
+    const ship = boarding.ship;
+    const player = this.controller.position;
+    const distance = Math.hypot(
+      ship.group.position.x - player.x,
+      ship.group.position.z - player.z,
+    );
+
+    // หนี/ตกน้ำไกลเกิน → ยกเลิก (ลูกเรือที่เหลือหายไปพร้อมเรือกลับสู่ทะเล)
+    if (distance > BOARDING_ABORT_RANGE) {
+      this.endBoarding(false);
+      this.notify?.('ยกเลิก Boarding — เรือศัตรูถอนตัว');
+      return;
+    }
+
+    if (boarding.phase === 'fight') {
+      this.prompt.hide();
+      if (boarding.crew.every((monster) => !monster.alive)) {
+        boarding.phase = 'loot';
+        this.notify?.('⚔️ ลูกเรือหมดแล้ว! เดินไปกลางเรือแล้วกด E ปล้นสมบัติ');
+      }
+      return;
+    }
+
+    if (boarding.phase === 'loot') {
+      if (distance <= 4.5) {
+        this.prompt.showAction('ปล้นสมบัติ', ship.defn.name, '💰');
+        if (this.input.consumeInteract() || this.prompt.consumeRequested()) {
+          this.rewards.addCoins(BOARDING_LOOT.coins, 'naval:loot');
+          this.rewards.addPlayerExp(BOARDING_LOOT.exp, 'naval:loot');
+          this.inventory.addConsumable(BOARDING_LOOT.potionId, 1);
+          this.effects.spawnShockwave(ship.group.position, 3, 0xffd76b);
+          this.notify?.(`💰 ปล้นสำเร็จ! +${BOARDING_LOOT.coins} 🪙 +${BOARDING_LOOT.exp} EXP +ยาฟื้น HP`);
+          boarding.phase = 'capture';
+        }
+      } else {
+        this.prompt.hide();
+      }
+      return;
+    }
+
+    // phase 'capture'
+    if (distance <= 4.5) {
+      this.prompt.showAction('ยึดเรือ (ขายซาก)', `+${CAPTURE_BONUS_COINS} 🪙`, '🏴‍☠️');
+      if (this.input.consumeInteract() || this.prompt.consumeRequested()) {
+        this.rewards.addCoins(CAPTURE_BONUS_COINS, 'naval:capture');
+        this.notify?.(`🏴‍☠️ ยึดเรือสำเร็จ! ขายซากได้ +${CAPTURE_BONUS_COINS} 🪙`);
+        // กลับเรือตัวเองก่อนซากหาย (ไม่มีเรือ → ตกน้ำว่ายกลับ)
+        this.boats.returnRiderToDeck();
+        this.endBoarding(true);
+      }
+    } else {
+      this.prompt.hide();
+    }
+  }
+
+  /** จบ Boarding — captured = ยึดสำเร็จ (เรือหาย + ตั้งเวลาเกิดใหม่), false = ยกเลิก */
+  private endBoarding(captured: boolean): void {
+    const boarding = this.boarding;
+    if (!boarding) return;
+    this.monsters.despawnCrew(boarding.crew);
+    this.collision.removeDynamicGround(boarding.provider);
+    boarding.ship.boarded = false;
+    if (captured) {
+      boarding.ship.alive = false;
+      boarding.ship.group.visible = false;
+      boarding.ship.respawnTimer = SHIP_RESPAWN_SECONDS;
+      this.effects.spawnBoatImpact(boarding.ship.group.position, true);
+    }
+    this.prompt.hide();
+    this.boarding = null;
   }
 
   // ------------------------------------------------------------------
@@ -201,6 +389,8 @@ export class NavalCombat {
   // ------------------------------------------------------------------
 
   private updateShip(ship: EnemyShip, dt: number, playerOnBoat: boolean): void {
+    // ถูก Boarding — เรือหยุดนิ่งสนิท (สู้กันบนดาดฟ้า) ไม่ขยับ/ไม่ยิง/ไม่โยกคลื่น
+    if (ship.boarded) return;
     if (!ship.alive) {
       if (ship.sinkTimer > 0) {
         // อนิเมชันจม: จุ่มลง + เอียง
