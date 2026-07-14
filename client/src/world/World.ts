@@ -5,11 +5,18 @@ import { scatterProps } from './props';
 import type { WorldTextures } from './textures';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { buildStarterIsland } from '../island/StarterIsland';
+import { buildMistJungleIsland } from '../island/MistJungleIsland';
+import {
+  ISLANDS,
+  STARTER_ISLAND_RADIUS,
+  worldHeightAt,
+} from '../island/IslandRegistry';
+import type { IslandDefinition, IslandId } from '../island/IslandTypes';
 import { Ocean, WATER_LEVEL } from '../ocean/Ocean';
 import { CloudLayer } from './CloudLayer';
 import { DayNightCycle } from './DayNightCycle';
 
-export const ISLAND_RADIUS = 60;
+export const ISLAND_RADIUS = STARTER_ISLAND_RADIUS;
 export { WATER_LEVEL };
 
 /** จำนวนรอบ tiling ของ texture พื้นบนเกาะ */
@@ -20,15 +27,7 @@ const TERRAIN_TILE = 34;
  * ระหว่างการสร้าง mesh และการเช็คชนพื้นได้โดยไม่ต้องยิง ray
  */
 export function heightAt(x: number, z: number): number {
-  const d = Math.hypot(x, z);
-  const t = THREE.MathUtils.clamp(1 - d / ISLAND_RADIUS, 0, 1);
-  const falloff = t * t * (3 - 2 * t); // smoothstep: 1 กลางเกาะ → 0 ที่ขอบ
-  const hills =
-    Math.sin(x * 0.15) * Math.cos(z * 0.12) * 1.1 +
-    Math.sin(x * 0.05 + z * 0.07) * 1.6 +
-    Math.cos(x * 0.03 - z * 0.05) * 0.9;
-  // ขอบเกาะลาดจมลงใต้น้ำเล็กน้อยให้เกิดหาดทราย
-  return falloff * (3.2 + hills) - 0.9;
+  return worldHeightAt(x, z);
 }
 
 /**
@@ -40,8 +39,10 @@ export function heightAt(x: number, z: number): number {
 export class World {
   readonly collision: CollisionSystem;
   readonly dayNight: DayNightCycle;
+  readonly islandDetailRoots = new Map<IslandId, THREE.Object3D>();
   private readonly ocean: Ocean;
   private readonly clouds: CloudLayer;
+  private focusProvider: (() => { x: number; z: number }) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -97,13 +98,14 @@ export class World {
     sun.shadow.normalBias = 0.02;
     sun.shadow.radius = graphics.tier === 'high' ? 2.4 : 1.4;
     scene.add(sun);
+    scene.add(sun.target);
 
     // แสงฟุ้งจากฟ้า/พื้นเบาๆ เสริม env map
     const hemisphere = new THREE.HemisphereLight(0xbdd8ee, 0x51624c, 0.35);
     scene.add(hemisphere);
 
     // ---------- พื้นเกาะ + ทะเล ----------
-    scene.add(this.buildTerrain());
+    for (const island of ISLANDS) scene.add(this.buildTerrain(island));
     this.ocean = new Ocean(textures.waterNormal, graphics);
     scene.add(this.ocean.mesh);
 
@@ -112,6 +114,17 @@ export class World {
 
     // ---------- ธรรมชาติแบบ instancing ----------
     scatterProps(scene, this.collision, heightAt, ISLAND_RADIUS, textures, graphics);
+
+    // ---------- เกาะที่สอง: ป่าดิบชื้น ซากวิหาร และท่าเรือฝั่งตะวันตก ----------
+    const mistJungle = buildMistJungleIsland(
+      scene,
+      this.collision,
+      textures,
+      graphics,
+      starterIsland.nightMaterial,
+      starterIsland.nightLights,
+    );
+    this.islandDetailRoots.set('mist-jungle', mistJungle.root);
 
     this.clouds = new CloudLayer(graphics);
     scene.add(this.clouds.mesh);
@@ -134,24 +147,34 @@ export class World {
     this.dayNight.setTime(value);
   }
 
+  setFocusProvider(provider: () => { x: number; z: number }): void {
+    this.focusProvider = provider;
+  }
+
   update(dt: number): void {
     this.ocean.update(dt);
     this.clouds.update(dt);
+    const focus = this.focusProvider?.();
+    if (focus) this.dayNight.setFocus(focus.x, focus.z);
     this.dayNight.update(dt);
   }
 
   // ------------------------------------------------------------------
   // พื้นเกาะ: MeshStandardMaterial + splatting ทราย/หญ้า/หิน ใน shader
   // ------------------------------------------------------------------
-  private buildTerrain(): THREE.Mesh {
-    const size = ISLAND_RADIUS * 2.4;
-    const segments = this.graphics.terrainSegments;
+  private buildTerrain(island: IslandDefinition): THREE.Mesh {
+    const size = island.radius * 2.4;
+    const segments = island.id === 'starter-island'
+      ? this.graphics.terrainSegments
+      : Math.max(48, Math.floor(this.graphics.terrainSegments * 0.72));
     const geo = new THREE.PlaneGeometry(size, size, segments, segments);
     geo.rotateX(-Math.PI / 2);
 
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
+      const worldX = pos.getX(i) + island.center.x;
+      const worldZ = pos.getZ(i) + island.center.z;
+      pos.setY(i, island.heightAt(worldX, worldZ));
     }
     geo.computeVertexNormals();
 
@@ -177,6 +200,7 @@ export class World {
     for (const tex of [t.grassColor, t.grassNormal]) tex.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
 
     const mat = new THREE.MeshStandardMaterial({
+      color: island.id === 'mist-jungle' ? 0x789b72 : 0xffffff,
       map: t.grassColor,
       normalMap: t.grassNormal,
       roughness: 1,
@@ -237,6 +261,8 @@ export class World {
     };
 
     const terrain = new THREE.Mesh(geo, mat);
+    terrain.name = `PF_TERRAIN_${island.id.toUpperCase()}`;
+    terrain.position.set(island.center.x, 0, island.center.z);
     terrain.receiveShadow = this.graphics.shadows;
     return terrain;
   }

@@ -6,7 +6,7 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { mulberry32 } from '../world/props';
 import { BossBar } from '../ui/BossBar';
 import { Monster } from './Monster';
-import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWN, type MonsterType } from './MonsterData';
+import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWNS, type MonsterType } from './MonsterData';
 import type { CombatRewardSource } from '../combat/CombatData';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
@@ -57,7 +57,7 @@ function countScale(tier: GraphicsProfile['tier']): number {
 
 export class MonsterManager {
   private readonly monsters: Monster[] = [];
-  private boss: Monster | null = null;
+  private readonly bosses = new Set<Monster>();
   private readonly bossBar = new BossBar();
   private readonly rand = mulberry32(20260712);
   private readonly tmp = new THREE.Vector2();
@@ -81,10 +81,11 @@ export class MonsterManager {
       }
     }
 
-    // บอส
-    const bossType = MONSTER_TYPES[BOSS_SPAWN.typeId];
-    const bossSpot = this.findLand(BOSS_SPAWN.x, BOSS_SPAWN.z, 2);
-    this.boss = this.spawnMonster(bossType, bossSpot.x, bossSpot.z, 40);
+    for (const spawn of BOSS_SPAWNS) {
+      const bossType = MONSTER_TYPES[spawn.typeId];
+      const bossSpot = this.findLand(spawn.x, spawn.z, 2);
+      this.bosses.add(this.spawnMonster(bossType, bossSpot.x, bossSpot.z, 40));
+    }
   }
 
   private spawnMonster(type: MonsterType, x: number, z: number, respawnDelay: number): Monster {
@@ -192,7 +193,7 @@ export class MonsterManager {
       monster.kbZ += (dz / len) * knockback * resist;
       monster.staggerTimer = Math.max(monster.staggerTimer, monster.type.kind === 'boss' ? 0.15 : 0.35);
     }
-    if (died && monster === this.boss) this.bossBar.hide();
+    if (died && this.bosses.has(monster)) this.bossBar.hide();
   }
 
   update(dt: number): void {
@@ -202,9 +203,25 @@ export class MonsterManager {
       !this.controller.isMounted &&
       this.collision.heightAt(player.x, player.z) > -0.4;
 
-    let bossEngaged = false;
+    let engagedBoss: Monster | null = null;
 
     for (const monster of this.monsters) {
+      const distanceFromPlayer = Math.hypot(
+        player.x - monster.group.position.x,
+        player.z - monster.group.position.z,
+      );
+      if (distanceFromPlayer > 130) {
+        monster.group.visible = false;
+        if (monster.state === 'dead') {
+          monster.respawnTimer -= dt;
+          if (monster.respawnTimer <= 0) {
+            monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
+            monster.group.visible = false;
+          }
+        }
+        continue;
+      }
+      monster.group.visible = true;
       const finishedDeath = monster.updateVisual(dt);
 
       if (monster.state === 'dead') {
@@ -307,8 +324,8 @@ export class MonsterManager {
           monster.state = 'chase';
           this.moveToward(monster, dx, dz, type.moveSpeed, dt);
         }
-        if (monster === this.boss) {
-          bossEngaged = true;
+        if (this.bosses.has(monster)) {
+          engagedBoss = monster;
           this.bossBar.show(type.name, type.level);
           this.bossBar.setFraction(monster.hpFraction);
         }
@@ -328,7 +345,7 @@ export class MonsterManager {
       }
     }
 
-    if (this.boss && (!this.boss.alive || !bossEngaged)) this.bossBar.hide();
+    if (!engagedBoss || !engagedBoss.alive) this.bossBar.hide();
   }
 
   private damagePlayer(attack: IncomingAttack): void {

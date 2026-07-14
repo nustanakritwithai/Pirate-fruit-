@@ -32,6 +32,7 @@ import type { Monster } from './monster/Monster';
 import { FullscreenManager } from './ui/FullscreenManager';
 import { EquipmentVisuals } from './art/EquipmentVisuals';
 import { PBRPerformanceMonitor } from './art/PBRPerformanceMonitor';
+import { IslandManager } from './island/IslandManager';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -66,6 +67,7 @@ async function main(): Promise<void> {
     world.collision,
     () => camera.yaw,
   );
+  world.setFocusProvider(() => controller.position);
   const progression = new ProgressionManager({ resources: controller });
   // อินเวนทอรีอาวุธ/ผลไม้ + สถานะ SkillLoadout (Phase 7) — ProgressionManager เป็นกระเป๋าเงินร่วม
   const itemInventory = new ItemInventory(progression);
@@ -74,6 +76,7 @@ async function main(): Promise<void> {
 
   // โหลดตำแหน่งเดิมเฉพาะจุดที่ยังปลอดภัย ไม่งั้นกลับจุดเกิดกลางหมู่บ้าน
   const saved = SaveSystem.load();
+  if (saved) spawnManager.restoreCheckpoint(saved);
   if (saved && spawnManager.isSafeSavedPosition(saved)) {
     controller.teleport(
       saved.x,
@@ -83,7 +86,7 @@ async function main(): Promise<void> {
     controller.heading = saved.heading ?? 0;
     camera.yaw = saved.cameraYaw ?? 0;
   } else {
-    spawnManager.teleportToDefault();
+    spawnManager.teleportToCheckpoint();
   }
   controller.hp = Math.min(controller.hpMax, Math.max(1, saved?.hp ?? controller.hpMax));
   controller.energy = Math.min(
@@ -97,7 +100,13 @@ async function main(): Promise<void> {
 
   const hud = new HUD(controller, game, () => world.dayNight.clockLabel);
   const minimap = new Minimap(controller);
-  const saveSystem = new SaveSystem(controller, camera, () => world.timeOfDay);
+  const saveSystem = new SaveSystem(
+    controller,
+    camera,
+    () => world.timeOfDay,
+    () => spawnManager.checkpoint,
+  );
+  const islandManager = new IslandManager(controller, spawnManager, world.islandDetailRoots);
   const effects = new Effects(game.scene);
   let playerCombat: PlayerCombat | null = null;
   const questManager = new QuestManager(progression, () =>
@@ -119,7 +128,7 @@ async function main(): Promise<void> {
   // ร้านสุ่มของดีลเลอร์ (Phase 7) — onChange รีเฟรชชุดสกิลของ PlayerCombat หลัง equip/สุ่ม
   const dealerShop = new DealerShopUI(itemInventory, () => playerCombat?.refreshLoadout());
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
-    openBoatShop: () => boatManager.openShop(),
+    openBoatShop: (npc) => boatManager.openShop(npc.dockId),
     openQuestBoard: () => {
       controller.setControlsEnabled(false);
       questBoard.open(() => controller.setControlsEnabled(true));
@@ -257,6 +266,7 @@ async function main(): Promise<void> {
   };
 
   game.add(world);
+  game.add(islandManager);
   game.add(controller);
   game.add(boatManager);
   game.add(player);

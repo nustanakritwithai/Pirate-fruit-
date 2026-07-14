@@ -4,7 +4,7 @@ import type { CharacterController } from '../player/CharacterController';
 import type { CollisionSystem } from '../world/Collision';
 import { DialogueUI } from '../ui/DialogueUI';
 import { InteractionPrompt } from '../ui/InteractionPrompt';
-import { STARTER_NPCS, type NPCDefinition } from './NPCData';
+import { ALL_NPCS, type NPCDefinition } from './NPCData';
 import { createHumanoidVisual } from '../art/CharacterVisuals';
 import { ProceduralCharacterAnimator } from '../animation/ProceduralCharacterAnimator';
 
@@ -17,7 +17,7 @@ interface NPCInstance {
 }
 
 export interface NPCActions {
-  openBoatShop?: () => void;
+  openBoatShop?: (definition: NPCDefinition) => void;
   openQuestBoard?: () => void;
   openDealerShop?: () => void;
 }
@@ -82,7 +82,7 @@ export class NPCManager {
     collision: CollisionSystem,
     private actions: NPCActions = {},
   ) {
-    this.npcs = STARTER_NPCS.map((definition) => {
+    this.npcs = ALL_NPCS.map((definition) => {
       const npc = makeNPC(definition, collision.heightAt(definition.x, definition.z));
       scene.add(npc.group);
       collision.addCollider({
@@ -105,6 +105,8 @@ export class NPCManager {
       const dx = player.x - npc.group.position.x;
       const dz = player.z - npc.group.position.z;
       const distance = Math.hypot(dx, dz);
+      npc.group.visible = distance < 125;
+      if (!npc.group.visible) continue;
       npc.animator.update(dt, distance < INTERACTION_RANGE + 0.8 ? 'talk' : 'idle');
       if (distance < 7) {
         const target = Math.atan2(dx, dz);
@@ -141,8 +143,8 @@ export class NPCManager {
     this.prompt.hide();
     this.controller.setControlsEnabled(false);
     const definition = nearest.definition;
-    const action = definition.action === 'boat-shop'
-      ? this.actions.openBoatShop
+    const action = definition.action === 'boat-shop' && this.actions.openBoatShop
+      ? () => this.actions.openBoatShop!(definition)
       : definition.action === 'quest-board'
         ? this.actions.openQuestBoard
         : definition.action === 'dealer-shop'

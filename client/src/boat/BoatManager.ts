@@ -9,14 +9,13 @@ import { BoatHUD } from '../ui/BoatHUD';
 import { BoatShopUI, type BoatShopAction } from '../ui/BoatShopUI';
 import { InteractionPrompt } from '../ui/InteractionPrompt';
 import type { CollisionSystem } from '../world/Collision';
-import { heightAt } from '../world/World';
 import type { WorldTextures } from '../world/textures';
 import { Boat } from './Boat';
 import { getBoatDefinition } from './BoatData';
 import { BoatProgress } from './BoatProgress';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
+import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
 
-const BOAT_SPAWN = { x: 4.2, z: -43, heading: Math.PI };
 const BOOST_DURATION = 1.2;
 const BOOST_COOLDOWN = 4;
 const RESPAWN_COOLDOWN = 10;
@@ -31,6 +30,7 @@ export class BoatManager {
   private elapsed = 0;
   private collisionPoint = new THREE.Vector3();
   private tempPosition = new THREE.Vector3();
+  private activeDockId = 'starter-harbor';
 
   constructor(
     private scene: THREE.Scene,
@@ -60,11 +60,12 @@ export class BoatManager {
     return this.active?.boostCooldownFraction ?? 0;
   }
 
-  openShop(): void {
+  openShop(dockId = 'starter-harbor'): void {
     if (this.controller.isMounted) {
       this.hud.notify('ต้องลงจากเรือก่อนเปิดร้าน');
       return;
     }
+    if (getDock(dockId)) this.activeDockId = dockId;
     this.controller.setControlsEnabled(false);
     this.shop.setStatus('เรือหนึ่งลำสามารถถูกเรียกใช้งานได้พร้อมกัน');
     this.shop.open(() => this.controller.setControlsEnabled(true));
@@ -161,7 +162,7 @@ export class BoatManager {
   private updateIdle(boat: Boat, dt: number): void {
     const damping = boat.anchor ? boat.definition.brakePower : boat.definition.drag * 1.8;
     boat.speed = THREE.MathUtils.damp(boat.speed, 0, damping, dt);
-    if (this.isDockZone(boat.group.position.x, boat.group.position.z) && Math.abs(boat.speed) < 0.25) {
+    if (findDockAt(boat.group.position.x, boat.group.position.z) && Math.abs(boat.speed) < 0.25) {
       boat.state = 'docked';
     } else if (boat.state === 'docked') {
       boat.state = 'spawned';
@@ -200,9 +201,17 @@ export class BoatManager {
     let exitZ: number;
     let intoWater = false;
 
-    if (this.isDockZone(boat.group.position.x, boat.group.position.z)) {
-      exitX = 1.85;
-      exitZ = THREE.MathUtils.clamp(boat.group.position.z, -58, -28.3);
+    const dock = findDockAt(boat.group.position.x, boat.group.position.z);
+    if (dock) {
+      const exit = { x: boat.group.position.x, z: boat.group.position.z };
+      exit[dock.disembark.fixedAxis] = dock.disembark.fixedValue;
+      exit[dock.disembark.clampAxis] = THREE.MathUtils.clamp(
+        exit[dock.disembark.clampAxis],
+        dock.disembark.min,
+        dock.disembark.max,
+      );
+      exitX = exit.x;
+      exitZ = exit.z;
     } else {
       // เลือกจุดลงข้างเรือ — เอาฝั่งที่เป็นพื้นดินก่อน ถ้าไม่มีก็ลงน้ำข้างเรือเลย
       const candidates = [
@@ -214,7 +223,7 @@ export class BoatManager {
       for (const [localX, localZ] of candidates) {
         const x = boat.group.position.x + Math.cos(boat.heading) * localX + Math.sin(boat.heading) * localZ;
         const z = boat.group.position.z - Math.sin(boat.heading) * localX + Math.cos(boat.heading) * localZ;
-        if (heightAt(x, z) > 0) {
+        if (worldHeightAt(x, z) > 0) {
           land = { x, z };
           break;
         }
@@ -231,7 +240,7 @@ export class BoatManager {
       }
     }
 
-    boat.state = this.isDockZone(boat.group.position.x, boat.group.position.z) ? 'docked' : 'spawned';
+    boat.state = dock ? 'docked' : 'spawned';
     boat.anchor = boat.state === 'docked';
     this.controller.setMounted(false);
     this.controller.setControlsEnabled(true);
@@ -285,7 +294,7 @@ export class BoatManager {
     for (const [localX, localZ] of points) {
       const x = boat.group.position.x + Math.cos(boat.heading) * localX + Math.sin(boat.heading) * localZ;
       const z = boat.group.position.z - Math.sin(boat.heading) * localX + Math.cos(boat.heading) * localZ;
-      if (heightAt(x, z) > 0.04) {
+      if (worldHeightAt(x, z) > 0.04) {
         hit = true;
         this.collisionPoint.set(x, WATER_LEVEL, z);
         break;
@@ -382,22 +391,20 @@ export class BoatManager {
       this.scene.remove(this.active.group);
       this.active.dispose();
     }
+    const dock = getDock(this.activeDockId) ?? getDock('starter-harbor')!;
+    const spawn = dock.boatSpawn;
     const boat = new Boat(definition, this.textures, this.graphics);
-    boat.heading = BOAT_SPAWN.heading;
+    boat.heading = spawn.heading;
     boat.anchor = true;
     boat.state = 'docked';
     boat.group.position.set(
-      BOAT_SPAWN.x,
-      WATER_LEVEL + getWaveHeight(BOAT_SPAWN.x, BOAT_SPAWN.z, this.elapsed) + 0.2,
-      BOAT_SPAWN.z,
+      spawn.x,
+      WATER_LEVEL + getWaveHeight(spawn.x, spawn.z, this.elapsed) + 0.2,
+      spawn.z,
     );
     this.scene.add(boat.group);
     this.active = boat;
-    this.shop.setStatus(`เรียก ${definition.name} ข้างท่าแล้ว`);
+    this.shop.setStatus(`เรียก ${definition.name} ที่${dock.name}แล้ว`);
     this.effects.spawnBoatImpact(boat.group.position);
-  }
-
-  private isDockZone(x: number, z: number): boolean {
-    return x >= -4 && x <= 10 && z >= -61 && z <= -27;
   }
 }

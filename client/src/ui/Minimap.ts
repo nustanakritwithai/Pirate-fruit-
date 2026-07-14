@@ -1,24 +1,52 @@
 import type { CharacterController } from '../player/CharacterController';
-import { heightAt, WATER_LEVEL } from '../world/World';
+import { WATER_LEVEL } from '../world/World';
 import { isTouchDevice } from '../engine/device';
-import { WORLD_POI_LIST } from '../world/WorldPOI';
+import { ALL_WORLD_POI_LIST } from '../world/WorldPOI';
+import { ISLANDS, findIslandAt, worldHeightAt } from '../island/IslandRegistry';
+import type { IslandId } from '../island/IslandTypes';
 
-/** รัศมีโลก (เมตร) ที่มินิแมพครอบคลุมจากกึ่งกลางเกาะ */
-const MAP_WORLD_RADIUS = 78;
+export interface MinimapView {
+  id: IslandId | 'ocean-overview';
+  label: string;
+  centerX: number;
+  centerZ: number;
+  radius: number;
+}
 
-/**
- * มินิแมพวงกลมมุมซ้ายบน: พื้นเกาะวาดล่วงหน้าครั้งเดียวจากสูตร heightAt
- * ทุกเฟรมวาดทับแค่ลูกศรผู้เล่น (ชี้ตามทิศที่หัน) — ต้นทุนแทบเป็นศูนย์
- */
+/** เลือกมุมมอง local เมื่ออยู่ใกล้เกาะ และภาพรวมทะเลเมื่ออยู่ระหว่างเกาะ */
+export function getMinimapView(x: number, z: number): MinimapView {
+  const island = findIslandAt(x, z, 18);
+  if (island) {
+    return {
+      id: island.id,
+      label: island.name,
+      centerX: island.center.x,
+      centerZ: island.center.z,
+      radius: island.radius * 1.3,
+    };
+  }
+  const first = ISLANDS[0];
+  const last = ISLANDS[ISLANDS.length - 1];
+  return {
+    id: 'ocean-overview',
+    label: 'ทะเลตะวันออก',
+    centerX: (first.center.x + last.center.x) / 2,
+    centerZ: (first.center.z + last.center.z) / 2,
+    radius: 152,
+  };
+}
+
+/** มินิแมพแบบหลายเกาะ: cache ฉากพื้นหลังแต่ละมุมมอง และวาดผู้เล่นอย่างเดียวทุกเฟรม */
 export class Minimap {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private background: HTMLCanvasElement;
+  private backgrounds = new Map<MinimapView['id'], HTMLCanvasElement>();
+  private activeView: MinimapView;
   private size: number;
 
   constructor(private controller: CharacterController) {
     this.size = isTouchDevice() ? 112 : 144;
-
+    this.activeView = getMinimapView(controller.position.x, controller.position.z);
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.size;
     this.canvas.height = this.size;
@@ -29,52 +57,44 @@ export class Minimap {
     `;
     document.body.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d')!;
-
-    this.background = this.renderBackground();
+    this.backgrounds.set(this.activeView.id, this.renderBackground(this.activeView));
   }
 
-  /** วาดภาพเกาะมุมสูงจากสูตรความสูง (ทำครั้งเดียวตอนสร้าง) */
-  private renderBackground(): HTMLCanvasElement {
+  private renderBackground(view: MinimapView): HTMLCanvasElement {
     const res = 160;
     const bg = document.createElement('canvas');
     bg.width = res;
     bg.height = res;
     const ctx = bg.getContext('2d')!;
     const img = ctx.createImageData(res, res);
-
     for (let py = 0; py < res; py++) {
       for (let px = 0; px < res; px++) {
-        const wx = ((px / (res - 1)) * 2 - 1) * MAP_WORLD_RADIUS;
-        const wz = ((py / (res - 1)) * 2 - 1) * MAP_WORLD_RADIUS;
-        const h = heightAt(wx, wz);
-
-        let r: number, g: number, b: number;
-        if (h < WATER_LEVEL - 0.4) {
-          [r, g, b] = [23, 74, 105]; // ทะเลลึก
-        } else if (h < WATER_LEVEL + 0.05) {
-          [r, g, b] = [46, 110, 148]; // น้ำตื้นริมหาด
-        } else if (h < 0.7) {
-          [r, g, b] = [222, 205, 158]; // ทราย
-        } else if (h < 3.4) {
-          // หญ้า ไล่เข้มขึ้นตามความสูง
+        const wx = view.centerX + ((px / (res - 1)) * 2 - 1) * view.radius;
+        const wz = view.centerZ + ((py / (res - 1)) * 2 - 1) * view.radius;
+        const h = worldHeightAt(wx, wz);
+        let color: [number, number, number];
+        if (h < WATER_LEVEL - 0.4) color = [23, 74, 105];
+        else if (h < WATER_LEVEL + 0.05) color = [46, 110, 148];
+        else if (h < 0.7) color = [222, 205, 158];
+        else if (h < 3.4) {
           const t = (h - 0.7) / 2.7;
-          [r, g, b] = [96 - t * 25, 148 - t * 30, 74 - t * 18];
-        } else {
-          [r, g, b] = [138, 138, 132]; // ยอดหิน
-        }
+          color = [96 - t * 25, 148 - t * 30, 74 - t * 18];
+        } else color = [124, 132, 121];
         const i = (py * res + px) * 4;
-        img.data[i] = r;
-        img.data[i + 1] = g;
-        img.data[i + 2] = b;
+        img.data[i] = color[0];
+        img.data[i + 1] = color[1];
+        img.data[i + 2] = color[2];
         img.data[i + 3] = 235;
       }
     }
     ctx.putImageData(img, 0, 0);
 
-    // จุดสำคัญของเกาะ วาดลงพื้นหลังครั้งเดียว
-    for (const poi of WORLD_POI_LIST) {
-      const px = ((poi.x / MAP_WORLD_RADIUS) * 0.5 + 0.5) * res;
-      const py = ((poi.z / MAP_WORLD_RADIUS) * 0.5 + 0.5) * res;
+    const points = view.id === 'ocean-overview'
+      ? ALL_WORLD_POI_LIST.filter((poi) => poi.icon === '⚓' || poi.icon === '◆' || poi.icon === '▲')
+      : ALL_WORLD_POI_LIST.filter((poi) => poi.islandId === view.id);
+    for (const poi of points) {
+      const px = (((poi.x - view.centerX) / view.radius) * 0.5 + 0.5) * res;
+      const py = (((poi.z - view.centerZ) / view.radius) * 0.5 + 0.5) * res;
       ctx.beginPath();
       ctx.arc(px, py, 4.5, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,216,105,.95)';
@@ -92,16 +112,24 @@ export class Minimap {
   }
 
   update(): void {
-    const { ctx, size } = this;
+    const position = this.controller.position;
+    const nextView = getMinimapView(position.x, position.z);
+    if (nextView.id !== this.activeView.id) {
+      this.activeView = nextView;
+      if (!this.backgrounds.has(nextView.id)) {
+        this.backgrounds.set(nextView.id, this.renderBackground(nextView));
+      }
+    }
+
+    const { ctx, size, activeView: view } = this;
     ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(this.background, 0, 0, size, size);
+    ctx.drawImage(this.backgrounds.get(view.id)!, 0, 0, size, size);
 
-    // แปลงพิกัดโลก → พิกัดมินิแมพ
-    const p = this.controller.position;
-    const mx = ((p.x / MAP_WORLD_RADIUS) * 0.5 + 0.5) * size;
-    const my = ((p.z / MAP_WORLD_RADIUS) * 0.5 + 0.5) * size;
-
-    // ลูกศรผู้เล่นชี้ตามทิศที่หัน (heading 0 = +Z = ลงล่างของแมพ)
+    const normalizedX = (position.x - view.centerX) / view.radius;
+    const normalizedZ = (position.z - view.centerZ) / view.radius;
+    const edgeScale = Math.max(1, Math.hypot(normalizedX, normalizedZ) / 0.9);
+    const mx = ((normalizedX / edgeScale) * 0.5 + 0.5) * size;
+    const my = ((normalizedZ / edgeScale) * 0.5 + 0.5) * size;
     ctx.save();
     ctx.translate(mx, my);
     ctx.rotate(Math.PI - this.controller.heading);
@@ -118,10 +146,14 @@ export class Minimap {
     ctx.stroke();
     ctx.restore();
 
-    // ตัว N บอกทิศเหนือ (-Z)
-    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.fillStyle = 'rgba(255,255,255,.88)';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('N', size / 2, 13);
+    ctx.fillStyle = 'rgba(4,20,27,.72)';
+    ctx.fillRect(size * 0.18, size - 19, size * 0.64, 14);
+    ctx.fillStyle = '#e9f8ed';
+    ctx.font = 'bold 7px sans-serif';
+    ctx.fillText(view.label, size / 2, size - 9);
   }
 }

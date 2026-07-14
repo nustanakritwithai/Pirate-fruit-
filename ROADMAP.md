@@ -128,11 +128,16 @@ Attack Request → ตรวจ Combat State → ตรวจ Cooldown → ส�
 - [ ] Mastery จริงต่อผล/อาวุธ (ผูกกับ Progression) + Awakening (moveset V2)
 - [ ] Fruit Spawn ตามจุดบนเกาะ + ครูฝึกสไตล์ต่อสู้
 
-## Phase 9 — หลายเกาะและ World Progression ⬜
+## Phase 9 — หลายเกาะและ World Progression 🔨
 
-- [ ] เกาะที่ 2-3 (ระดับมอนสูงขึ้น) + การเดินเรือระหว่างเกาะ
-- [ ] เลเวลขั้นต่ำต่อเกาะ + ป้ายบอกระดับ
-- [ ] บอส/ร้านค้า/NPC ต่อเกาะ
+- [x] Island Registry + composite terrain/collision รองรับหลายเกาะโดยไม่เปลี่ยนรูปทรงเกาะแรก
+- [x] เกาะที่ 2 **เกาะพงไพรหมอก** (Lv.15-30): ป่าดิบชื้น ค่ายนักสำรวจ ซากวิหาร ลานบอส
+- [x] ท่าเรือแยกต่อเกาะ + เรียก/จอด/ลงเรือได้ทั้งสองฝั่ง และมินิแมพ local/ocean overview
+- [x] โจรป่าพงไพร Lv.16, ผู้พิทักษ์ศิลา Lv.22, บอสวานรพิษโบราณ Lv.28
+- [x] NPC ใหม่ 4 คน + ภารกิจเกาะใหม่ 4 งาน (รวม multi-objective)
+- [x] Checkpoint ต่อเกาะ + Save v3 migration จากเซฟเดิม + LOD simulation ระยะไกล
+- [ ] เกาะที่ 3 และเส้นทาง World Progression ช่วง Lv.31+
+- [ ] ร้านค้าเฉพาะเกาะ / Fruit Spawn / วัตถุดิบประจำ biome
 
 ## Phase 10 — Server Migration และ Multiplayer ⬜
 

@@ -1,11 +1,13 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
+import { inferIslandId } from '../island/IslandRegistry';
+import type { IslandId } from '../island/IslandTypes';
 
 const SAVE_KEY = 'pirate-fruit:save-v1';
 const AUTOSAVE_INTERVAL = 3; // วินาที
 
 export interface SaveData {
-  saveVersion?: 2;
+  saveVersion?: 2 | 3;
   x: number;
   y: number;
   z: number;
@@ -13,6 +15,7 @@ export interface SaveData {
   cameraYaw: number;
   worldTime?: number;
   spawnId?: string;
+  islandId?: IslandId;
   hp?: number;
   energy?: number;
 }
@@ -28,7 +31,10 @@ export class SaveSystem {
     private controller: CharacterController,
     private camera: ThirdPersonCamera,
     private getWorldTime: () => number,
-    private spawnId = 'starter-village',
+    private getCheckpoint: () => { spawnId: string; islandId: IslandId } = () => ({
+      spawnId: 'starter-village',
+      islandId: 'starter-island',
+    }),
   ) {
     window.addEventListener('beforeunload', () => this.save());
   }
@@ -39,6 +45,11 @@ export class SaveSystem {
       if (!raw) return null;
       const data = JSON.parse(raw) as SaveData;
       if (typeof data.x !== 'number' || typeof data.z !== 'number') return null;
+      // Migration v1-v2: ไม่แตะตำแหน่ง/HP เดิม เพียงเติม metadata ของเกาะเพื่อใช้ respawn
+      if (!data.islandId) data.islandId = inferIslandId(data.x, data.z);
+      if (!data.spawnId) {
+        data.spawnId = data.islandId === 'mist-jungle' ? 'mist-jungle-camp' : 'starter-village';
+      }
       return data;
     } catch {
       return null;
@@ -48,15 +59,17 @@ export class SaveSystem {
   save(): void {
     if (!this.controller.moveState.onGround || this.controller.isMounted) return;
     const p = this.controller.position;
+    const checkpoint = this.getCheckpoint();
     const data: SaveData = {
-      saveVersion: 2,
+      saveVersion: 3,
       x: p.x,
       y: p.y,
       z: p.z,
       heading: this.controller.heading,
       cameraYaw: this.camera.yaw,
       worldTime: this.getWorldTime(),
-      spawnId: this.spawnId,
+      spawnId: checkpoint.spawnId,
+      islandId: checkpoint.islandId,
       hp: this.controller.hp,
       energy: this.controller.energy,
     };

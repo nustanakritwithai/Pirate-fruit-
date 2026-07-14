@@ -89,10 +89,63 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
       tags: ['unblockable', 'knockdown'],
     },
   },
+  'jungle-bandit': {
+    id: 'jungle-bandit',
+    name: 'โจรป่าพงไพร',
+    kind: 'grunt',
+    level: 16,
+    maxHp: 240,
+    damage: 17,
+    moveSpeed: 3.5,
+    aggroRange: 16,
+    attackRange: 2.1,
+    attackCooldown: 1.05,
+    scale: 1.16,
+    color: 0x315c3d,
+    reward: { playerExp: 120, masteryExp: 55, coins: 70 },
+  },
+  'ruin-guardian': {
+    id: 'ruin-guardian',
+    name: 'ผู้พิทักษ์ศิลา',
+    kind: 'grunt',
+    level: 22,
+    maxHp: 420,
+    damage: 24,
+    moveSpeed: 2.8,
+    aggroRange: 17,
+    attackRange: 2.35,
+    attackCooldown: 1.25,
+    scale: 1.38,
+    color: 0x657467,
+    reward: { playerExp: 210, masteryExp: 95, coins: 135 },
+  },
+  'venom-ape-boss': {
+    id: 'venom-ape-boss',
+    name: 'วานรพิษโบราณ',
+    kind: 'boss',
+    level: 28,
+    maxHp: 1800,
+    damage: 36,
+    moveSpeed: 3,
+    aggroRange: 25,
+    attackRange: 3.1,
+    attackCooldown: 1.35,
+    scale: 2.15,
+    color: 0x28483a,
+    reward: { playerExp: 1000, masteryExp: 450, coins: 800 },
+    heavyAttack: {
+      everyNth: 3,
+      multiplier: 1.7,
+      telegraph: 0.72,
+      knockback: 13,
+      tags: ['unblockable', 'knockdown'],
+    },
+  },
 };
 
 export interface MonsterCamp {
   id: string;
+  islandId: 'starter-island' | 'mist-jungle';
   name: string;
   typeId: string;
   x: number;
@@ -104,10 +157,26 @@ export interface MonsterCamp {
 
 /** แคมป์มอนสเตอร์วางบนพื้นดินฝั่งตะวันออกของเกาะ นอกเขตปลอดภัยหมู่บ้าน */
 export const MONSTER_CAMPS: MonsterCamp[] = [
-  { id: 'east-forest', name: 'ชายป่าตะวันออก', typeId: 'crab', x: 22, z: -4, radius: 5, count: 3, recommendedLevel: 2 },
-  { id: 'outpost', name: 'ด่านหน้า', typeId: 'crab', x: 16, z: -10, radius: 4, count: 2, recommendedLevel: 2 },
-  { id: 'stone-hill', name: 'เนินหิน', typeId: 'grunt', x: 24, z: 8, radius: 5, count: 3, recommendedLevel: 4 },
+  { id: 'east-forest', islandId: 'starter-island', name: 'ชายป่าตะวันออก', typeId: 'crab', x: 22, z: -4, radius: 5, count: 3, recommendedLevel: 2 },
+  { id: 'outpost', islandId: 'starter-island', name: 'ด่านหน้า', typeId: 'crab', x: 16, z: -10, radius: 4, count: 2, recommendedLevel: 2 },
+  { id: 'stone-hill', islandId: 'starter-island', name: 'เนินหิน', typeId: 'grunt', x: 24, z: 8, radius: 5, count: 3, recommendedLevel: 4 },
+  { id: 'jungle-south-camp', islandId: 'mist-jungle', name: 'ค่ายโจรป่าทางใต้', typeId: 'jungle-bandit', x: 170, z: -58, radius: 6, count: 4, recommendedLevel: 16 },
+  { id: 'jungle-west-patrol', islandId: 'mist-jungle', name: 'กองลาดตระเวนตะวันตก', typeId: 'jungle-bandit', x: 161, z: -55, radius: 4.5, count: 3, recommendedLevel: 16 },
+  { id: 'ruin-sentinels', islandId: 'mist-jungle', name: 'ผู้เฝ้าซากวิหาร', typeId: 'ruin-guardian', x: 183, z: -34, radius: 5.5, count: 3, recommendedLevel: 22 },
+  { id: 'guardian-terrace-camp', islandId: 'mist-jungle', name: 'ลานผู้พิทักษ์', typeId: 'ruin-guardian', x: 192, z: -45, radius: 5, count: 3, recommendedLevel: 22 },
 ];
 
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
 export const BOSS_SPAWN = { typeId: 'boss', x: 24, z: 4 };
+
+export interface BossSpawn {
+  islandId: 'starter-island' | 'mist-jungle';
+  typeId: string;
+  x: number;
+  z: number;
+}
+
+export const BOSS_SPAWNS: readonly BossSpawn[] = [
+  { islandId: 'starter-island', ...BOSS_SPAWN },
+  { islandId: 'mist-jungle', typeId: 'venom-ape-boss', x: 190, z: -18 },
+];
