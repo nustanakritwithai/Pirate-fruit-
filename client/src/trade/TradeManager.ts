@@ -1,5 +1,6 @@
 /**
  * TradeManager — ซื้อ/ขายสินค้า cargo บนเรือ
+ * ราคาสินค้าหลัก (Living Trade) มาจาก LivingTradeSimulator
  */
 
 import type { IslandId } from '../island/IslandTypes';
@@ -11,6 +12,8 @@ import {
   getMarketForIsland,
 } from './TradeRegistry';
 import { buyPrice, cargoSlotsUsed, cargoTotalWeight, sellPrice } from './TradeFormulas';
+import { LivingTradeSimulator } from './living/LivingTradeSimulator';
+import { isLivingCommodity } from './living/LivingTradeConfig';
 
 const STORAGE_KEY = 'pirate-fruit:cargo-v1';
 
@@ -23,11 +26,14 @@ export interface TradeWallet {
 export class TradeManager {
   private cargo: CargoHold;
   private listener: TradeTransactionListener | null = null;
+  readonly living: LivingTradeSimulator;
 
   constructor(
     private wallet: TradeWallet,
     private boatId: string = 'training-dinghy',
+    livingSimulator?: LivingTradeSimulator,
   ) {
+    this.living = livingSimulator ?? new LivingTradeSimulator();
     this.cargo = this.loadCargo();
     this.applyBoatCapacity(boatId);
   }
@@ -48,6 +54,28 @@ export class TradeManager {
     this.boatId = boatId;
     this.applyBoatCapacity(boatId);
     this.saveCargo();
+  }
+
+  /** ราคาซื้อ — living หรือ static */
+  resolveBuyPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
+    const livingPrice = this.living.getBuyPrice(islandId, commodityId, quantity);
+    if (livingPrice != null) return livingPrice;
+    const commodity = getCommodity(commodityId);
+    const market = getMarketForIsland(islandId);
+    const entry = market ? getMarketEntry(market.id, commodityId) : undefined;
+    if (!commodity || !entry) return null;
+    return buyPrice(commodity, entry);
+  }
+
+  /** ราคาขาย — living หรือ static */
+  resolveSellPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
+    const livingPrice = this.living.getSellPrice(islandId, commodityId, quantity);
+    if (livingPrice != null) return livingPrice;
+    const commodity = getCommodity(commodityId);
+    const market = getMarketForIsland(islandId);
+    const entry = market ? getMarketEntry(market.id, commodityId) : undefined;
+    if (!commodity || !entry) return null;
+    return sellPrice(commodity, entry);
   }
 
   buy(islandId: IslandId, commodityId: string, quantity: number): TradeTransactionResult {
@@ -77,7 +105,14 @@ export class TradeManager {
     const qty = Math.max(1, Math.floor(quantity));
 
     if (action === 'buy') {
-      const unitPrice = buyPrice(commodity, entry);
+      const stock = this.living.getStock(islandId, commodityId);
+      if (stock != null && stock < qty) {
+        return this.emit({ ok: false, message: `สต็อกเหลือแค่ ${Math.floor(stock)}` });
+      }
+      const unitPrice = this.resolveBuyPrice(islandId, commodityId, qty);
+      if (unitPrice == null) {
+        return this.emit({ ok: false, message: 'ไม่สามารถคำนวณราคาได้' });
+      }
       const totalCost = unitPrice * qty;
       if (this.wallet.coins < totalCost) {
         return this.emit({ ok: false, message: `ต้องการ ${totalCost} Beli (มี ${this.wallet.coins})` });
@@ -87,6 +122,9 @@ export class TradeManager {
       }
       if (!this.wallet.spendCoins(totalCost, `trade:buy:${commodityId}`)) {
         return this.emit({ ok: false, message: 'จ่ายเงินไม่สำเร็จ' });
+      }
+      if (isLivingCommodity(commodityId)) {
+        this.living.applyPlayerBuy(islandId, commodityId, qty);
       }
       this.addToCargo(commodityId, qty);
       this.saveCargo();
@@ -105,9 +143,15 @@ export class TradeManager {
     if (available < qty) {
       return this.emit({ ok: false, message: `มีในคลังแค่ ${available}` });
     }
-    const unitPrice = sellPrice(commodity, entry);
+    const unitPrice = this.resolveSellPrice(islandId, commodityId, qty);
+    if (unitPrice == null) {
+      return this.emit({ ok: false, message: 'ไม่สามารถคำนวณราคาได้' });
+    }
     const totalGain = unitPrice * qty;
     this.removeFromCargo(commodityId, qty);
+    if (isLivingCommodity(commodityId)) {
+      this.living.applyPlayerSell(islandId, commodityId, qty);
+    }
     this.wallet.addCoins(totalGain, `trade:sell:${commodityId}`);
     this.saveCargo();
     return this.emit({

@@ -14,10 +14,11 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     entries: [
       { commodityId: 'fresh-fish', role: 'export', buyMultiplier: 0.7, sellMultiplier: 0.5, stockLimit: -1 },
       { commodityId: 'hardwood', role: 'export', buyMultiplier: 0.75, sellMultiplier: 0.55, stockLimit: -1 },
+      { commodityId: 'iron-ore', role: 'import', buyMultiplier: 1.35, sellMultiplier: 0.85, stockLimit: 30 },
+      { commodityId: 'sun-silk', role: 'import', buyMultiplier: 1.5, sellMultiplier: 0.9, stockLimit: 15 },
       { commodityId: 'sailcloth', role: 'neutral', buyMultiplier: 1.0, sellMultiplier: 0.65, stockLimit: 50 },
       { commodityId: 'jungle-herb', role: 'import', buyMultiplier: 1.4, sellMultiplier: 0.9, stockLimit: 20 },
       { commodityId: 'mist-spice', role: 'import', buyMultiplier: 1.5, sellMultiplier: 0.95, stockLimit: 15 },
-      { commodityId: 'sun-silk', role: 'import', buyMultiplier: 1.6, sellMultiplier: 1.0, stockLimit: 10 },
       { commodityId: 'desert-gem', role: 'import', buyMultiplier: 1.8, sellMultiplier: 1.1, stockLimit: 5 },
       { commodityId: 'cactus-water', role: 'import', buyMultiplier: 1.3, sellMultiplier: 0.85, stockLimit: 25 },
     ],
@@ -29,6 +30,7 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     nameTh: 'ตลาดค่ายนักสำรวจ',
     harborDockId: 'mist-jungle-harbor',
     entries: [
+      { commodityId: 'iron-ore', role: 'export', buyMultiplier: 0.68, sellMultiplier: 0.48, stockLimit: -1 },
       { commodityId: 'jungle-herb', role: 'export', buyMultiplier: 0.65, sellMultiplier: 0.45, stockLimit: -1 },
       { commodityId: 'ancient-relic', role: 'export', buyMultiplier: 0.8, sellMultiplier: 0.6, stockLimit: 8 },
       { commodityId: 'mist-spice', role: 'export', buyMultiplier: 0.7, sellMultiplier: 0.5, stockLimit: -1 },
@@ -46,8 +48,9 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     nameTh: 'ตลาดนครคาราวาน',
     harborDockId: 'sunscar-desert-harbor',
     entries: [
-      { commodityId: 'desert-salt', role: 'export', buyMultiplier: 0.7, sellMultiplier: 0.5, stockLimit: -1 },
       { commodityId: 'sun-silk', role: 'export', buyMultiplier: 0.75, sellMultiplier: 0.55, stockLimit: -1 },
+      { commodityId: 'desert-salt', role: 'export', buyMultiplier: 0.7, sellMultiplier: 0.5, stockLimit: -1 },
+      { commodityId: 'iron-ore', role: 'import', buyMultiplier: 1.3, sellMultiplier: 0.88, stockLimit: 35 },
       { commodityId: 'desert-gem', role: 'export', buyMultiplier: 0.85, sellMultiplier: 0.65, stockLimit: 6 },
       { commodityId: 'cactus-water', role: 'export', buyMultiplier: 0.8, sellMultiplier: 0.6, stockLimit: -1 },
       { commodityId: 'fresh-fish', role: 'import', buyMultiplier: 1.4, sellMultiplier: 0.9, stockLimit: 25 },

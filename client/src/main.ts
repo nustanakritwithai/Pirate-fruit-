@@ -34,6 +34,7 @@ import { EquipmentVisuals } from './art/EquipmentVisuals';
 import { PBRPerformanceMonitor } from './art/PBRPerformanceMonitor';
 import { IslandManager } from './island/IslandManager';
 import { TradeManager } from './trade/TradeManager';
+import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
 
@@ -142,6 +143,20 @@ async function main(): Promise<void> {
   });
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
+  tradeRouteHint.bindTradeManager(tradeManager);
+
+  let livingTickAccum = 0;
+  game.add({
+    update: (dt: number) => {
+      livingTickAccum += dt * 1000;
+      if (livingTickAccum >= LIVING_TICK_INTERVAL_MS) {
+        livingTickAccum = 0;
+        tradeManager.living.tick();
+        tradeRouteHint.refresh();
+        tradeShop.refresh();
+      }
+    },
+  });
   // ร้านสุ่มของดีลเลอร์ (Phase 7) — onChange รีเฟรชชุดสกิลของ PlayerCombat หลัง equip/สุ่ม
   const dealerShop = new DealerShopUI(itemInventory, () => playerCombat?.refreshLoadout());
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {

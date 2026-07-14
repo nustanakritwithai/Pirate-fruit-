@@ -33,6 +33,16 @@ export const TRADE_COMMODITIES: readonly CommodityDefinition[] = [
     description: 'อุปกรณ์เรือพื้นฐาน',
   },
   {
+    id: 'iron-ore',
+    name: 'Iron Ore',
+    nameTh: 'แร่เหล็ก',
+    category: 'material',
+    basePrice: 110,
+    weight: 5,
+    icon: '⛏️',
+    description: 'แร่เหล็กจากเหมืองพงไพรหมอก',
+  },
+  {
     id: 'jungle-herb',
     name: 'Jungle Herb',
     nameTh: 'สมุนไพรป่า',
