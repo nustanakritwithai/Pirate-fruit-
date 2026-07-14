@@ -3,6 +3,10 @@ import { debugForcePause, debugForceReopen } from './FactoryAgent';
 import { CELL_LABELS, LIVING_COMMODITY_IDS } from './LivingTradeConfig';
 import { LIVING_COMMODITY_META } from './ProductionRecipes';
 import type { LivingCommodityId } from './types';
+import { ensurePlayerEconomy } from './PlayerEconomicProfileManager';
+import { getOrCreateIslandReputation, resolveEconomicTitle } from './PlayerReputationManager';
+import { generatePlayerContracts } from './PlayerContractGenerator';
+import { completeContractWithWallet, failContractDebug } from './PlayerContractManager';
 
 const COMMODITY_LABELS: Record<LivingCommodityId, string> = Object.fromEntries(
   LIVING_COMMODITY_IDS.map((id) => [id, LIVING_COMMODITY_META[id].label]),
@@ -28,6 +32,7 @@ export class EconomyDebugPanel {
   private readonly traderGrid: HTMLDivElement;
   private readonly memoryGrid: HTMLDivElement;
   private readonly repGrid: HTMLDivElement;
+  private readonly playerGrid: HTMLDivElement;
   private visible = false;
 
   constructor(private sim: LivingTradeSimulator) {
@@ -73,6 +78,17 @@ export class EconomyDebugPanel {
         <div class="eco-factory-grid"></div>
         <div class="eco-orders-title">Trade Orders (E2)</div>
         <div class="eco-orders-grid"></div>
+        <div class="eco-factory-title">Player Economy (E3.5)</div>
+        <div class="eco-player-grid"></div>
+        <div class="eco-actions eco-player-actions">
+          <button type="button" data-action="force-trusted">Force Trusted</button>
+          <button type="button" data-action="force-manipulator">Force Manipulator</button>
+          <button type="button" data-action="force-savior">Force Savior</button>
+          <button type="button" data-action="emergency-contract">Emergency Contract</button>
+          <button type="button" data-action="complete-contract">Complete Contract</button>
+          <button type="button" data-action="fail-contract">Fail Contract</button>
+          <button type="button" data-action="reset-player-econ">Reset Player Econ</button>
+        </div>
         <div class="eco-grid"></div>
         <div class="eco-log-title">เหตุการณ์ล่าสุด</div>
         <div class="eco-log"></div>
@@ -84,6 +100,7 @@ export class EconomyDebugPanel {
     this.traderGrid = this.root.querySelector('.eco-trader-grid')!;
     this.memoryGrid = this.root.querySelector('.eco-memory-grid')!;
     this.repGrid = this.root.querySelector('.eco-rep-grid')!;
+    this.playerGrid = this.root.querySelector('.eco-player-grid')!;
     this.logEl = this.root.querySelector('.eco-log')!;
     this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
     this.root.addEventListener('click', (e) => {
@@ -118,6 +135,43 @@ export class EconomyDebugPanel {
       if (action === 'clear-mem') this.sim.clearTraderMemoryDebug('trader-leaf-safe');
       if (action === 'reset-rep') this.sim.resetRouteReputationDebug();
       if (action === 'tick50') this.sim.tickMany50();
+      if (action === 'force-trusted') {
+        const pe = ensurePlayerEconomy(this.sim.state);
+        const rep = getOrCreateIslandReputation(pe.profile, 'starter-island');
+        rep.trust = 50;
+        rep.marketManipulation = 5;
+        rep.title = resolveEconomicTitle(rep, pe.profile);
+      }
+      if (action === 'force-manipulator') {
+        const pe = ensurePlayerEconomy(this.sim.state);
+        const rep = getOrCreateIslandReputation(pe.profile, 'starter-island');
+        rep.marketManipulation = 70;
+        rep.title = resolveEconomicTitle(rep, pe.profile);
+      }
+      if (action === 'force-savior') {
+        const pe = ensurePlayerEconomy(this.sim.state);
+        pe.profile.relievedCrisisCount = 6;
+        const rep = getOrCreateIslandReputation(pe.profile, 'starter-island');
+        rep.trust = 80;
+        rep.title = resolveEconomicTitle(rep, pe.profile);
+      }
+      if (action === 'emergency-contract') {
+        this.sim.injectShortage('shipyard-island', 'rope', 50);
+        generatePlayerContracts(this.sim.state);
+      }
+      if (action === 'complete-contract') {
+        const pe = ensurePlayerEconomy(this.sim.state);
+        const c = pe.activeContracts[0];
+        if (c) completeContractWithWallet(this.sim.state, c.id, { coins: 99999, spendCoins: () => true, addCoins: () => {} });
+      }
+      if (action === 'fail-contract') {
+        const pe = ensurePlayerEconomy(this.sim.state);
+        const c = pe.activeContracts[0];
+        if (c) failContractDebug(this.sim.state, c.id);
+      }
+      if (action === 'reset-player-econ') {
+        this.sim.resetPlayerEconomyDebug();
+      }
       this.render();
     });
     if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
@@ -180,6 +234,20 @@ export class EconomyDebugPanel {
       <td>${o.assignedTraderId?.slice(-8) ?? '-'}</td>
       <td>${o.status}</td>
     </tr>`).join('')}</tbody></table>`;
+
+    const pe = world.playerEconomy;
+    this.playerGrid.innerHTML = pe ? `<table class="eco-factory-table"><thead><tr>
+      <th>profit</th><th>contracts</th><th>crises+</th><th>crises-</th><th>active</th><th>available</th><th>fee</th>
+    </tr></thead><tbody><tr>
+      <td>${Math.round(pe.profile.lifetimeProfit)}</td>
+      <td>${pe.profile.completedContracts}/${pe.profile.failedContracts}</td>
+      <td>${pe.profile.relievedCrisisCount}</td>
+      <td>${pe.profile.causedMarketCrashCount}</td>
+      <td>${pe.activeContracts.length}</td>
+      <td>${pe.availableContracts.length}</td>
+      <td>${(this.sim.getFeeModifierForIsland('starter-island') * 100).toFixed(1)}%</td>
+    </tr></tbody></table>
+    <div style="font-size:9px;margin-top:4px">Reps: ${Object.values(pe.profile.islandReputations).map((r) => `${r.islandId}:${r.title}`).join(', ') || 'none'}</div>` : 'no player economy';
 
     this.factoryGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
       <th>เกาะ</th><th>สูตร</th><th>สถานะ</th><th>scale</th><th>กำไร</th><th>แรงงาน</th><th>+/-</th><th>cd</th><th>ตัดสินใจ</th>

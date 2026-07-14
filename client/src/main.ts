@@ -43,6 +43,8 @@ import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
 import { EconomyMobileHUD } from './ui/EconomyMobileHUD';
 import { EconomyPanel } from './ui/EconomyPanel';
+import { subscribePlayerEconomyEvents, classifyPlayerEventPriority } from './trade/living/PlayerEconomyEvents';
+import type { ClassifiedEconomyEvent } from './trade/living/EconomyEventClassifier';
 import { CargoHUD } from './ui/CargoHUD';
 
 async function main(): Promise<void> {
@@ -167,6 +169,25 @@ async function main(): Promise<void> {
       quantity: Math.abs(result.quantityDelta ?? 0),
     });
     cargoHud.refresh();
+  });
+
+  subscribePlayerEconomyEvents((event) => {
+    const priority = classifyPlayerEventPriority(event.type);
+    if (priority === 'silent') return;
+    const classified: ClassifiedEconomyEvent = {
+      id: `player-${event.tick}-${event.type}`,
+      priority: priority === 'critical' ? 'critical' : 'medium',
+      kind: 'quest',
+      mergeKey: `player:${event.type}`,
+      message: event.message.slice(0, 30),
+      fullMessage: event.message,
+      icon: priority === 'critical' ? '⚠️' : '📦',
+      commodityId: event.commodityId,
+      createdAt: Date.now(),
+      toastEligible: true,
+      isAlert: priority === 'critical',
+    };
+    economyHud.ingestPlayerEvent(classified);
   });
 
   let livingTickAccum = 0;

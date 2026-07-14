@@ -123,6 +123,53 @@ export function classifyLogEntry(entry: EconomyLogEntry, now = Date.now()): Clas
   const commodityId = entry.commodityId;
   const cellId = entry.cellId;
 
+  if (msg.includes('ผู้เล่นช่วยแก้วิกฤต')) {
+    return {
+      id: `log-${entry.tick}-player-crisis`,
+      priority: 'high',
+      kind: 'other',
+      mergeKey: 'player:crisis-resolved',
+      message: truncateDisplay('✅ ช่วยแก้วิกฤต'),
+      fullMessage: msg,
+      icon: '🦸',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('ผู้เล่นทำให้ตลาดวิกฤต')) {
+    return {
+      id: `log-${entry.tick}-player-caused`,
+      priority: 'critical',
+      kind: 'crisis',
+      mergeKey: 'player:crisis-caused',
+      message: truncateDisplay('⚠️ ตลาดวิกฤตจากผู้เล่น'),
+      fullMessage: msg,
+      icon: '⚠️',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: true,
+    };
+  }
+
+  if (msg.startsWith('[สัญญา]')) {
+    return {
+      id: `log-${entry.tick}-contract`,
+      priority: 'medium',
+      kind: 'quest',
+      mergeKey: 'player:contract',
+      message: truncateDisplay(msg.replace('[สัญญา] ', '')),
+      fullMessage: msg,
+      icon: '📦',
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
   if (msg.includes('ผลิต') && msg.includes('หน่วย')) {
     const compact = compactProduction(msg, commodityId);
     return {

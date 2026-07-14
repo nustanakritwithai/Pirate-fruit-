@@ -24,3 +24,19 @@ export {
 } from './TraderMemoryStore';
 export { orderDedupKey, migrateAllRoutes } from './TradeRouteUtils';
 export { loadEconomyState, saveEconomyState, createFreshWorld } from './LivingTradePersistence';
+export { PLAYER_REPUTATION_CONFIG } from './PlayerReputationConfig';
+export { PLAYER_CONTRACT_CONFIG } from './PlayerContractConfig';
+export {
+  ensurePlayerEconomy,
+  recordPlayerTrade,
+} from './PlayerEconomicProfileManager';
+export {
+  acceptContract,
+  abandonContract,
+  tickPlayerContracts,
+} from './PlayerContractManager';
+export { generatePlayerContracts } from './PlayerContractGenerator';
+export { getPlayerNpcDialogue } from './PlayerNpcDialogue';
+export { subscribePlayerEconomyEvents } from './PlayerEconomyEvents';
+export { updatePlayerEconomy } from './PlayerEconomyOrchestrator';
+export type * from './PlayerEconomyTypes';

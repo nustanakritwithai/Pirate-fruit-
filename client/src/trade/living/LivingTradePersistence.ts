@@ -1,6 +1,6 @@
 import type { EconomyWorldState } from './types';
 import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
-import { TRADER_MEMORY } from './TraderMemoryConfig';
+import { PLAYER_REPUTATION_CONFIG } from './PlayerReputationConfig';
 import { migrateAllRoutes } from './TradeRouteUtils';
 import { ensureFactoryAgents } from './AdaptiveEconomy';
 import { ensureTraders } from './DynamicTradeEconomy';
@@ -8,13 +8,26 @@ import {
   ensureTraderMemoryState,
   migrateRouteReputationsFromRoutes,
 } from './TraderMemoryStore';
+import { createDefaultPlayerEconomy } from './PlayerEconomyHistory';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
-const SAVE_VERSION = TRADER_MEMORY.saveVersion;
+const SAVE_VERSION = PLAYER_REPUTATION_CONFIG.saveVersion;
 
 interface SavedEconomy {
   version: number;
   world: EconomyWorldState;
+}
+
+function ensurePlayerEconomyState(world: EconomyWorldState): void {
+  world.playerEconomy ??= createDefaultPlayerEconomy();
+  const pe = world.playerEconomy;
+  pe.activityWindows ??= [];
+  pe.availableContracts ??= [];
+  pe.activeContracts ??= [];
+  pe.contractHistory ??= [];
+  pe.tradeHistory ??= [];
+  pe.worldRecords ??= createDefaultPlayerEconomy().worldRecords;
+  if (pe.trackedContractId === undefined) pe.trackedContractId = null;
 }
 
 function migrateWorld(world: EconomyWorldState): EconomyWorldState {
@@ -34,6 +47,7 @@ function migrateWorld(world: EconomyWorldState): EconomyWorldState {
   if (!world.traderProfiles?.length) {
     migrateRouteReputationsFromRoutes(world);
   }
+  ensurePlayerEconomyState(world);
   return world;
 }
 
@@ -43,7 +57,11 @@ export function loadEconomyState(): EconomyWorldState | null {
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedEconomy;
     if (!saved.world?.cells?.length) return null;
-    if (saved.version !== SAVE_VERSION && saved.version !== 2 && saved.version !== 3 && saved.version !== 4) return null;
+    if (saved.version !== SAVE_VERSION
+      && saved.version !== 2
+      && saved.version !== 3
+      && saved.version !== 4
+      && saved.version !== 5) return null;
     const world = migrateWorld(saved.world);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;
@@ -55,6 +73,7 @@ export function loadEconomyState(): EconomyWorldState | null {
 
 export function saveEconomyState(world: EconomyWorldState): void {
   try {
+    ensurePlayerEconomyState(world);
     const payload: SavedEconomy = { version: SAVE_VERSION, world };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
@@ -84,6 +103,7 @@ export function createFreshWorld(): EconomyWorldState {
     avoidedRoutes: [],
     routeReputations: [],
     traderRngSeed: 42_424,
+    playerEconomy: createDefaultPlayerEconomy(),
   };
   ensureFactoryAgents(world);
   ensureTraders(world);
