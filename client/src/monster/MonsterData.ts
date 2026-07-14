@@ -251,6 +251,16 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
     reward: { playerExp: 2900, masteryExp: 1200, coins: 2300 },
     heavyAttack: { everyNth: 3, multiplier: 1.9, telegraph: 0.9, knockback: 17, tags: ['unblockable', 'knockdown'] },
   },
+  'cloud-crab': { id: 'cloud-crab', name: 'ปูเมฆสายฟ้า', kind: 'crab', level: 71, maxHp: 2050, damage: 63, moveSpeed: 3.8, aggroRange: 17, attackRange: 2.5, attackCooldown: 0.94, scale: 1.42, color: 0xb9dce7, reward: { playerExp: 980, masteryExp: 430, coins: 700 } },
+  'sky-raider': { id: 'sky-raider', name: 'โจรเวหา', kind: 'grunt', level: 75, maxHp: 2380, damage: 69, moveSpeed: 3.95, aggroRange: 19, attackRange: 2.25, attackCooldown: 0.93, scale: 1.28, color: 0x506aa0, reward: { playerExp: 1120, masteryExp: 500, coins: 820 } },
+  'storm-golem': { id: 'storm-golem', name: 'โกเลมผลึกพายุ', kind: 'grunt', level: 82, maxHp: 3100, damage: 80, moveSpeed: 2.7, aggroRange: 20, attackRange: 3, attackCooldown: 1.2, scale: 1.82, color: 0x617db5, reward: { playerExp: 1450, masteryExp: 630, coins: 1080 } },
+  'tempest-lord-boss': {
+    id: 'tempest-lord-boss', name: 'เจ้าแห่งพายุนิรันดร์', kind: 'boss', level: 88,
+    maxHp: 8200, damage: 92, moveSpeed: 3.35, aggroRange: 29, attackRange: 3.7,
+    attackCooldown: 1.18, scale: 2.65, color: 0x435b93,
+    reward: { playerExp: 4300, masteryExp: 1750, coins: 3600 },
+    heavyAttack: { everyNth: 3, multiplier: 2, telegraph: 0.95, knockback: 18, tags: ['unblockable', 'knockdown'] },
+  },
 };
 
 export interface MonsterCamp {
@@ -282,6 +292,10 @@ export const MONSTER_CAMPS: MonsterCamp[] = [
   { id: 'south-snow-crawlers', islandId: 'azure-frost', name: 'ชายหิมะใต้', typeId: 'frost-crawler', x: 45, z: 184, radius: 5, count: 3, recommendedLevel: 51 },
   { id: 'azure-frost-raiders', islandId: 'azure-frost', name: 'ค่ายโจรน้ำแข็ง', typeId: 'frost-raider', x: 11, z: 218, radius: 6, count: 4, recommendedLevel: 55 },
   { id: 'azure-crystal-mine', islandId: 'azure-frost', name: 'เหมืองคริสตัลคราม', typeId: 'crystal-golem', x: 47, z: 236, radius: 5.5, count: 4, recommendedLevel: 62 },
+  { id: 'cloud-garden-crabs', islandId: 'tempest-sky', name: 'ฝูงปูเมฆ', typeId: 'cloud-crab', x: -124, z: 190, radius: 5.5, count: 4, recommendedLevel: 71 },
+  { id: 'east-cloud-crabs', islandId: 'tempest-sky', name: 'ทางเมฆตะวันออก', typeId: 'cloud-crab', x: -111, z: 226, radius: 5, count: 3, recommendedLevel: 71 },
+  { id: 'tempest-sky-raiders', islandId: 'tempest-sky', name: 'ค่ายโจรเวหา', typeId: 'sky-raider', x: -145, z: 207, radius: 6, count: 4, recommendedLevel: 75 },
+  { id: 'tempest-storm-forge', islandId: 'tempest-sky', name: 'โรงตีผลึกพายุ', typeId: 'storm-golem', x: -124, z: 232, radius: 5.5, count: 4, recommendedLevel: 82 },
 ];
 
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
@@ -299,4 +313,5 @@ export const BOSS_SPAWNS: readonly BossSpawn[] = [
   { islandId: 'mist-jungle', typeId: 'venom-ape-boss', x: 190, z: -18 },
   { islandId: 'sunscar-desert', typeId: 'sun-guardian-boss', x: 170, z: 152 },
   { islandId: 'azure-frost', typeId: 'frost-king-boss', x: 20, z: 244 },
+  { islandId: 'tempest-sky', typeId: 'tempest-lord-boss', x: -151, z: 236 },
 ];

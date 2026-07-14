@@ -288,9 +288,17 @@ export const AZURE_FROST_NPCS: NPCDefinition[] = [
   { id: 'frost-scholar-yura', islandId: 'azure-frost', name: 'ยูรา', role: 'นักสำรวจธารน้ำแข็ง', x: 35, z: 197, color: 0x397d83, dialogue: ['คริสตัลในเหมืองคือเศษพลังจากมงกุฎของราชันน้ำแข็ง พวกมันทำให้โกเลมตื่นขึ้น', 'หากเจ้าจะเข้าป้อม จงหลบท่าหนักแทนการยกโล่ เพราะความเย็นนั้นทะลุการป้องกันได้'] },
 ];
 
+export const TEMPEST_SKY_NPCS: NPCDefinition[] = [
+  { id: 'tempest-elder-arun', islandId: 'tempest-sky', name: 'อรุณ', role: 'ผู้อาวุโสนครหน้าผา', x: -96, z: 213, color: 0x536fa2, action: 'quest-board', dialogue: ['เกาะนภาวายุเหมาะกับนักเดินทาง Level 71 ขึ้นไป ลมที่นี่แรงกว่าทะเลเบื้องล่างหลายเท่า', 'ปูเมฆเกาะตามสวน โจรเวหายึดฝั่งตะวันตก และโกเลมผลึกพายุเฝ้าโรงตีทางเหนือ', 'ยอดวิหารคือรังของเจ้าแห่งพายุ ท่าหนักของมันทะลุ Block จงใช้ Dash หลบให้พ้น'] },
+  { id: 'tempest-harbor-master-lom', islandId: 'tempest-sky', name: 'ลม', role: 'นายท่านภา', x: -99, z: 207, color: 0x6a5542, action: 'boat-shop', dockId: 'tempest-sky-harbor', dialogue: ['ท่าฝั่งตะวันออกเชื่อมตรงกลับเกาะเหมันต์คราม แล่นไปทางตะวันออกตามแนวคลื่น', 'เรือเดิมของเจ้าเรียกจากท่านี้ได้ และระบบปืนเรือยังใช้งานได้ตามปกติ', 'ขึ้นฝั่งแล้ว Checkpoint จะย้ายมาที่หมู่บ้านหน้าผาโดยไม่ลบ Cargo หรือ Progression'] },
+  { id: 'tempest-dealer-sora', islandId: 'tempest-sky', name: 'โซรา', role: 'พ่อค้าผลึกเวหา', x: -90, z: 216, color: 0x66558f, action: 'dealer-shop', dialogue: ['ผลึกพายุสะสมพลังจากท้องฟ้า ข้าใช้มันดูแลอาวุธและผลไม้หายากของนักเดินทาง', 'ตรวจ Mastery และ Stats ให้พร้อมก่อนขึ้นวิหาร ศัตรูบนยอดเกาะมี HP สูงมาก'] },
+  { id: 'tempest-scholar-megha', islandId: 'tempest-sky', name: 'เมฆา', role: 'นักพยากรณ์พายุ', x: -119, z: 194, color: 0x4c8192, dialogue: ['วิหารนี้เคยควบคุมลมเดินเรือทั้งภูมิภาค แต่ผลึกแกนกลางแตกและปลุกเจ้าแห่งพายุขึ้นมา', 'โกเลมคือเศษเกราะของมัน หากฟ้าร้องต่อเนื่อง แสดงว่าบอสกำลังเตรียมท่าหนัก'] },
+];
+
 export const ALL_NPCS: NPCDefinition[] = [
   ...STARTER_NPCS,
   ...MIST_JUNGLE_NPCS,
   ...SUNSCAR_DESERT_NPCS,
   ...AZURE_FROST_NPCS,
+  ...TEMPEST_SKY_NPCS,
 ];

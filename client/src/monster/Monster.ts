@@ -15,14 +15,17 @@ function createModel(type: MonsterType): CharacterVisualResult {
     || type.id === 'sand-golem'
     || type.id === 'sun-guardian-boss'
     || type.id === 'crystal-golem'
-    || type.id === 'frost-king-boss';
+    || type.id === 'frost-king-boss'
+    || type.id === 'storm-golem'
+    || type.id === 'tempest-lord-boss';
   const frostConstruct = type.id === 'crystal-golem' || type.id === 'frost-king-boss';
+  const stormConstruct = type.id === 'storm-golem' || type.id === 'tempest-lord-boss';
   const visual = type.kind === 'crab'
     ? createCrabVisual(type.color)
     : createHumanoidVisual({
         clothColor: type.color,
-        accentColor: frostConstruct ? 0x87d8e8 : ancientConstruct ? 0x5e4934 : type.kind === 'boss' ? 0x7b2030 : 0x825033,
-        skinColor: frostConstruct ? 0x5e94aa : ancientConstruct ? 0x957c5e : type.kind === 'boss' ? 0x9a664b : 0xb9825f,
+        accentColor: stormConstruct ? 0xbed9ff : frostConstruct ? 0x87d8e8 : ancientConstruct ? 0x5e4934 : type.kind === 'boss' ? 0x7b2030 : 0x825033,
+        skinColor: stormConstruct ? 0x687cab : frostConstruct ? 0x5e94aa : ancientConstruct ? 0x957c5e : type.kind === 'boss' ? 0x9a664b : 0xb9825f,
         pirate: !ancientConstruct,
         boss: type.kind === 'boss',
       });

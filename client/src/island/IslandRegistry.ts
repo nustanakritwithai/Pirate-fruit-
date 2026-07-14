@@ -9,6 +9,8 @@ export const SUNSCAR_DESERT_CENTER = { x: 170, z: 125 } as const;
 export const SUNSCAR_DESERT_RADIUS = 56;
 export const AZURE_FROST_CENTER = { x: 35, z: 210 } as const;
 export const AZURE_FROST_RADIUS = 58;
+export const TEMPEST_SKY_CENTER = { x: -125, z: 210 } as const;
+export const TEMPEST_SKY_RADIUS = 60;
 
 /** สูตรพื้นเกาะเดิม ห้ามเปลี่ยน เพื่อให้เซฟและ collider ของ Phase 1-8 ตรงตำแหน่งเดิม */
 export function starterHeightAt(x: number, z: number): number {
@@ -66,6 +68,21 @@ export function azureFrostHeightAt(x: number, z: number): number {
   return falloff * (4.35 + ridges + northRise) + SEA_FLOOR_HEIGHT;
 }
 
+/** เกาะนภาวายุ: ชายฝั่งหินขาวไล่ขึ้นสู่ที่ราบสูงและวิหารกลางเมฆ */
+export function tempestSkyHeightAt(x: number, z: number): number {
+  const lx = x - TEMPEST_SKY_CENTER.x;
+  const lz = z - TEMPEST_SKY_CENTER.z;
+  const d = Math.hypot(lx, lz);
+  const t = THREE.MathUtils.clamp(1 - d / TEMPEST_SKY_RADIUS, 0, 1);
+  const falloff = t * t * (3 - 2 * t);
+  const ridges =
+    Math.sin(lx * 0.095) * Math.cos(lz * 0.078) * 1.05 +
+    Math.sin(lx * 0.038 + lz * 0.057) * 1.4 +
+    Math.cos(lx * 0.03 - lz * 0.046) * 0.9;
+  const plateau = THREE.MathUtils.smoothstep(t, 0.42, 0.76) * 1.45;
+  return falloff * (5.15 + ridges + plateau) + SEA_FLOOR_HEIGHT;
+}
+
 export const DOCKS: readonly DockDefinition[] = [
   {
     id: 'starter-harbor',
@@ -98,6 +115,14 @@ export const DOCKS: readonly DockDefinition[] = [
     zone: { minX: 50, maxX: 88, minZ: 187, maxZ: 194 },
     boatSpawn: { x: 84, z: 190, heading: -Math.PI / 2 },
     disembark: { fixedAxis: 'z', fixedValue: 190, clampAxis: 'x', min: 53, max: 82 },
+  },
+  {
+    id: 'tempest-sky-harbor',
+    islandId: 'tempest-sky',
+    name: 'ท่าเรือนภาวายุ',
+    zone: { minX: -104, maxX: -68, minZ: 207, maxZ: 214 },
+    boatSpawn: { x: -71, z: 210, heading: -Math.PI / 2 },
+    disembark: { fixedAxis: 'z', fixedValue: 210, clampAxis: 'x', min: -101, max: -73 },
   },
 ] as const;
 
@@ -145,6 +170,17 @@ export const ISLANDS: readonly IslandDefinition[] = [
     spawn: { id: 'azure-frost-village', x: 59, z: 201, heading: -Math.PI / 2 },
     dockIds: ['azure-frost-harbor'],
     heightAt: azureFrostHeightAt,
+  },
+  {
+    id: 'tempest-sky',
+    name: 'เกาะนภาวายุ',
+    subtitle: 'นครหน้าผาและวิหารพายุเหนือหมู่เมฆ',
+    center: TEMPEST_SKY_CENTER,
+    radius: TEMPEST_SKY_RADIUS,
+    recommendedLevel: [71, 90],
+    spawn: { id: 'tempest-cliff-village', x: -96, z: 210, heading: Math.PI / 2 },
+    dockIds: ['tempest-sky-harbor'],
+    heightAt: tempestSkyHeightAt,
   },
 ] as const;
 
