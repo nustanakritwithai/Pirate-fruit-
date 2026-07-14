@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
+import { ISLANDS } from '../island/IslandRegistry';
 
 export const WATER_LEVEL = 0;
 
@@ -30,6 +31,10 @@ export class Ocean {
     const time = this.time;
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uOceanTime = time;
+      shader.uniforms.uIslandCenters = {
+        value: ISLANDS.map((island) => new THREE.Vector2(island.center.x, island.center.z)),
+      };
+      shader.uniforms.uIslandRadii = { value: ISLANDS.map((island) => island.radius) };
       shader.vertexShader =
         'uniform float uOceanTime;\nvarying vec3 vOceanWorld;\n' +
         shader.vertexShader.replace(
@@ -40,15 +45,20 @@ export class Ocean {
           vOceanWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
         );
       shader.fragmentShader =
-        'uniform float uOceanTime;\nvarying vec3 vOceanWorld;\n' +
+        `uniform float uOceanTime;\nuniform vec2 uIslandCenters[${ISLANDS.length}];\n` +
+        `uniform float uIslandRadii[${ISLANDS.length}];\nvarying vec3 vOceanWorld;\n` +
         shader.fragmentShader
           .replace(
             '#include <color_fragment>',
             `#include <color_fragment>
-            float oceanDistance = length( vOceanWorld.xz );
-            float shallow = 1.0 - smoothstep( 56.0, 105.0, oceanDistance );
+            float shallow = 0.0;
+            float foamBand = 0.0;
+            for ( int islandIndex = 0; islandIndex < ${ISLANDS.length}; islandIndex++ ) {
+              float oceanDistance = length( vOceanWorld.xz - uIslandCenters[islandIndex] );
+              shallow = max( shallow, 1.0 - smoothstep( uIslandRadii[islandIndex] - 4.0, uIslandRadii[islandIndex] + 45.0, oceanDistance ) );
+              foamBand = max( foamBand, 1.0 - smoothstep( 0.0, 5.0, abs( oceanDistance - ( uIslandRadii[islandIndex] - 3.0 ) ) ) );
+            }
             diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.08, 0.50, 0.58 ), shallow * 0.48 );
-            float foamBand = 1.0 - smoothstep( 0.0, 5.0, abs( oceanDistance - 57.0 ) );
             float foamNoise = 0.55 + 0.45 * sin( vOceanWorld.x * 0.33 + vOceanWorld.z * 0.27 + uOceanTime );
             diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.74, 0.90, 0.88 ), foamBand * foamNoise * 0.38 );`,
           )

@@ -1,6 +1,6 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
-import { inferIslandId } from '../island/IslandRegistry';
+import { getIsland, inferIslandId } from '../island/IslandRegistry';
 import type { IslandId } from '../island/IslandTypes';
 
 const SAVE_KEY = 'pirate-fruit:save-v1';
@@ -48,7 +48,7 @@ export class SaveSystem {
       // Migration v1-v2: ไม่แตะตำแหน่ง/HP เดิม เพียงเติม metadata ของเกาะเพื่อใช้ respawn
       if (!data.islandId) data.islandId = inferIslandId(data.x, data.z);
       if (!data.spawnId) {
-        data.spawnId = data.islandId === 'mist-jungle' ? 'mist-jungle-camp' : 'starter-village';
+        data.spawnId = getIsland(data.islandId).spawn.id;
       }
       return data;
     } catch {

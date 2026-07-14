@@ -7,6 +7,10 @@ const TARGET_NAMES: Record<string, string> = {
   'jungle-bandit': 'โจรป่าพงไพร',
   'ruin-guardian': 'ผู้พิทักษ์ศิลา',
   'venom-ape-boss': 'วานรพิษโบราณ',
+  'dune-scorpion': 'แมงป่องเนินทราย',
+  'desert-raider': 'โจรคาราวาน',
+  'sand-golem': 'โกเลมศิลาทราย',
+  'sun-guardian-boss': 'ผู้พิทักษ์สุริยะ',
 };
 
 export class QuestTracker {

@@ -1,8 +1,9 @@
 import { WORLD_POIS } from '../world/WorldPOI';
+import type { IslandId } from '../island/IslandTypes';
 
 export interface NPCDefinition {
   id: string;
-  islandId: 'starter-island' | 'mist-jungle';
+  islandId: IslandId;
   name: string;
   role: string;
   x: number;
@@ -135,4 +136,69 @@ export const MIST_JUNGLE_NPCS: NPCDefinition[] = [
   },
 ];
 
-export const ALL_NPCS: NPCDefinition[] = [...STARTER_NPCS, ...MIST_JUNGLE_NPCS];
+export const SUNSCAR_DESERT_NPCS: NPCDefinition[] = [
+  {
+    id: 'caravan-chief-amara',
+    islandId: 'sunscar-desert',
+    name: 'อมรา',
+    role: 'ผู้นำคาราวานสุริยะ',
+    x: 168,
+    z: 103,
+    color: 0xa44f35,
+    action: 'quest-board',
+    dialogue: [
+      'ยินดีต้อนรับสู่นครคาราวาน เกาะนี้เหมาะกับนักเดินทาง Level 31 ขึ้นไป',
+      'แมงป่องเนินทรายซ่อนใต้ผืนทราย โจรคาราวานยึดทางตะวันตก และโกเลมเฝ้าเหมืองตะวันออก',
+      'พีระมิดทางเหนือเก็บผู้พิทักษ์สุริยะเอาไว้ อย่าเปิดผนึกจนกว่าจะพร้อมสู้ท่าหนัก',
+    ],
+  },
+  {
+    id: 'sunscar-harbor-master-rafi',
+    islandId: 'sunscar-desert',
+    name: 'ราฟี',
+    role: 'นายท่าทะเลทราย',
+    x: 174,
+    z: 97,
+    color: 0x795037,
+    action: 'boat-shop',
+    dockId: 'sunscar-desert-harbor',
+    dialogue: [
+      'ท่าใต้เชื่อมตรงไปยังเกาะพงไพรหมอก แล่นลงใต้แล้วอ้อมชายฝั่งตะวันตกเล็กน้อย',
+      'เรือที่เจ้ามีอยู่เรียกจากท่านี้ได้ทันที ไม่ต้องซื้อซ้ำ',
+      'เมื่อขึ้นฝั่งแล้ว จุดเกิดของเจ้าจะย้ายมาที่นครคาราวานโดยอัตโนมัติ',
+    ],
+  },
+  {
+    id: 'sunscar-dealer-zahra',
+    islandId: 'sunscar-desert',
+    name: 'ซารา',
+    role: 'พ่อค้าแห่งเส้นทางทราย',
+    x: 176,
+    z: 109,
+    color: 0x286f78,
+    action: 'dealer-shop',
+    dialogue: [
+      'คาราวานของข้านำอาวุธและผลไม้หายากข้ามทะเลมา เจ้าสุ่มของจากที่นี่ได้เช่นเดียวกับเกาะแรก',
+      'ศัตรูบนเกาะนี้มี HP สูง เตรียม Mastery และค่าสถานะของอุปกรณ์หลักให้พร้อม',
+    ],
+  },
+  {
+    id: 'sunscar-scholar-senen',
+    islandId: 'sunscar-desert',
+    name: 'เซเนน',
+    role: 'นักอ่านอักษรสุริยะ',
+    x: 158,
+    z: 118,
+    color: 0x76628f,
+    dialogue: [
+      'พีระมิดไม่ได้สร้างเป็นสุสาน แต่มันคือผนึกพลังของผู้พิทักษ์สุริยะ',
+      'โกเลมในเหมืองคือเศษหินที่รับพลังจากผนึก หากผู้พิทักษ์ตื่น ทั้งเกาะอาจถูกพายุทรายกลืนกิน',
+    ],
+  },
+];
+
+export const ALL_NPCS: NPCDefinition[] = [
+  ...STARTER_NPCS,
+  ...MIST_JUNGLE_NPCS,
+  ...SUNSCAR_DESERT_NPCS,
+];

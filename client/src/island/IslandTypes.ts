@@ -1,4 +1,4 @@
-export type IslandId = 'starter-island' | 'mist-jungle';
+export type IslandId = 'starter-island' | 'mist-jungle' | 'sunscar-desert';
 
 export interface IslandPoint {
   x: number;

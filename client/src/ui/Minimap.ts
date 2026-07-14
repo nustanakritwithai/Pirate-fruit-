@@ -13,6 +13,21 @@ export interface MinimapView {
   radius: number;
 }
 
+function createOceanOverview(): MinimapView {
+  const minX = Math.min(...ISLANDS.map((island) => island.center.x - island.radius));
+  const maxX = Math.max(...ISLANDS.map((island) => island.center.x + island.radius));
+  const minZ = Math.min(...ISLANDS.map((island) => island.center.z - island.radius));
+  const maxZ = Math.max(...ISLANDS.map((island) => island.center.z + island.radius));
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const radius = Math.max(...ISLANDS.map((island) =>
+    Math.hypot(island.center.x - centerX, island.center.z - centerZ) + island.radius,
+  )) * 1.08;
+  return { id: 'ocean-overview', label: 'ทะเลสามเกาะ', centerX, centerZ, radius };
+}
+
+const OCEAN_OVERVIEW = createOceanOverview();
+
 /** เลือกมุมมอง local เมื่ออยู่ใกล้เกาะ และภาพรวมทะเลเมื่ออยู่ระหว่างเกาะ */
 export function getMinimapView(x: number, z: number): MinimapView {
   const island = findIslandAt(x, z, 18);
@@ -25,15 +40,7 @@ export function getMinimapView(x: number, z: number): MinimapView {
       radius: island.radius * 1.3,
     };
   }
-  const first = ISLANDS[0];
-  const last = ISLANDS[ISLANDS.length - 1];
-  return {
-    id: 'ocean-overview',
-    label: 'ทะเลตะวันออก',
-    centerX: (first.center.x + last.center.x) / 2,
-    centerZ: (first.center.z + last.center.z) / 2,
-    radius: 152,
-  };
+  return OCEAN_OVERVIEW;
 }
 
 /** มินิแมพแบบหลายเกาะ: cache ฉากพื้นหลังแต่ละมุมมอง และวาดผู้เล่นอย่างเดียวทุกเฟรม */
@@ -72,9 +79,15 @@ export class Minimap {
         const wx = view.centerX + ((px / (res - 1)) * 2 - 1) * view.radius;
         const wz = view.centerZ + ((py / (res - 1)) * 2 - 1) * view.radius;
         const h = worldHeightAt(wx, wz);
+        const terrainIsland = findIslandAt(wx, wz);
         let color: [number, number, number];
         if (h < WATER_LEVEL - 0.4) color = [23, 74, 105];
         else if (h < WATER_LEVEL + 0.05) color = [46, 110, 148];
+        else if (terrainIsland?.id === 'sunscar-desert' && h < 3.5) {
+          const t = Math.max(0, Math.min(1, h / 3.5));
+          color = [222 - t * 27, 190 - t * 35, 132 - t * 27];
+        }
+        else if (terrainIsland?.id === 'sunscar-desert') color = [154, 125, 91];
         else if (h < 0.7) color = [222, 205, 158];
         else if (h < 3.4) {
           const t = (h - 0.7) / 2.7;
