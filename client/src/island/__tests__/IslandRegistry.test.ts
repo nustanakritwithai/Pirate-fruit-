@@ -7,6 +7,7 @@ import {
   getIsland,
   azureFrostHeightAt,
   tempestSkyHeightAt,
+  emberVolcanoHeightAt,
   mistJungleHeightAt,
   sunscarDesertHeightAt,
   starterHeightAt,
@@ -43,6 +44,7 @@ describe('multi-island registry', () => {
     expect(worldHeightAt(170, 43)).toBe(SEA_FLOOR_HEIGHT);
     expect(worldHeightAt(110, 168)).toBe(SEA_FLOOR_HEIGHT);
     expect(worldHeightAt(-45, 210)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(-180, 140)).toBe(SEA_FLOOR_HEIGHT);
   });
 
   it('places every checkpoint on dry land', () => {
@@ -53,6 +55,7 @@ describe('multi-island registry', () => {
     expect(sunscarDesertHeightAt(170, 125)).toBeGreaterThan(2.5);
     expect(azureFrostHeightAt(35, 210)).toBeGreaterThan(2.5);
     expect(tempestSkyHeightAt(-125, 210)).toBeGreaterThan(3);
+    expect(emberVolcanoHeightAt(-235, 70)).toBeGreaterThan(4);
   });
 
   it('resolves each dock zone and keeps boat spawns in water', () => {

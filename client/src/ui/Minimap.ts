@@ -99,6 +99,11 @@ export class Minimap {
           color = [190 - t * 38, 211 - t * 35, 210 - t * 28];
         }
         else if (terrainIsland?.id === 'tempest-sky') color = [119, 137, 154];
+        else if (terrainIsland?.id === 'ember-volcano' && h < 4.4) {
+          const t = Math.max(0, Math.min(1, h / 4.4));
+          color = [112 - t * 35, 83 - t * 27, 70 - t * 20];
+        }
+        else if (terrainIsland?.id === 'ember-volcano') color = [62, 48, 49];
         else if (h < 0.7) color = [222, 205, 158];
         else if (h < 3.4) {
           const t = (h - 0.7) / 2.7;

@@ -261,6 +261,16 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
     reward: { playerExp: 4300, masteryExp: 1750, coins: 3600 },
     heavyAttack: { everyNth: 3, multiplier: 2, telegraph: 0.95, knockback: 18, tags: ['unblockable', 'knockdown'] },
   },
+  'lava-crawler': { id: 'lava-crawler', name: 'ตะขาบลาวา', kind: 'crab', level: 91, maxHp: 3900, damage: 88, moveSpeed: 3.9, aggroRange: 18, attackRange: 2.55, attackCooldown: 0.92, scale: 1.48, color: 0xd55724, reward: { playerExp: 1720, masteryExp: 740, coins: 1320 } },
+  'ash-cultist': { id: 'ash-cultist', name: 'สาวกลัทธิเถ้าถ่าน', kind: 'grunt', level: 95, maxHp: 4550, damage: 96, moveSpeed: 4.05, aggroRange: 20, attackRange: 2.3, attackCooldown: 0.9, scale: 1.32, color: 0x713b32, reward: { playerExp: 1980, masteryExp: 850, coins: 1540 } },
+  'obsidian-golem': { id: 'obsidian-golem', name: 'โกเลมออบซิเดียน', kind: 'grunt', level: 102, maxHp: 5900, damage: 110, moveSpeed: 2.8, aggroRange: 21, attackRange: 3.1, attackCooldown: 1.16, scale: 1.92, color: 0x332b38, reward: { playerExp: 2550, masteryExp: 1080, coins: 2050 } },
+  'magma-titan-boss': {
+    id: 'magma-titan-boss', name: 'ไททันแมกมาบรรพกาล', kind: 'boss', level: 108,
+    maxHp: 13500, damage: 128, moveSpeed: 3.45, aggroRange: 30, attackRange: 3.9,
+    attackCooldown: 1.12, scale: 2.8, color: 0x4b2a2a,
+    reward: { playerExp: 6500, masteryExp: 2550, coins: 5400 },
+    heavyAttack: { everyNth: 3, multiplier: 2.1, telegraph: 1, knockback: 20, tags: ['unblockable', 'knockdown'] },
+  },
 };
 
 export interface MonsterCamp {
@@ -296,6 +306,10 @@ export const MONSTER_CAMPS: MonsterCamp[] = [
   { id: 'east-cloud-crabs', islandId: 'tempest-sky', name: 'ทางเมฆตะวันออก', typeId: 'cloud-crab', x: -111, z: 226, radius: 5, count: 3, recommendedLevel: 71 },
   { id: 'tempest-sky-raiders', islandId: 'tempest-sky', name: 'ค่ายโจรเวหา', typeId: 'sky-raider', x: -145, z: 207, radius: 6, count: 4, recommendedLevel: 75 },
   { id: 'tempest-storm-forge', islandId: 'tempest-sky', name: 'โรงตีผลึกพายุ', typeId: 'storm-golem', x: -124, z: 232, radius: 5.5, count: 4, recommendedLevel: 82 },
+  { id: 'ember-lava-crawlers', islandId: 'ember-volcano', name: 'ฝูงตะขาบลาวา', typeId: 'lava-crawler', x: -255, z: 98, radius: 5.5, count: 4, recommendedLevel: 91 },
+  { id: 'ember-east-crawlers', islandId: 'ember-volcano', name: 'ทางเถ้าตะวันออก', typeId: 'lava-crawler', x: -204, z: 78, radius: 5, count: 3, recommendedLevel: 91 },
+  { id: 'ember-ash-cultists', islandId: 'ember-volcano', name: 'ป้อมลัทธิเถ้าถ่าน', typeId: 'ash-cultist', x: -270, z: 72, radius: 6, count: 4, recommendedLevel: 95 },
+  { id: 'ember-obsidian-mine', islandId: 'ember-volcano', name: 'เหมืองออบซิเดียน', typeId: 'obsidian-golem', x: -214, z: 56, radius: 5.5, count: 4, recommendedLevel: 102 },
 ];
 
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
@@ -314,4 +328,5 @@ export const BOSS_SPAWNS: readonly BossSpawn[] = [
   { islandId: 'sunscar-desert', typeId: 'sun-guardian-boss', x: 170, z: 152 },
   { islandId: 'azure-frost', typeId: 'frost-king-boss', x: 20, z: 244 },
   { islandId: 'tempest-sky', typeId: 'tempest-lord-boss', x: -151, z: 236 },
+  { islandId: 'ember-volcano', typeId: 'magma-titan-boss', x: -235, z: 70 },
 ];

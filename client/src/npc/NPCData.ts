@@ -295,10 +295,18 @@ export const TEMPEST_SKY_NPCS: NPCDefinition[] = [
   { id: 'tempest-scholar-megha', islandId: 'tempest-sky', name: 'เมฆา', role: 'นักพยากรณ์พายุ', x: -119, z: 194, color: 0x4c8192, dialogue: ['วิหารนี้เคยควบคุมลมเดินเรือทั้งภูมิภาค แต่ผลึกแกนกลางแตกและปลุกเจ้าแห่งพายุขึ้นมา', 'โกเลมคือเศษเกราะของมัน หากฟ้าร้องต่อเนื่อง แสดงว่าบอสกำลังเตรียมท่าหนัก'] },
 ];
 
+export const EMBER_VOLCANO_NPCS: NPCDefinition[] = [
+  { id: 'ember-forgemaster-krai', islandId: 'ember-volcano', name: 'ไคร', role: 'หัวหน้าช่างตีอัคคี', x: -218, z: 103, color: 0x8d4935, action: 'quest-board', dialogue: ['เกาะภูผาอัคคีเหมาะกับนักเดินทาง Level 91 ขึ้นไป ความร้อนที่นี่ปลุกสัตว์ใต้ดินให้คลุ้มคลั่ง', 'ตะขาบลาวายึดทุ่งตะวันตก สาวกลัทธิเถ้าถ่านตั้งป้อม และโกเลมออบซิเดียนเฝ้าเหมือง', 'ไททันแมกมาหลับอยู่กลางปล่อง ท่าหนักของมันทะลุ Block และผลักได้ไกล จง Dash ออกจากวงเตือน'] },
+  { id: 'ember-harbor-master-prak', islandId: 'ember-volcano', name: 'ประกาย', role: 'นายท่าภูผา', x: -216, z: 104, color: 0x6b4634, action: 'boat-shop', dockId: 'ember-volcano-harbor', dialogue: ['ท่าเรือเหนือเชื่อมกลับเกาะนภาวายุ แล่นไปทางตะวันออกเฉียงเหนือตามแนวเมฆสีเทา', 'เรือ ปืนใหญ่ Cargo และระบบ Boarding เดิมใช้งานจากท่านี้ได้ครบ', 'ขึ้นฝั่งแล้ว Checkpoint จะย้ายมาที่หมู่บ้านช่างตีโดยไม่ลบ Progression หรือเงินของเจ้า'] },
+  { id: 'ember-dealer-rin', islandId: 'ember-volcano', name: 'ริน', role: 'พ่อค้าออบซิเดียน', x: -222, z: 100, color: 0x70465f, action: 'dealer-shop', dialogue: ['ออบซิเดียนจากเหมืองกักพลังร้อนได้ดี ข้าจึงตั้งร้านอุปกรณ์และผลไม้หายากอยู่ข้างโรงตี', 'ตรวจ Stats และ Mastery ให้พร้อม ศัตรูใกล้ปล่องมี HP และ Damage สูงกว่าเกาะนภาวายุมาก'] },
+  { id: 'ember-scholar-ada', islandId: 'ember-volcano', name: 'อาดา', role: 'นักธรณีเพลิง', x: -250, z: 91, color: 0x9b603c, dialogue: ['รอยแยกลาวาทั้งหมดไหลจากหัวใจของไททัน หากแสงในปล่องสว่างขึ้น แสดงว่ามันกำลังจะตื่น', 'โกเลมออบซิเดียนคือเปลือกภูเขาไฟที่มีชีวิต ส่วนสาวกลัทธิต้องการควบคุมพลังนั้น'] },
+];
+
 export const ALL_NPCS: NPCDefinition[] = [
   ...STARTER_NPCS,
   ...MIST_JUNGLE_NPCS,
   ...SUNSCAR_DESERT_NPCS,
   ...AZURE_FROST_NPCS,
   ...TEMPEST_SKY_NPCS,
+  ...EMBER_VOLCANO_NPCS,
 ];

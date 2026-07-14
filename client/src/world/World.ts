@@ -9,6 +9,7 @@ import { buildMistJungleIsland } from '../island/MistJungleIsland';
 import { buildSunscarDesertIsland } from '../island/SunscarDesertIsland';
 import { buildAzureFrostIsland } from '../island/AzureFrostIsland';
 import { buildTempestSkyIsland } from '../island/TempestSkyIsland';
+import { buildEmberVolcanoIsland } from '../island/EmberVolcanoIsland';
 import {
   ISLANDS,
   STARTER_ISLAND_RADIUS,
@@ -146,6 +147,9 @@ export class World {
     const tempestSky = buildTempestSkyIsland(scene, this.collision, textures, graphics, starterIsland.nightMaterial, starterIsland.nightLights);
     this.islandDetailRoots.set('tempest-sky', tempestSky.root);
 
+    const emberVolcano = buildEmberVolcanoIsland(scene, this.collision, textures, graphics, starterIsland.nightMaterial, starterIsland.nightLights);
+    this.islandDetailRoots.set('ember-volcano', emberVolcano.root);
+
     this.clouds = new CloudLayer(graphics);
     scene.add(this.clouds.mesh);
     this.dayNight = new DayNightCycle(
@@ -221,9 +225,11 @@ export class World {
     const desert = island.id === 'sunscar-desert';
     const frost = island.id === 'azure-frost';
     const skyIsland = island.id === 'tempest-sky';
-    const specialGround = desert || frost || skyIsland;
-    const groundMap = skyIsland ? t.rockColor.clone() : specialGround ? t.sandColor.clone() : t.grassColor;
-    const groundNormal = skyIsland ? t.rockNormal.clone() : specialGround ? t.sandNormal.clone() : t.grassNormal;
+    const volcano = island.id === 'ember-volcano';
+    const specialGround = desert || frost || skyIsland || volcano;
+    const rockyGround = skyIsland || volcano;
+    const groundMap = rockyGround ? t.rockColor.clone() : specialGround ? t.sandColor.clone() : t.grassColor;
+    const groundNormal = rockyGround ? t.rockNormal.clone() : specialGround ? t.sandNormal.clone() : t.grassNormal;
     if (specialGround) {
       groundMap.wrapS = groundMap.wrapT = THREE.RepeatWrapping;
       groundNormal.wrapS = groundNormal.wrapT = THREE.RepeatWrapping;
@@ -234,7 +240,7 @@ export class World {
     }
 
     const mat = new THREE.MeshStandardMaterial({
-      color: island.id === 'mist-jungle' ? 0x789b72 : desert ? 0xe2c28e : frost ? 0xdcebef : skyIsland ? 0xc8d7d2 : 0xffffff,
+      color: island.id === 'mist-jungle' ? 0x789b72 : desert ? 0xe2c28e : frost ? 0xdcebef : skyIsland ? 0xc8d7d2 : volcano ? 0x66524b : 0xffffff,
       map: groundMap,
       normalMap: groundNormal,
       roughness: 1,
