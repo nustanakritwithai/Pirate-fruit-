@@ -6,14 +6,29 @@ import { DialogueUI } from '../ui/DialogueUI';
 import { InteractionPrompt } from '../ui/InteractionPrompt';
 import { ALL_NPCS, type NPCDefinition } from './NPCData';
 import { createHumanoidVisual } from '../art/CharacterVisuals';
-import { ProceduralCharacterAnimator } from '../animation/ProceduralCharacterAnimator';
+import {
+  ProceduralCharacterAnimator,
+  type ProceduralLoopAction,
+} from '../animation/ProceduralCharacterAnimator';
+import { GltfNPCAnimator } from '../animation/GltfCharacterAnimator';
+import {
+  hideEmbeddedPirateWeapons,
+  instantiatePirateAsset,
+  pirateAssetForNPC,
+} from '../art/PirateAssetLibrary';
 
 const INTERACTION_RANGE = 4.2;
+
+interface NPCVisualAnimator {
+  update(dt: number, action: ProceduralLoopAction): void;
+  dispose?(): void;
+}
 
 interface NPCInstance {
   definition: NPCDefinition;
   group: THREE.Group;
-  animator: ProceduralCharacterAnimator;
+  animator: NPCVisualAnimator;
+  disposeVisual?: () => void;
 }
 
 export interface NPCActions {
@@ -24,7 +39,7 @@ export interface NPCActions {
   openTradeShop?: (definition: NPCDefinition) => void;
 }
 
-function makeNameSprite(name: string): THREE.Sprite {
+function makeNameSprite(name: string, headHeight = 3.55): THREE.Sprite {
   const canvas = document.createElement('canvas');
   canvas.width = 384;
   canvas.height = 96;
@@ -46,7 +61,7 @@ function makeNameSprite(name: string): THREE.Sprite {
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(3.9, 0.98, 1);
-  sprite.position.y = 3.55;
+  sprite.position.y = headHeight;
   return sprite;
 }
 
@@ -54,19 +69,42 @@ function makeNPC(definition: NPCDefinition, y: number): NPCInstance {
   const group = new THREE.Group();
   group.position.set(definition.x, y, definition.z);
   const visual = new THREE.Group();
-  const character = createHumanoidVisual({
-    clothColor: definition.color,
-    accentColor: definition.action === 'boat-shop' ? 0xb58a4d : 0x6b3d56,
-    skinColor: 0xc98f68,
-    pirate: definition.action === 'boat-shop',
-  });
-  visual.add(character.group);
-  group.add(visual, makeNameSprite(definition.name));
-  const phase = Math.abs(Math.sin(definition.x * 12.9898 + definition.z * 78.233)) * Math.PI * 2;
+  const assetSelection = pirateAssetForNPC(definition);
+  const external = instantiatePirateAsset(assetSelection.id, assetSelection);
+  let animator: NPCVisualAnimator;
+  let nameHeight = 3.55;
+  let disposeVisual: (() => void) | undefined;
+
+  if (external) {
+    // NPC ไม่ใช้ Equipment/Combat จึงซ่อนอาวุธตัวอย่างที่ติดมากับ rig
+    hideEmbeddedPirateWeapons(external.root);
+    const modelScale = assetSelection.baseHeight / external.bounds.height;
+    external.root.scale.setScalar(modelScale);
+    external.root.position.y = -external.bounds.minY * modelScale;
+    visual.add(external.root);
+    animator = new GltfNPCAnimator(external.root, external.animations);
+    nameHeight = assetSelection.baseHeight + 0.48;
+    disposeVisual = () => {
+      external.disposeMaterials();
+    };
+  } else {
+    const character = createHumanoidVisual({
+      clothColor: definition.color,
+      accentColor: definition.action === 'boat-shop' ? 0xb58a4d : 0x6b3d56,
+      skinColor: 0xc98f68,
+      pirate: definition.action === 'boat-shop',
+    });
+    visual.add(character.group);
+    const phase = Math.abs(Math.sin(definition.x * 12.9898 + definition.z * 78.233)) * Math.PI * 2;
+    animator = new ProceduralCharacterAnimator(character.rig, phase);
+  }
+
+  group.add(visual, makeNameSprite(definition.name, nameHeight));
   return {
     definition,
     group,
-    animator: new ProceduralCharacterAnimator(character.rig, phase),
+    animator,
+    disposeVisual,
   };
 }
 
@@ -180,5 +218,12 @@ export class NPCManager {
         this.reopenCooldown = 0.45;
       },
     );
+  }
+
+  dispose(): void {
+    for (const npc of this.npcs) {
+      npc.animator.dispose?.();
+      npc.disposeVisual?.();
+    }
   }
 }

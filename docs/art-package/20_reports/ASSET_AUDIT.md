@@ -1,6 +1,6 @@
 # Current Asset Audit
 
-วันที่ audit: 2026-07-13 — ตรวจจากไฟล์และ runtime source หลังรวม Phase 7/8 เท่านั้น ค่า poly procedural เป็นค่าประมาณ ส่วน license ที่ไม่มีไฟล์หลักฐานเป็น `UNKNOWN`
+วันที่ audit: 2026-07-15 — ตรวจจากไฟล์และ runtime source หลังเชื่อม Character/Monster/NPC GLB ทุกเกาะ ค่า poly GLB นับจาก index accessor ส่วน license ที่ไม่มีไฟล์หลักฐานเป็น `UNKNOWN`
 
 ## Environment
 
@@ -27,16 +27,20 @@
 
 | Asset | Usage | Poly/Texture | Material | Reuse | Optimize/Replace | LOD | Collider | License | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| Pirate V1 procedural rig | Player | 4,238 tris; 18 merged meshes; shared 64px micro maps | 3 Mobile PBR atlas materials + vertex colors | Single hero | runtime-ready; add distant LOD later | Missing LOD | controller capsule; visual rig separate | project code | READY |
-| Articulated procedural NPC human | 4 NPCs; idle/talk/wave | runtime benchmark pending | skin/cloth/leather/metal PBR | standard 7-pivot rig | shared geometry/cache later | Missing LOD | radius proxy; visual rig separate | code | OPTIMIZE |
+| Quaternius Henry | Player + general NPC | 11,062 tris; embedded texture; 14 clips | 2 GLTF PBR slots | shared cached geometry | add distant LOD | Missing LOD | controller/radius proxy; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Quaternius Anne | female NPC roles across 6 islands | 12,368 tris; embedded texture; 14 clips | 2 GLTF PBR slots | high | mobile visual QA + distant LOD | Missing LOD | radius proxy; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Quaternius Mako / Pirate Captain | harbor masters and quest chiefs | 10,576–13,170 tris; 14 clips | 2 GLTF PBR slots | high | add distant LOD | Missing LOD | radius proxy; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Pirate V1 procedural rig | player/NPC fallback if GLB load fails | 4,238 tris; shared 64px maps | 3 Mobile PBR atlas slots | fallback only | retain fallback | Missing LOD | gameplay proxy | project code | READY |
 
 ## Monsters
 
 | Asset | Usage | Poly | Material | Reuse | Optimize/Replace | LOD | Collider | License | Status |
 |---|---|---:|---|---|---|---|---|---|---|
-| Articulated PBR Crab | normal camps; scuttle/attack/heavy/hit/death | runtime benchmark pending | shell/leather PBR | standard crab rig | cache geometry/material | Missing LOD | gameplay radius; visual rig separate | code | OPTIMIZE |
-| Articulated PBR Pirate | grunt; chase/attack/heavy/hit/death | runtime benchmark pending | cloth/skin/leather/iron | standard humanoid rig | cache geometry/material | Missing LOD | gameplay radius; visual rig separate | code | OPTIMIZE |
-| Articulated PBR Captain | boss; chase/attack/heavy/hit/death | runtime benchmark pending | same + cape/armor | standard humanoid rig | authored boss GLB later | Missing LOD | boss radius; visual rig separate | code | REPLACE |
+| Pirate Kit Mako / Captain / Sharky / Skeleton | pirate families, raiders, cultists and captain | 10,576–14,594 tris; 14–15 clips | 2 GLTF PBR slots | cached by asset ID | Sharky exceeds target; add LOD | Missing LOD | gameplay radius; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Easy Enemies Spider | crab/scorpion/crawler families on 5 biomes | 2,712 tris; 5 clips | 2 GLTF PBR slots + biome tint | very high | mobile visual QA | Missing LOD | gameplay radius; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Ultimate Monsters Goleling | construct/golem families on 5 biomes | 3,696 tris; 8 clips | 4 GLTF PBR slots + biome tint | very high | mobile visual QA | Missing LOD | gameplay radius; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Goleling Evolved / Yeti / Hywirl / Demon | island bosses | 2,136–6,712 tris; 8–14 clips | 3–6 GLTF PBR slots + biome tint | per boss family | mobile visual QA + boss LOD | Missing LOD | boss radius; visual rig separate | CC0-1.0 | OPTIMIZE |
+| Procedural crab/humanoid rigs | per-asset load failure fallback | runtime benchmark pending | shared Mobile PBR | fallback only | retain fallback | Missing LOD | gameplay radius | project code | READY |
 
 ## Boat
 
@@ -58,8 +62,8 @@
 
 ## Priority
 
-1. เพิ่ม LOD ให้ Pirate V1, Boss, boats และ huts
+1. ทำ mobile visual QA ให้ Anne, Spider และ Ultimate Monsters แล้วสร้าง LOD1 ให้ Sharky/NPC ที่เกิน 12k tris
 2. เพิ่ม license/provenance files สำหรับ texture ภายนอกที่ยังเป็น UNKNOWN
 3. แปลง texture เป็น KTX2/Basis หลัง benchmark
 4. เปลี่ยน emoji UI เป็น icon atlas ที่มี license
-5. เปลี่ยน Boss procedural เป็น authored Mobile PBR GLB เมื่อ P7 integration คงที่
+5. เก็บ procedural character/monster ไว้เป็น fallback และติดตาม GLB load failure จาก production
