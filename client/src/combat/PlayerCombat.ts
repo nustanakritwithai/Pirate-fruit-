@@ -52,6 +52,24 @@ interface WaveProjectile {
   knockback: number;
   source: CombatRewardSource;
   dot?: DotSpec;
+  /** homing: เลี้ยวเข้าหาเป้าที่จับไว้ทุกเฟรม */
+  homing?: boolean;
+  target?: Monster | null;
+}
+
+/** ร่าง/ป้อมที่เรียกออกมา (summon) — ลอยอยู่กับที่แล้วยิงใส่มอนใกล้สุดเป็นช่วง ๆ */
+interface ActiveSummon {
+  visual: EnergyProjectileVisual;
+  x: number;
+  y: number;
+  z: number;
+  life: number;
+  fireAcc: number;
+  fireInterval: number;
+  damage: number;
+  acquireRange: number;
+  color: number;
+  source: CombatRewardSource;
 }
 
 /** channel ที่กำลังทำงาน (flurry มัดรัว / beam ลำแสง) — ฉีดดาเมจเป็น tick ระหว่างล็อกท่า */
@@ -185,6 +203,7 @@ export class PlayerCombat {
   private skillVisualCategory: LoadoutCategory = 'style';
 
   private readonly projectiles: WaveProjectile[] = [];
+  private readonly summons: ActiveSummon[] = [];
   /** channel/zone/dot/buff — รูปแบบสกิลใหม่ (flurry/beam/ground/DoT/buff) */
   private activeChannel: SkillChannel | null = null;
   private readonly pendingZones: PendingZone[] = [];
@@ -499,6 +518,7 @@ export class PlayerCombat {
     }
 
     this.updateProjectiles(dt);
+    this.updateSummons(dt);
     this.advanceChannel(dt);
     this.updateZones(dt);
     this.updateDots(dt);
@@ -653,9 +673,12 @@ export class PlayerCombat {
     this.comboIndex = 0;
     this.pendingCast = { skill, slot, timer: skill.castTime };
     const followThrough =
-      skill.renderType === 'aoe' || skill.renderType === 'ground' || skill.renderType === 'buff'
+      skill.renderType === 'aoe' ||
+      skill.renderType === 'ground' ||
+      skill.renderType === 'buff' ||
+      skill.renderType === 'summon'
         ? 0.56
-        : skill.renderType === 'dash'
+        : skill.renderType === 'dash' || skill.renderType === 'teleport'
           ? 0.38
           : skill.renderType === 'flurry' || skill.renderType === 'beam'
             ? 0.6
@@ -711,6 +734,15 @@ export class PlayerCombat {
         break;
       case 'buff':
         this.castBuff(skill, position);
+        break;
+      case 'homing':
+        this.fireHoming(skill, position, dirX, dirZ, scaledDamage, source);
+        break;
+      case 'summon':
+        this.deploySummon(skill, position, dirX, dirZ, scaledDamage, source);
+        break;
+      case 'teleport':
+        this.teleportStrike(skill, position, dirX, dirZ, scaledDamage, source);
         break;
       case 'aoe':
         this.effects.spawnShockwave(position, skill.radius);
@@ -769,6 +801,190 @@ export class PlayerCombat {
         ...(skill.dot ? { dot: skill.dot } : {}),
       });
       this.effects.spawnEnergyLaunch(start, direction, color, scale * 1.15);
+    }
+  }
+
+  /** homing — ยิงกระสุนที่เลี้ยวเข้าหาเป้าใกล้สุด (จับเป้าใน updateProjectiles) */
+  private fireHoming(
+    skill: CastableSkill,
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    const shots = Math.min(6, Math.max(1, skill.hitCount));
+    const color = skill.isUltimate
+      ? new THREE.Color(skill.color).lerp(new THREE.Color(0xffd45a), 0.35).getHex()
+      : skill.color;
+    const scale = skill.isUltimate ? 1.5 : 1;
+    const perShot = scaledDamage / shots;
+    const knockback = this.ccKnockback(skill.cc, 4);
+    const baseAngle = Math.atan2(dirX, dirZ);
+    for (let i = 0; i < shots; i++) {
+      // กระจายออกด้านข้างตอนยิง แล้วค่อยเลี้ยวเข้าเป้า
+      const angle = baseAngle + (shots > 1 ? (i - (shots - 1) / 2) * THREE.MathUtils.degToRad(16) : 0);
+      const sx = Math.sin(angle);
+      const sz = Math.cos(angle);
+      const direction = new THREE.Vector3(sx, 0, sz);
+      const start = new THREE.Vector3(position.x + sx * 1.2, position.y + 1.15, position.z + sz * 1.2);
+      const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
+      this.projectiles.push({
+        visual,
+        dirX: sx,
+        dirZ: sz,
+        life: WAVE_LIFETIME,
+        radius: skill.radius,
+        hit: new Set(),
+        damage: perShot,
+        knockback,
+        source,
+        homing: true,
+        target: null,
+        ...(skill.dot ? { dot: skill.dot } : {}),
+      });
+      this.effects.spawnEnergyLaunch(start, direction, color, scale * 1.1);
+    }
+  }
+
+  /** summon — วางร่างหน้าตัวที่ยิงมอนใกล้สุดเองเป็นช่วง ๆ */
+  private deploySummon(
+    skill: CastableSkill,
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    const dist = Math.max(1.6, skill.range * 0.4);
+    const x = position.x + dirX * dist;
+    const z = position.z + dirZ * dist;
+    const y = position.y + 1.2;
+    const visual = this.effects.createEnergyProjectile(
+      new THREE.Vector3(x, y, z),
+      new THREE.Vector3(dirX, 0, dirZ),
+      skill.color,
+      skill.isUltimate ? 1.5 : 1.1,
+    );
+    this.summons.push({
+      visual,
+      x,
+      y,
+      z,
+      life: skill.isUltimate ? 9 : 6.5,
+      fireAcc: 0,
+      fireInterval: skill.isUltimate ? 0.7 : 0.95,
+      damage: scaledDamage / 4, // ต่อการยิงหนึ่งครั้ง (ยิงหลายครั้งตลอดอายุ)
+      acquireRange: (skill.radius > 0 ? skill.radius : 4) + 9,
+      color: skill.color,
+      source,
+    });
+    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), 2, skill.color);
+  }
+
+  /** teleport — วาร์ปไปหลังศัตรูใกล้สุดในกรวยหน้าแล้วฟัน (ไม่เจอเป้า → พุ่งสั้น) */
+  private teleportStrike(
+    skill: CastableSkill,
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    const target = this.nearestInCone(position, dirX, dirZ, skill.range, 0.3);
+    if (!target) {
+      // ไม่เจอเป้า → พุ่งสั้นไปข้างหน้าเหมือน dash
+      this.controller.startDash(dirX, dirZ, Math.max(6, skill.range) / LUNGE_DURATION, LUNGE_DURATION);
+      this.effects.spawnSlash(position, Math.atan2(dirX, dirZ), skill.color, 1.3);
+      return;
+    }
+    const tp = target.group.position;
+    const toX = tp.x - position.x;
+    const toZ = tp.z - position.z;
+    const len = Math.hypot(toX, toZ) || 1;
+    const behindX = tp.x + (toX / len) * 1.7;
+    const behindZ = tp.z + (toZ / len) * 1.7;
+    // เอฟเฟกต์จุดออก แล้ววาร์ป
+    this.effects.spawnEnergyLaunch(
+      new THREE.Vector3(position.x, position.y + 1, position.z),
+      new THREE.Vector3(dirX, 0, dirZ),
+      skill.color,
+      1,
+    );
+    this.controller.teleport(behindX, this.controller.position.y, behindZ);
+    this.controller.heading = Math.atan2(tp.x - behindX, tp.z - behindZ);
+    this.monsters.applyHit(target, scaledDamage, behindX, behindZ, this.ccKnockback(skill.cc, 5), source);
+    if (skill.dot) this.applyDot(target, skill.dot, source);
+    this.effects.spawnSlash(this.controller.position, this.controller.heading, skill.color, skill.isUltimate ? 1.8 : 1.4);
+    const impact = tp.clone();
+    impact.y += 1;
+    this.effects.spawnEnergyImpact(impact, skill.color, 0.8);
+  }
+
+  /** มอนใกล้สุดในรัศมี (ใช้กับ homing/summon) */
+  private nearestMonster(x: number, z: number, radius: number): Monster | null {
+    let best: Monster | null = null;
+    let bestD = Infinity;
+    for (const m of this.monsters.monstersNear(x, z, radius)) {
+      const d = (m.group.position.x - x) ** 2 + (m.group.position.z - z) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  /** มอนใกล้สุดในกรวยหน้า ระยะ range (ใช้กับ teleport) */
+  private nearestInCone(
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    range: number,
+    arcCos: number,
+  ): Monster | null {
+    let best: Monster | null = null;
+    let bestD = Infinity;
+    for (const m of this.monsters.monstersNear(position.x, position.z, range)) {
+      const dx = m.group.position.x - position.x;
+      const dz = m.group.position.z - position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.001 && (dx * dirX + dz * dirZ) / dist < arcCos) continue;
+      if (dist < bestD) {
+        bestD = dist;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  private updateSummons(dt: number): void {
+    for (let i = this.summons.length - 1; i >= 0; i--) {
+      const s = this.summons[i];
+      s.life -= dt;
+      s.fireAcc += dt;
+      this.effects.updateEnergyProjectile(s.visual, dt, Math.max(0, Math.min(1, s.life / 6)));
+      s.visual.root.position.set(s.x, s.y + Math.sin(s.life * 4) * 0.15, s.z);
+      if (s.fireAcc >= s.fireInterval) {
+        s.fireAcc = 0;
+        const target = this.nearestMonster(s.x, s.z, s.acquireRange);
+        if (target) {
+          this.monsters.applyHit(target, s.damage, s.x, s.z, 3, s.source);
+          const dir = new THREE.Vector3(
+            target.group.position.x - s.x,
+            0,
+            target.group.position.z - s.z,
+          ).normalize();
+          this.effects.spawnEnergyLaunch(new THREE.Vector3(s.x, s.y, s.z), dir, s.color, 0.8);
+          const impact = target.group.position.clone();
+          impact.y += 1;
+          this.effects.spawnEnergyImpact(impact, s.color, 0.6);
+        }
+      }
+      if (s.life <= 0) {
+        this.effects.destroyEnergyProjectile(s.visual);
+        this.summons.splice(i, 1);
+      }
     }
   }
 
@@ -1029,6 +1245,23 @@ export class PlayerCombat {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const wave = this.projectiles[i];
       wave.life -= dt;
+      // homing: จับเป้าใกล้สุดแล้วค่อย ๆ เลี้ยวทิศเข้าหา
+      if (wave.homing) {
+        if (!wave.target || !wave.target.alive) {
+          wave.target = this.nearestMonster(wave.visual.root.position.x, wave.visual.root.position.z, 30);
+        }
+        if (wave.target) {
+          const tx = wave.target.group.position.x - wave.visual.root.position.x;
+          const tz = wave.target.group.position.z - wave.visual.root.position.z;
+          const len = Math.hypot(tx, tz) || 1;
+          const turn = Math.min(1, 4 * dt);
+          wave.dirX += (tx / len - wave.dirX) * turn;
+          wave.dirZ += (tz / len - wave.dirZ) * turn;
+          const dl = Math.hypot(wave.dirX, wave.dirZ) || 1;
+          wave.dirX /= dl;
+          wave.dirZ /= dl;
+        }
+      }
       wave.visual.root.position.x += wave.dirX * WAVE_SPEED * dt;
       wave.visual.root.position.z += wave.dirZ * WAVE_SPEED * dt;
       this.effects.updateEnergyProjectile(wave.visual, dt, wave.life / WAVE_LIFETIME);

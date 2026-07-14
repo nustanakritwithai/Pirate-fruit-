@@ -4,6 +4,7 @@ import {
   deriveArchetype,
   deriveDamage,
   deriveHitCount,
+  STYLE_ICON,
   type RawDatabookSkill,
   type DeriveContext,
 } from '../derive';
@@ -14,7 +15,7 @@ import { GUN_SKILLS } from '../../../guns/skills/databook/skills';
 import { FIGHTING_STYLE_SKILLS } from '../../../fighting-styles/skills/databook/skills';
 import { toCastable, archetypeToRenderType } from '../../SkillCasting';
 
-const ARCHETYPES = ['projectile', 'beam', 'aoe', 'ground', 'dash', 'melee', 'mobility', 'buff', 'summon'];
+const ARCHETYPES = ['projectile', 'beam', 'aoe', 'ground', 'dash', 'melee', 'mobility', 'buff', 'summon', 'homing', 'teleport'];
 const SLOTS = ['Z', 'X', 'C', 'V', 'F', 'M1'];
 const CC_TYPES = ['stun', 'knockback', 'launch', 'pull', 'disable', 'slow'];
 
@@ -52,26 +53,34 @@ describe('Skill Gameplay Databook — coverage', () => {
     }
   });
 
-  it('ให้ไอคอนเฉพาะสกิลตามธีม (ไม่ใช่ generic ตัวเดียว) — ต่างกันตามอาวุธ', () => {
-    // ท่าเด่นควรได้ไอคอนตามชื่อ/ธาตุ
-    expect(getSkillGameplay('bisento-v1-z')!.icon).toBe('🌪️'); // Wind Breaker
-    expect(getSkillGameplay('bisento-v1-x')!.icon).toBe('🪨'); // Quake Sphere
-    expect(getSkillGameplay('acidum-rifle-z')!.icon).toBe('💣'); // Spiky Bomb
-    expect(getSkillGameplay('acidum-rifle-x')!.icon).toBe('☠️'); // Acidic Smoke
-    expect(getSkillGameplay('combat-v')!.icon).toBe('☄️'); // Meteor Crash
-    // ชุดไอคอนต้องหลากหลายพอ (ไม่ใช่ 3-4 แบบเหมือนเดิม)
+  it('สัญลักษณ์ = สไตล์/พฤติกรรม 1:1 (เจอสัญลักษณ์นี้ = สกิลสไตล์นี้ทุกครั้ง)', () => {
+    // ทุก record: icon = STYLE_ICON[archetype] เป๊ะ
+    for (const record of ALL_SKILL_GAMEPLAY) {
+      expect(record.icon, `icon ไม่ตรงสไตล์: ${record.id}`).toBe(STYLE_ICON[record.archetype]);
+    }
+    // 2 ท่าต่าง archetype → สัญลักษณ์ต่างกัน ; archetype เดียวกัน → เหมือนกันเสมอ
+    const projectiles = ALL_SKILL_GAMEPLAY.filter((r) => r.archetype === 'projectile');
+    const grounds = ALL_SKILL_GAMEPLAY.filter((r) => r.archetype === 'ground');
+    expect(new Set(projectiles.map((r) => r.icon)).size).toBe(1); // projectile ทุกตัวไอคอนเดียว
+    expect(projectiles[0].icon).not.toBe(grounds[0].icon); // ต่างสไตล์ต่างไอคอน
+    // สัญลักษณ์ = จำนวน archetype ที่ใช้จริง (ไม่ซ้ำข้ามสไตล์)
+    const usedArch = new Set(ALL_SKILL_GAMEPLAY.map((r) => r.archetype));
     const uniqueIcons = new Set(ALL_SKILL_GAMEPLAY.map((r) => r.icon));
+    expect(uniqueIcons.size).toBe(usedArch.size);
     expect(uniqueIcons.size).toBeGreaterThanOrEqual(10);
   });
 
-  it('archetype ใหม่ (beam + flurry/melee) ถูก classify จริง ไม่ถูก projectile/aoe แย่ง', () => {
+  it('archetype ใหม่ (beam/melee/summon/homing/teleport) ถูก classify จริง', () => {
     const byArch = (a: string) => ALL_SKILL_GAMEPLAY.filter((r) => r.archetype === a).length;
-    expect(byArch('beam'), 'ควรมีลำแสงต่อเนื่องอย่างน้อย 3 ท่า').toBeGreaterThanOrEqual(3);
-    expect(byArch('melee'), 'มัดรัว/ประชิดเข้าถึงได้มากขึ้น').toBeGreaterThanOrEqual(8);
-    // ท่าเด่นที่ควรเป็นมัดรัว (เดิมถูกจัดเป็น aoe/projectile)
+    expect(byArch('beam')).toBeGreaterThanOrEqual(3);
+    expect(byArch('melee')).toBeGreaterThanOrEqual(8);
+    expect(byArch('summon'), 'summon แยกจาก aoe').toBeGreaterThanOrEqual(5);
+    expect(byArch('homing'), 'กระสุนติดตามเป้า').toBeGreaterThanOrEqual(1);
+    expect(byArch('teleport'), 'วาร์ปหลังศัตรู').toBeGreaterThanOrEqual(1);
     expect(getSkillGameplay('tiger-moveset-z')!.archetype).toBe('melee');
-    // ลำแสงต่อเนื่องที่ move/hold ได้
     expect(getSkillGameplay('light-moveset-v2-x')!.archetype).toBe('beam');
+    expect(getSkillGameplay('shadow-moveset-x')!.archetype).toBe('homing');
+    expect(getSkillGameplay('dark-dagger-x')!.archetype).toBe('teleport');
   });
 
   it('ท่าที่ไม่ใช่ utility ต้องมีดาเมจ > 0', () => {

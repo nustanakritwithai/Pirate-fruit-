@@ -35,8 +35,21 @@ export interface RawSkill {
  * - dash: พุ่งเข้าฟัน (รวม mobility)
  * - flurry: มัดรัวประชิดหน้าตัวหลายครั้ง
  * - buff: บัฟ/ฮีลตัวเอง ไม่มีเป้าโจมตี
+ * - summon: วางร่าง/ป้อมที่ยิงเองใส่ศัตรูใกล้ ๆ
+ * - homing: กระสุนเลี้ยวเข้าหาเป้าอัตโนมัติ
+ * - teleport: วาร์ปไปหลังศัตรูแล้วฟัน
  */
-export type SkillRenderType = 'projectile' | 'beam' | 'aoe' | 'ground' | 'dash' | 'flurry' | 'buff';
+export type SkillRenderType =
+  | 'projectile'
+  | 'beam'
+  | 'aoe'
+  | 'ground'
+  | 'dash'
+  | 'flurry'
+  | 'buff'
+  | 'summon'
+  | 'homing'
+  | 'teleport';
 
 /** สกิลที่พร้อมยิงในเกม */
 export interface CastableSkill {
@@ -147,10 +160,16 @@ export function archetypeToRenderType(archetype: SkillArchetype): SkillRenderTyp
       return 'flurry';
     case 'buff':
       return 'buff';
+    case 'summon':
+      return 'summon';
+    case 'homing':
+      return 'homing';
+    case 'teleport':
+      return 'teleport';
     case 'dash':
     case 'mobility':
       return 'dash';
-    // aoe + summon → ระเบิดรอบตัว
+    // aoe → ระเบิดรอบตัว
     default:
       return 'aoe';
   }
@@ -187,6 +206,15 @@ function fromGameplay(
   } else if (renderType === 'ground') {
     // โซนพุ่งจากพื้นด้านหน้า
     range = Math.max(4, range);
+  } else if (renderType === 'homing') {
+    // กระสุนติดตาม — ระยะไกลพอตามเป้า
+    range = Math.max(14, range);
+  } else if (renderType === 'teleport') {
+    // วาร์ปหาเป้าในระยะ
+    range = Math.max(10, range);
+  } else if (renderType === 'summon') {
+    // วางร่างหน้าตัว — radius = รัศมีจับเป้าของร่าง
+    range = Math.max(3, range);
   } else if (renderType === 'buff') {
     range = 0;
   }

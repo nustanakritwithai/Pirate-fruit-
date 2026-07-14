@@ -19,7 +19,9 @@ export type SkillSlotKey = 'Z' | 'X' | 'C' | 'V' | 'F' | 'M1';
  * - melee: ตีระยะประชิดชุดใหญ่
  * - mobility: เคลื่อนที่/บิน (ท่า F ส่วนใหญ่)
  * - buff: เสริมพลัง/ฟื้นฟู ไม่เน้นดาเมจ
- * - summon: เรียกสิ่งมีชีวิต/วัตถุช่วยรบ
+ * - summon: เรียกสิ่งมีชีวิต/วัตถุช่วยรบ (วางร่างที่ยิงเอง)
+ * - homing: กระสุนติดตามเป้าอัตโนมัติ
+ * - teleport: วาร์ปไปหลังศัตรูแล้วฟัน
  */
 export type SkillArchetype =
   | 'projectile'
@@ -30,7 +32,9 @@ export type SkillArchetype =
   | 'melee'
   | 'mobility'
   | 'buff'
-  | 'summon';
+  | 'summon'
+  | 'homing'
+  | 'teleport';
 
 export type CcType = 'stun' | 'knockback' | 'launch' | 'pull' | 'disable' | 'slow';
 

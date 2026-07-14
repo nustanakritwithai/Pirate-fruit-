@@ -609,12 +609,23 @@ export class PlayerActionAnimator {
     const side = variant % 2 === 0 ? 1 : -1;
     const power = ultimate ? 1.22 : 1;
 
-    if (renderType === 'projectile' || renderType === 'beam' || renderType === 'flurry') {
-      // beam/flurry = ส่งมือไปหน้าเหมือนยิง/ต่อยรัว
+    if (
+      renderType === 'projectile' ||
+      renderType === 'beam' ||
+      renderType === 'flurry' ||
+      renderType === 'homing'
+    ) {
+      // beam/flurry/homing = ส่งมือไปหน้าเหมือนยิง/ต่อยรัว
       this.applyProjectileSkill(category, anticipation, strike, side, power);
-    } else if (renderType === 'aoe' || renderType === 'ground' || renderType === 'buff') {
+    } else if (
+      renderType === 'aoe' ||
+      renderType === 'ground' ||
+      renderType === 'buff' ||
+      renderType === 'summon'
+    ) {
       this.applyAreaSkill(category, anticipation, strike, side, power, ultimate);
     } else {
+      // dash + teleport
       this.applyDashSkill(category, anticipation, strike, side, power);
     }
   }

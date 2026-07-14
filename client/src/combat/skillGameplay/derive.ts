@@ -60,6 +60,12 @@ const FLURRY_RE =
 const BEAM_RE = /\b(beams?|lasers?|ray of (?:light|energy))\b/i;
 const BEAM_SUSTAINED_RE =
   /\b(continuous(?:ly)?|sweeps?|sweeping|move (?:it|the beam|around)|held|for as long|while (?:active|held|the skill)|lasts?|channel|prolonged)\b/i;
+// วาร์ปหลังศัตรูแล้วฟัน — เจาะจงกว่า dash (DASH_RE เดิมมี "teleport" ด้วย จึงต้องเช็คก่อน)
+const TELEPORT_RE =
+  /\b(teleports?|flash step|warps?) (?:near|behind|next to|to|towards?) .{0,40}?(?:and |then |,)? ?(?:slash|slashes|cut|cuts|strike|strikes|attack|attacks|hit|hits|stab|stabs)|teleport(?:s|ing)? behind (?:the )?(?:enemy|opponent|target)/i;
+// กระสุนติดตามเป้าอัตโนมัติ — เช็คก่อน projectile
+const HOMING_RE =
+  /\b(homing|heat[- ]?seeking|auto[- ]?aims?|auto[- ]?aiming|auto[- ]?aimed|tracks? (?:down )?(?:the |any |all )?(?:nearby )?(?:enemy|enemies|target|targets)|seeks? out|locks? onto)\b/i;
 const PROJECTILE_RE =
   /\b(shoots?|shooting|fires?|firing|launch(?:es)?|throws?|hurls?|beams?|lasers?|projectiles?|bullets?|arrows?|blasts? (?:of|at|towards?)|sends? (?:out|forth|a|an|\d+)|flings?|spits?|breath(?:es)?)\b/i;
 
@@ -73,12 +79,16 @@ export function deriveArchetype(raw: RawDatabookSkill): SkillArchetype {
   }
   if (MOBILITY_RE.test(text) && !PROJECTILE_RE.test(text) && !AOE_RE.test(text)) return 'mobility';
   if (SUMMON_RE.test(text)) return 'summon';
+  // วาร์ปหลังศัตรู เจาะจงกว่า dash → เช็คก่อน
+  if (TELEPORT_RE.test(text)) return 'teleport';
   if (BUFF_RE.test(text) && !PROJECTILE_RE.test(text)) return 'buff';
   if (DASH_RE.test(text)) return 'dash';
   if (GROUND_RE.test(text)) return 'ground';
   // มัดรัว/ลำแสงต่อเนื่อง เช็คก่อน projectile/aoe (คำว่า beam/barrage อยู่ในกฎกว้างด้านล่าง)
   if (FLURRY_RE.test(text)) return 'melee';
   if (BEAM_RE.test(text) && BEAM_SUSTAINED_RE.test(text)) return 'beam';
+  // กระสุนติดตามเป้า เช็คก่อน projectile ทั่วไป
+  if (HOMING_RE.test(text)) return 'homing';
   if (PROJECTILE_RE.test(text)) return 'projectile';
   if (AOE_RE.test(text)) return 'aoe';
   if (MELEE_RE.test(text)) return 'melee';
@@ -218,7 +228,13 @@ export function deriveShape(
     case 'melee':
       return { range: 3.2, radius: 2.2 };
     case 'summon':
-      return { range: 0, radius: 4.0 };
+      return { range: isUlt ? 6 : 4, radius: 4.0 };
+    case 'homing':
+      // กระสุนติดตาม — เหมือน projectile แต่เลี้ยวเข้าเป้า
+      return { range: isUlt ? 24 : 20, radius: isUlt ? 2.4 : 1.9, projectileSpeed: isUlt ? 16 : 14 };
+    case 'teleport':
+      // วาร์ปหาเป้า — ระยะไกลกว่าฟันประชิด
+      return { range: isUlt ? 16 : 12, radius: 2.4 };
     case 'mobility':
     case 'buff':
       return { range: 0, radius: 2.5 };
@@ -267,58 +283,28 @@ export function deriveVfxColor(ctx: DeriveContext): number {
 }
 
 // ---------------------------------------------------------------
-// ไอคอนเฉพาะสกิล — เดาจากชื่อ/ธาตุ ให้แต่ละท่าต่างกันชัด (ไม่ใช่ generic ตาม archetype)
+// สัญลักษณ์ = สไตล์/พฤติกรรม (1 archetype : 1 สัญลักษณ์, ไม่ซ้ำ)
+// "เจอสัญลักษณ์นี้ = สกิลสไตล์นี้ทุกครั้ง" — เอกลักษณ์ธาตุยังสื่อผ่านชื่อสกิล + สี vfxColor
 // ---------------------------------------------------------------
 
-/** กฎ keyword → emoji เรียงตามลำดับความสำคัญ (เจอก่อนชนะ) */
-const ICON_RULES: [RegExp, string][] = [
-  [/\b(meteor|comet)\b/i, '☄️'],
-  [/\bshock ?wave\b/i, '💥'],
-  [/\b(flame|flames|fireball|fiery|blaz|inferno|lava|magma|scorch|ember|combust|burn)/i, '🔥'],
-  [/\b(ice|frost|freez|glaci|blizzard|snow|frozen|chill|hail)/i, '❄️'],
-  [/\b(water|aqua|tsunami|geyser|tidal|ocean|torrent|splash|wave of water|rain)/i, '🌊'],
-  [/\b(wind|aero|gale|gust|tornado|cyclone|typhoon|hurricane|breez)/i, '🌪️'],
-  [/\b(lightning|thunder|electric|volt|spark|bolt|plasma|discharge)/i, '⚡'],
-  [/\b(quake|earth|ground|rock|stone|boulder|tremor|seismic|sand|dust|crater)/i, '🪨'],
-  [/\b(bomb|explos|blast|grenade|missile|rocket|detonat|dynamite|nuke)/i, '💣'],
-  [/\b(poison|acid|toxic|venom|corros|gas|smoke|sludge)/i, '☠️'],
-  [/\b(dark|shadow|void|abyss|death|soul|ghost|reaper|hell|curse)/i, '🌑'],
-  [/\b(light|holy|radian|beam|laser|photon|shine|solar|divine|prism|glow)/i, '✨'],
-  [/\b(dragon|drake|wyrm|serpent)/i, '🐲'],
-  [/\b(spin|spiral|vortex|whirl|twister)/i, '🌀'],
-  [/\b(slash|blade|cut|sever|cleav|katana|edge|sword)/i, '⚔️'],
-  [/\b(bullet|shoot|shot|rifle|pistol|snip|revolver|shotgun|gun)/i, '🔫'],
-  [/\b(punch|fist|jab|hook|uppercut|kick|tackle|smash|palm|elbow|knee)/i, '👊'],
-  [/\b(heal|regen|restore|cure|mend)/i, '💚'],
-  [/\b(shield|guard|barrier|block|aegis|bulwark)/i, '🛡️'],
-  [/\b(fly|flight|soar|hover|glide|levitat|teleport|flash step|blitz|warp)/i, '💨'],
-  [/\b(summon|clone|spawn|conjure)/i, '🌟'],
-];
-
-const ARCHETYPE_ICON: Record<SkillArchetype, string> = {
+/** แหล่งเดียวของสัญลักษณ์ตามสไตล์ — deterministic 1:1 */
+export const STYLE_ICON: Record<SkillArchetype, string> = {
   projectile: '🌀',
-  beam: '✨',
+  beam: '🔆',
   aoe: '💥',
   ground: '🪨',
   dash: '💨',
   melee: '👊',
-  mobility: '💨',
+  mobility: '🕊️',
   buff: '💚',
   summon: '🌟',
+  homing: '🎯',
+  teleport: '✨',
 };
 
-/** ไอคอนเฉพาะท่า: ดูชื่อก่อน (สื่อธีมสุด) → คำอธิบาย → fallback ตาม archetype/หมวด */
-export function deriveIcon(raw: RawDatabookSkill, archetype: SkillArchetype, ctx: DeriveContext): string {
-  for (const source of [raw.name, raw.description]) {
-    for (const [re, emoji] of ICON_RULES) {
-      if (re.test(source)) return emoji;
-    }
-  }
-  if (archetype === 'projectile' || archetype === 'aoe') {
-    if (ctx.category === 'gun') return '🔫';
-    if (ctx.category === 'sword') return '⚔️';
-  }
-  return ARCHETYPE_ICON[archetype];
+/** สัญลักษณ์ของท่า = สไตล์การทำงานล้วน (ไม่อิงธาตุ/ชื่อ) */
+export function deriveIcon(archetype: SkillArchetype): string {
+  return STYLE_ICON[archetype];
 }
 
 // ---------------------------------------------------------------
@@ -334,7 +320,7 @@ export function deriveSkillGameplay(raw: RawDatabookSkill, ctx: DeriveContext): 
     id: raw.id,
     slot,
     archetype,
-    icon: deriveIcon(raw, archetype, ctx),
+    icon: deriveIcon(archetype),
     damage: deriveDamage(raw, ctx),
     hitCount: deriveHitCount(raw),
     range: shape.range,

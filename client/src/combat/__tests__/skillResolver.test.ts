@@ -66,11 +66,14 @@ describe('รูปแบบสกิลใหม่ (databook → castable)', (
     description: '',
   });
 
-  it('map archetype → render type ที่ต่างกันจริง (flurry/beam/ground/buff)', () => {
+  it('map archetype → render type ที่ต่างกันจริง (flurry/beam/ground/buff/summon/homing/teleport)', () => {
     const pick = (a: string) => ALL_SKILL_GAMEPLAY.find((r) => r.archetype === a);
     expect(toCastable(rawFrom(pick('melee')!), 1, 'style').renderType).toBe('flurry');
     expect(toCastable(rawFrom(pick('beam')!), 1, 'fruit').renderType).toBe('beam');
     expect(toCastable(rawFrom(pick('ground')!), 1, 'style').renderType).toBe('ground');
+    expect(toCastable(rawFrom(pick('summon')!), 1, 'fruit').renderType).toBe('summon');
+    expect(toCastable(rawFrom(pick('homing')!), 1, 'fruit').renderType).toBe('homing');
+    expect(toCastable(rawFrom(pick('teleport')!), 1, 'sword').renderType).toBe('teleport');
     const buff = pick('buff');
     if (buff) expect(toCastable(rawFrom(buff), 'ultimate', 'fruit').renderType).toBe('buff');
   });
@@ -96,6 +99,30 @@ describe('รูปแบบสกิลใหม่ (databook → castable)', (
     );
     expect(cast.hitCount).toBe(1);
     expect(cast.cc).toEqual([]);
+  });
+});
+
+describe('จัดเรียงช่อง Z/X/C/V (arrangement override)', () => {
+  it('override สลับสกิลบนปุ่ม (X↔C) ของผลไม้ rocket', () => {
+    // showcase ใน skillLayout.ts: rocket → { X:'rocket-base-c', C:'rocket-base-x' }
+    const loadout = new SkillLoadout({
+      ...DEFAULT_SKILL_LOADOUT,
+      ...FULL,
+      equippedFruitId: 'rocket',
+      activeSet: 'fruit',
+    });
+    const slots = loadout.resolveSlots();
+    expect(slots.find((s) => s.slot === 2)!.skillId).toBe('rocket-base-c'); // ปุ่ม X
+    expect(slots.find((s) => s.slot === 3)!.skillId).toBe('rocket-base-x'); // ปุ่ม C
+    expect(slots.find((s) => s.slot === 1)!.skillId).toBe('rocket-base-z'); // Z เดิม
+  });
+
+  it('ไอเทมที่ไม่มี override ใช้การจัดเรียงเดิม (หมัดเริ่มต้น)', () => {
+    const loadout = new SkillLoadout({ ...DEFAULT_SKILL_LOADOUT, ...FULL });
+    const slots = loadout.resolveSlots();
+    // combat ไม่มี override → ปุ่ม X ใช้ท่า key X ของมันเอง (Ground Smash)
+    expect(slots.find((s) => s.slot === 2)!.skillId).toBe('combat-x');
+    expect(slots.find((s) => s.slot === 3)!.skillId).toBe('combat-c');
   });
 });
 

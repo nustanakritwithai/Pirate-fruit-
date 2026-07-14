@@ -9,6 +9,7 @@ import { listSkillsForFightingStyle } from '../fighting-styles/skills/FightingSt
 import { listSkillsForGun } from '../guns/skills/GunSkillRegistry';
 import { listSkillsForSword } from '../swords/skills/SwordSkillRegistry';
 import { listSkillsForFruit } from '../fruit/skills/FruitSkillRegistry';
+import { arrangedSkill } from './skillLayout';
 
 /** provider ให้ mastery ต่อชิ้นจริง (จาก ProgressionManager) — ไม่มี → ใช้ค่าใน state */
 export type MasteryProvider = (itemId: string) => number;
@@ -220,11 +221,13 @@ export class SkillLoadout {
       }));
     }
 
-    const byKey = baseSkillByKey(listAll(weaponId));
+    const all = listAll(weaponId);
+    const byKey = baseSkillByKey(all);
+    const byId = new Map(all.map((s) => [s.id, s] as const));
     const currentMastery = this.masteryFor(weaponId, fallbackMastery);
 
     return slotMap.map(({ slot, key }) => {
-      const skill = byKey.get(key);
+      const skill = arrangedSkill(weaponId, key, byKey, byId);
       if (!skill) {
         const missingLabel =
           slot === 'ultimate' ? `${weaponLabel}ไม่มีไม้ตาย` : `${weaponLabel}ไม่มีสกิล ${key}`;
@@ -266,10 +269,11 @@ export class SkillLoadout {
       return true;
     });
     const byKey = baseSkillByKey(moveset);
+    const byId = new Map(moveset.map((s) => [s.id, s] as const));
     const currentMastery = this.masteryFor(fruitId, this.state.fruitMastery);
 
     return FRUIT_SLOT_MAP.map(({ slot, key }) => {
-      const skill = byKey.get(key);
+      const skill = arrangedSkill(fruitId, key, byKey, byId);
       if (!skill) {
         return { slot, skillId: null, label: key, locked: true, masteryRequired: 0, lockReason: `ไม่มีสกิล ${key}` };
       }
