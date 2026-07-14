@@ -14,7 +14,7 @@ import { GUN_SKILLS } from '../../../guns/skills/databook/skills';
 import { FIGHTING_STYLE_SKILLS } from '../../../fighting-styles/skills/databook/skills';
 import { toCastable, archetypeToRenderType } from '../../SkillCasting';
 
-const ARCHETYPES = ['projectile', 'aoe', 'ground', 'dash', 'melee', 'mobility', 'buff', 'summon'];
+const ARCHETYPES = ['projectile', 'beam', 'aoe', 'ground', 'dash', 'melee', 'mobility', 'buff', 'summon'];
 const SLOTS = ['Z', 'X', 'C', 'V', 'F', 'M1'];
 const CC_TYPES = ['stun', 'knockback', 'launch', 'pull', 'disable', 'slow'];
 
@@ -62,6 +62,16 @@ describe('Skill Gameplay Databook — coverage', () => {
     // ชุดไอคอนต้องหลากหลายพอ (ไม่ใช่ 3-4 แบบเหมือนเดิม)
     const uniqueIcons = new Set(ALL_SKILL_GAMEPLAY.map((r) => r.icon));
     expect(uniqueIcons.size).toBeGreaterThanOrEqual(10);
+  });
+
+  it('archetype ใหม่ (beam + flurry/melee) ถูก classify จริง ไม่ถูก projectile/aoe แย่ง', () => {
+    const byArch = (a: string) => ALL_SKILL_GAMEPLAY.filter((r) => r.archetype === a).length;
+    expect(byArch('beam'), 'ควรมีลำแสงต่อเนื่องอย่างน้อย 3 ท่า').toBeGreaterThanOrEqual(3);
+    expect(byArch('melee'), 'มัดรัว/ประชิดเข้าถึงได้มากขึ้น').toBeGreaterThanOrEqual(8);
+    // ท่าเด่นที่ควรเป็นมัดรัว (เดิมถูกจัดเป็น aoe/projectile)
+    expect(getSkillGameplay('tiger-moveset-z')!.archetype).toBe('melee');
+    // ลำแสงต่อเนื่องที่ move/hold ได้
+    expect(getSkillGameplay('light-moveset-v2-x')!.archetype).toBe('beam');
   });
 
   it('ท่าที่ไม่ใช่ utility ต้องมีดาเมจ > 0', () => {

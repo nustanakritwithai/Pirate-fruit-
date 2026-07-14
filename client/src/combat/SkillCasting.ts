@@ -8,7 +8,13 @@
 
 import { LOADOUT_ITEMS, type ComboHit, type LoadoutCategory } from './CombatData';
 import type { SkillSlotIndex, WeaponKind } from './types';
-import { getSkillGameplay, type SkillArchetype, type SkillGameplay } from './skillGameplay';
+import {
+  getSkillGameplay,
+  type SkillArchetype,
+  type SkillGameplay,
+  type CcSpec,
+  type DotSpec,
+} from './skillGameplay';
 
 /** สกิลดิบจาก databook (รูปแบบร่วมของทุกหมวด) */
 export interface RawSkill {
@@ -20,7 +26,17 @@ export interface RawSkill {
   description: string;
 }
 
-export type SkillRenderType = 'projectile' | 'aoe' | 'dash';
+/**
+ * รูปแบบการเล่นจริงในเกม (ขยายจาก 3 → 7 ให้ตรง archetype ของ databook)
+ * - projectile: ยิงกระสุน/คลื่น (hitCount>=2 → ยิงเป็นพัดหลายนัด)
+ * - beam: ลำแสงต่อเนื่องเป็นเส้นหน้าตัว ฉีดดาเมจหลาย tick
+ * - aoe: ระเบิดรอบตัว (รวม summon)
+ * - ground: พุ่งจากพื้นเป็นโซนด้านหน้า (telegraph สั้นก่อนออก)
+ * - dash: พุ่งเข้าฟัน (รวม mobility)
+ * - flurry: มัดรัวประชิดหน้าตัวหลายครั้ง
+ * - buff: บัฟ/ฮีลตัวเอง ไม่มีเป้าโจมตี
+ */
+export type SkillRenderType = 'projectile' | 'beam' | 'aoe' | 'ground' | 'dash' | 'flurry' | 'buff';
 
 /** สกิลที่พร้อมยิงในเกม */
 export interface CastableSkill {
@@ -37,6 +53,12 @@ export interface CastableSkill {
   isUltimate: boolean;
   category: LoadoutCategory;
   color: number;
+  /** จำนวนฮิต — flurry/beam แบ่ง tick, projectile ยิงเป็นพัด */
+  hitCount: number;
+  /** crowd control ที่ท่าใส่ให้เป้าหมาย */
+  cc: CcSpec[];
+  /** ดาเมจต่อเนื่อง (พิษ/ไฟ) */
+  dot?: DotSpec;
 }
 
 /** โปรไฟล์ M1 (คอมโบโจมตีปกติ) ต่อชนิดอาวุธที่ถือ */
@@ -117,10 +139,18 @@ export function archetypeToRenderType(archetype: SkillArchetype): SkillRenderTyp
   switch (archetype) {
     case 'projectile':
       return 'projectile';
+    case 'beam':
+      return 'beam';
+    case 'ground':
+      return 'ground';
+    case 'melee':
+      return 'flurry';
+    case 'buff':
+      return 'buff';
     case 'dash':
     case 'mobility':
       return 'dash';
-    // ground/melee/summon/buff → ปล่อยผลรอบตัว (โซนใกล้ตัวละคร) ไปก่อน
+    // aoe + summon → ระเบิดรอบตัว
     default:
       return 'aoe';
   }
@@ -142,12 +172,23 @@ function fromGameplay(
   let range = gameplay.range;
   let radius = gameplay.radius;
   if (renderType === 'aoe') {
-    // ground/melee มี range หน้าตัว — ประมาณเป็นวงรอบตัวที่ใหญ่ขึ้น
+    // summon/aoe มี range หน้าตัว — ประมาณเป็นวงรอบตัวที่ใหญ่ขึ้น
     radius = Math.min(7.5, gameplay.radius + gameplay.range * 0.5);
     range = 0;
   } else if (renderType === 'dash' && range <= 0) {
     // mobility ที่ไม่มีระยะระบุ → วาร์ปสั้นไปข้างหน้า
     range = 6;
+  } else if (renderType === 'flurry') {
+    // มัดรัวหน้าตัว: ระยะเอื้อมสั้น, รัศมี = ความกว้างกรวย
+    range = Math.max(3, range);
+  } else if (renderType === 'beam') {
+    // ลำแสงยาวเป็นเส้นหน้าตัว
+    range = Math.max(12, range);
+  } else if (renderType === 'ground') {
+    // โซนพุ่งจากพื้นด้านหน้า
+    range = Math.max(4, range);
+  } else if (renderType === 'buff') {
+    range = 0;
   }
   return {
     id: gameplay.id,
@@ -164,6 +205,9 @@ function fromGameplay(
     isUltimate,
     category,
     color: gameplay.vfxColor,
+    hitCount: Math.max(1, gameplay.hitCount),
+    cc: gameplay.cc,
+    ...(gameplay.dot ? { dot: gameplay.dot } : {}),
   };
 }
 
@@ -222,5 +266,7 @@ export function toCastable(
     isUltimate,
     category,
     color: CATEGORY_COLOR[category],
+    hitCount: 1,
+    cc: [],
   };
 }

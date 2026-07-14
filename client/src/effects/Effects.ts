@@ -352,6 +352,23 @@ export class Effects {
     });
   }
 
+  /** ลำแสงต่อเนื่อง 1 tick — เส้นยาวจาก origin ไปตาม direction (สกิล beam) */
+  spawnBeam(origin: THREE.Vector3, direction: THREE.Vector3, length: number, color = 0xbfe8ff): void {
+    const material = additiveMaterial(color, 0.82);
+    const geometry = new THREE.CylinderGeometry(0.28, 0.28, Math.max(1, length), 12, 1, true);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'effect:beam';
+    const dir = direction.clone().normalize();
+    mesh.position.copy(origin).addScaledVector(dir, length / 2);
+    mesh.quaternion.setFromUnitVectors(Y_AXIS, dir);
+    this.scene.add(mesh);
+    this.track(mesh, 0.13, [material], [geometry], (progress, remaining) => {
+      material.opacity = remaining * 0.82;
+      const s = 1 + progress * 0.6;
+      mesh.scale.set(s, 1, s);
+    });
+  }
+
   /** ตัวเลขดาเมจลอยขึ้นเหนือเป้า */
   spawnDamageNumber(position: THREE.Vector3, amount: number, color = '#ffe28a'): void {
     const canvas = document.createElement('canvas');

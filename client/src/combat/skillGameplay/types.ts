@@ -12,6 +12,7 @@ export type SkillSlotKey = 'Z' | 'X' | 'C' | 'V' | 'F' | 'M1';
 /**
  * รูปแบบการทำงานของท่า
  * - projectile: ยิงกระสุน/คลื่นไปข้างหน้า
+ * - beam: ลำแสง/เลเซอร์ต่อเนื่อง (ช่องหน้าเป็นเส้น ฉีดดาเมจต่อเนื่องช่วงสั้น)
  * - aoe: ระเบิดรอบตัว/รอบจุด
  * - ground: กระแทกพื้น/พุ่งจากพื้น (โซนหน้าตัวละคร)
  * - dash: พุ่งเข้าฟัน/ชาร์จ
@@ -22,6 +23,7 @@ export type SkillSlotKey = 'Z' | 'X' | 'C' | 'V' | 'F' | 'M1';
  */
 export type SkillArchetype =
   | 'projectile'
+  | 'beam'
   | 'aoe'
   | 'ground'
   | 'dash'

@@ -27,6 +27,7 @@ import {
 import type { SkillLoadout } from './SkillLoadout';
 import { resolveActiveSet, resolveEquippedItems, type ActiveSkillSet } from './SkillResolver';
 import type { CastableSkill, SkillRenderType } from './SkillCasting';
+import type { CcSpec, DotSpec } from './skillGameplay';
 import {
   type CombatState,
   ATTACK_STATES,
@@ -48,6 +49,58 @@ interface WaveProjectile {
   radius: number;
   hit: Set<Monster>;
   damage: number;
+  knockback: number;
+  source: CombatRewardSource;
+  dot?: DotSpec;
+}
+
+/** channel ที่กำลังทำงาน (flurry มัดรัว / beam ลำแสง) — ฉีดดาเมจเป็น tick ระหว่างล็อกท่า */
+interface SkillChannel {
+  kind: 'flurry' | 'beam';
+  skill: CastableSkill;
+  dirX: number;
+  dirZ: number;
+  perTickDamage: number;
+  totalTicks: number;
+  ticksDone: number;
+  tickInterval: number;
+  tickAcc: number;
+  knockback: number;
+  color: number;
+  source: CombatRewardSource;
+}
+
+/** โซนพุ่งจากพื้น (ground) — telegraph สั้นก่อนระเบิด */
+interface PendingZone {
+  timer: number;
+  x: number;
+  z: number;
+  radius: number;
+  damage: number;
+  knockback: number;
+  color: number;
+  source: CombatRewardSource;
+  dot?: DotSpec;
+}
+
+/** โซนพิษ/ไฟค้างพื้น — มอนที่อยู่ในรัศมีโดน tick ต่อเนื่อง */
+interface DotField {
+  x: number;
+  z: number;
+  radius: number;
+  dps: number;
+  remaining: number;
+  tickAcc: number;
+  color: number;
+  source: CombatRewardSource;
+}
+
+/** DoT ติดตัวมอนสเตอร์รายตัว (พิษ/ไฟจากการโดนสกิล) */
+interface ActiveDot {
+  monster: Monster;
+  dps: number;
+  remaining: number;
+  tickAcc: number;
   source: CombatRewardSource;
 }
 
@@ -132,6 +185,13 @@ export class PlayerCombat {
   private skillVisualCategory: LoadoutCategory = 'style';
 
   private readonly projectiles: WaveProjectile[] = [];
+  /** channel/zone/dot/buff — รูปแบบสกิลใหม่ (flurry/beam/ground/DoT/buff) */
+  private activeChannel: SkillChannel | null = null;
+  private readonly pendingZones: PendingZone[] = [];
+  private readonly dotFields: DotField[] = [];
+  private readonly activeDots: ActiveDot[] = [];
+  private skillBuffTimer = 0;
+  private skillBuffMultiplier = 1;
   private readonly shield: THREE.Mesh;
   private visualAnchors: CombatVisualAnchorProvider | null = null;
 
@@ -439,6 +499,10 @@ export class PlayerCombat {
     }
 
     this.updateProjectiles(dt);
+    this.advanceChannel(dt);
+    this.updateZones(dt);
+    this.updateDots(dt);
+    if (this.skillBuffTimer > 0) this.skillBuffTimer -= dt;
   }
 
   private toggleSkillSource(): void {
@@ -462,6 +526,7 @@ export class PlayerCombat {
     this.stateTimer = duration;
     this.swing = null;
     this.pendingCast = null;
+    this.activeChannel = null; // โดนขัด (stun/knockback) → หยุด channel มัดรัว/ลำแสง
     if (state === 'stunned' || state === 'knockback' || state === 'knockdown' || state === 'dead') {
       this.skillVisualElapsed = this.skillVisualDuration;
     }
@@ -587,11 +652,14 @@ export class PlayerCombat {
     this.swing = null;
     this.comboIndex = 0;
     this.pendingCast = { skill, slot, timer: skill.castTime };
-    const followThrough = skill.renderType === 'aoe'
-      ? 0.56
-      : skill.renderType === 'dash'
-        ? 0.38
-        : 0.46;
+    const followThrough =
+      skill.renderType === 'aoe' || skill.renderType === 'ground' || skill.renderType === 'buff'
+        ? 0.56
+        : skill.renderType === 'dash'
+          ? 0.38
+          : skill.renderType === 'flurry' || skill.renderType === 'beam'
+            ? 0.6
+            : 0.46;
     this.skillVisualDuration = Math.max(0.44, skill.castTime + followThrough);
     this.skillVisualElapsed = 0;
     this.skillVisualReleaseProgress = THREE.MathUtils.clamp(
@@ -628,54 +696,333 @@ export class PlayerCombat {
     const source = this.skillSource();
     const scaledDamage = skill.damage * this.damageMultiplier(skill.category);
 
-    if (skill.renderType === 'projectile') {
-      const color = skill.isUltimate
-        ? new THREE.Color(skill.color).lerp(new THREE.Color(0xffd45a), 0.35).getHex()
-        : skill.color;
-      const scale = skill.isUltimate ? 1.7 : 1;
-      const direction = new THREE.Vector3(dirX, 0, dirZ);
-      const start = new THREE.Vector3(
-        position.x + dirX * 1.2,
-        position.y + 1.15,
-        position.z + dirZ * 1.2,
-      );
+    switch (skill.renderType) {
+      case 'projectile':
+        this.fireProjectiles(skill, position, dirX, dirZ, scaledDamage, source);
+        break;
+      case 'beam':
+        this.startChannel('beam', skill, dirX, dirZ, scaledDamage, source);
+        break;
+      case 'flurry':
+        this.startChannel('flurry', skill, dirX, dirZ, scaledDamage, source);
+        break;
+      case 'ground':
+        this.eruptGround(skill, position, dirX, dirZ, scaledDamage, source);
+        break;
+      case 'buff':
+        this.castBuff(skill, position);
+        break;
+      case 'aoe':
+        this.effects.spawnShockwave(position, skill.radius);
+        if (scaledDamage > 0) {
+          this.damageZone(
+            position.x,
+            position.z,
+            skill.radius,
+            scaledDamage,
+            this.ccKnockback(skill.cc, skill.isUltimate ? 10 : 6),
+            source,
+            skill.dot,
+          );
+        }
+        break;
+      default: // dash (รวม mobility — ดาเมจ 0 = แค่เคลื่อนที่)
+        this.dashStrike(skill, position, dirX, dirZ, scaledDamage, source);
+    }
+  }
+
+  /** projectile — ยิงเป็นพัด hitCount นัด (single-hit = นัดเดียวเหมือนเดิม) */
+  private fireProjectiles(
+    skill: CastableSkill,
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    const shots = Math.min(8, Math.max(1, skill.hitCount));
+    const color = skill.isUltimate
+      ? new THREE.Color(skill.color).lerp(new THREE.Color(0xffd45a), 0.35).getHex()
+      : skill.color;
+    const scale = skill.isUltimate ? 1.7 : 1;
+    const perShot = scaledDamage / shots;
+    const knockback = this.ccKnockback(skill.cc, 5);
+    const spread = shots > 1 ? THREE.MathUtils.degToRad(9) : 0;
+    const baseAngle = Math.atan2(dirX, dirZ);
+    for (let i = 0; i < shots; i++) {
+      const angle = baseAngle + (shots > 1 ? (i - (shots - 1) / 2) * spread : 0);
+      const sx = Math.sin(angle);
+      const sz = Math.cos(angle);
+      const direction = new THREE.Vector3(sx, 0, sz);
+      const start = new THREE.Vector3(position.x + sx * 1.2, position.y + 1.15, position.z + sz * 1.2);
       const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
       this.projectiles.push({
         visual,
-        dirX,
-        dirZ,
+        dirX: sx,
+        dirZ: sz,
         life: WAVE_LIFETIME,
         radius: skill.radius,
         hit: new Set(),
-        damage: scaledDamage,
+        damage: perShot,
+        knockback,
         source,
+        ...(skill.dot ? { dot: skill.dot } : {}),
       });
       this.effects.spawnEnergyLaunch(start, direction, color, scale * 1.15);
-    } else if (skill.renderType === 'aoe') {
-      this.effects.spawnShockwave(position, skill.radius);
-      // ท่า utility (buff/summon ที่ยังไม่มีผลจริง) ดาเมจ 0 → โชว์เอฟเฟกต์อย่างเดียว
-      if (scaledDamage > 0) {
-        this.monsters.damageRadius(position, skill.radius, scaledDamage, skill.isUltimate ? 10 : 6, source);
-      }
+    }
+  }
+
+  /** เริ่ม channel มัดรัว/ลำแสง — ล็อกท่าไว้จน tick ครบ (advanceChannel ปลดเป็น idle) */
+  private startChannel(
+    kind: 'flurry' | 'beam',
+    skill: CastableSkill,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    const hasStun = skill.cc.some((c) => c.type === 'stun');
+    const totalTicks =
+      kind === 'flurry'
+        ? Math.max(3, Math.min(8, skill.hitCount))
+        : Math.max(4, Math.min(8, skill.hitCount) + (hasStun ? 2 : 0));
+    this.activeChannel = {
+      kind,
+      skill,
+      dirX,
+      dirZ,
+      perTickDamage: scaledDamage / totalTicks,
+      totalTicks,
+      ticksDone: 0,
+      tickInterval: kind === 'flurry' ? 0.11 : skill.isUltimate ? 0.1 : 0.09,
+      tickAcc: 0,
+      knockback: this.ccKnockback(skill.cc, kind === 'flurry' ? 2 : 1),
+      color: skill.color,
+      source,
+    };
+    this.combatState = 'casting';
+    this.channelTick(); // tick แรกทันที
+  }
+
+  private advanceChannel(dt: number): void {
+    const ch = this.activeChannel;
+    if (!ch) return;
+    ch.tickAcc += dt;
+    while (ch.tickAcc >= ch.tickInterval && ch.ticksDone < ch.totalTicks) {
+      ch.tickAcc -= ch.tickInterval;
+      this.channelTick();
+    }
+    if (ch.ticksDone >= ch.totalTicks) {
+      this.activeChannel = null;
+      if (this.combatState === 'casting') this.combatState = 'idle';
+    }
+  }
+
+  /** ฉีดดาเมจ 1 tick ของ channel */
+  private channelTick(): void {
+    const ch = this.activeChannel;
+    if (!ch) return;
+    ch.ticksDone++;
+    const position = this.controller.position;
+    const heading = this.controller.heading;
+    const isLast = ch.ticksDone >= ch.totalTicks;
+
+    if (ch.kind === 'flurry') {
+      this.monsters.playerAttack(position, heading, {
+        damage: ch.perTickDamage,
+        range: ch.skill.range,
+        arcCos: 0.5, // กรวยหน้า ~60°
+        knockback: isLast ? Math.max(ch.knockback, 6) : ch.knockback,
+        source: ch.source,
+        onHit: ch.skill.dot ? (m) => this.applyDot(m, ch.skill.dot!, ch.source) : undefined,
+      });
+      this.effects.spawnSlash(position, heading, ch.color, isLast ? 1.5 : 0.9);
     } else {
-      // dash (รวม mobility จาก databook — ดาเมจ 0 = แค่เคลื่อนที่)
-      this.controller.startDash(dirX, dirZ, skill.range / LUNGE_DURATION, LUNGE_DURATION);
-      const samplePoint = new THREE.Vector3();
+      // beam — sample หลายจุดตามแนวเส้นหน้าตัว
+      const segs = 5;
       const damaged = new Set<Monster>();
-      for (let step = 0; scaledDamage > 0 && step <= 3; step++) {
-        samplePoint.set(
-          position.x + (dirX * skill.range * step) / 3,
-          position.y,
-          position.z + (dirZ * skill.range * step) / 3,
-        );
-        for (const monster of this.monsters.monstersNear(samplePoint.x, samplePoint.z, skill.radius)) {
-          if (damaged.has(monster)) continue;
-          damaged.add(monster);
-          this.monsters.applyHit(monster, scaledDamage, position.x, position.z, 6, source);
+      for (let s = 1; s <= segs; s++) {
+        const d = (ch.skill.range * s) / segs;
+        const px = position.x + ch.dirX * d;
+        const pz = position.z + ch.dirZ * d;
+        for (const m of this.monsters.monstersNear(px, pz, ch.skill.radius)) {
+          if (damaged.has(m)) continue;
+          damaged.add(m);
+          this.monsters.applyHit(m, ch.perTickDamage, position.x, position.z, ch.knockback, ch.source);
+          if (ch.skill.dot) this.applyDot(m, ch.skill.dot, ch.source);
         }
       }
-      this.effects.spawnSlash(position, heading, 0xffe27a, skill.isUltimate ? 1.9 : 1.5);
+      this.effects.spawnBeam(
+        new THREE.Vector3(position.x + ch.dirX * 1.2, position.y + 1.15, position.z + ch.dirZ * 1.2),
+        new THREE.Vector3(ch.dirX, 0, ch.dirZ),
+        ch.skill.range,
+        ch.color,
+      );
     }
+  }
+
+  /** ground — telegraph สั้นแล้วระเบิดโซนด้านหน้า (+ทิ้ง DoT field ถ้ามีพิษ) */
+  private eruptGround(
+    skill: CastableSkill,
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    const x = position.x + dirX * skill.range * 0.65;
+    const z = position.z + dirZ * skill.range * 0.65;
+    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), skill.radius * 0.55, 0xffd27a);
+    this.pendingZones.push({
+      timer: 0.32,
+      x,
+      z,
+      radius: skill.radius,
+      damage: scaledDamage,
+      knockback: this.ccKnockback(skill.cc, 7),
+      color: skill.color,
+      source,
+      ...(skill.dot ? { dot: skill.dot } : {}),
+    });
+  }
+
+  private updateZones(dt: number): void {
+    const pos = this.controller.position;
+    for (let i = this.pendingZones.length - 1; i >= 0; i--) {
+      const zone = this.pendingZones[i];
+      zone.timer -= dt;
+      if (zone.timer > 0) continue;
+      this.effects.spawnShockwave(new THREE.Vector3(zone.x, pos.y, zone.z), zone.radius, zone.color);
+      if (zone.damage > 0) {
+        this.damageZone(zone.x, zone.z, zone.radius, zone.damage, zone.knockback, zone.source, zone.dot);
+      }
+      if (zone.dot) {
+        this.dotFields.push({
+          x: zone.x,
+          z: zone.z,
+          radius: zone.radius,
+          dps: zone.dot.dps,
+          remaining: zone.dot.duration,
+          tickAcc: 0,
+          color: zone.color,
+          source: zone.source,
+        });
+      }
+      this.pendingZones.splice(i, 1);
+    }
+    // DoT field ค้างพื้น (พิษ/ไฟ) — มอนที่อยู่ในโซนโดน tick
+    for (let i = this.dotFields.length - 1; i >= 0; i--) {
+      const field = this.dotFields[i];
+      field.remaining -= dt;
+      field.tickAcc += dt;
+      if (field.tickAcc >= 0.5) {
+        const tickDmg = field.dps * field.tickAcc;
+        field.tickAcc = 0;
+        for (const m of this.monsters.monstersNear(field.x, field.z, field.radius)) {
+          this.monsters.applyHit(m, tickDmg, field.x, field.z, 0, field.source);
+        }
+      }
+      if (field.remaining <= 0) this.dotFields.splice(i, 1);
+    }
+  }
+
+  /** buff/heal — ฮีล + เพิ่มพลังงาน + บัฟดาเมจชั่วคราว */
+  private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
+    const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
+    this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + healHp);
+    this.controller.energy = Math.min(
+      this.controller.energyMax,
+      this.controller.energy + (skill.isUltimate ? 30 : 18),
+    );
+    this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
+    this.skillBuffTimer = 8;
+    this.effects.spawnShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
+    this.touch?.notify(
+      `✨ บัฟ! ดาเมจ x${this.skillBuffMultiplier.toFixed(2)} · ฮีล +${Math.round(healHp)}`,
+    );
+  }
+
+  /** dash พุ่งฟัน (+DoT ถ้ามี) */
+  private dashStrike(
+    skill: CastableSkill,
+    position: THREE.Vector3,
+    dirX: number,
+    dirZ: number,
+    scaledDamage: number,
+    source: CombatRewardSource,
+  ): void {
+    this.controller.startDash(dirX, dirZ, skill.range / LUNGE_DURATION, LUNGE_DURATION);
+    const samplePoint = new THREE.Vector3();
+    const damaged = new Set<Monster>();
+    const knockback = this.ccKnockback(skill.cc, 6);
+    for (let step = 0; scaledDamage > 0 && step <= 3; step++) {
+      samplePoint.set(
+        position.x + (dirX * skill.range * step) / 3,
+        position.y,
+        position.z + (dirZ * skill.range * step) / 3,
+      );
+      for (const monster of this.monsters.monstersNear(samplePoint.x, samplePoint.z, skill.radius)) {
+        if (damaged.has(monster)) continue;
+        damaged.add(monster);
+        this.monsters.applyHit(monster, scaledDamage, position.x, position.z, knockback, source);
+        if (skill.dot) this.applyDot(monster, skill.dot, source);
+      }
+    }
+    this.effects.spawnSlash(position, Math.atan2(dirX, dirZ), 0xffe27a, skill.isUltimate ? 1.9 : 1.5);
+  }
+
+  /** ดาเมจทุกตัวในโซน + ติด DoT ถ้ามี (แทน damageRadius เพื่อรองรับพิษ) */
+  private damageZone(
+    x: number,
+    z: number,
+    radius: number,
+    damage: number,
+    knockback: number,
+    source: CombatRewardSource,
+    dot?: DotSpec,
+  ): void {
+    for (const monster of this.monsters.monstersNear(x, z, radius)) {
+      this.monsters.applyHit(monster, damage, x, z, knockback, source);
+      if (dot) this.applyDot(monster, dot, source);
+    }
+  }
+
+  /** ลง/รีเฟรช DoT ติดตัวมอนสเตอร์ */
+  private applyDot(monster: Monster, dot: DotSpec, source: CombatRewardSource): void {
+    const existing = this.activeDots.find((d) => d.monster === monster);
+    if (existing) {
+      existing.remaining = Math.max(existing.remaining, dot.duration);
+      existing.dps = Math.max(existing.dps, dot.dps);
+    } else {
+      this.activeDots.push({ monster, dps: dot.dps, remaining: dot.duration, tickAcc: 0, source });
+    }
+  }
+
+  private updateDots(dt: number): void {
+    for (let i = this.activeDots.length - 1; i >= 0; i--) {
+      const d = this.activeDots[i];
+      if (!d.monster.alive) {
+        this.activeDots.splice(i, 1);
+        continue;
+      }
+      d.remaining -= dt;
+      d.tickAcc += dt;
+      if (d.tickAcc >= 0.5) {
+        const p = d.monster.group.position;
+        this.monsters.applyHit(d.monster, d.dps * d.tickAcc, p.x, p.z, 0, d.source);
+        d.tickAcc = 0;
+      }
+      if (d.remaining <= 0) this.activeDots.splice(i, 1);
+    }
+  }
+
+  /** แปลง cc → แรง knockback ที่ส่งเข้า applyHit (stun/pull/slow ยังไม่มีผลกับมอน) */
+  private ccKnockback(cc: CcSpec[], base: number): number {
+    let kb = base;
+    for (const c of cc) {
+      if (c.type === 'knockback' || c.type === 'launch') kb = Math.max(kb, c.power);
+    }
+    return kb;
   }
 
   private updateProjectiles(dt: number): void {
@@ -698,9 +1045,10 @@ export class PlayerCombat {
           wave.damage,
           wave.visual.root.position.x - wave.dirX,
           wave.visual.root.position.z - wave.dirZ,
-          5,
+          wave.knockback,
           wave.source,
         );
+        if (wave.dot) this.applyDot(monster, wave.dot, wave.source);
         const impactPosition = monster.group.position.clone();
         impactPosition.y += monster.type.kind === 'crab' ? 0.65 : 1.05 * monster.type.scale;
         this.effects.spawnEnergyImpact(
@@ -718,7 +1066,9 @@ export class PlayerCombat {
   }
 
   private damageMultiplier(category: LoadoutCategory): number {
-    return this.progression?.getDamageMultiplier(category) ?? 1;
+    const base = this.progression?.getDamageMultiplier(category) ?? 1;
+    // บัฟชั่วคราวจากสกิล buff — คูณดาเมจทุกท่าระหว่างเปิดใช้
+    return base * (this.skillBuffTimer > 0 ? this.skillBuffMultiplier : 1);
   }
 
   /** source ของ M1 = อาวุธที่ถือ */

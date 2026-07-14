@@ -53,6 +53,13 @@ const AOE_RE =
   /\b(explosion|explodes?|exploding|around (?:them|the user|themselves)|surround(?:s|ing)?|nearby enemies|all (?:nearby )?enemies|aura|nova|storm|rains?(?: down)?|barrage of .{0,30}(?:down|sky|air)|spins? (?:around|rapidly)|expands?|burst(?:s)? (?:of|outward)|area of effect|in an area|radius)\b/i;
 const MELEE_RE =
   /\b(punch(?:es)?|kicks?|barrage of (?:punches|kicks|strikes)|combo of|series of (?:punches|kicks|slashes|strikes)|swings? (?:their|the) .{0,24}(?:sword|blade|weapon|fist)|slash(?:es)? (?:the|at) (?:enemy|opponent|target)|close[- ]range|melee|bites?|claws?)\b/i;
+// มัดรัว — โจมตีประชิดรัวหลายครั้งข้างหน้า (แยกออกจากท่าตีครั้งเดียว) เช็คก่อน projectile/aoe
+const FLURRY_RE =
+  /\b(flurry|barrage of (?:punches|kicks|strikes|slashes|jabs|blows|hits)|rapidly (?:slash|slashes|punch|punches|kick|kicks|strike|strikes|jab|jabs|hit)|rapid (?:punches|kicks|strikes|slashes|jabs|hits)|series of (?:rapid )?(?:punches|kicks|slashes|strikes|jabs)|unleashe?s? a (?:flurry|barrage))\b/i;
+// ลำแสงต่อเนื่อง — ต้องมีคำว่า beam/laser + สัญญาณ "ค้าง/กวาด/ต่อเนื่อง" (กันท่ายิงลำแสงนัดเดียว)
+const BEAM_RE = /\b(beams?|lasers?|ray of (?:light|energy))\b/i;
+const BEAM_SUSTAINED_RE =
+  /\b(continuous(?:ly)?|sweeps?|sweeping|move (?:it|the beam|around)|held|for as long|while (?:active|held|the skill)|lasts?|channel|prolonged)\b/i;
 const PROJECTILE_RE =
   /\b(shoots?|shooting|fires?|firing|launch(?:es)?|throws?|hurls?|beams?|lasers?|projectiles?|bullets?|arrows?|blasts? (?:of|at|towards?)|sends? (?:out|forth|a|an|\d+)|flings?|spits?|breath(?:es)?)\b/i;
 
@@ -69,6 +76,9 @@ export function deriveArchetype(raw: RawDatabookSkill): SkillArchetype {
   if (BUFF_RE.test(text) && !PROJECTILE_RE.test(text)) return 'buff';
   if (DASH_RE.test(text)) return 'dash';
   if (GROUND_RE.test(text)) return 'ground';
+  // มัดรัว/ลำแสงต่อเนื่อง เช็คก่อน projectile/aoe (คำว่า beam/barrage อยู่ในกฎกว้างด้านล่าง)
+  if (FLURRY_RE.test(text)) return 'melee';
+  if (BEAM_RE.test(text) && BEAM_SUSTAINED_RE.test(text)) return 'beam';
   if (PROJECTILE_RE.test(text)) return 'projectile';
   if (AOE_RE.test(text)) return 'aoe';
   if (MELEE_RE.test(text)) return 'melee';
@@ -196,6 +206,9 @@ export function deriveShape(
   switch (archetype) {
     case 'projectile':
       return { range: isUlt ? 22 : 18, radius: isUlt ? 2.6 : 2.0, projectileSpeed: isUlt ? 19 : 17 };
+    case 'beam':
+      // ลำแสงเป็นเส้นยาวหน้าตัว รัศมี = ครึ่งความกว้างลำแสง
+      return { range: isUlt ? 20 : 16, radius: isUlt ? 2.2 : 1.6 };
     case 'aoe':
       return { range: 0, radius: isUlt ? 6.5 : 4.8 };
     case 'ground':
@@ -284,6 +297,7 @@ const ICON_RULES: [RegExp, string][] = [
 
 const ARCHETYPE_ICON: Record<SkillArchetype, string> = {
   projectile: '🌀',
+  beam: '✨',
   aoe: '💥',
   ground: '🪨',
   dash: '💨',

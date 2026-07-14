@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SkillLoadout, DEFAULT_SKILL_LOADOUT } from '../SkillLoadout';
 import { resolveActiveSet } from '../SkillResolver';
 import { inferRenderType, toCastable, WEAPON_M1, type RawSkill } from '../SkillCasting';
+import { ALL_SKILL_GAMEPLAY } from '../skillGameplay';
 
 const FULL = {
   swordMastery: 600,
@@ -52,6 +53,49 @@ describe('SkillCasting adapter', () => {
     const skill = toCastable(raw({ cooldown: null, energy: null }), 2, 'sword');
     expect(skill.cooldown).toBeGreaterThan(0);
     expect(skill.energyCost).toBeGreaterThan(0);
+  });
+});
+
+describe('รูปแบบสกิลใหม่ (databook → castable)', () => {
+  const rawFrom = (rec: (typeof ALL_SKILL_GAMEPLAY)[number]): RawSkill => ({
+    id: rec.id,
+    name: rec.id,
+    mastery: 1,
+    cooldown: rec.cooldown,
+    energy: rec.energy,
+    description: '',
+  });
+
+  it('map archetype → render type ที่ต่างกันจริง (flurry/beam/ground/buff)', () => {
+    const pick = (a: string) => ALL_SKILL_GAMEPLAY.find((r) => r.archetype === a);
+    expect(toCastable(rawFrom(pick('melee')!), 1, 'style').renderType).toBe('flurry');
+    expect(toCastable(rawFrom(pick('beam')!), 1, 'fruit').renderType).toBe('beam');
+    expect(toCastable(rawFrom(pick('ground')!), 1, 'style').renderType).toBe('ground');
+    const buff = pick('buff');
+    if (buff) expect(toCastable(rawFrom(buff), 'ultimate', 'fruit').renderType).toBe('buff');
+  });
+
+  it('พา hitCount / cc / dot เข้าเกมครบ (เดิมถูกทิ้ง)', () => {
+    const multi = ALL_SKILL_GAMEPLAY.find((r) => r.archetype === 'projectile' && r.hitCount >= 2)!;
+    const cast = toCastable(rawFrom(multi), 1, 'gun');
+    expect(cast.hitCount).toBe(multi.hitCount);
+    expect(Array.isArray(cast.cc)).toBe(true);
+
+    const dotRec = ALL_SKILL_GAMEPLAY.find((r) => r.dot)!;
+    expect(toCastable(rawFrom(dotRec), 1, 'fruit').dot).toEqual(dotRec.dot);
+
+    const stunRec = ALL_SKILL_GAMEPLAY.find((r) => r.cc.some((c) => c.type === 'stun'))!;
+    expect(toCastable(rawFrom(stunRec), 1, 'fruit').cc.some((c) => c.type === 'stun')).toBe(true);
+  });
+
+  it('fallback (ไม่มี record) ยังคืน hitCount/cc ที่ปลอดภัย', () => {
+    const cast = toCastable(
+      { id: 'no-record', name: 'X', mastery: 1, cooldown: 8, energy: 20, description: 'fires a beam' },
+      1,
+      'fruit',
+    );
+    expect(cast.hitCount).toBe(1);
+    expect(cast.cc).toEqual([]);
   });
 });
 

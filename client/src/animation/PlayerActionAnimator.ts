@@ -609,9 +609,10 @@ export class PlayerActionAnimator {
     const side = variant % 2 === 0 ? 1 : -1;
     const power = ultimate ? 1.22 : 1;
 
-    if (renderType === 'projectile') {
+    if (renderType === 'projectile' || renderType === 'beam' || renderType === 'flurry') {
+      // beam/flurry = ส่งมือไปหน้าเหมือนยิง/ต่อยรัว
       this.applyProjectileSkill(category, anticipation, strike, side, power);
-    } else if (renderType === 'aoe') {
+    } else if (renderType === 'aoe' || renderType === 'ground' || renderType === 'buff') {
       this.applyAreaSkill(category, anticipation, strike, side, power, ultimate);
     } else {
       this.applyDashSkill(category, anticipation, strike, side, power);
