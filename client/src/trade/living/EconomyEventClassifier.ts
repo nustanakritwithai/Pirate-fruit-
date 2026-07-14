@@ -273,6 +273,53 @@ export function classifyLogEntry(entry: EconomyLogEntry, now = Date.now()): Clas
     };
   }
 
+  if (msg.includes('หลีกเลี่ยงเส้นทาง') || msg.includes('เลิกใช้เส้นทาง')) {
+    return {
+      id: `log-${entry.tick}-avoid`,
+      priority: 'medium',
+      kind: 'route',
+      mergeKey: `avoid:${commodityId ?? cellId ?? 'r'}`,
+      message: truncateDisplay('⚠️ พ่อค้าหลีกเลี่ยงเส้นทาง'),
+      fullMessage: msg,
+      icon: '⚠️',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('ค้นพบเส้นทางกำไร') || msg.includes('เส้นทางใหม่กำไร')) {
+    return {
+      id: `log-${entry.tick}-new-route`,
+      priority: 'medium',
+      kind: 'route',
+      mergeKey: `new-route:${commodityId ?? 'x'}`,
+      message: truncateDisplay('💰 เส้นทางกำไรใหม่'),
+      fullMessage: msg,
+      icon: '💰',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('แออัดผิดปกติ') || msg.includes('congestion')) {
+    return {
+      id: `log-${entry.tick}-cong`,
+      priority: 'medium',
+      kind: 'route',
+      mergeKey: 'congestion',
+      message: truncateDisplay('🚢 เส้นทางแออัด'),
+      fullMessage: msg,
+      icon: '🚢',
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
   if (msg.includes('เส้นทางกำไรสูง')) {
     return {
       id: `log-${entry.tick}-trade-profit`,

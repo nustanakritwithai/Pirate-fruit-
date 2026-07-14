@@ -14,6 +14,7 @@ import {
   resetOrderCounter,
 } from '../TradeOrderGenerator';
 import { scoreOrderForTrader, pickBestOrderForTrader } from '../TraderDecision';
+import { getTraderProfile } from '../TraderMemoryStore';
 import {
   getExportableStock,
   getReservedAmount,
@@ -154,6 +155,7 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
     };
     const orderB = { ...orderA, id: 'b', expectedProfit: 120, profitPerCargoSlot: 15 };
     world.orders = [orderA, orderB];
+    getTraderProfile(world, trader.id).explorationRate = 0;
     const pick = pickBestOrderForTrader(trader, world.orders, world, 12);
     expect(pick?.order.id).toBe('b');
   });

@@ -13,6 +13,14 @@ export {
   createDefaultTraders,
 } from './DynamicTradeEconomy';
 export { generateTradeOrders, expireTradeOrders } from './TradeOrderGenerator';
-export { scoreOrderForTrader } from './TraderDecision';
+export { scoreOrderForTrader, scoreAllOrdersForTrader } from './TraderDecision';
+export { TRADER_MEMORY } from './TraderMemoryConfig';
+export {
+  ensureTraderMemoryState,
+  getTraderProfile,
+  getTraderRouteMemory,
+  recordShipmentMemory,
+  tickTraderMemoryDecay,
+} from './TraderMemoryStore';
 export { orderDedupKey, migrateAllRoutes } from './TradeRouteUtils';
 export { loadEconomyState, saveEconomyState, createFreshWorld } from './LivingTradePersistence';

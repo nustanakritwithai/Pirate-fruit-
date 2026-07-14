@@ -15,6 +15,17 @@ import {
 } from './TradeOrderGenerator';
 import { pickBestOrderForTrader } from './TraderDecision';
 import {
+  tickTraderMemoryDecay,
+  recordShipmentMemory,
+  updateRouteCongestion,
+  getEffectiveTravelTicks,
+  ensureTraderMemoryState,
+  clearTraderMemory,
+  resetRouteReputations,
+  addAvoidedRoute,
+  getTraderProfile,
+} from './TraderMemoryStore';
+import {
   getExportableStock,
   releaseReservation,
   releaseStaleReservations,
@@ -84,6 +95,7 @@ export function ensureTraders(world: EconomyWorldState): void {
   world.orders ??= [];
   world.reservations ??= [];
   world.orderGenCooldowns ??= {};
+  ensureTraderMemoryState(world);
 }
 
 export interface DynamicTradeTickResult {
@@ -101,6 +113,7 @@ export function updateDynamicTradeEconomy(
 ): DynamicTradeTickResult {
   const { allowDepart = true } = options;
   ensureTraders(world);
+  tickTraderMemoryDecay(world);
   releaseStaleReservations(world);
   expireTradeOrders(world, log);
 
@@ -189,7 +202,16 @@ function departAssignedOrders(
 
     order.status = 'in-transit';
     const route = findRoute(world, order.sourceIslandId, order.destinationIslandId);
-    const travelTicks = route?.travelTicks ?? ECONOMY_CONFIG.baseTransportTicks;
+    const travelTicks = route
+      ? Math.ceil(getEffectiveTravelTicks(route))
+      : ECONOMY_CONFIG.baseTransportTicks;
+
+    updateRouteCongestion(
+      world,
+      order.sourceIslandId,
+      order.destinationIslandId,
+      order.commodityId,
+    );
 
     shipCounter += 1;
     const ship: CargoShip = {
@@ -198,6 +220,8 @@ function departAssignedOrders(
       destinationCellId: order.destinationIslandId,
       cargo: { [order.commodityId]: amount },
       travelTimeRemaining: travelTicks,
+      plannedTravelTicks: route?.travelTicks ?? ECONOMY_CONFIG.baseTransportTicks,
+      departTick: world.tick,
       orderId: order.id,
       traderId: order.assignedTraderId,
     };
@@ -240,6 +264,7 @@ export function completeTradeShipment(
   order: DynamicTradeOrder,
   deliveredAmount: number,
   log: EconomyLogEntry[],
+  ship?: CargoShip,
 ): void {
   const dest = world.cells.find((c) => c.id === order.destinationIslandId);
   if (dest) {
@@ -258,11 +283,35 @@ export function completeTradeShipment(
   }
 
   const trader = world.traders.find((t) => t.id === order.assignedTraderId);
+  const ratio = deliveredAmount / Math.max(order.requestedAmount, 1);
+  const actualProfit = order.expectedProfit * ratio;
+  const revenue = order.expectedRevenue * ratio;
+  const cost = (order.purchaseCost + order.transportCost + order.riskCost) * ratio;
+
   if (trader) {
-    const profitShare = order.expectedProfit * (deliveredAmount / Math.max(order.requestedAmount, 1));
-    trader.totalProfit += profitShare;
+    trader.totalProfit += actualProfit;
     trader.activeOrderId = undefined;
     trader.cooldown = 1;
+  }
+
+  if (order.assignedTraderId) {
+    const planned = ship?.plannedTravelTicks ?? order.travelTicks;
+    const actual = planned + (ship?.departTick != null
+      ? world.tick - ship.departTick - (ship.travelTimeRemaining <= 0 ? 0 : ship.travelTimeRemaining)
+      : planned);
+    recordShipmentMemory(world, {
+      traderId: order.assignedTraderId,
+      order,
+      success: true,
+      actualProfit,
+      revenue,
+      cost,
+      travelTicks: Math.max(planned, actual),
+      plannedTravelTicks: planned,
+      spoilageLoss: ship?.spoilageLost ?? 0,
+      wasRaid: false,
+      deliveredAmount,
+    });
   }
 
   order.status = 'completed';
@@ -283,6 +332,7 @@ export function failTradeShipment(
   orderId: string,
   log: EconomyLogEntry[],
   loseCargo: boolean,
+  ship?: CargoShip,
 ): boolean {
   const order = world.orders.find((o) => o.id === orderId);
   if (!order || order.status !== 'in-transit') return false;
@@ -303,6 +353,23 @@ export function failTradeShipment(
   if (trader) {
     trader.activeOrderId = undefined;
     trader.cooldown = 2;
+  }
+
+  if (order.assignedTraderId) {
+    const planned = ship?.plannedTravelTicks ?? order.travelTicks;
+    recordShipmentMemory(world, {
+      traderId: order.assignedTraderId,
+      order,
+      success: false,
+      actualProfit: -order.purchaseCost * 0.5,
+      revenue: 0,
+      cost: order.purchaseCost,
+      travelTicks: planned,
+      plannedTravelTicks: planned,
+      spoilageLoss: 0,
+      wasRaid: loseCargo || ship?.wasRaided === true,
+      deliveredAmount: 0,
+    });
   }
 
   log.push({
@@ -386,5 +453,91 @@ export function debugFailFirstInTransit(world: EconomyWorldState, log: EconomyLo
   const ship = world.ships.find((s) => s.orderId);
   if (!ship?.orderId) return false;
   world.ships = world.ships.filter((s) => s.id !== ship.id);
-  return failTradeShipment(world, ship.orderId, log, true);
+  return failTradeShipment(world, ship.orderId, log, true, ship);
 }
+
+export function debugForceRouteSuccess(world: EconomyWorldState, _log: EconomyLogEntry[]): boolean {
+  const ship = world.ships.find((s) => s.orderId);
+  if (!ship?.orderId) return false;
+  ship.travelTimeRemaining = 0;
+  return true;
+}
+
+export function debugForceRaid(world: EconomyWorldState, log: EconomyLogEntry[]): boolean {
+  const ship = world.ships.find((s) => s.orderId);
+  if (!ship?.orderId) return false;
+  ship.wasRaided = true;
+  world.ships = world.ships.filter((s) => s.id !== ship.id);
+  return failTradeShipment(world, ship.orderId, log, true, ship);
+}
+
+export function debugAddProfitMemory(
+  world: EconomyWorldState,
+  traderId: string,
+  sourceId: import('./types').EconomyCellId,
+  destId: import('./types').EconomyCellId,
+  commodityId: import('./types').LivingCommodityId,
+  profit: number,
+): void {
+  const order: DynamicTradeOrder = {
+    id: 'debug-mem',
+    commodityId,
+    sourceIslandId: sourceId,
+    destinationIslandId: destId,
+    requestedAmount: 8,
+    remainingAmount: 8,
+    sourceBuyPrice: 100,
+    destinationSellPrice: 200,
+    expectedRevenue: 1600,
+    purchaseCost: 800,
+    transportCost: 5,
+    riskCost: 5,
+    spoilageCost: 0,
+    expectedProfit: profit,
+    profitPerCargoSlot: profit / 8,
+    urgency: 0.5,
+    travelTicks: 2,
+    createdTick: world.tick,
+    expiresAtTick: world.tick + 20,
+    status: 'completed',
+    assignedTraderId: traderId,
+  };
+  recordShipmentMemory(world, {
+    traderId,
+    order,
+    success: true,
+    actualProfit: profit,
+    revenue: profit + 800,
+    cost: 800,
+    travelTicks: 2,
+    plannedTravelTicks: 2,
+    spoilageLoss: 0,
+    wasRaid: false,
+    deliveredAmount: 8,
+  });
+}
+
+export function debugIncreaseRouteDanger(
+  world: EconomyWorldState,
+  sourceId: import('./types').EconomyCellId,
+  destId: import('./types').EconomyCellId,
+): void {
+  const route = findRoute(world, sourceId, destId);
+  if (route) route.danger = Math.min(1, (route.danger ?? 0.15) + 0.25);
+}
+
+export function debugReduceRouteDanger(
+  world: EconomyWorldState,
+  sourceId: import('./types').EconomyCellId,
+  destId: import('./types').EconomyCellId,
+): void {
+  const route = findRoute(world, sourceId, destId);
+  if (route) route.danger = Math.max(0.05, (route.danger ?? 0.15) - 0.15);
+}
+
+export function debugForceExploration(world: EconomyWorldState, traderId: string): void {
+  const profile = getTraderProfile(world, traderId);
+  profile.explorationRate = 1;
+}
+
+export { clearTraderMemory, resetRouteReputations, getTraderProfile, addAvoidedRoute };
