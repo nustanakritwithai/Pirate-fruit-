@@ -281,8 +281,16 @@ export const SUNSCAR_DESERT_NPCS: NPCDefinition[] = [
   },
 ];
 
+export const AZURE_FROST_NPCS: NPCDefinition[] = [
+  { id: 'frost-chief-nalin', islandId: 'azure-frost', name: 'นลิน', role: 'หัวหน้าหมู่บ้านนักล่า', x: 58, z: 204, color: 0x416f8e, action: 'quest-board', dialogue: ['ยินดีต้อนรับสู่เกาะเหมันต์คราม ดินแดนนี้เหมาะกับนักเดินทาง Level 51 ขึ้นไป', 'แมงมุมน้ำแข็งยึดทะเลสาบ โจรน้ำแข็งตั้งค่ายตะวันตก และโกเลมคริสตัลเฝ้าเหมืองทางเหนือ', 'ราชันน้ำแข็งหลับอยู่ในป้อมเหนือสุด เตรียมรับท่าฟาดที่ทะลุการป้องกันให้ดี'] },
+  { id: 'frost-harbor-master-tarin', islandId: 'azure-frost', name: 'ธาริน', role: 'นายท่าเหมันต์', x: 67, z: 193, color: 0x6c4f3d, action: 'boat-shop', dockId: 'azure-frost-harbor', dialogue: ['ท่าเรือฝั่งตะวันออกเฉียงใต้เชื่อมกลับไปยังเกาะทะเลทรายสุริยะ', 'น้ำแถบนี้เย็นจัดแต่เรือเดิมของเจ้ายังใช้ได้ เรียกเรือจากท่านี้ได้ทันที', 'เมื่อขึ้นฝั่ง จุดเกิดจะย้ายมาที่หมู่บ้านนักล่าโดยไม่กระทบเงินหรือ Progression เดิม'] },
+  { id: 'frost-dealer-iris', islandId: 'azure-frost', name: 'ไอริส', role: 'พ่อค้าคริสตัล', x: 63, z: 207, color: 0x725a92, action: 'dealer-shop', dialogue: ['คริสตัลครามช่วยเก็บพลังของอาวุธและผลไม้ไว้ได้นาน ข้าจึงเปิดกล่องสุ่มให้เจ้าที่นี่ได้', 'ศัตรูบนเกาะนี้แข็งแกร่งมาก ตรวจ Stats และ Mastery ของอุปกรณ์หลักก่อนออกล่า'] },
+  { id: 'frost-scholar-yura', islandId: 'azure-frost', name: 'ยูรา', role: 'นักสำรวจธารน้ำแข็ง', x: 35, z: 197, color: 0x397d83, dialogue: ['คริสตัลในเหมืองคือเศษพลังจากมงกุฎของราชันน้ำแข็ง พวกมันทำให้โกเลมตื่นขึ้น', 'หากเจ้าจะเข้าป้อม จงหลบท่าหนักแทนการยกโล่ เพราะความเย็นนั้นทะลุการป้องกันได้'] },
+];
+
 export const ALL_NPCS: NPCDefinition[] = [
   ...STARTER_NPCS,
   ...MIST_JUNGLE_NPCS,
   ...SUNSCAR_DESERT_NPCS,
+  ...AZURE_FROST_NPCS,
 ];

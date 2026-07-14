@@ -180,8 +180,21 @@ export const SUNSCAR_DESERT_POIS = {
 } as const satisfies Record<string, WorldPOI>;
 
 export const SUNSCAR_DESERT_POI_LIST: WorldPOI[] = Object.values(SUNSCAR_DESERT_POIS);
+
+/** จุดสำคัญของเกาะที่สี่: หมู่บ้าน ทะเลสาบน้ำแข็ง เหมืองคริสตัล และป้อมราชัน */
+export const AZURE_FROST_POIS = {
+  hunterVillage: { id: 'azure-frost-village', islandId: 'azure-frost', name: 'หมู่บ้านนักล่าเหมันต์', icon: '◆', x: 59, z: 201, safeRadius: 12 },
+  harbor: { id: 'azure-frost-harbor', islandId: 'azure-frost', name: 'ท่าเรือเหมันต์คราม', icon: '⚓', x: 66, z: 190, safeRadius: 8 },
+  frozenLake: { id: 'azure-frozen-lake', islandId: 'azure-frost', name: 'ทะเลสาบกระจกเยือกแข็ง', icon: '●', x: 29, z: 195, safeRadius: 9 },
+  raiderCamp: { id: 'azure-raider-camp', islandId: 'azure-frost', name: 'ค่ายโจรน้ำแข็ง', icon: '⚔', x: 11, z: 218, safeRadius: 8 },
+  crystalMine: { id: 'azure-crystal-mine', islandId: 'azure-frost', name: 'เหมืองคริสตัลคราม', icon: '◇', x: 47, z: 236, safeRadius: 9 },
+  frostCitadel: { id: 'azure-frost-citadel', islandId: 'azure-frost', name: 'ป้อมราชันน้ำแข็ง', icon: '▲', x: 20, z: 249, safeRadius: 11 },
+} as const satisfies Record<string, WorldPOI>;
+
+export const AZURE_FROST_POI_LIST: WorldPOI[] = Object.values(AZURE_FROST_POIS);
 export const ALL_WORLD_POI_LIST: WorldPOI[] = [
   ...WORLD_POI_LIST,
   ...MIST_JUNGLE_POI_LIST,
   ...SUNSCAR_DESERT_POI_LIST,
+  ...AZURE_FROST_POI_LIST,
 ];

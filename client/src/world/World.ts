@@ -7,6 +7,7 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { buildStarterIsland } from '../island/StarterIsland';
 import { buildMistJungleIsland } from '../island/MistJungleIsland';
 import { buildSunscarDesertIsland } from '../island/SunscarDesertIsland';
+import { buildAzureFrostIsland } from '../island/AzureFrostIsland';
 import {
   ISLANDS,
   STARTER_ISLAND_RADIUS,
@@ -138,6 +139,9 @@ export class World {
     );
     this.islandDetailRoots.set('sunscar-desert', sunscarDesert.root);
 
+    const azureFrost = buildAzureFrostIsland(scene, this.collision, textures, graphics, starterIsland.nightMaterial, starterIsland.nightLights);
+    this.islandDetailRoots.set('azure-frost', azureFrost.root);
+
     this.clouds = new CloudLayer(graphics);
     scene.add(this.clouds.mesh);
     this.dayNight = new DayNightCycle(
@@ -211,9 +215,11 @@ export class World {
     const t = this.textures;
     for (const tex of [t.grassColor, t.grassNormal]) tex.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
     const desert = island.id === 'sunscar-desert';
-    const groundMap = desert ? t.sandColor.clone() : t.grassColor;
-    const groundNormal = desert ? t.sandNormal.clone() : t.grassNormal;
-    if (desert) {
+    const frost = island.id === 'azure-frost';
+    const specialGround = desert || frost;
+    const groundMap = specialGround ? t.sandColor.clone() : t.grassColor;
+    const groundNormal = specialGround ? t.sandNormal.clone() : t.grassNormal;
+    if (specialGround) {
       groundMap.wrapS = groundMap.wrapT = THREE.RepeatWrapping;
       groundNormal.wrapS = groundNormal.wrapT = THREE.RepeatWrapping;
       groundMap.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
@@ -223,7 +229,7 @@ export class World {
     }
 
     const mat = new THREE.MeshStandardMaterial({
-      color: island.id === 'mist-jungle' ? 0x789b72 : desert ? 0xe2c28e : 0xffffff,
+      color: island.id === 'mist-jungle' ? 0x789b72 : desert ? 0xe2c28e : frost ? 0xdcebef : 0xffffff,
       map: groundMap,
       normalMap: groundNormal,
       roughness: 1,

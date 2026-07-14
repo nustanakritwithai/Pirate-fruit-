@@ -209,6 +209,16 @@ export const MONSTER_TYPES: Record<string, MonsterType> = {
       tags: ['unblockable', 'knockdown'],
     },
   },
+  'frost-crawler': { id: 'frost-crawler', name: 'แมงมุมน้ำแข็ง', kind: 'crab', level: 51, maxHp: 1050, damage: 43, moveSpeed: 3.65, aggroRange: 16, attackRange: 2.45, attackCooldown: 0.98, scale: 1.34, color: 0x74b7cd, reward: { playerExp: 520, masteryExp: 235, coins: 340 } },
+  'frost-raider': { id: 'frost-raider', name: 'โจรน้ำแข็ง', kind: 'grunt', level: 55, maxHp: 1260, damage: 48, moveSpeed: 3.75, aggroRange: 18, attackRange: 2.2, attackCooldown: 0.98, scale: 1.24, color: 0x315f80, reward: { playerExp: 620, masteryExp: 280, coins: 420 } },
+  'crystal-golem': { id: 'crystal-golem', name: 'โกเลมคริสตัลคราม', kind: 'grunt', level: 62, maxHp: 1680, damage: 58, moveSpeed: 2.55, aggroRange: 19, attackRange: 2.85, attackCooldown: 1.28, scale: 1.72, color: 0x4e91a8, reward: { playerExp: 820, masteryExp: 365, coins: 580 } },
+  'frost-king-boss': {
+    id: 'frost-king-boss', name: 'ราชันน้ำแข็งโบราณ', kind: 'boss', level: 68,
+    maxHp: 5200, damage: 68, moveSpeed: 3.15, aggroRange: 27, attackRange: 3.5,
+    attackCooldown: 1.25, scale: 2.5, color: 0x376d86,
+    reward: { playerExp: 2900, masteryExp: 1200, coins: 2300 },
+    heavyAttack: { everyNth: 3, multiplier: 1.9, telegraph: 0.9, knockback: 17, tags: ['unblockable', 'knockdown'] },
+  },
 };
 
 export interface MonsterCamp {
@@ -236,6 +246,10 @@ export const MONSTER_CAMPS: MonsterCamp[] = [
   { id: 'east-dune-scorpions', islandId: 'sunscar-desert', name: 'เนินทรายตะวันออก', typeId: 'dune-scorpion', x: 184, z: 125, radius: 5, count: 3, recommendedLevel: 31 },
   { id: 'sunscar-raiders', islandId: 'sunscar-desert', name: 'ค่ายโจรคาราวาน', typeId: 'desert-raider', x: 148, z: 142, radius: 6, count: 4, recommendedLevel: 34 },
   { id: 'sandstone-quarry', islandId: 'sunscar-desert', name: 'เหมืองศิลาทราย', typeId: 'sand-golem', x: 191, z: 141, radius: 5.5, count: 4, recommendedLevel: 41 },
+  { id: 'frozen-lake-crawlers', islandId: 'azure-frost', name: 'รังแมงมุมน้ำแข็ง', typeId: 'frost-crawler', x: 28, z: 195, radius: 5.5, count: 4, recommendedLevel: 51 },
+  { id: 'south-snow-crawlers', islandId: 'azure-frost', name: 'ชายหิมะใต้', typeId: 'frost-crawler', x: 45, z: 184, radius: 5, count: 3, recommendedLevel: 51 },
+  { id: 'azure-frost-raiders', islandId: 'azure-frost', name: 'ค่ายโจรน้ำแข็ง', typeId: 'frost-raider', x: 11, z: 218, radius: 6, count: 4, recommendedLevel: 55 },
+  { id: 'azure-crystal-mine', islandId: 'azure-frost', name: 'เหมืองคริสตัลคราม', typeId: 'crystal-golem', x: 47, z: 236, radius: 5.5, count: 4, recommendedLevel: 62 },
 ];
 
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
@@ -252,4 +266,5 @@ export const BOSS_SPAWNS: readonly BossSpawn[] = [
   { islandId: 'starter-island', ...BOSS_SPAWN },
   { islandId: 'mist-jungle', typeId: 'venom-ape-boss', x: 190, z: -18 },
   { islandId: 'sunscar-desert', typeId: 'sun-guardian-boss', x: 170, z: 152 },
+  { islandId: 'azure-frost', typeId: 'frost-king-boss', x: 20, z: 244 },
 ];
