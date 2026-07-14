@@ -112,6 +112,10 @@ export interface DynamicTradeOrder {
   expiresAtTick: number;
   status: TradeOrderStatus;
   assignedTraderId?: string;
+  /** Phase E3.5 — player contract reservation */
+  playerReservedAmount?: number;
+  playerContractId?: string;
+  npcAssignableAfterTick?: number;
 }
 
 export interface CommodityReservation {
@@ -291,6 +295,8 @@ export interface EconomyWorldState {
   avoidedRoutes: AvoidedRouteState[];
   routeReputations: RouteReputation[];
   traderRngSeed: number;
+  /** Phase E3.5 — player influence & contracts */
+  playerEconomy?: import('./PlayerEconomyTypes').PlayerEconomyState;
 }
 
 export type FactoryStatus =

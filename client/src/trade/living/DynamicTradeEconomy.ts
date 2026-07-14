@@ -31,6 +31,7 @@ import {
   releaseStaleReservations,
   reserveStock,
 } from './TradeStockReservation';
+import { getNpcAssignableAmount } from './PlayerContractGenerator';
 
 let shipCounter = 0;
 
@@ -130,18 +131,24 @@ export function updateDynamicTradeEconomy(
 
     const pick = pickBestOrderForTrader(
       trader,
-      world.orders,
+      world.orders.filter((o) => {
+        if (o.status !== 'open') return false;
+        const delay = o.npcAssignableAfterTick ?? 0;
+        if (world.tick < delay) return false;
+        return getNpcAssignableAmount(world, o) >= 3;
+      }),
       world,
       DYNAMIC_TRADE.maxOrderAmountPerTick,
     );
     if (!pick) continue;
 
+    const npcAmount = Math.min(pick.amount, getNpcAssignableAmount(world, pick.order));
     const exportable = getExportableStock(
       world,
       pick.order.sourceIslandId,
       pick.order.commodityId,
     );
-    const amount = Math.min(pick.amount, exportable);
+    const amount = Math.min(npcAmount, exportable);
     if (amount < 3) continue;
 
     const reserved = reserveStock(world, {

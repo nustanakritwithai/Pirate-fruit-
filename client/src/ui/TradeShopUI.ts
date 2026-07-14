@@ -17,6 +17,8 @@ import {
   type LivingBadge,
 } from '../trade/living/ProductionRecipes';
 import type { EconomyCellId } from '../trade/living/types';
+import { getPlayerNpcDialogue } from '../trade/living/PlayerNpcDialogue';
+import { getPlayerTitleAtIsland } from '../trade/living/PlayerEconomyOrchestrator';
 
 const MARKET_CELL: Record<string, EconomyCellId> = {
   'starter-market': 'leaf-island',
@@ -134,7 +136,11 @@ export class TradeShopUI {
       this.setStatus('ไม่พบตลาดของเกาะนี้', false);
       return;
     }
+    const title = getPlayerTitleAtIsland(this.trade.living.state, this.islandId);
+    const greeting = getPlayerNpcDialogue(title);
     this.title.textContent = `🏪 ${this.vendorName}`;
+    const sub = this.root.querySelector('.trade-shop-head p')!;
+    sub.textContent = greeting;
     this.wallet.textContent = String(this.trade.walletCoins);
 
     const hold = this.trade.hold;

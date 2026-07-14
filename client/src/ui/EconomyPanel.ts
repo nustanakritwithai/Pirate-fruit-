@@ -6,6 +6,8 @@ import { isLivingCommodity, resolveTradeCell, CELL_LABELS } from '../trade/livin
 import { LIVING_COMMODITY_META, recipeForOutput } from '../trade/living/ProductionRecipes';
 import { priceTrend } from '../trade/living/LivingTradeFormulas';
 import type { ClassifiedEconomyEvent } from '../trade/living/EconomyEventClassifier';
+import { titleLabel } from '../trade/living/PlayerEconomicProfileManager';
+import { getPlayerEconomySummary } from '../trade/living/PlayerEconomyHistory';
 import { getIsland } from '../island/IslandRegistry';
 
 /**
@@ -16,7 +18,7 @@ export class EconomyPanel {
   private readonly body: HTMLDivElement;
   private readonly titleEl: HTMLHeadingElement;
   private visible = false;
-  private viewMode: 'market' | 'alerts' | 'traders' | 'routes' = 'market';
+  private viewMode: 'market' | 'alerts' | 'traders' | 'routes' | 'contracts' | 'reputation' | 'history' | 'records' = 'market';
   private islandId: IslandId = 'starter-island';
   private onCloseCallback: (() => void) | null = null;
   private eventHistory: ClassifiedEconomyEvent[] = [];
@@ -163,6 +165,131 @@ export class EconomyPanel {
       return;
     }
 
+    if (this.viewMode === 'contracts') {
+      this.titleEl.textContent = '📦 สัญญาขนส่ง';
+      const pe = this.trade.playerEconomy;
+      const rows = [...pe.availableContracts, ...pe.activeContracts].map((c) => `
+        <tr>
+          <td>${LIVING_COMMODITY_META[c.commodityId].label}</td>
+          <td>${CELL_LABELS[c.sourceIslandId]}</td>
+          <td>${CELL_LABELS[c.destinationIslandId]}</td>
+          <td>${c.deliveredAmount}/${c.requestedAmount}</td>
+          <td>${c.completionReward}</td>
+          <td>${c.collateral}</td>
+          <td>${c.expiresAtTick - this.trade.living.state.tick}</td>
+          <td>${c.status}</td>
+          <td>${c.status === 'available' ? `<button data-accept="${c.id}">รับ</button>` : ''}
+              ${c.status === 'accepted' || c.status === 'in-progress' ? `<button data-abandon="${c.id}">ยกเลิก</button>` : ''}
+              <button data-track="${c.id}">ติดตาม</button></td>
+        </tr>`).join('');
+      this.body.innerHTML = `
+        <table class="ep-table"><thead><tr>
+          <th>สินค้า</th><th>ต้นทาง</th><th>ปลายทาง</th><th>ส่ง</th><th>รางวัล</th><th>หลักประกัน</th><th>เหลือ tick</th><th>สถานะ</th><th></th>
+        </tr></thead><tbody>${rows || '<tr><td colspan="9">ไม่มีสัญญา</td></tr>'}</tbody></table>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelectorAll('[data-accept]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.trade.acceptContract((btn as HTMLElement).dataset.accept!);
+          this.render();
+        });
+      });
+      this.body.querySelectorAll('[data-abandon]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.trade.abandonContract((btn as HTMLElement).dataset.abandon!);
+          this.render();
+        });
+      });
+      this.body.querySelectorAll('[data-track]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.trade.trackContract((btn as HTMLElement).dataset.track!);
+        });
+      });
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
+    if (this.viewMode === 'reputation') {
+      this.titleEl.textContent = '⭐ ชื่อเสียงเศรษฐกิจ';
+      const reps = Object.values(this.trade.playerEconomy.profile.islandReputations);
+      const rows = reps.map((r) => `
+        <tr>
+          <td>${getIsland(r.islandId).name}</td>
+          <td>${titleLabel(r.title)}</td>
+          <td>${Math.round(r.trust)}</td>
+          <td>${Math.round(r.supplierReputation)}</td>
+          <td>${Math.round(r.marketManipulation)}</td>
+          <td>${Math.round(r.contractReliability)}</td>
+          <td>${Math.round(r.crisisContribution)}</td>
+        </tr>`).join('');
+      const fee = Math.round(this.trade.living.getFeeModifierForIsland(this.islandId) * 1000) / 10;
+      this.body.innerHTML = `
+        <div class="ep-summary">ค่าธรรมเนียมขายเกาะนี้: ${fee}%</div>
+        <table class="ep-table"><thead><tr>
+          <th>เกาะ</th><th>ฉายา</th><th>trust</th><th>supplier</th><th>manipulation</th><th>reliability</th><th>crisis</th>
+        </tr></thead><tbody>${rows || '<tr><td colspan="7">ยังไม่มีชื่อเสียง</td></tr>'}</tbody></table>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
+    if (this.viewMode === 'history') {
+      this.titleEl.textContent = '📜 ประวัติการค้า';
+      const rows = this.trade.playerEconomy.tradeHistory.slice(0, 30).map((h) => `
+        <tr>
+          <td>T${h.tick}</td>
+          <td>${h.type === 'buy' ? 'ซื้อ' : 'ขาย'}</td>
+          <td>${LIVING_COMMODITY_META[h.commodityId].label}</td>
+          <td>${h.amount}</td>
+          <td>${h.totalValue}</td>
+          <td>${h.impact}</td>
+          <td>${h.marketStateBefore}→${h.marketStateAfter}</td>
+        </tr>`).join('');
+      this.body.innerHTML = `
+        <table class="ep-table"><thead><tr>
+          <th>Tick</th><th>ประเภท</th><th>สินค้า</th><th>จำนวน</th><th>มูลค่า</th><th>ผลกระทบ</th><th>ตลาด</th>
+        </tr></thead><tbody>${rows || '<tr><td colspan="7">ยังไม่มีประวัติ</td></tr>'}</tbody></table>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
+    if (this.viewMode === 'records') {
+      this.titleEl.textContent = '🏆 สถิติโลก';
+      const summary = getPlayerEconomySummary(this.trade.living.state);
+      const rec = this.trade.playerEconomy.worldRecords;
+      const fmt = (r: typeof rec.biggestSupplier) => r ? `${r.entityName}: ${Math.round(r.value)}` : '-';
+      this.body.innerHTML = `
+        <div class="ep-summary">
+          <span>กำไรรวม ${Math.round(summary.lifetimeProfit)}</span>
+          <span>สัญญาสำเร็จ ${(summary.contractSuccessRate * 100).toFixed(0)}%</span>
+          <span>ช่วยวิกฤต ${summary.crisesRelieved}</span>
+          <span>สร้างวิกฤต ${summary.crisesCaused}</span>
+        </div>
+        <div class="ep-factory-list">
+          <div class="ep-factory-row">ผู้จัดหาสูงสุด: ${fmt(rec.biggestSupplier)}</div>
+          <div class="ep-factory-row">นำเข้ามากสุด: ${fmt(rec.largestImporter)}</div>
+          <div class="ep-factory-row">กำไรเดียวสูงสุด: ${fmt(rec.highestSingleTradeProfit)}</div>
+          <div class="ep-factory-row">ไว้ใจที่สุด: ${fmt(rec.mostTrustedMerchant)}</div>
+          <div class="ep-factory-row">บิดเบือนตลาด: ${fmt(rec.biggestMarketManipulator)}</div>
+          <div class="ep-factory-row">ช่วยขาดแคลน: ${fmt(rec.mostRelievedCommodity)}</div>
+        </div>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
     if (this.viewMode === 'routes') {
       this.titleEl.textContent = '🗺️ เส้นทาง & ชื่อเสียง';
       const world = this.trade.living.state;
@@ -284,9 +411,29 @@ export class EconomyPanel {
       <div class="ep-section-title">เหตุการณ์เศรษฐกิจ</div>
       <div class="ep-log-list">${historyHtml || '<div class="ep-log">ยังไม่มีเหตุการณ์</div>'}</div>
       <div class="ep-tabs">
+        <button type="button" class="ep-tab-contracts">📦 สัญญา</button>
+        <button type="button" class="ep-tab-reputation">⭐ ชื่อเสียง</button>
+        <button type="button" class="ep-tab-history">📜 ประวัติ</button>
+        <button type="button" class="ep-tab-records">🏆 สถิติ</button>
         <button type="button" class="ep-tab-traders">🧭 พ่อค้า</button>
         <button type="button" class="ep-tab-routes">🗺️ เส้นทาง</button>
       </div>`;
+    this.body.querySelector('.ep-tab-contracts')?.addEventListener('click', () => {
+      this.viewMode = 'contracts';
+      this.render();
+    });
+    this.body.querySelector('.ep-tab-reputation')?.addEventListener('click', () => {
+      this.viewMode = 'reputation';
+      this.render();
+    });
+    this.body.querySelector('.ep-tab-history')?.addEventListener('click', () => {
+      this.viewMode = 'history';
+      this.render();
+    });
+    this.body.querySelector('.ep-tab-records')?.addEventListener('click', () => {
+      this.viewMode = 'records';
+      this.render();
+    });
     this.body.querySelector('.ep-tab-traders')?.addEventListener('click', () => {
       this.viewMode = 'traders';
       this.render();

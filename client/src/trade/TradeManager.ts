@@ -33,6 +33,7 @@ export class TradeManager {
     livingSimulator?: LivingTradeSimulator,
   ) {
     this.living = livingSimulator ?? new LivingTradeSimulator();
+    this.living.setContractWallet(wallet);
     this.cargo = this.loadCargo();
     this.applyBoatCapacity(boatId);
   }
@@ -121,7 +122,7 @@ export class TradeManager {
         return this.emit({ ok: false, message: 'จ่ายเงินไม่สำเร็จ' });
       }
       if (isLivingCommodity(commodityId)) {
-        this.living.applyPlayerBuy(islandId, commodityId, qty);
+        this.living.applyPlayerBuy(islandId, commodityId, qty, unitPrice);
       }
       this.addToCargo(commodityId, qty);
       this.saveCargo();
@@ -145,21 +146,44 @@ export class TradeManager {
       return this.emit({ ok: false, message: 'ไม่สามารถคำนวณราคาได้' });
     }
     const totalGain = unitPrice * qty;
+    const feeRate = this.living.getFeeModifierForIsland(islandId);
+    const feeAmount = Math.round(totalGain * feeRate);
+    const netGain = totalGain - feeAmount;
     this.removeFromCargo(commodityId, qty);
     if (isLivingCommodity(commodityId)) {
-      this.living.applyPlayerSell(islandId, commodityId, qty);
+      this.living.applyPlayerSell(islandId, commodityId, qty, unitPrice);
     }
-    this.wallet.addCoins(totalGain, `trade:sell:${commodityId}`);
+    this.wallet.addCoins(netGain, `trade:sell:${commodityId}`);
     this.saveCargo();
     return this.emit({
       ok: true,
-      message: `ขาย ${commodity.nameTh} x${qty} ได้ ${totalGain} Beli`,
-      coinsDelta: totalGain,
+      message: `ขาย ${commodity.nameTh} x${qty} ได้ ${netGain} Beli${feeAmount > 0 ? ` (ค่าธรรมเนียม ${feeAmount})` : ''}`,
+      coinsDelta: netGain,
       commodityId,
       quantityDelta: -qty,
       islandId,
       action,
     });
+  }
+
+  acceptContract(contractId: string) {
+    return this.living.acceptPlayerContract(contractId);
+  }
+
+  abandonContract(contractId: string) {
+    return this.living.abandonPlayerContract(contractId);
+  }
+
+  trackContract(contractId: string | null) {
+    this.living.trackPlayerContract(contractId);
+  }
+
+  get trackedContract() {
+    return this.living.getTrackedPlayerContract();
+  }
+
+  get playerEconomy() {
+    return this.living.playerEconomy;
   }
 
   private emit(result: TradeTransactionResult): TradeTransactionResult {

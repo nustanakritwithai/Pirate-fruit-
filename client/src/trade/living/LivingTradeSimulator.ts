@@ -41,6 +41,18 @@ import {
   clearTraderMemory,
   resetRouteReputations,
 } from './DynamicTradeEconomy';
+import { recordPlayerTrade } from './PlayerEconomicProfileManager';
+import { updatePlayerEconomy, trackContract, getTrackedContract } from './PlayerEconomyOrchestrator';
+import {
+  acceptContract,
+  abandonContract,
+  type ContractWallet,
+} from './PlayerContractManager';
+import { ensurePlayerEconomy } from './PlayerEconomicProfileManager';
+import { getIslandFeeModifier } from './PlayerReputationManager';
+import { resolveMarketState } from './EconomyRules';
+import { emitPlayerEconomyEvents } from './PlayerEconomyEvents';
+import { createDefaultPlayerEconomy } from './PlayerEconomyHistory';
 import type {
   CommodityState,
   EconomyCellId,
@@ -62,6 +74,7 @@ const CELL_LABELS: Record<EconomyCellId, string> = {
 export class LivingTradeSimulator {
   private world: EconomyWorldState;
   private tickLog: EconomyLogEntry[] = [];
+  private contractWallet: ContractWallet | null = null;
 
   constructor(fresh = false) {
     const saved = fresh ? null : loadEconomyState();
@@ -132,26 +145,109 @@ export class LivingTradeSimulator {
     return this.getCommodity(cellId, commodityId)?.stock ?? null;
   }
 
-  applyPlayerBuy(gameIslandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
+  setContractWallet(wallet: ContractWallet | null): void {
+    this.contractWallet = wallet;
+  }
+
+  get playerEconomy() {
+    return ensurePlayerEconomy(this.world);
+  }
+
+  getFeeModifierForIsland(islandId: IslandId): number {
+    return getIslandFeeModifier(ensurePlayerEconomy(this.world).profile, islandId);
+  }
+
+  acceptPlayerContract(contractId: string) {
+    if (!this.contractWallet) return { ok: false, message: 'ไม่มี wallet', events: [] };
+    const result = acceptContract(this.world, contractId, this.contractWallet);
+    if (result.ok) saveEconomyState(this.world);
+    emitPlayerEconomyEvents(result.events);
+    return result;
+  }
+
+  abandonPlayerContract(contractId: string) {
+    if (!this.contractWallet) return { ok: false, message: 'ไม่มี wallet', events: [] };
+    const result = abandonContract(this.world, contractId, this.contractWallet);
+    if (result.ok) saveEconomyState(this.world);
+    emitPlayerEconomyEvents(result.events);
+    return result;
+  }
+
+  trackPlayerContract(contractId: string | null): void {
+    trackContract(this.world, contractId);
+  }
+
+  getTrackedPlayerContract() {
+    return getTrackedContract(this.world);
+  }
+
+  applyPlayerBuy(
+    gameIslandId: IslandId,
+    commodityId: LivingCommodityId,
+    amount: number,
+    unitPrice: number,
+  ): void {
     const cellId = resolveTradeCell(gameIslandId, commodityId);
     const cell = this.getCell(cellId);
     const item = this.getCommodity(cellId, commodityId);
     if (!cell || !item) return;
+
+    const stockBefore = item.stock;
+    const marketStateBefore = item.marketState;
+
     item.stock = Math.max(0, item.stock - amount);
     item.memory.recentBuyVolume += amount;
     item.importDemand += amount * 0.1;
     updatePrices(cell);
+    item.marketState = resolveMarketState(item);
+
+    const events = recordPlayerTrade(this.world, {
+      islandId: gameIslandId,
+      commodityId,
+      type: 'buy',
+      amount,
+      unitPrice,
+      stockBefore,
+      targetStock: item.targetStock,
+      marketStateBefore,
+      item,
+    });
+    emitPlayerEconomyEvents(events);
     saveEconomyState(this.world);
   }
 
-  applyPlayerSell(gameIslandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
+  applyPlayerSell(
+    gameIslandId: IslandId,
+    commodityId: LivingCommodityId,
+    amount: number,
+    unitPrice: number,
+  ): void {
     const cellId = resolveTradeCell(gameIslandId, commodityId);
     const cell = this.getCell(cellId);
     const item = this.getCommodity(cellId, commodityId);
     if (!cell || !item) return;
+
+    const stockBefore = item.stock;
+    const marketStateBefore = item.marketState;
+
     item.stock += amount;
     item.memory.recentSellVolume += amount;
     updatePrices(cell);
+    item.marketState = resolveMarketState(item);
+
+    const events = recordPlayerTrade(this.world, {
+      islandId: gameIslandId,
+      commodityId,
+      type: 'sell',
+      amount,
+      unitPrice,
+      stockBefore,
+      targetStock: item.targetStock,
+      marketStateBefore,
+      item,
+    }, this.contractWallet ?? undefined);
+
+    emitPlayerEconomyEvents(events);
     saveEconomyState(this.world);
   }
 
@@ -186,6 +282,7 @@ export class LivingTradeSimulator {
 
     spreadDemand(this.world);
     updateWorldModifiers(this.world);
+    updatePlayerEconomy(this.world, this.tickLog, this.contractWallet ?? undefined);
     this.runDynamicTrade();
     moveCargo(this.world, this.tickLog);
 
@@ -318,6 +415,11 @@ export class LivingTradeSimulator {
       this.world.factories.push(...createFactoryAgentsForCell(cell));
       initCellWorkforce(cell, this.world.factories);
     }
+  }
+
+  resetPlayerEconomyDebug(): void {
+    this.world.playerEconomy = createDefaultPlayerEconomy();
+    saveEconomyState(this.world);
   }
 
   private runDynamicTrade(): void {

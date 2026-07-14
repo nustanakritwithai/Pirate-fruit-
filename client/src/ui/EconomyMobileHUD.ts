@@ -11,6 +11,8 @@ import {
   mergeToastEvents,
   type ClassifiedEconomyEvent,
 } from '../trade/living/EconomyEventClassifier';
+import { CELL_LABELS } from '../trade/living/LivingTradeConfig';
+import { LIVING_COMMODITY_META } from '../trade/living/ProductionRecipes';
 import type { EconomyPanel } from './EconomyPanel';
 
 const TOAST_DURATION_S = 2.5;
@@ -91,6 +93,14 @@ export class EconomyMobileHUD {
     return [...this.activeAlerts.values()];
   }
 
+  ingestPlayerEvent(event: ClassifiedEconomyEvent): void {
+    if (!event.toastEligible) return;
+    this.toastQueue = mergeToastEvents(this.toastQueue, event);
+    this.eventHistory.unshift(event);
+    this.eventHistory = this.eventHistory.slice(0, 40);
+    this.panel?.setEventHistory(this.eventHistory);
+  }
+
   ingestTick(): void {
     const world = this.trade.living.state;
     if (world.tick === this.lastLogTick) return;
@@ -165,10 +175,16 @@ export class EconomyMobileHUD {
     const coins = this.trade.walletCoins.toLocaleString('th-TH');
     const alertCount = this.activeAlerts.size;
 
+    const tracked = this.trade.trackedContract;
+    const contractHtml = tracked
+      ? `<span class="eco-chip-contract">📦 ${LIVING_COMMODITY_META[tracked.commodityId].label.slice(0, 4)} ${tracked.deliveredAmount}/${tracked.requestedAmount}→${CELL_LABELS[tracked.destinationIslandId].slice(0, 4)}</span>`
+      : '';
+
     this.chip.style.display = 'flex';
     this.chip.innerHTML = `
       <span class="eco-chip-coins">💰 ${coins}</span>
       <span class="eco-chip-cargo">📦 ${slots}/${hold.maxSlots}</span>
+      ${contractHtml}
       ${alertCount > 0
         ? `<button type="button" class="eco-chip-alert" aria-label="แจ้งเตือนเศรษฐกิจ">⚠️ ${alertCount}</button>`
         : ''}`;
@@ -244,6 +260,7 @@ export class EconomyMobileHUD {
         pointer-events:auto;touch-action:manipulation;overflow:hidden}
       .eco-chip-coins{color:#ffe49a;white-space:nowrap}
       .eco-chip-cargo{color:#b8e8d4;white-space:nowrap}
+      .eco-chip-contract{color:#c8e0ff;white-space:nowrap;font-size:9px}
       .eco-chip-alert{margin-left:auto;border:0;background:rgba(255,180,80,.15);color:#ffb86c;
         border-radius:8px;padding:2px 7px;font:inherit;cursor:pointer;white-space:nowrap;
         touch-action:manipulation}

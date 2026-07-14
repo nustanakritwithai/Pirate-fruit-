@@ -139,13 +139,13 @@ describe('LivingTradeSimulator — Economic CA', () => {
   it('5. player sell helps shortage cell recover stock', () => {
     sim.injectShortage('mine-island', 'fresh-fish', 30);
     const before = sim.getStock('mist-jungle', 'fresh-fish')!;
-    sim.applyPlayerSell('mist-jungle', 'fresh-fish', 25);
+    sim.applyPlayerSell('mist-jungle', 'fresh-fish', 25, 40);
     expect(sim.getStock('mist-jungle', 'fresh-fish')!).toBeGreaterThan(before);
   });
 
   it('6. player mass sell crashes price via memory', () => {
     const before = sim.getBuyPrice('starter-island', 'hardwood', 1)!;
-    sim.applyPlayerSell('starter-island', 'hardwood', 80);
+    sim.applyPlayerSell('starter-island', 'hardwood', 80, 50);
     const after = sim.getBuyPrice('starter-island', 'hardwood', 1)!;
     expect(after).toBeLessThanOrEqual(before);
   });
@@ -180,7 +180,7 @@ describe('LivingTradeSimulator — Economic CA', () => {
 
   it('10. player overbuying food raises price and import pressure', () => {
     const beforePrice = sim.getBuyPrice('starter-island', 'fresh-fish', 1)!;
-    sim.applyPlayerBuy('starter-island', 'fresh-fish', 80);
+    sim.applyPlayerBuy('starter-island', 'fresh-fish', 80, 50);
     const afterPrice = sim.getBuyPrice('starter-island', 'fresh-fish', 1)!;
     const leafFood = sim.getCommodity('leaf-island', 'fresh-fish')!;
     expect(afterPrice).toBeGreaterThanOrEqual(beforePrice);
@@ -189,7 +189,7 @@ describe('LivingTradeSimulator — Economic CA', () => {
 
   it('player buy reduces stock', () => {
     const before = sim.getStock('starter-island', 'hardwood')!;
-    sim.applyPlayerBuy('starter-island', 'hardwood', 30);
+    sim.applyPlayerBuy('starter-island', 'hardwood', 30, 60);
     expect(sim.getStock('starter-island', 'hardwood')!).toBeLessThan(before);
   });
 });
