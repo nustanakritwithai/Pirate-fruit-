@@ -85,6 +85,8 @@ export class Monster {
   private readonly healthBar: HealthBar;
   private readonly animator: ProceduralCharacterAnimator;
 
+  /** Phase M1 — cellular AI cell id */
+  cellularId?: string;
   hp: number;
   state: MonsterState = 'idle';
   readonly home = new THREE.Vector2();
@@ -183,6 +185,9 @@ export class Monster {
     this.group.visible = true;
     this.healthBar.sprite.visible = true;
     this.healthBar.draw(1);
+    if (this.cellularId) {
+      // cellular world re-syncs state on next tick
+    }
   }
 
   /** อนิเมชัน/แฟลช/บ๊อบ คืน true เมื่ออนิเมชันตายจบ (ให้ manager ซ่อน) */

@@ -1,4 +1,6 @@
 import type { IslandId } from '../../island/IslandTypes';
+import { applyDevilFruitEconomyPressures } from '../../devilfruit/influence/DevilFruitEconomyBridge';
+import type { DevilFruitInfluenceWorld } from '../../devilfruit/influence/DevilFruitInfluenceWorld';
 import {
   consumeGoods,
   moveCargo,
@@ -99,6 +101,10 @@ export class LivingTradeSimulator {
 
   get state(): Readonly<EconomyWorldState> {
     return this.world;
+  }
+
+  applyDevilFruitInfluence(influenceWorld: DevilFruitInfluenceWorld): number {
+    return applyDevilFruitEconomyPressures(this.world, influenceWorld);
   }
 
   get news(): readonly TradeNewsItem[] {
