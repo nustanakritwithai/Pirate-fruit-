@@ -1,6 +1,6 @@
 import type { LivingTradeSimulator } from './LivingTradeSimulator';
 import { debugForcePause, debugForceReopen } from './FactoryAgent';
-import { LIVING_COMMODITY_IDS } from './LivingTradeConfig';
+import { CELL_LABELS, LIVING_COMMODITY_IDS } from './LivingTradeConfig';
 import { LIVING_COMMODITY_META } from './ProductionRecipes';
 import type { LivingCommodityId } from './types';
 
@@ -24,6 +24,7 @@ export class EconomyDebugPanel {
   private readonly logEl: HTMLDivElement;
   private readonly grid: HTMLDivElement;
   private readonly factoryGrid: HTMLDivElement;
+  private readonly ordersGrid: HTMLDivElement;
   private visible = false;
 
   constructor(private sim: LivingTradeSimulator) {
@@ -45,9 +46,18 @@ export class EconomyDebugPanel {
           <button type="button" data-action="force-pause-yard">Pause อู่เรือ</button>
           <button type="button" data-action="force-reopen-yard">Reopen อู่เรือ</button>
           <button type="button" data-action="reset-factories">Reset Factories</button>
+          <button type="button" data-action="shortage-rope">ขาดเชือกอู่เรือ</button>
+          <button type="button" data-action="surplus-rope">เชือกล้นทอผ้า</button>
+          <button type="button" data-action="gen-orders">Generate Orders</button>
+          <button type="button" data-action="assign-order">Assign Best Order</button>
+          <button type="button" data-action="fail-ship">Fail Shipment</button>
+          <button type="button" data-action="complete-ship">Complete Shipment</button>
+          <button type="button" data-action="clear-orders">Clear Orders</button>
         </div>
         <div class="eco-factory-title">Factory Agents</div>
         <div class="eco-factory-grid"></div>
+        <div class="eco-orders-title">Trade Orders (E2)</div>
+        <div class="eco-orders-grid"></div>
         <div class="eco-grid"></div>
         <div class="eco-log-title">เหตุการณ์ล่าสุด</div>
         <div class="eco-log"></div>
@@ -55,6 +65,7 @@ export class EconomyDebugPanel {
     document.body.appendChild(this.root);
     this.grid = this.root.querySelector('.eco-grid')!;
     this.factoryGrid = this.root.querySelector('.eco-factory-grid')!;
+    this.ordersGrid = this.root.querySelector('.eco-orders-grid')!;
     this.logEl = this.root.querySelector('.eco-log')!;
     this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
     this.root.addEventListener('click', (e) => {
@@ -76,6 +87,13 @@ export class EconomyDebugPanel {
         if (f && c) debugForceReopen(f, c);
       }
       if (action === 'reset-factories') this.sim.resetFactoryAgents();
+      if (action === 'shortage-rope') this.sim.injectShortage('shipyard-island', 'rope', 30);
+      if (action === 'surplus-rope') this.sim.injectSurplus('cloth-island', 'rope', 40);
+      if (action === 'gen-orders') this.sim.generateOrdersDebug();
+      if (action === 'assign-order') this.sim.assignBestOrderDebug();
+      if (action === 'fail-ship') this.sim.failShipmentDebug();
+      if (action === 'complete-ship') this.sim.completeShipmentDebug();
+      if (action === 'clear-orders') this.sim.clearOrdersDebug();
       this.render();
     });
     if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
@@ -100,7 +118,20 @@ export class EconomyDebugPanel {
 
   private render(): void {
     const world = this.sim.state;
-    this.root.querySelector('.eco-tick')!.textContent = `Tick: ${world.tick} · เรือ ${world.ships.length}`;
+    this.root.querySelector('.eco-tick')!.textContent = `Tick: ${world.tick} · เรือ ${world.ships.length} · Orders ${world.orders.filter((o) => o.status === 'open' || o.status === 'assigned' || o.status === 'in-transit').length}`;
+
+    this.ordersGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
+      <th>สินค้า</th><th>ต้นทาง</th><th>ปลายทาง</th><th>จำนวน</th><th>urgency</th><th>กำไร</th><th>trader</th><th>สถานะ</th>
+    </tr></thead><tbody>${world.orders.slice(-12).reverse().map((o) => `<tr>
+      <td>${COMMODITY_LABELS[o.commodityId]}</td>
+      <td>${CELL_LABELS[o.sourceIslandId]}</td>
+      <td>${CELL_LABELS[o.destinationIslandId]}</td>
+      <td>${o.remainingAmount}</td>
+      <td>${o.urgency.toFixed(2)}</td>
+      <td>${Math.round(o.expectedProfit)}</td>
+      <td>${o.assignedTraderId?.slice(-8) ?? '-'}</td>
+      <td>${o.status}</td>
+    </tr>`).join('')}</tbody></table>`;
 
     this.factoryGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
       <th>เกาะ</th><th>สูตร</th><th>สถานะ</th><th>scale</th><th>กำไร</th><th>แรงงาน</th><th>+/-</th><th>cd</th><th>ตัดสินใจ</th>

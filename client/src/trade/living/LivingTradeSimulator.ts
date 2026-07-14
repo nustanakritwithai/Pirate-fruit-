@@ -1,7 +1,6 @@
 import type { IslandId } from '../../island/IslandTypes';
 import {
   consumeGoods,
-  createTradeRequests,
   moveCargo,
   produceGoods,
   resolveSpoilage,
@@ -29,8 +28,16 @@ import { generateNewsFromTick } from './LivingTradeNews';
 import { createFreshWorld, loadEconomyState, saveEconomyState } from './LivingTradePersistence';
 import { appendFactoryEventsToLog, updateAdaptiveEconomy } from './AdaptiveEconomy';
 import { createFactoryAgentsForCell, initCellWorkforce } from './FactoryAgent';
+import {
+  updateDynamicTradeEconomy,
+  debugForceShortage as dynForceShortage,
+  debugForceSurplus,
+  debugClearOrders,
+  debugAssignBestOrder,
+  debugCompleteFirstInTransit,
+  debugFailFirstInTransit,
+} from './DynamicTradeEconomy';
 import type {
-  CargoShip,
   CommodityState,
   EconomyCellId,
   EconomyCellState,
@@ -175,7 +182,7 @@ export class LivingTradeSimulator {
 
     spreadDemand(this.world);
     updateWorldModifiers(this.world);
-    this.dispatchNpcCargo();
+    this.runDynamicTrade();
     moveCargo(this.world, this.tickLog);
 
     for (const entry of this.tickLog) entry.tick = this.world.tick;
@@ -215,12 +222,44 @@ export class LivingTradeSimulator {
   }
 
   injectShortage(cellId: EconomyCellId, commodityId: LivingCommodityId, amount: number): void {
+    dynForceShortage(this.world, cellId, commodityId, amount);
     const cell = this.getCell(cellId);
-    const item = this.getCommodity(cellId, commodityId);
-    if (!cell || !item) return;
-    item.stock = Math.max(0, item.stock - amount);
-    updatePrices(cell);
+    if (cell) updatePrices(cell);
   }
+
+  injectSurplus(cellId: EconomyCellId, commodityId: LivingCommodityId, amount: number): void {
+    debugForceSurplus(this.world, cellId, commodityId, amount);
+    const cell = this.getCell(cellId);
+    if (cell) updatePrices(cell);
+  }
+
+  generateOrdersDebug(): void {
+    updateDynamicTradeEconomy(this.world, this.tickLog);
+  }
+
+  assignBestOrderDebug(): void {
+    debugAssignBestOrder(this.world, this.tickLog);
+  }
+
+  failShipmentDebug(): void {
+    debugFailFirstInTransit(this.world, this.tickLog);
+    moveCargo(this.world, this.tickLog);
+  }
+
+  completeShipmentDebug(): void {
+    debugCompleteFirstInTransit(this.world, this.tickLog);
+    moveCargo(this.world, this.tickLog);
+  }
+
+  clearOrdersDebug(): void {
+    debugClearOrders(this.world);
+  }
+
+  get lastTradeTickResult(): import('./DynamicTradeEconomy').DynamicTradeTickResult | null {
+    return this._lastTradeResult;
+  }
+
+  private _lastTradeResult: import('./DynamicTradeEconomy').DynamicTradeTickResult | null = null;
 
   resetFactoryAgents(): void {
     this.world.factories = [];
@@ -230,13 +269,32 @@ export class LivingTradeSimulator {
     }
   }
 
-  private dispatchNpcCargo(): void {
+  private runDynamicTrade(): void {
     this.world.npcCooldown -= 1;
-    if (this.world.npcCooldown > 0) return;
-    this.world.npcCooldown = ECONOMY_CONFIG.npcDepartEveryTicks;
-    const newShips: CargoShip[] = createTradeRequests(this.world);
-    this.world.ships.push(...newShips);
-    for (const ship of newShips) {
+    const onDepartWave = this.world.npcCooldown <= 0;
+    if (onDepartWave) {
+      this.world.npcCooldown = ECONOMY_CONFIG.npcDepartEveryTicks;
+    }
+
+    const result = updateDynamicTradeEconomy(this.world, this.tickLog, { allowDepart: onDepartWave });
+    this._lastTradeResult = result;
+
+    for (const order of result.highProfitRoutes) {
+      this.tickLog.push({
+        tick: this.world.tick,
+        message: `เส้นทางกำไรสูง: ${order.commodityId} ~${Math.round(order.expectedProfit)} Beli`,
+        cellId: order.destinationIslandId,
+        commodityId: order.commodityId,
+      });
+    }
+    for (const warn of result.criticalShortages) {
+      this.tickLog.push({
+        tick: this.world.tick,
+        message: `🚨 ${warn}`,
+        cellId: undefined,
+      });
+    }
+    for (const ship of result.departed) {
       this.tickLog.push({
         tick: this.world.tick,
         message: `เรือสินค้าออกจาก${CELL_LABELS[ship.originCellId]} → ${CELL_LABELS[ship.destinationCellId]}`,

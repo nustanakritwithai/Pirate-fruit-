@@ -81,11 +81,72 @@ export interface EconomyCellState {
   neighbors: EconomyCellId[];
 }
 
+export type TradeOrderStatus =
+  | 'open'
+  | 'assigned'
+  | 'in-transit'
+  | 'completed'
+  | 'expired'
+  | 'failed';
+
+/** Phase E2 — คำสั่งขนส่งจาก shortage/surplus จริง */
+export interface DynamicTradeOrder {
+  id: string;
+  commodityId: LivingCommodityId;
+  sourceIslandId: EconomyCellId;
+  destinationIslandId: EconomyCellId;
+  requestedAmount: number;
+  remainingAmount: number;
+  sourceBuyPrice: number;
+  destinationSellPrice: number;
+  expectedRevenue: number;
+  purchaseCost: number;
+  transportCost: number;
+  riskCost: number;
+  spoilageCost: number;
+  expectedProfit: number;
+  profitPerCargoSlot: number;
+  urgency: number;
+  travelTicks: number;
+  createdTick: number;
+  expiresAtTick: number;
+  status: TradeOrderStatus;
+  assignedTraderId?: string;
+}
+
+export interface CommodityReservation {
+  cellId: EconomyCellId;
+  commodityId: LivingCommodityId;
+  amount: number;
+  orderId: string;
+  reservedAtTick: number;
+}
+
+export interface TraderAgentState {
+  id: string;
+  /** ฐานปฏิบัติการ */
+  cellId: EconomyCellId;
+  nameTh: string;
+  /** 0–1 สูง = ยอมรับความเสี่ยง */
+  riskTolerance: number;
+  cargoCapacity: number;
+  cooldown: number;
+  totalProfit: number;
+  activeOrderId?: string;
+}
+
 export interface TradeRouteState {
   sourceCellId: EconomyCellId;
   targetCellId: EconomyCellId;
   travelTicks: number;
   transportCost: number;
+  /** Phase E2 — ข้อมูลเส้นทาง (ไม่บังคับ NPC) */
+  distance?: number;
+  danger?: number;
+  traffic?: number;
+  capacity?: number;
+  successfulTrips?: number;
+  failedTrips?: number;
 }
 
 export interface CargoShip {
@@ -94,6 +155,8 @@ export interface CargoShip {
   destinationCellId: EconomyCellId;
   cargo: Partial<Record<LivingCommodityId, number>>;
   travelTimeRemaining: number;
+  orderId?: string;
+  traderId?: string;
 }
 
 export interface EconomyLogEntry {
@@ -122,6 +185,12 @@ export interface EconomyWorldState {
   log: EconomyLogEntry[];
   /** Adaptive factory agents (Phase E1) */
   factories: FactoryAgentState[];
+  /** Phase E2 — dynamic trade orders */
+  orders: DynamicTradeOrder[];
+  traders: TraderAgentState[];
+  reservations: CommodityReservation[];
+  /** cooldown สร้าง order ต่อเกาะปลายทาง */
+  orderGenCooldowns: Partial<Record<EconomyCellId, number>>;
   /** ticks จนกว่าเรือ NPC จะออกครั้งถัดไป */
   npcCooldown: number;
   /** ชิ้นส่วนเรือล้น → เพิ่มกำลังขนส่ง NPC */

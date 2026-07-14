@@ -242,12 +242,24 @@ function buildRoutes(cells: EconomyCellState[]): TradeRouteState[] {
           targetCellId: neighborId,
           travelTicks: ticks,
           transportCost: 5,
+          distance: ticks * 10,
+          danger: 0.15,
+          traffic: 0,
+          capacity: 4,
+          successfulTrips: 0,
+          failedTrips: 0,
         });
         routes.push({
           sourceCellId: neighborId,
           targetCellId: cell.id,
           travelTicks: ticks,
           transportCost: 5,
+          distance: ticks * 10,
+          danger: 0.15,
+          traffic: 0,
+          capacity: 4,
+          successfulTrips: 0,
+          failedTrips: 0,
         });
       }
     }

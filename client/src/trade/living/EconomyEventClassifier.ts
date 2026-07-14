@@ -273,6 +273,87 @@ export function classifyLogEntry(entry: EconomyLogEntry, now = Date.now()): Clas
     };
   }
 
+  if (msg.includes('เส้นทางกำไรสูง')) {
+    return {
+      id: `log-${entry.tick}-trade-profit`,
+      priority: 'medium',
+      kind: 'route',
+      mergeKey: `trade-profit:${commodityId ?? 'x'}`,
+      message: truncateDisplay(msg.replace('เส้นทางกำไรสูง: ', '📦 กำไรสูง ')),
+      fullMessage: msg,
+      icon: '💰',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('สร้างคำสั่งนำเข้า') || msg.includes('อัปเดตคำสั่งขนส่ง') || msg.includes('รับคำสั่งขนส่ง') || msg.includes('เรือโหลด')) {
+    return {
+      id: `log-${entry.tick}-trade-silent`,
+      priority: 'silent',
+      kind: 'route',
+      mergeKey: `trade-silent:${commodityId ?? entry.tick}`,
+      message: truncateDisplay(msg),
+      fullMessage: msg,
+      icon: '📋',
+      commodityId,
+      createdAt: now,
+      toastEligible: false,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('ส่งมอบ') && msg.includes('หน่วยถึง')) {
+    const isUrgent = commodityId === 'rope' || commodityId === 'sailcloth' || commodityId === 'fresh-fish';
+    return {
+      id: `log-${entry.tick}-deliver`,
+      priority: isUrgent ? 'medium' : 'low',
+      kind: 'ship',
+      mergeKey: `deliver:${commodityId ?? 'x'}`,
+      message: truncateDisplay(`🚢 ส่ง${commodityId ? LIVING_COMMODITY_META[commodityId].label.slice(0, 6) : 'สินค้า'}ถึง`),
+      fullMessage: msg,
+      icon: '🚢',
+      commodityId,
+      createdAt: now,
+      toastEligible: isUrgent,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('เรือขนส่ง') && msg.includes('ถูกทำลาย')) {
+    return {
+      id: `log-${entry.tick}-ship-lost`,
+      priority: 'high',
+      kind: 'ship',
+      mergeKey: `ship-lost:${commodityId ?? 'x'}`,
+      message: truncateDisplay('🚨 เรือค้าถูกโจมตี'),
+      fullMessage: msg,
+      icon: '🚨',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: true,
+    };
+  }
+
+  if (msg.includes('ไม่มีพ่อค้ารับส่ง')) {
+    return {
+      id: `log-${entry.tick}-no-trader`,
+      priority: 'critical',
+      kind: 'shortage',
+      mergeKey: `no-trader:${cellId ?? commodityId ?? 'x'}`,
+      message: truncateDisplay(msg.replace('🚨 ', '')),
+      fullMessage: msg,
+      icon: '🚨',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: true,
+    };
+  }
+
   if (msg.includes('เรือสินค้า')) {
     return {
       id: `log-${entry.tick}-ship`,

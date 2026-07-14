@@ -1,10 +1,12 @@
 import type { EconomyWorldState } from './types';
 import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
-import { ADAPTIVE_ECONOMY } from './AdaptiveEconomyConfig';
+import { DYNAMIC_TRADE } from './DynamicTradeConfig';
+import { migrateAllRoutes } from './TradeRouteUtils';
 import { ensureFactoryAgents } from './AdaptiveEconomy';
+import { ensureTraders } from './DynamicTradeEconomy';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
-const SAVE_VERSION = ADAPTIVE_ECONOMY.saveVersion;
+const SAVE_VERSION = DYNAMIC_TRADE.saveVersion;
 
 interface SavedEconomy {
   version: number;
@@ -19,6 +21,11 @@ function migrateWorld(world: EconomyWorldState): EconomyWorldState {
   }
   world.factories ??= [];
   ensureFactoryAgents(world);
+  world.routes = migrateAllRoutes(world.routes ?? []);
+  world.orders ??= [];
+  world.reservations ??= [];
+  world.orderGenCooldowns ??= {};
+  ensureTraders(world);
   return world;
 }
 
@@ -28,7 +35,7 @@ export function loadEconomyState(): EconomyWorldState | null {
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedEconomy;
     if (!saved.world?.cells?.length) return null;
-    if (saved.version !== SAVE_VERSION && saved.version !== 2) return null;
+    if (saved.version !== SAVE_VERSION && saved.version !== 2 && saved.version !== 3) return null;
     const world = migrateWorld(saved.world);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;
@@ -52,15 +59,20 @@ export function createFreshWorld(): EconomyWorldState {
   const world: EconomyWorldState = {
     tick: 0,
     cells,
-    routes,
+    routes: migrateAllRoutes(routes),
     ships: [],
     news: [],
     log: [],
     factories: [],
+    orders: [],
+    traders: [],
+    reservations: [],
+    orderGenCooldowns: {},
     npcCooldown: ECONOMY_CONFIG.npcDepartEveryTicks,
     npcCargoCapacityMultiplier: 1,
     spoilageReduction: 0,
   };
   ensureFactoryAgents(world);
+  ensureTraders(world);
   return world;
 }

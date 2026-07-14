@@ -14,6 +14,7 @@ import { createFreshWorld } from '../LivingTradePersistence';
 import { LivingTradeSimulator } from '../LivingTradeSimulator';
 import { recipeForOutput } from '../ProductionRecipes';
 import { updateAdaptiveEconomy, ensureFactoryAgents } from '../AdaptiveEconomy';
+import type { EconomyCellState, FactoryAgentState } from '../types';
 
 function yard(sim: LivingTradeSimulator): EconomyCellState {
   return sim.getCell('shipyard-island')!;

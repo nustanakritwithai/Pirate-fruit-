@@ -2,7 +2,7 @@ import type { IslandId } from '../island/IslandTypes';
 import type { TradeManager } from '../trade/TradeManager';
 import { TRADE_COMMODITIES } from '../trade/databook/commodities';
 import { getMarketForIsland } from '../trade/TradeRegistry';
-import { isLivingCommodity, resolveTradeCell } from '../trade/living/LivingTradeConfig';
+import { isLivingCommodity, resolveTradeCell, CELL_LABELS } from '../trade/living/LivingTradeConfig';
 import { LIVING_COMMODITY_META, recipeForOutput } from '../trade/living/ProductionRecipes';
 import { priceTrend } from '../trade/living/LivingTradeFormulas';
 import type { ClassifiedEconomyEvent } from '../trade/living/EconomyEventClassifier';
@@ -176,6 +176,20 @@ export class EconomyPanel {
       `<div class="ep-log ep-pri-${e.priority}">${e.icon} ${e.fullMessage}</div>`,
     ).join('');
 
+    const openOrders = this.trade.living.state.orders.filter(
+      (o) => o.status === 'open' || o.status === 'assigned' || o.status === 'in-transit',
+    );
+    const orderRows = openOrders.map((o) => `<tr>
+      <td>${LIVING_COMMODITY_META[o.commodityId].label}</td>
+      <td>${CELL_LABELS[o.sourceIslandId]}</td>
+      <td>${CELL_LABELS[o.destinationIslandId]}</td>
+      <td>${o.remainingAmount}</td>
+      <td>${o.urgency.toFixed(2)}</td>
+      <td>${Math.round(o.expectedProfit)}</td>
+      <td>${o.assignedTraderId ? o.assignedTraderId.split('-').slice(-2).join('-') : '-'}</td>
+      <td>${o.status}</td>
+    </tr>`).join('');
+
     this.body.innerHTML = `
       <div class="ep-summary">
         <span>🪙 ${this.trade.walletCoins} Beli</span>
@@ -184,6 +198,13 @@ export class EconomyPanel {
       </div>
       ${arbHtml}
       ${factoryRows ? `<div class="ep-section-title">โรงงาน</div><div class="ep-factory-list">${factoryRows}</div>` : ''}
+      <div class="ep-section-title">คำสั่งขนส่ง (Trade Orders)</div>
+      <table class="ep-table">
+        <thead><tr>
+          <th>สินค้า</th><th>ต้นทาง</th><th>ปลายทาง</th><th>จำนวน</th><th>เร่งด่วน</th><th>กำไร≈</th><th>พ่อค้า</th><th>สถานะ</th>
+        </tr></thead>
+        <tbody>${orderRows || '<tr><td colspan="8">ไม่มีคำสั่งเปิดอยู่</td></tr>'}</tbody>
+      </table>
       <div class="ep-section-title">ตลาดเกาะปัจจุบัน</div>
       <table class="ep-table">
         <thead><tr>

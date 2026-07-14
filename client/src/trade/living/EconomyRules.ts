@@ -18,6 +18,7 @@ import {
   recipeForOutput,
   recipesForCell,
 } from './ProductionRecipes';
+import { completeTradeShipment } from './DynamicTradeEconomy';
 
 /** ความมั่นคงอาหาร 0–100 */
 export function getFoodSecurity(cell: EconomyCellState): number {
@@ -358,7 +359,7 @@ export function resolveSpoilage(
   }
 }
 
-/** สร้างคำสั่งซื้อระหว่างเซลล์ */
+/** สร้างคำสั่งซื้อระหว่างเซลล์ — @deprecated ใช้ DynamicTradeEconomy แทน (เก็บสำหรับทดสอบ) */
 export function createTradeRequests(world: EconomyWorldState): CargoShip[] {
   const ships: CargoShip[] = [];
   let shipId = world.ships.length;
@@ -407,7 +408,7 @@ export function createTradeRequests(world: EconomyWorldState): CargoShip[] {
   return ships;
 }
 
-/** เคลื่อนสินค้าบนเรือ */
+/** เคลื่อนสินค้าบนเรือ — รองรับ Dynamic Trade Order */
 export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): void {
   const arrived: CargoShip[] = [];
   const remaining: CargoShip[] = [];
@@ -422,6 +423,35 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
   for (const ship of arrived) {
     const dest = world.cells.find((c) => c.id === ship.destinationCellId);
     if (!dest) continue;
+
+    const order = ship.orderId
+      ? world.orders.find((o) => o.id === ship.orderId)
+      : undefined;
+
+    if (order && order.status === 'in-transit') {
+      const entries = Object.entries(ship.cargo) as [LivingCommodityId, number][];
+      const [id, amount] = entries[0] ?? [];
+      if (id && amount) {
+        const item = dest.commodities[id];
+        let delivered = amount;
+        if (item?.perishable) {
+          const spoil = Math.floor(amount * ECONOMY_CONFIG.transitSpoilageRate * (1 - world.spoilageReduction));
+          delivered -= spoil;
+          if (spoil > 0) {
+            log.push({
+              tick: world.tick,
+              message: `${LIVING_COMMODITY_META[id].label}เสีย ${spoil} หน่วยระหว่างขนส่ง`,
+              cellId: dest.id,
+              commodityId: id,
+            });
+          }
+        }
+        completeTradeShipment(world, order, delivered, log);
+        updatePrices(dest);
+      }
+      continue;
+    }
+
     for (const [id, amount] of Object.entries(ship.cargo) as [LivingCommodityId, number][]) {
       if (!amount) continue;
       const item = dest.commodities[id];
