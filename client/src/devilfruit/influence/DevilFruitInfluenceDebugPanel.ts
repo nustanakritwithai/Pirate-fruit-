@@ -1,21 +1,27 @@
 import type { DevilFruitInfluenceWorld } from './DevilFruitInfluenceWorld';
 import { DEVIL_FRUIT_INFLUENCE_CONFIG, EFFECT_COLORS } from './DevilFruitInfluenceConfig';
 import { DEVIL_FRUIT_EFFECT_TYPES } from './DevilFruitInfluenceTypes';
+import type { DebugPanelEmbedOptions } from '../../simulation/inspector/DebugPanelEmbed';
 
 /** DF1 debug — F10 influence heatmap & active areas */
 export class DevilFruitInfluenceDebugPanel {
   private readonly root: HTMLDivElement;
   private visible = false;
+  private readonly embedded: boolean;
 
-  constructor(private world: DevilFruitInfluenceWorld) {
+  constructor(
+    private world: DevilFruitInfluenceWorld,
+    options: DebugPanelEmbedOptions = {},
+  ) {
+    this.embedded = options.embedded ?? false;
     this.injectStyles();
     this.root = document.createElement('div');
-    this.root.className = 'df1-debug-root';
+    this.root.className = this.embedded ? 'df1-debug-root df1-debug-embedded' : 'df1-debug-root';
     this.root.innerHTML = `
       <div class="df1-debug">
         <div class="df1-head">
           <h3>🍎 Devil Fruit Influence (DF1)</h3>
-          <button type="button" class="df1-close">×</button>
+          ${this.embedded ? '' : '<button type="button" class="df1-close">×</button>'}
         </div>
         <div class="df1-stats"></div>
         <div class="df1-legend"></div>
@@ -27,8 +33,10 @@ export class DevilFruitInfluenceDebugPanel {
           <button type="button" data-action="clear">Clear All</button>
         </div>
       </div>`;
-    document.body.appendChild(this.root);
-    this.root.querySelector('.df1-close')!.addEventListener('click', () => this.setVisible(false));
+    (options.mountParent ?? document.body).appendChild(this.root);
+    if (!this.embedded) {
+      this.root.querySelector('.df1-close')?.addEventListener('click', () => this.setVisible(false));
+    }
     this.root.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
       if (!btn) return;
@@ -39,21 +47,29 @@ export class DevilFruitInfluenceDebugPanel {
       if (action === 'clear') this.world.clear();
       this.render();
     });
-    if (new URLSearchParams(location.search).has('df1')) this.setVisible(true);
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'F10') {
-        e.preventDefault();
-        this.setVisible(!this.visible);
-      }
-    });
-    this.root.style.display = 'none';
+    if (!this.embedded) {
+      if (new URLSearchParams(location.search).has('df1')) this.setVisible(true);
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'F10') {
+          e.preventDefault();
+          this.setVisible(!this.visible);
+        }
+      });
+    } else {
+      this.visible = true;
+    }
+    this.root.style.display = this.embedded ? 'block' : 'none';
     this.renderLegend();
   }
 
   setVisible(show: boolean): void {
     this.visible = show;
-    this.root.style.display = show ? 'flex' : 'none';
+    this.root.style.display = show ? (this.embedded ? 'block' : 'flex') : 'none';
     if (show) this.render();
+  }
+
+  getElement(): HTMLDivElement {
+    return this.root;
   }
 
   refresh(): void {
@@ -123,7 +139,10 @@ export class DevilFruitInfluenceDebugPanel {
       .df1-heatmap{width:100%;border-radius:6px;margin-bottom:6px;background:#000}
       .df1-actions{display:flex;flex-wrap:wrap;gap:4px}
       .df1-actions button{padding:3px 6px;border-radius:6px;border:1px solid #8a4a3a;
-        background:#2a1410;color:#ffe8e0;cursor:pointer;font-size:8px}`;
+        background:#2a1410;color:#ffe8e0;cursor:pointer;font-size:8px}
+      .df1-debug-embedded{position:static;left:auto;top:auto}
+      .df1-debug-embedded .df1-debug{width:100%;box-shadow:none;border:0}
+      .df1-debug-embedded .df1-head{display:none}`;
     document.head.appendChild(style);
   }
 }

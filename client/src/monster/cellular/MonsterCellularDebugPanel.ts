@@ -1,6 +1,7 @@
 import type { MonsterCellularWorld } from './MonsterCellularWorld';
 import type { MonsterThoughtState } from './MonsterCellularTypes';
 import { THOUGHT_STATES } from './MonsterCellularTypes';
+import type { DebugPanelEmbedOptions } from '../../simulation/inspector/DebugPanelEmbed';
 
 /**
  * Cellular Monster Debug — เปิดด้วย ?cellular=1 หรือกด F9
@@ -9,16 +10,21 @@ import { THOUGHT_STATES } from './MonsterCellularTypes';
 export class MonsterCellularDebugPanel {
   private readonly root: HTMLDivElement;
   private visible = false;
+  private readonly embedded: boolean;
 
-  constructor(private world: MonsterCellularWorld) {
+  constructor(
+    private world: MonsterCellularWorld,
+    options: DebugPanelEmbedOptions = {},
+  ) {
+    this.embedded = options.embedded ?? false;
     this.injectStyles();
     this.root = document.createElement('div');
-    this.root.className = 'mcell-debug-root';
+    this.root.className = this.embedded ? 'mcell-debug-root mcell-debug-embedded' : 'mcell-debug-root';
     this.root.innerHTML = `
       <div class="mcell-debug">
         <div class="mcell-debug-head">
           <h3>🧠 Monster Cellular AI (M1)</h3>
-          <button type="button" class="mcell-close">×</button>
+          ${this.embedded ? '' : '<button type="button" class="mcell-close">×</button>'}
         </div>
         <div class="mcell-stats"></div>
         <div class="mcell-legend">
@@ -36,8 +42,10 @@ export class MonsterCellularDebugPanel {
           <button type="button" data-action="force-flee">Force Flee All</button>
         </div>
       </div>`;
-    document.body.appendChild(this.root);
-    this.root.querySelector('.mcell-close')!.addEventListener('click', () => this.setVisible(false));
+    (options.mountParent ?? document.body).appendChild(this.root);
+    if (!this.embedded) {
+      this.root.querySelector('.mcell-close')?.addEventListener('click', () => this.setVisible(false));
+    }
     this.root.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
       if (!btn) return;
@@ -50,20 +58,28 @@ export class MonsterCellularDebugPanel {
       if (action === 'force-flee') this.forceState('flee');
       this.render();
     });
-    if (new URLSearchParams(location.search).has('cellular')) this.setVisible(true);
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'F9') {
-        e.preventDefault();
-        this.setVisible(!this.visible);
-      }
-    });
-    this.root.style.display = 'none';
+    if (!this.embedded) {
+      if (new URLSearchParams(location.search).has('cellular')) this.setVisible(true);
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'F9') {
+          e.preventDefault();
+          this.setVisible(!this.visible);
+        }
+      });
+    } else {
+      this.visible = true;
+    }
+    this.root.style.display = this.embedded ? 'block' : 'none';
   }
 
   setVisible(show: boolean): void {
     this.visible = show;
-    this.root.style.display = show ? 'flex' : 'none';
+    this.root.style.display = show ? (this.embedded ? 'block' : 'flex') : 'none';
     if (show) this.render();
+  }
+
+  getElement(): HTMLDivElement {
+    return this.root;
   }
 
   refresh(): void {
@@ -128,6 +144,9 @@ export class MonsterCellularDebugPanel {
       .mcell-actions{display:flex;flex-wrap:wrap;gap:4px}
       .mcell-actions button{padding:3px 8px;border-radius:6px;border:1px solid #6a4a8a;
         background:#2a1838;color:#f0e6ff;cursor:pointer;font-size:9px}
+      .mcell-debug-embedded{position:static;right:auto;top:auto}
+      .mcell-debug-embedded .mcell-debug{width:100%;box-shadow:none;border:0}
+      .mcell-debug-embedded .mcell-debug-head{display:none}
     `;
     document.head.appendChild(style);
   }

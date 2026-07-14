@@ -202,12 +202,26 @@ async function main(): Promise<void> {
   });
 
   let livingTickAccum = 0;
+  let economyLogCursor = 0;
+  let simInspector: import('./simulation/inspector').SimulationInspectorHandle | null = null;
   game.add({
     update: (dt: number) => {
-      livingTickAccum += dt * 1000;
+      const simDt = simInspector?.controller.scaleDelta(dt) ?? dt;
+      livingTickAccum += simDt * 1000;
       if (livingTickAccum >= LIVING_TICK_INTERVAL_MS) {
         livingTickAccum = 0;
-        tradeManager.living.tick();
+        if (!simInspector?.controller.shouldTick('economy')) {
+          /* frozen or paused */
+        } else {
+          const t0 = performance.now();
+          tradeManager.living.tick();
+          simInspector?.recordEconomyTick(performance.now() - t0);
+          const log = tradeManager.living.state.log;
+          for (let i = economyLogCursor; i < log.length; i++) {
+            simInspector?.eventBus.emit('economy', log[i]!.message, log[i]!.tick);
+          }
+          economyLogCursor = log.length;
+        }
         tradeRouteHint.refresh();
         tradeShop.refresh();
         economyDebug.refresh();
@@ -365,12 +379,20 @@ async function main(): Promise<void> {
   let devilFruitAccum = 0;
   game.add({
     update: (dt: number) => {
-      devilFruitAccum += dt * 1000;
+      const simDt = simInspector?.controller.scaleDelta(dt) ?? dt;
+      devilFruitAccum += simDt * 1000;
       if (devilFruitAccum >= 250) {
         devilFruitAccum = 0;
-        devilFruitInfluence.influenceUpdate(250);
-        const pressures = tradeManager.living.applyDevilFruitInfluence(devilFruitInfluence);
-        devilFruitInfluence.recordEconomyPressures(pressures);
+        if (simInspector?.controller.shouldTick('devilfruit') ?? true) {
+          const t0 = performance.now();
+          devilFruitInfluence.influenceUpdate(250);
+          const pressures = tradeManager.living.applyDevilFruitInfluence(devilFruitInfluence);
+          devilFruitInfluence.recordEconomyPressures(pressures);
+          simInspector?.recordDevilFruitTick(performance.now() - t0);
+          if (pressures > 0) {
+            simInspector?.eventBus.emit('devilfruit', `Economy pressures +${pressures}`);
+          }
+        }
         devilFruitDebug.refresh();
       }
     },
@@ -448,11 +470,25 @@ async function main(): Promise<void> {
   let monsterCellularAccum = 0;
   game.add({
     update: (dt: number) => {
-      monsterCellularAccum += dt * 1000;
+      const simDt = simInspector?.controller.scaleDelta(dt) ?? dt;
+      monsterCellularAccum += simDt * 1000;
       if (monsterCellularAccum >= MONSTER_CELLULAR_CONFIG.tickIntervalMs) {
         monsterCellularAccum = 0;
-        const p = controller.position;
-        monsterManager.cellularTick(p.x, p.z);
+        if (simInspector?.controller.shouldTick('monster') ?? true) {
+          const t0 = performance.now();
+          const p = controller.position;
+          const before = monsterManager.cellularWorld.metrics.transitionCount;
+          monsterManager.cellularTick(p.x, p.z);
+          const after = monsterManager.cellularWorld.metrics;
+          simInspector?.recordMonsterTick(performance.now() - t0);
+          if (after.transitionCount > before) {
+            simInspector?.eventBus.emit(
+              'monster',
+              `${after.transitionCount - before} state transitions`,
+              after.tick,
+            );
+          }
+        }
         monsterCellularDebug.refresh();
       }
     },
@@ -477,6 +513,29 @@ async function main(): Promise<void> {
   if (touchControls) {
     const tc = touchControls;
     game.add({ update: () => tc.update() });
+  }
+
+  if (import.meta.env.DEV && __DEBUG__) {
+    const { initSimulationInspector } = await import('./simulation/inspector');
+    simInspector = initSimulationInspector({
+      living: tradeManager.living,
+      cellularWorld: monsterManager.cellularWorld,
+      devilFruitInfluence,
+      monsterManager,
+      game,
+      questManager,
+      npcCount: () => npcManager.getNpcCount(),
+      playerPosition: () => ({ x: controller.position.x, z: controller.position.z }),
+    });
+    if (new URLSearchParams(location.search).has('sim')) {
+      simInspector.setVisible(true);
+    }
+    game.add({
+      update: (dt: number) => {
+        simInspector?.update(dt);
+      },
+    });
+    (window as unknown as { __simInspector?: typeof simInspector }).__simInspector = simInspector;
   }
 
   loading.remove();

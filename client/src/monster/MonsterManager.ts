@@ -521,4 +521,32 @@ export class MonsterManager {
     while (diff < -Math.PI) diff += Math.PI * 2;
     monster.group.rotation.y += diff * Math.min(1, dt * 6);
   }
+
+  getMonsterCount(): number {
+    return this.monsters.length;
+  }
+
+  getAliveMonsterCount(): number {
+    return this.monsters.filter((m) => m.alive).length;
+  }
+
+  findMonsterNear(worldX: number, worldZ: number, radius = 2.5): Monster | null {
+    let best: Monster | null = null;
+    let bestDist = radius;
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+      const dx = m.group.position.x - worldX;
+      const dz = m.group.position.z - worldZ;
+      const d = Math.hypot(dx, dz);
+      if (d < bestDist) {
+        bestDist = d;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  getMonsterIndex(monster: Monster): number {
+    return this.monsters.indexOf(monster) + 1;
+  }
 }
