@@ -19,6 +19,9 @@ import { MonsterManager } from './monster/MonsterManager';
 import { PlayerCombat } from './combat/PlayerCombat';
 import { ItemInventory } from './shop/ItemInventory';
 import { DealerShopUI } from './ui/DealerShopUI';
+import { PotionShopUI } from './ui/PotionShopUI';
+import { InventoryUI } from './ui/InventoryUI';
+import { HotkeyManager } from './combat/HotkeyManager';
 import { ProgressionManager } from './progression/ProgressionManager';
 import { QuestManager } from './quest/QuestManager';
 import { ProgressionHUD } from './ui/ProgressionHUD';
@@ -129,6 +132,9 @@ async function main(): Promise<void> {
   );
   // ร้านสุ่มของดีลเลอร์ (Phase 7) — onChange รีเฟรชชุดสกิลของ PlayerCombat หลัง equip/สุ่ม
   const dealerShop = new DealerShopUI(itemInventory, () => playerCombat?.refreshLoadout());
+  // ร้านยา (พ่อค้าเปา) — ซื้อยาแล้วรีเฟรชช่องลัด ; hotkeyManager สร้างหลัง touchControls (late-bind)
+  let hotkeyManager: HotkeyManager | null = null;
+  const potionShop = new PotionShopUI(itemInventory, () => hotkeyManager?.refresh());
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
     openBoatShop: (npc) => boatManager.openShop(npc.dockId),
     openQuestBoard: () => {
@@ -139,6 +145,10 @@ async function main(): Promise<void> {
       controller.setControlsEnabled(false);
       dealerShop.open(() => controller.setControlsEnabled(true));
     },
+    openPotionShop: () => {
+      controller.setControlsEnabled(false);
+      potionShop.open(() => controller.setControlsEnabled(true));
+    },
   });
   new GraphicsSettings(graphics);
 
@@ -148,6 +158,28 @@ async function main(): Promise<void> {
     touchControls = new TouchControls(input);
     input.attachTouch(touchControls);
   }
+
+  // คีย์ลัดใช้ยา (Z/X + ปุ่มมือถือ) + แถบ quickslot
+  hotkeyManager = new HotkeyManager(
+    input,
+    controller,
+    itemInventory,
+    touchControls,
+    TouchControls.isTouchDevice(),
+  );
+  // กระเป๋าเก็บของ (ปุ่ม 🎒 / คีย์ B) — ติดตั้ง/กิน/จัดยาลงช่องลัด
+  let controlsBeforeInv = true;
+  new InventoryUI(
+    itemInventory,
+    () => {
+      playerCombat?.refreshLoadout();
+      hotkeyManager?.refresh();
+    },
+    (open) => {
+      if (open) controlsBeforeInv = controller.inputEnabled;
+      controller.setControlsEnabled(open ? false : controlsBeforeInv);
+    },
+  );
 
   // มอนสเตอร์ + ระบบต่อสู้ (Phase 4-5) — callbacks อ้าง playerCombat แบบ late-bind
   const rewardContributions = new RewardContributionTracker<Monster>();
@@ -288,6 +320,7 @@ async function main(): Promise<void> {
   game.add(player);
   game.add(camera);
   game.add(playerCombat);
+  game.add(hotkeyManager);
   game.add(equipmentVisuals);
   game.add(effects);
   game.add(npcManager);

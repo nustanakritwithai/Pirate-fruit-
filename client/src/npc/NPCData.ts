@@ -10,7 +10,7 @@ export interface NPCDefinition {
   z: number;
   color: number;
   dialogue: string[];
-  action?: 'boat-shop' | 'quest-board' | 'dealer-shop';
+  action?: 'boat-shop' | 'quest-board' | 'dealer-shop' | 'potion-shop';
   dockId?: string;
 }
 
@@ -65,14 +65,15 @@ export const STARTER_NPCS: NPCDefinition[] = [
     id: 'shopkeeper-pao',
     islandId: 'starter-island',
     name: 'เถ้าแก่เปา',
-    role: 'ร้านค้าทั่วไป',
+    role: 'ร้านขายยา',
     x: 7,
     z: 8.5,
     color: 0xa67935,
     dialogue: [
-      'ร้านยังจัดของไม่เสร็จ วันนี้เดินชมหมู่บ้านไปก่อนนะ',
-      'ต่อไปที่นี่จะขายของใช้ ยาฟื้นพลัง และอุปกรณ์สำหรับออกทะเล',
+      'มีทั้งยาฟื้น HP และ MP นะ ซื้อไปเผื่อไว้ตอนสู้',
+      'ซื้อแล้วอย่าลืมจัดลงช่องลัดที่กระเป๋า (B) จะได้กดใช้ตอนสู้ได้ทัน',
     ],
+    action: 'potion-shop',
   },
 ];
 

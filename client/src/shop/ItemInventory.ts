@@ -13,8 +13,11 @@ import { getGun } from '../guns/GunRegistry';
 import { getFightingStyle } from '../fighting-styles/FightingStyleRegistry';
 import { getFruit } from '../fruit/FruitRegistry';
 import { DRAW_COST, drawGacha, STARTER_STYLE_ID, type GachaEntry, type ItemKind } from './GachaData';
+import { getPotion } from './PotionData';
 
 const STORAGE_KEY = 'pirate-fruit:items-v1';
+/** จำนวนช่องลัดใช้ยา */
+export const QUICKSLOT_COUNT = 2;
 
 interface InventoryData {
   coins: number;
@@ -22,6 +25,10 @@ interface InventoryData {
   ownedGuns: string[];
   ownedStyles: string[];
   ownedFruits: string[];
+  /** ยา/ของกิน: potionId → จำนวน */
+  consumables: Record<string, number>;
+  /** ช่องลัดใช้ยา (potionId ต่อช่อง, null = ว่าง) — ยาว QUICKSLOT_COUNT */
+  quickslots: (string | null)[];
   loadout: SkillLoadoutState;
 }
 
@@ -102,6 +109,60 @@ export class ItemInventory {
     return true;
   }
 
+  // ---------- ยา/ของกิน (consumable) ----------
+
+  getConsumableCount(id: string): number {
+    return this.data.consumables[id] ?? 0;
+  }
+
+  /** รายการยาที่มี (นับ >0) — คืน {id, count} */
+  listConsumables(): { id: string; count: number }[] {
+    return Object.entries(this.data.consumables)
+      .filter(([id, n]) => getPotion(id) && n > 0)
+      .map(([id, count]) => ({ id, count }));
+  }
+
+  /** ซื้อยา 1 ขวด — คืน false ถ้าเหรียญไม่พอ/ไม่มียานี้ */
+  buyPotion(id: string): boolean {
+    const potion = getPotion(id);
+    if (!potion) return false;
+    if (this.coins < potion.price) return false;
+    if (this.wallet) {
+      if (!this.wallet.spendCoins(potion.price, `potion:${id}`)) return false;
+    } else {
+      this.data.coins -= potion.price;
+    }
+    this.data.consumables[id] = this.getConsumableCount(id) + 1;
+    this.save();
+    return true;
+  }
+
+  /** ใช้ยา 1 ขวด — คืน false ถ้าไม่มี */
+  useConsumable(id: string): boolean {
+    if (this.getConsumableCount(id) <= 0) return false;
+    this.data.consumables[id] -= 1;
+    this.save();
+    return true;
+  }
+
+  // ---------- ช่องลัด (quickslot) ----------
+
+  getQuickslot(slot: number): string | null {
+    return this.data.quickslots[slot] ?? null;
+  }
+
+  get quickslots(): readonly (string | null)[] {
+    return this.data.quickslots;
+  }
+
+  /** จัดยาลงช่องลัด (id=null = เอาออก) */
+  assignQuickslot(slot: number, id: string | null): void {
+    if (slot < 0 || slot >= QUICKSLOT_COUNT) return;
+    if (id !== null && !getPotion(id)) return;
+    this.data.quickslots[slot] = id;
+    this.save();
+  }
+
   /** persist สถานะ (เรียกหลัง toggle ชุดสกิลด้วย) */
   save(): void {
     try {
@@ -132,6 +193,8 @@ export class ItemInventory {
       ownedGuns: [],
       ownedStyles: [STARTER_STYLE_ID],
       ownedFruits: [],
+      consumables: {},
+      quickslots: new Array(QUICKSLOT_COUNT).fill(null),
       // mastery มาจาก provider (ProgressionManager) — เริ่มจาก 1 แล้ว grind ปลดสกิล
       loadout: { ...DEFAULT_SKILL_LOADOUT },
     };
@@ -151,12 +214,38 @@ export class ItemInventory {
         ownedGuns: filter('gun', parsed.ownedGuns),
         ownedStyles,
         ownedFruits: filter('fruit', parsed.ownedFruits),
+        consumables: sanitizeConsumables(parsed.consumables),
+        quickslots: sanitizeQuickslots(parsed.quickslots),
         loadout,
       };
     } catch {
       return base;
     }
   }
+}
+
+/** ตรวจ consumables ที่โหลดมา (potion id ต้องมีจริง, จำนวนเป็นเลขบวก) */
+function sanitizeConsumables(value: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!value || typeof value !== 'object') return out;
+  for (const [id, n] of Object.entries(value as Record<string, unknown>)) {
+    if (getPotion(id) && typeof n === 'number' && Number.isFinite(n) && n > 0) {
+      out[id] = Math.floor(n);
+    }
+  }
+  return out;
+}
+
+/** ตรวจ quickslots (ยาว QUICKSLOT_COUNT, แต่ละช่องเป็น potion id ที่มีจริง หรือ null) */
+function sanitizeQuickslots(value: unknown): (string | null)[] {
+  const slots: (string | null)[] = new Array(QUICKSLOT_COUNT).fill(null);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < QUICKSLOT_COUNT; i++) {
+      const v = value[i];
+      if (typeof v === 'string' && getPotion(v)) slots[i] = v;
+    }
+  }
+  return slots;
 }
 
 /** ตรวจ loadout state ที่โหลดมาให้ปลอดภัย (equipped ต้องมีอยู่จริง) */

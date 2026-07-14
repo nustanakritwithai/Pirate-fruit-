@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { drawGacha, GACHA_POOL, RARITY_WEIGHT, STARTER_STYLE_ID, type GachaEntry } from '../GachaData';
 import { ItemInventory } from '../ItemInventory';
+import { POTIONS } from '../PotionData';
 import type { EconomyWallet } from '../../progression/ProgressionTypes';
 
 function makeWallet(start = 5000): EconomyWallet & { spent: number } {
@@ -109,5 +110,54 @@ describe('ItemInventory ownership + equip + toggle', () => {
     const inv = new ItemInventory(makeWallet());
     expect(inv.equip('fruit', 'flame')).toBe(false);
     expect(inv.loadout.snapshot.equippedFruitId).toBeNull();
+  });
+});
+
+describe('ItemInventory potions + quickslots', () => {
+  it('buys a potion: spends coins and increments count', () => {
+    const wallet = makeWallet(1000);
+    const inv = new ItemInventory(wallet);
+    expect(inv.getConsumableCount('potion-hp')).toBe(0);
+    expect(inv.buyPotion('potion-hp')).toBe(true);
+    expect(inv.getConsumableCount('potion-hp')).toBe(1);
+    expect(wallet.spent).toBe(POTIONS['potion-hp'].price);
+    inv.buyPotion('potion-hp');
+    expect(inv.getConsumableCount('potion-hp')).toBe(2);
+  });
+
+  it('refuses to buy without enough coins', () => {
+    const wallet = makeWallet(10);
+    const inv = new ItemInventory(wallet);
+    expect(inv.buyPotion('potion-hp')).toBe(false);
+    expect(inv.getConsumableCount('potion-hp')).toBe(0);
+  });
+
+  it('uses a consumable: decrements, fails when empty', () => {
+    const inv = new ItemInventory(makeWallet(1000));
+    inv.buyPotion('potion-mp');
+    expect(inv.useConsumable('potion-mp')).toBe(true);
+    expect(inv.getConsumableCount('potion-mp')).toBe(0);
+    expect(inv.useConsumable('potion-mp')).toBe(false);
+  });
+
+  it('assigns and reads quickslots (ignores out-of-range / invalid id)', () => {
+    const inv = new ItemInventory(makeWallet());
+    inv.assignQuickslot(0, 'potion-hp');
+    inv.assignQuickslot(1, 'potion-mp');
+    expect(inv.getQuickslot(0)).toBe('potion-hp');
+    expect(inv.getQuickslot(1)).toBe('potion-mp');
+    inv.assignQuickslot(0, null);
+    expect(inv.getQuickslot(0)).toBeNull();
+    inv.assignQuickslot(5, 'potion-hp'); // นอกช่วง → ไม่ทำอะไร
+    inv.assignQuickslot(0, 'not-a-potion'); // id ไม่มีจริง → ไม่ทำอะไร
+    expect(inv.getQuickslot(0)).toBeNull();
+  });
+
+  it('listConsumables returns only owned potions with count > 0', () => {
+    const inv = new ItemInventory(makeWallet(1000));
+    expect(inv.listConsumables()).toEqual([]);
+    inv.buyPotion('potion-hp');
+    inv.buyPotion('potion-hp');
+    expect(inv.listConsumables()).toEqual([{ id: 'potion-hp', count: 2 }]);
   });
 });

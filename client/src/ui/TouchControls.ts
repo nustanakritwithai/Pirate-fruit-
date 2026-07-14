@@ -46,6 +46,7 @@ export class TouchControls {
   private skillTapQueue = 0;
   private ultTapQueue = 0;
   private weaponQueue = 0;
+  private potionTapQueue = 0;
   private skillsUnlocked = false;
   private skillIcons: [string, string, string] = ['🔒', '🔒', '🔒'];
   private skillMasteryRequirements = [0, 0, 0];
@@ -80,6 +81,7 @@ export class TouchControls {
   private weaponBtn: HTMLDivElement;
   private ultBtn: HTMLDivElement;
   private skillButtons: HTMLDivElement[] = [];
+  private potionButtons: HTMLDivElement[] = [];
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
   static isTouchDevice(): boolean {
@@ -185,6 +187,15 @@ export class TouchControls {
 
     this.weaponBtn = this.makeButton('tc-weapon', '👊', () => (this.weaponQueue = 1));
 
+    // ---------- ช่องลัดใช้ยา (2 ช่อง) ----------
+    for (let i = 1; i <= 2; i++) {
+      const btn = this.makeButton(`tc-potion tc-potion${i}`, '➕', () => (this.potionTapQueue = i));
+      const badge = document.createElement('b');
+      badge.className = 'tc-potion-count';
+      btn.appendChild(badge);
+      this.potionButtons.push(btn);
+    }
+
     // ---------- จุดล็อกวิ่งอัตโนมัติแบบ PUBG ----------
     this.autoRunBtn = this.makeButton('tc-autorun', '➜', () => {
       this.autoRunOn = !this.autoRunOn;
@@ -226,7 +237,27 @@ export class TouchControls {
     this.blockBtn.style.display = display;
     this.weaponBtn.style.display = display;
     for (const button of this.skillButtons) button.style.display = display;
+    for (const button of this.potionButtons) button.style.display = display;
     this.dashBtn.classList.toggle('tc-boat-boost', mode === 'boat');
+  }
+
+  /** อ่านช่องลัดยาที่แตะหนึ่งครั้ง คืน 1-2 หรือ 0 */
+  consumePotion(): number {
+    const n = this.potionTapQueue;
+    this.potionTapQueue = 0;
+    return n;
+  }
+
+  /** ตั้งไอคอน+จำนวนของช่องลัดยา (เรียกโดย HotkeyManager) — undefined = ช่องว่าง */
+  setPotionSlots(slots: ({ icon: string; count: number } | undefined)[]): void {
+    for (let i = 0; i < this.potionButtons.length; i++) {
+      const btn = this.potionButtons[i];
+      const slot = slots[i];
+      this.setButtonLabel(btn, slot ? slot.icon : '➕');
+      const badge = btn.querySelector<HTMLElement>('.tc-potion-count');
+      if (badge) badge.textContent = slot && slot.count > 0 ? String(slot.count) : '';
+      btn.classList.toggle('tc-potion-empty', !slot || slot.count <= 0);
+    }
   }
 
   /** ผูก getter คูลดาวน์ของ dash/โจมตี เพื่อวาดวงแหวนบนปุ่ม */
@@ -552,6 +583,15 @@ export class TouchControls {
       /* จุดวงกลมด้านขวากลางจอสำหรับสลับอาวุธ ไม่ชนปุ่มโจมตี */
       .tc-weapon { right: 16px; top: 52%; transform: translateY(-50%); width: 42px; height: 42px; font-size: 17px;
                    opacity: .9; border-color: rgba(255,215,140,.8); }
+      /* ช่องลัดใช้ยา — ซ้ายของกลุ่มปุ่มโจมตี */
+      .tc-potion  { width: 40px; height: 40px; font-size: 17px; opacity: .9;
+                    border-color: rgba(120,235,150,.8); background: rgba(14,52,30,.55); }
+      .tc-potion1 { right: 256px; bottom: 132px; }
+      .tc-potion2 { right: 256px; bottom: 84px; }
+      .tc-potion.tc-potion-empty { opacity: .5; filter: saturate(.4); }
+      .tc-potion-count { position: absolute; right: -3px; bottom: -3px; min-width: 15px; height: 15px;
+                    padding: 0 3px; border-radius: 8px; background: #1b6b3a; color: #fff; font-size: 10px;
+                    line-height: 15px; text-align: center; font-weight: 800; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
       .tc-autorun { position: fixed; left: 110px; top: 570px; width: 34px; height: 34px; font-size: 15px;
                     display: none; opacity: .75; border-width: 1px; border-color: rgba(255,224,126,.85);
                     background: rgba(80,68,18,.7); }

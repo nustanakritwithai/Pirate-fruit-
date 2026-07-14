@@ -26,6 +26,7 @@ export class Input {
   private skillQueue = 0; // 1-3 = สกิลที่กด, 0 = ไม่มี
   private ultimateQueue = 0;
   private weaponSwitchQueue = 0;
+  private potionQueue = 0; // 1-2 = ช่องลัดยาที่กด, 0 = ไม่มี
   private mode: ControlMode = 'player';
 
   private touch: TouchControls | null = null;
@@ -44,6 +45,8 @@ export class Input {
         this.skillQueue = Number(e.code.slice(-1));
       }
       if (!e.repeat && (e.code === 'Digit4' || e.code === 'KeyG')) this.ultimateQueue++;
+      if (!e.repeat && e.code === 'KeyZ') this.potionQueue = 1;
+      if (!e.repeat && e.code === 'KeyX') this.potionQueue = 2;
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -136,6 +139,15 @@ export class Input {
     if (fromTouch > 0) return fromTouch;
     const n = this.skillQueue;
     this.skillQueue = 0;
+    return n;
+  }
+
+  /** อ่านช่องลัดใช้ยาที่กดหนึ่งครั้ง คืน 1-2 หรือ 0 (Z/X บน PC / ปุ่มยาบนมือถือ) */
+  consumePotion(): number {
+    const fromTouch = this.touch?.consumePotion() ?? 0;
+    if (fromTouch > 0) return fromTouch;
+    const n = this.potionQueue;
+    this.potionQueue = 0;
     return n;
   }
 
