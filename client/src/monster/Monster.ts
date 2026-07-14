@@ -13,13 +13,16 @@ export type MonsterState = 'idle' | 'chase' | 'attack' | 'return' | 'dead';
 function createModel(type: MonsterType): CharacterVisualResult {
   const ancientConstruct = type.id === 'ruin-guardian'
     || type.id === 'sand-golem'
-    || type.id === 'sun-guardian-boss';
+    || type.id === 'sun-guardian-boss'
+    || type.id === 'crystal-golem'
+    || type.id === 'frost-king-boss';
+  const frostConstruct = type.id === 'crystal-golem' || type.id === 'frost-king-boss';
   const visual = type.kind === 'crab'
     ? createCrabVisual(type.color)
     : createHumanoidVisual({
         clothColor: type.color,
-        accentColor: ancientConstruct ? 0x5e4934 : type.kind === 'boss' ? 0x7b2030 : 0x825033,
-        skinColor: ancientConstruct ? 0x957c5e : type.kind === 'boss' ? 0x9a664b : 0xb9825f,
+        accentColor: frostConstruct ? 0x87d8e8 : ancientConstruct ? 0x5e4934 : type.kind === 'boss' ? 0x7b2030 : 0x825033,
+        skinColor: frostConstruct ? 0x5e94aa : ancientConstruct ? 0x957c5e : type.kind === 'boss' ? 0x9a664b : 0xb9825f,
         pirate: !ancientConstruct,
         boss: type.kind === 'boss',
       });

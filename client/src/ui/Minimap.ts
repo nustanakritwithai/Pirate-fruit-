@@ -23,7 +23,7 @@ function createOceanOverview(): MinimapView {
   const radius = Math.max(...ISLANDS.map((island) =>
     Math.hypot(island.center.x - centerX, island.center.z - centerZ) + island.radius,
   )) * 1.08;
-  return { id: 'ocean-overview', label: 'ทะเลสามเกาะ', centerX, centerZ, radius };
+  return { id: 'ocean-overview', label: `ทะเล ${ISLANDS.length} เกาะ`, centerX, centerZ, radius };
 }
 
 const OCEAN_OVERVIEW = createOceanOverview();
@@ -89,6 +89,11 @@ export class Minimap {
           color = [222 - t * 27, 190 - t * 35, 132 - t * 27];
         }
         else if (terrainIsland?.id === 'sunscar-desert') color = [154, 125, 91];
+        else if (terrainIsland?.id === 'azure-frost' && h < 3.8) {
+          const t = Math.max(0, Math.min(1, h / 3.8));
+          color = [221 - t * 34, 239 - t * 31, 243 - t * 24];
+        }
+        else if (terrainIsland?.id === 'azure-frost') color = [128, 157, 169];
         else if (h < 0.7) color = [222, 205, 158];
         else if (h < 3.4) {
           const t = (h - 0.7) / 2.7;

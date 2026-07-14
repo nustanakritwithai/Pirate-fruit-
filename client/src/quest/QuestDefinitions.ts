@@ -103,6 +103,10 @@ export const QUEST_DEFINITIONS: readonly QuestDefinition[] = [
     objectives: [{ type: 'boss', targetId: 'sun-guardian-boss', requiredAmount: 1 }],
     rewards: { playerExp: 5200, coins: 3200, masteryBonus: 650 },
   },
+  { id: 'azure-frost-crawlers', name: 'เงาบนผืนน้ำแข็ง', description: 'กำจัดแมงมุมน้ำแข็ง 7 ตัวรอบทะเลสาบและชายหิมะใต้', minimumLevel: 51, repeatable: true, objectives: [{ type: 'kill', targetId: 'frost-crawler', requiredAmount: 7 }], rewards: { playerExp: 3900, coins: 2400, masteryBonus: 430 } },
+  { id: 'azure-frost-raiders', name: 'ชิงเส้นทางหิมะคืน', description: 'ปราบโจรน้ำแข็ง 6 คนที่คุมเส้นทางตะวันตก', minimumLevel: 55, repeatable: true, objectives: [{ type: 'kill', targetId: 'frost-raider', requiredAmount: 6 }], rewards: { playerExp: 4600, coins: 2900, masteryBonus: 520 } },
+  { id: 'azure-crystal-golems', name: 'หัวใจแห่งเหมืองคริสตัล', description: 'ทำลายโกเลมคริสตัลคราม 5 ตนในเหมืองทางเหนือ', minimumLevel: 61, repeatable: true, objectives: [{ type: 'kill', targetId: 'crystal-golem', requiredAmount: 5 }], rewards: { playerExp: 5900, coins: 3800, masteryBonus: 650 } },
+  { id: 'ancient-frost-king', name: 'บัลลังก์เหมันต์นิรันดร์', description: 'โค่นราชันน้ำแข็งโบราณที่ป้อมเหนือสุด', minimumLevel: 65, repeatable: true, objectives: [{ type: 'boss', targetId: 'frost-king-boss', requiredAmount: 1 }], rewards: { playerExp: 8400, coins: 5400, masteryBonus: 900 } },
   {
     id: 'trade-fish-to-desert',
     name: 'ส่งอาหารสู่เกาะทอผ้า',

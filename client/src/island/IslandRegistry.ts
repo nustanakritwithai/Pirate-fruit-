@@ -7,6 +7,8 @@ export const MIST_JUNGLE_CENTER = { x: 170, z: -40 } as const;
 export const MIST_JUNGLE_RADIUS = 54;
 export const SUNSCAR_DESERT_CENTER = { x: 170, z: 125 } as const;
 export const SUNSCAR_DESERT_RADIUS = 56;
+export const AZURE_FROST_CENTER = { x: 35, z: 210 } as const;
+export const AZURE_FROST_RADIUS = 58;
 
 /** สูตรพื้นเกาะเดิม ห้ามเปลี่ยน เพื่อให้เซฟและ collider ของ Phase 1-8 ตรงตำแหน่งเดิม */
 export function starterHeightAt(x: number, z: number): number {
@@ -49,6 +51,21 @@ export function sunscarDesertHeightAt(x: number, z: number): number {
   return falloff * (4.2 + hills) + duneRipple + SEA_FLOOR_HEIGHT;
 }
 
+/** พื้นเกาะเหมันต์คราม: ชายฝั่งหิมะ ลานน้ำแข็ง และสันเขารอบป้อมเหนือ */
+export function azureFrostHeightAt(x: number, z: number): number {
+  const lx = x - AZURE_FROST_CENTER.x;
+  const lz = z - AZURE_FROST_CENTER.z;
+  const d = Math.hypot(lx, lz);
+  const t = THREE.MathUtils.clamp(1 - d / AZURE_FROST_RADIUS, 0, 1);
+  const falloff = t * t * (3 - 2 * t);
+  const ridges =
+    Math.sin(lx * 0.105) * Math.cos(lz * 0.082) * 0.9 +
+    Math.sin(lx * 0.042 + lz * 0.061) * 1.35 +
+    Math.cos(lx * 0.033 - lz * 0.052) * 0.82;
+  const northRise = THREE.MathUtils.smoothstep(lz, 8, 38) * 1.25;
+  return falloff * (4.35 + ridges + northRise) + SEA_FLOOR_HEIGHT;
+}
+
 export const DOCKS: readonly DockDefinition[] = [
   {
     id: 'starter-harbor',
@@ -73,6 +90,14 @@ export const DOCKS: readonly DockDefinition[] = [
     zone: { minX: 160, maxX: 181, minZ: 68, maxZ: 102 },
     boatSpawn: { x: 175, z: 75, heading: 0 },
     disembark: { fixedAxis: 'x', fixedValue: 172.1, clampAxis: 'z', min: 72, max: 99 },
+  },
+  {
+    id: 'azure-frost-harbor',
+    islandId: 'azure-frost',
+    name: 'ท่าเรือเหมันต์คราม',
+    zone: { minX: 50, maxX: 88, minZ: 187, maxZ: 194 },
+    boatSpawn: { x: 84, z: 190, heading: -Math.PI / 2 },
+    disembark: { fixedAxis: 'z', fixedValue: 190, clampAxis: 'x', min: 53, max: 82 },
   },
 ] as const;
 
@@ -109,6 +134,17 @@ export const ISLANDS: readonly IslandDefinition[] = [
     spawn: { id: 'sunscar-caravan-city', x: 170, z: 100, heading: 0 },
     dockIds: ['sunscar-desert-harbor'],
     heightAt: sunscarDesertHeightAt,
+  },
+  {
+    id: 'azure-frost',
+    name: 'เกาะเหมันต์คราม',
+    subtitle: 'หมู่บ้านนักล่าและป้อมราชันน้ำแข็ง',
+    center: AZURE_FROST_CENTER,
+    radius: AZURE_FROST_RADIUS,
+    recommendedLevel: [51, 70],
+    spawn: { id: 'azure-frost-village', x: 59, z: 201, heading: -Math.PI / 2 },
+    dockIds: ['azure-frost-harbor'],
+    heightAt: azureFrostHeightAt,
   },
 ] as const;
 
