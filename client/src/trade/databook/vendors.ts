@@ -1,6 +1,6 @@
 import type { TradeVendorDefinition } from '../types';
 
-/** NPC ผู้ค้าต่อเกาะ — ผูกกับตลาดและพิกัดโลก */
+/** NPC ผู้ค้า — ผูกกับตลาด Living Trade */
 export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
   {
     id: 'vendor-starter-pao',
@@ -11,29 +11,29 @@ export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
     marketId: 'starter-market',
     x: 6,
     z: 4,
-    dialogueOpen: 'ของจากทะเลและป่าไม้ ซื้อขายได้ที่นี่!',
+    dialogueOpen: 'เกาะใบไม้ — อาหารและไม้ราคาตามตลาดจริง',
   },
   {
-    id: 'vendor-starter-harbor',
+    id: 'vendor-starter-shipyard',
     islandId: 'starter-island',
-    name: 'Harbor Broker Kram',
-    nameTh: 'นายท่าคราม',
+    name: 'Shipwright Mek',
+    nameTh: 'ช่างเรือเมฆ',
     kind: 'harbor',
-    marketId: 'starter-market',
-    x: 2,
-    z: -35,
-    dialogueOpen: 'จะลงสินค้าหรือรับของขึ้นเรือ?',
+    marketId: 'starter-shipyard-market',
+    x: 4,
+    z: -33,
+    dialogueOpen: 'อู่เรือ — ซื้อขายชิ้นส่วนเรือ ราคาเปลี่ยนตามวัตถุดิบ',
   },
   {
     id: 'vendor-mist-expedition',
     islandId: 'mist-jungle',
     name: 'Expedition Quartermaster',
-    nameTh: 'เจ้าหน้าที่ค่ายสำรวจ',
+    nameTh: 'เจ้าหน้าที่ค่ายเหมือง',
     kind: 'general',
     marketId: 'mist-jungle-market',
     x: 156,
     z: -38,
-    dialogueOpen: 'สมุนไพรและของโบราณจากป่า — แลกกับเสบียงจากทะเล',
+    dialogueOpen: 'เกาะเหมือง — เหล็กส่งออก ต้องการอาหารและไม้',
   },
   {
     id: 'vendor-mist-harbor',
@@ -44,7 +44,7 @@ export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
     marketId: 'mist-jungle-market',
     x: 140,
     z: -42,
-    dialogueOpen: 'ขึ้นเรือก่อนออกเดินทาง อย่าลืมเช็ค cargo',
+    dialogueOpen: 'ตลาดท่าเรือ — ราคาสดจากเศรษฐกิจภูมิภาค',
   },
   {
     id: 'vendor-sunscar-bazaar',
@@ -55,7 +55,7 @@ export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
     marketId: 'sunscar-desert-market',
     x: 168,
     z: 98,
-    dialogueOpen: 'ผ้าไหมและอัญมณีจากทะเลทราย — ราคาดีวันนี้',
+    dialogueOpen: 'เกาะทอผ้า — ผ้าไหมและสินค้านำเข้า',
   },
   {
     id: 'vendor-sunscar-harbor',
@@ -66,6 +66,6 @@ export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
     marketId: 'sunscar-desert-market',
     x: 177,
     z: 78,
-    dialogueOpen: 'ลงสินค้าจากเรือหรือเติมเสบียงก่อนออกทะเล?',
+    dialogueOpen: 'ลงสินค้าจากเรือ — ราคาเปลี่ยนทุก 5 วินาที',
   },
 ] as const;

@@ -2,6 +2,7 @@ import type { TradeManager } from '../trade/TradeManager';
 import type { IslandId } from '../island/IslandTypes';
 import {
   TRADE_COMMODITIES,
+  getIslandMarket,
   getMarketForIsland,
   getTradeVendor,
   cargoSlotsUsed,
@@ -25,6 +26,7 @@ export class TradeShopUI {
   private closeCallback: (() => void) | null = null;
   private islandId: IslandId = 'starter-island';
   private vendorName = '';
+  private marketId: string | null = null;
 
   constructor(
     private trade: TradeManager,
@@ -83,6 +85,7 @@ export class TradeShopUI {
     if (document.pointerLockElement) document.exitPointerLock();
     this.islandId = islandId;
     const vendor = vendorId ? getTradeVendor(vendorId) : undefined;
+    this.marketId = vendor?.marketId ?? getMarketForIsland(islandId)?.id ?? null;
     this.vendorName = vendor?.nameTh ?? getMarketForIsland(islandId)?.nameTh ?? 'ตลาด';
     this.closeCallback = onClose;
     this.root.style.display = 'flex';
@@ -103,7 +106,7 @@ export class TradeShopUI {
   }
 
   private render(): void {
-    const market = getMarketForIsland(this.islandId);
+    const market = this.marketId ? getIslandMarket(this.marketId) : getMarketForIsland(this.islandId);
     if (!market) {
       this.setStatus('ไม่พบตลาดของเกาะนี้', false);
       return;
@@ -133,15 +136,17 @@ export class TradeShopUI {
 
       let stockHtml = '';
       let trendHtml = '';
+      let stateBadge = '';
+      let item: ReturnType<TradeManager['living']['getCommodityAtGameIsland']> | undefined;
       if (isLivingCommodity(commodity.id)) {
-        const item = this.trade.living.getCommodityAtGameIsland(this.islandId, commodity.id);
+        item = this.trade.living.getCommodityAtGameIsland(this.islandId, commodity.id);
         if (item) {
           const trend = priceTrend(item);
           const trendIcon = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→';
           const trendClass = trend;
-          const stateLabel = item.marketState;
-          stockHtml = `<span class="trade-stock" title="${stateLabel}">${Math.floor(item.stock)}</span>`;
+          stockHtml = `<span class="trade-stock" title="${item.marketState}">${Math.floor(item.stock)}</span>`;
           trendHtml = `<span class="trade-trend trade-trend-${trendClass}">${trendIcon}</span>`;
+          stateBadge = `<span class="trade-state trade-state-${item.marketState}">${item.marketState}</span>`;
         }
       }
 
@@ -149,7 +154,7 @@ export class TradeShopUI {
         <div class="trade-item">
           <span class="trade-icon">${commodity.icon}</span>
           <div>
-            <div class="trade-name">${commodity.nameTh} ${trendHtml}</div>
+            <div class="trade-name">${commodity.nameTh} ${trendHtml} ${stateBadge}</div>
             <div class="trade-role trade-role-${roleClass}">${roleLabel}</div>
           </div>
         </div>
@@ -208,6 +213,12 @@ export class TradeShopUI {
       .trade-stock{color:#9ed4ff;font-size:10px}
       .trade-trend{font-size:10px;margin-left:2px}
       .trade-trend-up{color:#ff9b8e}.trade-trend-down{color:#8ff0c5}.trade-trend-flat{color:#9eb5c8}
+      .trade-state{font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;text-transform:uppercase}
+      .trade-state-surplus{background:rgba(127,224,163,.2);color:#7fe0a3}
+      .trade-state-balanced{background:rgba(158,181,200,.15);color:#9eb5c8}
+      .trade-state-shortage{background:rgba(255,184,108,.2);color:#ffb86c}
+      .trade-state-crisis{background:rgba(255,142,142,.2);color:#ff8e8e}
+      .trade-state-collapsed{background:rgba(255,77,77,.25);color:#ff6b6b}
       .trade-cargo-qty{text-align:center;color:#c8e8ff}
       .trade-actions{display:flex;gap:3px;flex-wrap:wrap}
       .trade-actions button{padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.2);

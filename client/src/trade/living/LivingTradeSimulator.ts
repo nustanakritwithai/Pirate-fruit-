@@ -14,7 +14,6 @@ import {
   CELL_TO_GAME_ISLAND,
   ECONOMY_CONFIG,
   LIVING_COMMODITY_IDS,
-  createInitialWorld,
   isLivingCommodity,
   resolveTradeCell,
 } from './LivingTradeConfig';
@@ -25,6 +24,7 @@ import {
   marketSaturation,
 } from './LivingTradeFormulas';
 import { generateNewsFromTick } from './LivingTradeNews';
+import { createFreshWorld, loadEconomyState, saveEconomyState } from './LivingTradePersistence';
 import type {
   CargoShip,
   CommodityState,
@@ -49,17 +49,14 @@ export class LivingTradeSimulator {
   private tickLog: EconomyLogEntry[] = [];
 
   constructor() {
-    const { cells, routes } = createInitialWorld();
-    this.world = {
-      tick: 0,
-      cells,
-      routes,
-      ships: [],
-      news: [],
-      log: [],
-      npcCooldown: ECONOMY_CONFIG.npcDepartEveryTicks,
-    };
-    for (const cell of this.world.cells) updatePrices(cell);
+    const saved = loadEconomyState();
+    if (saved) {
+      this.world = saved;
+    } else {
+      this.world = createFreshWorld();
+      for (const cell of this.world.cells) updatePrices(cell);
+      saveEconomyState(this.world);
+    }
   }
 
   get state(): Readonly<EconomyWorldState> {
@@ -129,6 +126,7 @@ export class LivingTradeSimulator {
     item.memory.recentBuyVolume += amount;
     item.importDemand += amount * 0.1;
     updatePrices(cell);
+    saveEconomyState(this.world);
   }
 
   applyPlayerSell(gameIslandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
@@ -139,6 +137,7 @@ export class LivingTradeSimulator {
     item.stock += amount;
     item.memory.recentSellVolume += amount;
     updatePrices(cell);
+    saveEconomyState(this.world);
   }
 
   tick(): void {
@@ -163,6 +162,7 @@ export class LivingTradeSimulator {
 
     const newNews = generateNewsFromTick(this.world, this.tickLog);
     this.world.news = [...newNews, ...this.world.news].slice(0, 15);
+    saveEconomyState(this.world);
   }
 
   tickMany(count: number): void {

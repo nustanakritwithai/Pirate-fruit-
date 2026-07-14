@@ -38,6 +38,19 @@ export function getMarketForIsland(islandId: IslandId): IslandMarketDefinition |
   return ISLAND_MARKETS.find((m) => m.islandId === islandId);
 }
 
+/** หา market entry บนเกาะ (รองรับหลายตลาดต่อเกาะ เช่น อู่เรือ) */
+export function findMarketEntryOnIsland(
+  islandId: IslandId,
+  commodityId: string,
+): { market: IslandMarketDefinition; entry: IslandMarketEntry } | undefined {
+  for (const market of ISLAND_MARKETS) {
+    if (market.islandId !== islandId) continue;
+    const entry = market.entries.find((e) => e.commodityId === commodityId);
+    if (entry) return { market, entry };
+  }
+  return undefined;
+}
+
 export function getMarketEntry(
   marketId: string,
   commodityId: string,

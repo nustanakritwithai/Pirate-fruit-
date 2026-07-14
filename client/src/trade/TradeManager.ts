@@ -7,9 +7,8 @@ import type { IslandId } from '../island/IslandTypes';
 import type { CargoHold, CargoSlot, TradeTransactionListener, TradeTransactionResult } from './types';
 import { BOAT_CARGO_CAPACITY, TRADE_SYSTEM_CONFIG } from './databook/config';
 import {
+  findMarketEntryOnIsland,
   getCommodity,
-  getMarketEntry,
-  getMarketForIsland,
 } from './TradeRegistry';
 import { buyPrice, cargoSlotsUsed, cargoTotalWeight, sellPrice } from './TradeFormulas';
 import { LivingTradeSimulator } from './living/LivingTradeSimulator';
@@ -61,10 +60,9 @@ export class TradeManager {
     const livingPrice = this.living.getBuyPrice(islandId, commodityId, quantity);
     if (livingPrice != null) return livingPrice;
     const commodity = getCommodity(commodityId);
-    const market = getMarketForIsland(islandId);
-    const entry = market ? getMarketEntry(market.id, commodityId) : undefined;
-    if (!commodity || !entry) return null;
-    return buyPrice(commodity, entry);
+    const found = findMarketEntryOnIsland(islandId, commodityId);
+    if (!commodity || !found) return null;
+    return buyPrice(commodity, found.entry);
   }
 
   /** ราคาขาย — living หรือ static */
@@ -72,10 +70,9 @@ export class TradeManager {
     const livingPrice = this.living.getSellPrice(islandId, commodityId, quantity);
     if (livingPrice != null) return livingPrice;
     const commodity = getCommodity(commodityId);
-    const market = getMarketForIsland(islandId);
-    const entry = market ? getMarketEntry(market.id, commodityId) : undefined;
-    if (!commodity || !entry) return null;
-    return sellPrice(commodity, entry);
+    const found = findMarketEntryOnIsland(islandId, commodityId);
+    if (!commodity || !found) return null;
+    return sellPrice(commodity, found.entry);
   }
 
   buy(islandId: IslandId, commodityId: string, quantity: number): TradeTransactionResult {
@@ -92,12 +89,12 @@ export class TradeManager {
     commodityId: string,
     quantity: number,
   ): TradeTransactionResult {
-    const market = getMarketForIsland(islandId);
     const commodity = getCommodity(commodityId);
-    if (!market || !commodity) {
+    const found = findMarketEntryOnIsland(islandId, commodityId);
+    if (!commodity || !found) {
       return this.emit({ ok: false, message: 'ไม่พบสินค้าหรือตลาด' });
     }
-    const entry = getMarketEntry(market.id, commodityId);
+    const entry = found.entry;
     if (!entry) {
       return this.emit({ ok: false, message: action === 'buy' ? 'ร้านไม่ขายสินค้านี้' : 'ร้านไม่รับซื้อสินค้านี้' });
     }
