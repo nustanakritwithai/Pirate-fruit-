@@ -11,6 +11,8 @@ export const AZURE_FROST_CENTER = { x: 35, z: 210 } as const;
 export const AZURE_FROST_RADIUS = 58;
 export const TEMPEST_SKY_CENTER = { x: -125, z: 210 } as const;
 export const TEMPEST_SKY_RADIUS = 60;
+export const EMBER_VOLCANO_CENTER = { x: -235, z: 70 } as const;
+export const EMBER_VOLCANO_RADIUS = 62;
 
 /** สูตรพื้นเกาะเดิม ห้ามเปลี่ยน เพื่อให้เซฟและ collider ของ Phase 1-8 ตรงตำแหน่งเดิม */
 export function starterHeightAt(x: number, z: number): number {
@@ -83,6 +85,22 @@ export function tempestSkyHeightAt(x: number, z: number): number {
   return falloff * (5.15 + ridges + plateau) + SEA_FLOOR_HEIGHT;
 }
 
+/** เกาะภูผาอัคคี: ชายฝั่งบะซอลต์ไล่ขึ้นสู่สันภูเขาไฟและแอ่งปล่องกลางเกาะ */
+export function emberVolcanoHeightAt(x: number, z: number): number {
+  const lx = x - EMBER_VOLCANO_CENTER.x;
+  const lz = z - EMBER_VOLCANO_CENTER.z;
+  const d = Math.hypot(lx, lz);
+  const t = THREE.MathUtils.clamp(1 - d / EMBER_VOLCANO_RADIUS, 0, 1);
+  const falloff = t * t * (3 - 2 * t);
+  const ridges =
+    Math.sin(lx * 0.108) * Math.cos(lz * 0.086) * 1.15 +
+    Math.sin(lx * 0.047 + lz * 0.063) * 1.42 +
+    Math.cos(lx * 0.036 - lz * 0.052) * 0.92;
+  const volcanicRise = THREE.MathUtils.smoothstep(t, 0.24, 0.82) * 3.1;
+  const craterDip = Math.exp(-(d * d) / (2 * 8.5 * 8.5)) * 2.2;
+  return falloff * (4.75 + ridges + volcanicRise - craterDip) + SEA_FLOOR_HEIGHT;
+}
+
 export const DOCKS: readonly DockDefinition[] = [
   {
     id: 'starter-harbor',
@@ -123,6 +141,14 @@ export const DOCKS: readonly DockDefinition[] = [
     zone: { minX: -104, maxX: -68, minZ: 207, maxZ: 214 },
     boatSpawn: { x: -71, z: 210, heading: -Math.PI / 2 },
     disembark: { fixedAxis: 'z', fixedValue: 210, clampAxis: 'x', min: -101, max: -73 },
+  },
+  {
+    id: 'ember-volcano-harbor',
+    islandId: 'ember-volcano',
+    name: 'ท่าเรือภูผาอัคคี',
+    zone: { minX: -217, maxX: -207, minZ: 101, maxZ: 143 },
+    boatSpawn: { x: -212, z: 139, heading: Math.PI },
+    disembark: { fixedAxis: 'x', fixedValue: -212, clampAxis: 'z', min: 105, max: 136 },
   },
 ] as const;
 
@@ -181,6 +207,17 @@ export const ISLANDS: readonly IslandDefinition[] = [
     spawn: { id: 'tempest-cliff-village', x: -96, z: 210, heading: Math.PI / 2 },
     dockIds: ['tempest-sky-harbor'],
     heightAt: tempestSkyHeightAt,
+  },
+  {
+    id: 'ember-volcano',
+    name: 'เกาะภูผาอัคคี',
+    subtitle: 'นครช่างตีเหล็กและปล่องไททันแมกมา',
+    center: EMBER_VOLCANO_CENTER,
+    radius: EMBER_VOLCANO_RADIUS,
+    recommendedLevel: [91, 110],
+    spawn: { id: 'ember-forge-village', x: -218, z: 102, heading: Math.PI },
+    dockIds: ['ember-volcano-harbor'],
+    heightAt: emberVolcanoHeightAt,
   },
 ] as const;
 

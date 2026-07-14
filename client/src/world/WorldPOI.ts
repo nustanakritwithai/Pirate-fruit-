@@ -204,10 +204,23 @@ export const TEMPEST_SKY_POIS = {
 } as const satisfies Record<string, WorldPOI>;
 
 export const TEMPEST_SKY_POI_LIST: WorldPOI[] = Object.values(TEMPEST_SKY_POIS);
+
+/** จุดสำคัญของเกาะที่หก: หมู่บ้านโรงตี ลานลาวา เหมืองออบซิเดียน และปล่องไททัน */
+export const EMBER_VOLCANO_POIS = {
+  forgeVillage: { id: 'ember-forge-village', islandId: 'ember-volcano', name: 'หมู่บ้านช่างตีอัคคี', icon: '◆', x: -218, z: 100, safeRadius: 12 },
+  harbor: { id: 'ember-volcano-harbor', islandId: 'ember-volcano', name: 'ท่าเรือภูผาอัคคี', icon: '⚓', x: -212, z: 112, safeRadius: 8 },
+  lavaFields: { id: 'ember-lava-fields', islandId: 'ember-volcano', name: 'ทุ่งลาวาเดือด', icon: '●', x: -255, z: 98, safeRadius: 9 },
+  cultistCamp: { id: 'ember-cultist-camp', islandId: 'ember-volcano', name: 'ป้อมลัทธิเถ้าถ่าน', icon: '⚔', x: -270, z: 72, safeRadius: 8 },
+  obsidianMine: { id: 'ember-obsidian-mine', islandId: 'ember-volcano', name: 'เหมืองออบซิเดียน', icon: '◇', x: -214, z: 56, safeRadius: 9 },
+  titanCaldera: { id: 'ember-titan-caldera', islandId: 'ember-volcano', name: 'ปล่องไททันแมกมา', icon: '▲', x: -235, z: 70, safeRadius: 11 },
+} as const satisfies Record<string, WorldPOI>;
+
+export const EMBER_VOLCANO_POI_LIST: WorldPOI[] = Object.values(EMBER_VOLCANO_POIS);
 export const ALL_WORLD_POI_LIST: WorldPOI[] = [
   ...WORLD_POI_LIST,
   ...MIST_JUNGLE_POI_LIST,
   ...SUNSCAR_DESERT_POI_LIST,
   ...AZURE_FROST_POI_LIST,
   ...TEMPEST_SKY_POI_LIST,
+  ...EMBER_VOLCANO_POI_LIST,
 ];
