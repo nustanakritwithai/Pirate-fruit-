@@ -41,7 +41,8 @@ import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
-import { EconomyNewsTicker } from './ui/EconomyNewsTicker';
+import { EconomyMobileHUD } from './ui/EconomyMobileHUD';
+import { EconomyPanel } from './ui/EconomyPanel';
 import { CargoHUD } from './ui/CargoHUD';
 
 async function main(): Promise<void> {
@@ -141,7 +142,12 @@ async function main(): Promise<void> {
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);
-  const economyNews = new EconomyNewsTicker(tradeManager);
+  const economyHud = new EconomyMobileHUD(tradeManager);
+  const economyPanel = new EconomyPanel(tradeManager, () => islandManager.activeIsland);
+  economyHud.bindPanel(economyPanel, () => {
+    controller.setControlsEnabled(false);
+    economyPanel.open(() => controller.setControlsEnabled(true));
+  });
   const cargoHud = new CargoHUD(tradeManager);
   cargoHud.refresh();
   tradeRouteHint.bindTradeManager(tradeManager);
@@ -166,8 +172,13 @@ async function main(): Promise<void> {
         tradeRouteHint.refresh();
         tradeShop.refresh();
         economyDebug.refresh();
+        economyPanel.refresh();
       }
-      economyNews.update(dt, tradeShop.isOpen);
+      economyHud.update(dt, {
+        shopOpen: tradeShop.isOpen,
+        panelOpen: economyPanel.isOpen,
+        islandId: islandManager.activeIsland,
+      });
     },
   });
   // ร้านสุ่มของดีลเลอร์ (Phase 7) — onChange รีเฟรชชุดสกิลของ PlayerCombat หลัง equip/สุ่ม

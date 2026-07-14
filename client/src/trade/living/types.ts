@@ -104,6 +104,7 @@ export interface TradeNewsItem {
   commodityId?: LivingCommodityId;
   createdAt: number;
   ttlMs: number;
+  priority?: import('./EconomyEventClassifier').EconomyEventPriority;
 }
 
 export interface EconomyWorldState {

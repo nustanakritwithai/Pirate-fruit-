@@ -1,34 +1,50 @@
 import type { IslandId } from '../island/IslandTypes';
 import type { TradeManager } from '../trade/TradeManager';
 import { TRADE_COMMODITIES } from '../trade/databook/commodities';
-import { TRADE_ROUTES } from '../trade/databook/tradeRoutes';
 import { getIsland } from '../island/IslandRegistry';
-import { filterActiveNews } from '../trade/living/LivingTradeNews';
+import { isTouchDevice } from '../engine/device';
 
-/** แผงแนะนำเส้นทางเทรดกำไรจากเกาะปัจจุบัน (Living Trade Network) */
+/** วิดเจ็ตเส้นทางกำไรแบบกะทัดรัด — แยกจาก ProgressionHUD */
 export class TradeRouteHint {
   private readonly root: HTMLDivElement;
   private islandId: IslandId = 'starter-island';
-  private visible = false;
+  private expanded = false;
   private trade: TradeManager | null = null;
 
   constructor() {
     const style = document.createElement('style');
     style.textContent = `
-      .trade-route-hint{position:fixed;z-index:18;left:16px;bottom:118px;width:220px;box-sizing:border-box;
-        padding:8px 10px;pointer-events:none;color:#dff7ee;background:rgba(6,28,32,.82);
-        border:1px solid rgba(120,200,170,.35);border-radius:10px;font:600 10px 'Segoe UI',Tahoma,sans-serif;
-        display:none;text-shadow:0 1px 2px #000}
-      .trade-route-hint-title{color:#ffe08a;margin-bottom:4px;font-size:11px}
-      .trade-route-hint-route{color:#b8e8d4;line-height:1.45}
-      .trade-route-hint-profit{color:#8ff0c5}
-      .trade-route-hint-news{color:#c8e0d8;font-size:9px;margin-top:5px;line-height:1.35;opacity:.9}
-      @media(max-width:700px){.trade-route-hint{left:8px;bottom:108px;width:168px;font-size:9px}}
+      .trade-route-hint{position:fixed;z-index:20;right:14px;top:98px;pointer-events:auto;
+        touch-action:manipulation;max-width:200px}
+      .trade-route-toggle{width:100%;border:1px solid rgba(120,200,170,.35);border-radius:10px;
+        padding:6px 10px;background:rgba(6,28,32,.85);color:#dff7ee;cursor:pointer;
+        font:600 10px 'Segoe UI',Tahoma,sans-serif;text-align:left;display:flex;gap:6px;align-items:center}
+      .trade-route-toggle:active{transform:scale(.98)}
+      .trade-route-body{display:none;margin-top:4px;padding:8px 10px;border-radius:10px;
+        background:rgba(6,28,32,.88);border:1px solid rgba(120,200,170,.3);
+        color:#b8e8d4;font:600 10px 'Segoe UI',Tahoma,sans-serif;line-height:1.45}
+      .trade-route-hint.expanded .trade-route-body{display:block}
+      .trade-route-profit{color:#8ff0c5;margin-top:3px}
+      @media(max-width:700px){
+        .trade-route-hint{top:52px;right:10px;max-width:168px}
+        .trade-route-toggle{font-size:9px;padding:5px 8px}
+      }
+      @media(min-width:701px){
+        .trade-route-hint{top:108px}
+      }
     `;
     document.head.appendChild(style);
     this.root = document.createElement('div');
     this.root.className = 'trade-route-hint';
+    this.root.innerHTML = `
+      <button type="button" class="trade-route-toggle">⚓ <span class="trade-route-compact">เส้นทาง</span></button>
+      <div class="trade-route-body"></div>`;
     document.body.appendChild(this.root);
+    this.root.querySelector('.trade-route-toggle')!
+      .addEventListener('click', () => {
+        this.expanded = !this.expanded;
+        this.root.classList.toggle('expanded', this.expanded);
+      });
   }
 
   bindTradeManager(trade: TradeManager): void {
@@ -43,7 +59,9 @@ export class TradeRouteHint {
   }
 
   setVisible(show: boolean): void {
-    this.visible = show;
+    this.root.style.display = show ? 'block' : 'none';
+    if (!show) this.expanded = false;
+    this.root.classList.remove('expanded');
     this.render();
   }
 
@@ -52,42 +70,30 @@ export class TradeRouteHint {
   }
 
   private render(): void {
-    if (!this.visible) {
+    const body = this.root.querySelector('.trade-route-body')!;
+    const compact = this.root.querySelector('.trade-route-compact')!;
+
+    if (!this.trade || this.root.style.display === 'none') return;
+
+    const arb = this.trade.living.bestArbitrageFrom(this.islandId);
+    if (!arb) {
       this.root.style.display = 'none';
       return;
     }
-    const route = TRADE_ROUTES.find((r) => r.fromIslandId === this.islandId);
 
-    let best: { name: string; profit: number; toName: string } | null = null;
-    if (this.trade) {
-      const arb = this.trade.living.bestArbitrageFrom(this.islandId);
-      if (arb) {
-        const commodity = TRADE_COMMODITIES.find((c) => c.id === arb.commodityId);
-        best = {
-          name: commodity?.nameTh ?? arb.commodityId,
-          profit: arb.profit,
-          toName: getIsland(arb.toIslandId).name,
-        };
-      }
-    }
+    const commodity = TRADE_COMMODITIES.find((c) => c.id === arb.commodityId);
+    const icon = commodity?.icon ?? '📦';
+    const name = commodity?.nameTh ?? arb.commodityId;
+    const toName = getIsland(arb.toIslandId).name;
 
-    const news = this.trade
-      ? filterActiveNews(this.trade.living.news).slice(0, 1)
-      : [];
-    const newsHtml = news.length
-      ? `<div class="trade-route-hint-news">📰 ${news[0].message}</div>`
-      : '';
-
-    this.root.style.display = 'block';
-    if (best) {
-      this.root.innerHTML = `<div class="trade-route-hint-title">⚓ Living Trade</div>
-        <div class="trade-route-hint-route">ซื้อ <b>${best.name}</b><br>ขายที่ <b>${best.toName}</b></div>
-        <div class="trade-route-hint-profit">กำไร ~${best.profit} Beli/ชิ้น</div>${newsHtml}`;
-    } else if (route) {
-      this.root.innerHTML = `<div class="trade-route-hint-title">⚓ เส้นทางเทรด</div>
-        <div class="trade-route-hint-route">${route.nameTh}</div>${newsHtml}`;
+    if (isTouchDevice()) {
+      compact.textContent = `${icon} → ${toName.split(' ')[0]} +${arb.profit}`;
     } else {
-      this.root.style.display = 'none';
+      compact.textContent = `${icon} ${name} → ${toName}`;
     }
+
+    body.innerHTML = `ซื้อ <b>${name}</b><br>ขายที่ <b>${toName}</b>
+      <div class="trade-route-profit">กำไร ~${arb.profit} Beli/ชิ้น</div>`;
+    this.root.style.display = 'block';
   }
 }

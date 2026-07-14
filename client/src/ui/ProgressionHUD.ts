@@ -23,7 +23,7 @@ export class ProgressionHUD {
   ) {
     const style = document.createElement('style');
     style.textContent = `
-      .progression-hud { position:fixed; z-index:18; left:16px; top:168px; width:170px;
+      .progression-hud { position:fixed; z-index:20; left:16px; top:168px; width:170px;
         box-sizing:border-box; padding:8px 10px; pointer-events:none; color:#f5fbff;
         background:linear-gradient(145deg,rgba(5,24,34,.8),rgba(12,48,58,.72));
         border:1px solid rgba(127,218,231,.36); border-radius:11px; box-shadow:0 4px 14px rgba(0,0,0,.3);
@@ -48,8 +48,9 @@ export class ProgressionHUD {
       .progression-hud.level-up { animation:progression-level-flash .8s ease; }
       @keyframes progression-level-flash { 0%,100%{box-shadow:0 4px 14px rgba(0,0,0,.3)}
         35%{border-color:#ffe27a;box-shadow:0 0 24px rgba(255,221,94,.9);transform:scale(1.04)} }
-      @media(max-width:700px){ .progression-hud{top:136px;left:10px;width:154px;padding:7px 8px}
-        .progression-hud-coins{display:none} }
+      @media(max-width:700px){ .progression-hud{
+        top:auto; bottom:calc(88px + env(safe-area-inset-bottom,0px)); left:10px; width:154px; padding:7px 8px}
+        .progression-hud-coins{display:inline} }
     `;
     document.head.appendChild(style);
 

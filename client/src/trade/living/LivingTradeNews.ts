@@ -5,6 +5,7 @@ import type {
   MarketState,
   TradeNewsItem,
 } from './types';
+import type { EconomyEventPriority } from './EconomyEventClassifier';
 import { LIVING_COMMODITY_META } from './ProductionRecipes';
 
 const COMMODITY_LABELS: Record<LivingCommodityId, string> = Object.fromEntries(
@@ -29,7 +30,11 @@ export function generateNewsFromTick(
   const now = Date.now();
 
   for (const entry of tickLog.slice(0, 4)) {
-    items.push(makeNews(entry.message, entry.cellId, entry.commodityId, now));
+    const priority: EconomyEventPriority | undefined =
+      entry.message.includes('ผลิต') && entry.message.includes('หน่วย')
+        ? 'silent'
+        : undefined;
+    items.push(makeNews(entry.message, entry.cellId, entry.commodityId, now, priority));
   }
 
   for (const cell of world.cells) {
@@ -41,6 +46,7 @@ export function generateNewsFromTick(
           cell.id,
           id,
           now,
+          'high',
         ));
       }
       if (item.marketState === 'surplus' && item.memory.surplusTicks >= 2) {
@@ -49,6 +55,7 @@ export function generateNewsFromTick(
           cell.id,
           id,
           now,
+          'low',
         ));
       }
       if (item.marketState === 'collapsed') {
@@ -57,6 +64,7 @@ export function generateNewsFromTick(
           cell.id,
           id,
           now,
+          'critical',
         ));
       }
     }
@@ -70,6 +78,7 @@ function makeNews(
   cellId: string | undefined,
   commodityId: LivingCommodityId | undefined,
   now: number,
+  priority?: EconomyEventPriority,
 ): TradeNewsItem {
   return {
     id: `news-${++newsCounter}`,
@@ -78,6 +87,7 @@ function makeNews(
     commodityId,
     createdAt: now,
     ttlMs: 90_000,
+    priority,
   };
 }
 

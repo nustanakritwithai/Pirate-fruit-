@@ -1,8 +1,9 @@
 import type { TradeManager } from '../trade/TradeManager';
 import { TRADE_COMMODITIES } from '../trade/databook/commodities';
 import { cargoSlotsUsed, cargoTotalWeight } from '../trade/TradeFormulas';
+import { isTouchDevice } from '../engine/device';
 
-/** แสดง cargo บนเรือมุมขวาล่าง */
+/** รายละเอียด cargo — บนมือถือซ่อน (ใช้ eco-chip แทน) */
 export class CargoHUD {
   private readonly root: HTMLDivElement;
 
@@ -16,7 +17,7 @@ export class CargoHUD {
       .cargo-hud-title{color:#ffe08a;font-size:11px;margin-bottom:4px}
       .cargo-hud-line{color:#b8e8d4;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .cargo-hud-meta{color:#8eb5aa;font-size:9px;margin-top:4px}
-      @media(max-width:700px){.cargo-hud{right:8px;bottom:86px;font-size:9px}}
+      @media(max-width:700px){.cargo-hud{display:none!important}}
     `;
     document.head.appendChild(style);
     this.root = document.createElement('div');
@@ -25,6 +26,10 @@ export class CargoHUD {
   }
 
   refresh(): void {
+    if (isTouchDevice()) {
+      this.root.style.display = 'none';
+      return;
+    }
     const hold = this.trade.hold;
     if (!hold.slots.length) {
       this.root.style.display = 'none';
