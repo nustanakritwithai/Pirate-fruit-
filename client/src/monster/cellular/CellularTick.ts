@@ -1,3 +1,4 @@
+import { computeCombatMetrics } from './CombatExperienceAdapter';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
 import { buildNeighborSnapshot } from './NeighborResolver';
 import { MonsterRegistry } from './MonsterRegistry';
@@ -5,8 +6,10 @@ import { evaluateNextState } from './StateTransitionRules';
 import { SpatialGrid } from './SpatialGrid';
 import type {
   CellularTickMetrics,
+  CombatExperienceMetrics,
   MonsterCell,
   MonsterThoughtState,
+  NeighborSnapshot,
 } from './MonsterCellularTypes';
 
 export interface CellularTickContext {
@@ -18,6 +21,8 @@ export interface CellularTickResult {
   transitions: number;
   averageNeighborCount: number;
   durationMs: number;
+  snapshots: Map<string, NeighborSnapshot>;
+  combat: CombatExperienceMetrics;
 }
 
 /** Conway two-phase cellular update — read snapshot, compute next, apply together. */
@@ -75,10 +80,13 @@ export function runCellularTick(
   }
 
   const durationMs = performance.now() - t0;
+  const combat = computeCombatMetrics(snapshots, allCells, durationMs);
   return {
     transitions,
     averageNeighborCount: living.length > 0 ? neighborSum / living.length : 0,
     durationMs,
+    snapshots,
+    combat,
   };
 }
 
@@ -108,6 +116,7 @@ export function metricsFromRegistry(
   transitionCount: number,
   averageNeighborCount: number,
   lastTickDurationMs: number,
+  combat?: CombatExperienceMetrics,
 ): CellularTickMetrics {
   return {
     tick,
@@ -116,6 +125,7 @@ export function metricsFromRegistry(
     transitionCount,
     averageNeighborCount,
     lastTickDurationMs,
+    combat,
   };
 }
 

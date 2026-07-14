@@ -25,6 +25,7 @@ Factory → Trade → Trader          Monster → Neighbor Snapshot
 | Phase | Name | Status |
 |-------|------|--------|
 | **M1** | Living Monster Cellular AI (Weighted Conway Core) | **v1.0** |
+| **CE1** | Combat Experience v1.0 | **v1.0** |
 | M2 | Living Monster Memory | After playtest tuning |
 | M3 | Monster Genome | Planned |
 | M4 | Living Ecosystem | Planned |

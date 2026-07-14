@@ -1,4 +1,6 @@
 import type { Monster } from '../Monster';
+import { COMBAT_EXPERIENCE_CONFIG } from './CombatExperienceConfig';
+import { applyCombatExperience } from './CombatExperienceAdapter';
 import { resolveInfluenceWeight } from './CellularInfluence';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
 import {
@@ -14,6 +16,7 @@ import type {
   MonsterBehaviorIntent,
   MonsterCell,
   MonsterThoughtState,
+  NeighborSnapshot,
 } from './MonsterCellularTypes';
 import { SpatialGrid } from './SpatialGrid';
 
@@ -22,13 +25,46 @@ export interface MonsterCellularBinding {
   cellId: string;
 }
 
+function emptySnapshot(): NeighborSnapshot {
+  return {
+    idleCount: 0,
+    alertCount: 0,
+    huntCount: 0,
+    attackCount: 0,
+    fleeCount: 0,
+    regroupCount: 0,
+    restCount: 0,
+    deadCount: 0,
+    idleInfluence: 0,
+    alertInfluence: 0,
+    huntInfluence: 0,
+    attackInfluence: 0,
+    fleeInfluence: 0,
+    regroupInfluence: 0,
+    restInfluence: 0,
+    deadInfluence: 0,
+    playerNearby: false,
+    nearestPlayerDistance: Infinity,
+    playerInAttackRange: false,
+    monsterDensity: 0,
+    monsterDensityInfluence: 0,
+    neighborCount: 0,
+    bossInfluence: 0,
+  };
+}
+
 export class MonsterCellularWorld {
   readonly registry = new MonsterRegistry();
   private readonly grid = new SpatialGrid(MONSTER_CELLULAR_CONFIG.spatialCellSize);
   private readonly bindings = new Map<string, MonsterCellularBinding>();
   private tick = 0;
   private latestMetrics: CellularTickMetrics = emptyMetrics();
+  private lastSnapshots = new Map<string, NeighborSnapshot>();
+  private lastPlayerX = 0;
+  private lastPlayerZ = 0;
   debugMarkersEnabled = false;
+  /** CE1 — show thought colors when player is in combat range */
+  combatSignalsEnabled = true;
 
   bindMonster(monster: Monster): string {
     const existing = [...this.bindings.values()].find((b) => b.monster === monster);
@@ -68,6 +104,7 @@ export class MonsterCellularWorld {
     if (!id) return;
     this.registry.remove(id);
     this.bindings.delete(id);
+    this.lastSnapshots.delete(id);
     monster.cellularId = undefined;
   }
 
@@ -92,18 +129,22 @@ export class MonsterCellularWorld {
   cellularUpdate(playerX: number, playerZ: number): CellularTickMetrics {
     this.syncFromMonsters();
     this.tick += 1;
+    this.lastPlayerX = playerX;
+    this.lastPlayerZ = playerZ;
     const result = runCellularTick(
       this.registry,
       this.grid,
       { playerX, playerZ },
       this.tick,
     );
+    this.lastSnapshots = result.snapshots;
     this.latestMetrics = metricsFromRegistry(
       this.registry,
       this.tick,
       result.transitions,
       result.averageNeighborCount,
       result.durationMs,
+      result.combat,
     );
     return this.latestMetrics;
   }
@@ -115,6 +156,11 @@ export class MonsterCellularWorld {
   }
 
   getIntent(monster: Monster): MonsterBehaviorIntent {
+    return this.getCombatIntent(monster, this.lastPlayerX, this.lastPlayerZ);
+  }
+
+  /** CE1 — cellular thought + formation/pressure/role layer */
+  getCombatIntent(monster: Monster, playerX: number, playerZ: number): MonsterBehaviorIntent {
     const id = monster.cellularId;
     if (!id || !monster.alive) {
       return {
@@ -147,7 +193,27 @@ export class MonsterCellularWorld {
         influenceWeight: resolveInfluenceWeight(monster.type.id, monster.type.kind),
       });
     }
-    return behaviorIntentFromThought(cell);
+    const base = behaviorIntentFromThought(cell);
+    const snapshot = this.lastSnapshots.get(id) ?? emptySnapshot();
+    return applyCombatExperience(
+      cell,
+      snapshot,
+      base,
+      playerX,
+      playerZ,
+      this.registry.getAll(),
+      this.tick,
+    );
+  }
+
+  shouldShowCombatSignal(monster: Monster, playerX: number, playerZ: number): boolean {
+    if (this.debugMarkersEnabled) return true;
+    if (!this.combatSignalsEnabled) return false;
+    const state = this.getThoughtState(monster);
+    if (state === 'idle' || state === 'rest' || state === 'dead') return false;
+    const dx = playerX - monster.group.position.x;
+    const dz = playerZ - monster.group.position.z;
+    return Math.hypot(dx, dz) <= COMBAT_EXPERIENCE_CONFIG.combatSignalsRange;
   }
 
   getPackCenter(cellId: string): { x: number; z: number } | null {
@@ -179,6 +245,10 @@ export class MonsterCellularWorld {
     return this.latestMetrics;
   }
 
+  get snapshots(): ReadonlyMap<string, NeighborSnapshot> {
+    return this.lastSnapshots;
+  }
+
   getCell(id: string): MonsterCell | undefined {
     return this.registry.get(id);
   }
@@ -199,5 +269,4 @@ export class MonsterCellularWorld {
   }
 }
 
-// re-export for adapter
 export { regroupTarget, fleeDirection } from './MonsterBehaviorAdapter';

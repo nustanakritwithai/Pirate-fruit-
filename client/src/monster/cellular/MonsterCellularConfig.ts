@@ -40,7 +40,9 @@ export const MONSTER_CELLULAR_CONFIG = {
 
   /** Weighted cellular automata — boss wakes pack faster without leader script */
   influenceDefault: 1,
-  influenceBoss: 2,
+  influenceBoss: 3,
+  bossHuntBoost: 0.5,
+  bossFleeResistance: 1.5,
 } as const;
 
 export const THOUGHT_STATE_COLORS: Record<

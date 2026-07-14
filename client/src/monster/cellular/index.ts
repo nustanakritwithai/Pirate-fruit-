@@ -14,6 +14,16 @@ export {
   fleeDirection,
   regroupTarget,
 } from './MonsterBehaviorAdapter';
+export { COMBAT_EXPERIENCE_CONFIG } from './CombatExperienceConfig';
+export {
+  applyCombatExperience,
+  computeFormationTarget,
+  computeCombatPressure,
+  resolveEmergentRole,
+  shouldAttackUnderPressure,
+  computePackCohesion,
+  computeCombatMetrics,
+} from './CombatExperienceAdapter';
 export { resolveInfluenceWeight } from './CellularInfluence';
 export { MonsterCellularDebugPanel } from './MonsterCellularDebugPanel';
 export { MonsterCellularWorld } from './MonsterCellularWorld';

@@ -63,6 +63,7 @@ function snap(overrides: Partial<NeighborSnapshot> = {}): NeighborSnapshot {
     monsterDensity: 0,
     monsterDensityInfluence: 0,
     neighborCount: 0,
+    bossInfluence: 0,
     ...overrides,
   };
 }
@@ -372,7 +373,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
     expect(s.deadInfluence).toBe(1);
   });
 
-  it('43. boss influence weight is 2', () => {
+  it('43. boss influence weight is 3', () => {
     const reg = new MonsterRegistry();
     const grid = new SpatialGrid(6);
     reg.register(baseCell({ id: 'self', position: { x: 0, z: 0 } }));
@@ -380,13 +381,13 @@ describe('Phase M1 — Monster Cellular AI', () => {
       id: 'boss',
       speciesId: 'boss',
       currentState: 'alert',
-      influenceWeight: 2,
+      influenceWeight: 3,
       position: { x: 2, z: 0 },
     }));
     grid.clear();
     for (const c of reg.getAll()) grid.insert(c);
     const s = buildNeighborSnapshot(reg.get('self')!, reg, grid, 100, 100);
-    expect(s.alertInfluence).toBe(2);
+    expect(s.alertInfluence).toBe(3);
     expect(s.alertCount).toBe(1);
   });
 

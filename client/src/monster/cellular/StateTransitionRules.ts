@@ -39,8 +39,8 @@ export function evaluateNextState(
 
     case 'alert':
       if (
-        snapshot.huntInfluence >= CFG.alertToHuntHuntMin
-        && snapshot.fleeInfluence <= CFG.alertToHuntFleeMax
+        snapshot.huntInfluence >= Math.max(1, CFG.alertToHuntHuntMin - snapshot.bossInfluence * CFG.bossHuntBoost * 0.2)
+        && snapshot.fleeInfluence <= CFG.alertToHuntFleeMax + snapshot.bossInfluence * 0.25
       ) {
         return 'hunt';
       }
@@ -56,7 +56,7 @@ export function evaluateNextState(
       }
       if (
         snapshot.deadInfluence >= CFG.huntToFleeDeadHigh
-        || snapshot.fleeInfluence >= CFG.huntToFleeFleeHigh
+        || snapshot.fleeInfluence >= CFG.huntToFleeFleeHigh + snapshot.bossInfluence * CFG.bossFleeResistance
       ) {
         return 'flee';
       }
@@ -65,7 +65,7 @@ export function evaluateNextState(
 
     case 'attack':
       if (
-        snapshot.fleeInfluence >= CFG.huntToFleeFleeHigh
+        snapshot.fleeInfluence >= CFG.huntToFleeFleeHigh + snapshot.bossInfluence * CFG.bossFleeResistance
         || snapshot.deadInfluence >= CFG.huntToFleeDeadHigh
       ) {
         return 'flee';

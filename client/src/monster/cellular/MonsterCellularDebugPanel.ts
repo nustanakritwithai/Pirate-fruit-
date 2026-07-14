@@ -80,15 +80,27 @@ export class MonsterCellularDebugPanel {
 
   private render(): void {
     const m = this.world.metrics;
+    const c = m.combat;
     const rows = THOUGHT_STATES.map((s) => `<div>${s}: ${m.stateCounts[s] ?? 0}</div>`).join('');
+    const combatRows = c
+      ? `<div class="mcell-combat">
+          <div><b>Combat (CE1)</b></div>
+          <div>Attack Influence: ${c.averageAttackInfluence.toFixed(2)}</div>
+          <div>Flee Influence: ${c.averageFleeInfluence.toFixed(2)}</div>
+          <div>Pack Cohesion: ${c.packCohesion.toFixed(2)}</div>
+          <div>Combat Pressure: ${c.combatPressure.toFixed(2)}</div>
+          <div>Decision Time: ${c.averageDecisionTimeMs.toFixed(2)} ms</div>
+        </div>`
+      : '';
     this.root.querySelector('.mcell-stats')!.innerHTML = `
       <div>Monsters: ${m.monsterCount}</div>
       <div>Cellular Tick: ${m.tick}</div>
       <div>Transitions (last): ${m.transitionCount}</div>
       <div>Avg Neighbors: ${m.averageNeighborCount.toFixed(2)}</div>
       <div>Tick Time: ${m.lastTickDurationMs.toFixed(2)} ms</div>
+      ${combatRows}
       <div class="mcell-states">${rows}</div>
-      <div>Markers: ${this.world.debugMarkersEnabled ? 'ON' : 'OFF'}</div>`;
+      <div>Markers: ${this.world.debugMarkersEnabled ? 'DEBUG ON' : 'Combat signals'}</div>`;
   }
 
   private injectStyles(): void {
@@ -104,6 +116,7 @@ export class MonsterCellularDebugPanel {
       .mcell-close{background:0;border:0;color:#fff;font-size:18px;cursor:pointer}
       .mcell-stats{font-size:10px;line-height:1.5;margin-bottom:8px}
       .mcell-states{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:4px}
+      .mcell-combat{margin:6px 0;padding:6px;border-radius:6px;background:rgba(255,152,0,.08);border:1px solid rgba(255,152,0,.25)}
       .mcell-legend{display:flex;flex-wrap:wrap;gap:4px;font-size:9px;margin-bottom:8px}
       .mcell-legend span{padding:2px 4px;border-radius:4px;background:rgba(255,255,255,.06)}
       .c-idle{border-left:3px solid #9e9e9e}

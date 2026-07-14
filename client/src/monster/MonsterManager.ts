@@ -111,10 +111,14 @@ export class MonsterManager {
 
   cellularTick(playerX: number, playerZ: number): void {
     this.cellularWorld.cellularUpdate(playerX, playerZ);
-    if (this.thoughtMarker && this.cellularWorld.debugMarkersEnabled) {
-      for (const monster of this.monsters) {
-        if (!monster.alive || !monster.group.visible) continue;
+    if (!this.thoughtMarker) return;
+    for (const monster of this.monsters) {
+      if (!monster.alive || !monster.group.visible) continue;
+      const show = this.cellularWorld.shouldShowCombatSignal(monster, playerX, playerZ);
+      if (show) {
         this.thoughtMarker.sync(monster, this.cellularWorld.getThoughtState(monster));
+      } else if (monster.cellularId) {
+        this.thoughtMarker.hide(monster.cellularId);
       }
     }
   }
@@ -295,7 +299,11 @@ export class MonsterManager {
       const dz = player.z - monster.group.position.z;
       const distToPlayer = Math.hypot(dx, dz);
       const type = monster.type;
-      const intent = this.cellularWorld.getIntent(monster);
+      const intent = this.cellularWorld.getCombatIntent(
+        monster,
+        player.x,
+        player.z,
+      );
       monster.state = intent.legacyState;
       monster.returningHome = intent.returningHome;
 
@@ -446,9 +454,19 @@ export class MonsterManager {
       || intent.locomotion === 'walk'
       || distToPlayer < type.aggroRange
     ) {
-      if (distToPlayer > type.attackRange * 0.9) {
+      let mx = dx;
+      let mz = dz;
+      if (intent.moveTargetX !== undefined && intent.moveTargetZ !== undefined) {
+        mx = intent.moveTargetX - monster.group.position.x;
+        mz = intent.moveTargetZ - monster.group.position.z;
+      }
+      const moveDist = Math.hypot(mx, mz);
+      const closeEnough = intent.moveTargetX !== undefined
+        ? moveDist > 0.8
+        : distToPlayer > type.attackRange * 0.9;
+      if (closeEnough) {
         monster.state = intent.locomotion === 'run' ? 'chase' : 'return';
-        this.moveToward(monster, dx, dz, speed, dt);
+        this.moveToward(monster, mx, mz, speed, dt);
       }
       return;
     }

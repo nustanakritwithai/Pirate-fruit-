@@ -1,3 +1,4 @@
+import { isBossCell } from './CombatExperienceAdapter';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
 import type { MonsterCell, NeighborSnapshot } from './MonsterCellularTypes';
 import type { MonsterRegistry } from './MonsterRegistry';
@@ -33,6 +34,7 @@ function emptySnapshot(): NeighborSnapshot {
     monsterDensity: 0,
     monsterDensityInfluence: 0,
     neighborCount: 0,
+    bossInfluence: 0,
   };
 }
 
@@ -100,6 +102,9 @@ export function buildNeighborSnapshot(
     const d = dist2(cell.position.x, cell.position.z, other.position.x, other.position.z);
     if (d > radius) continue;
     addNeighborInfluence(snapshot, other.currentState, other.influenceWeight);
+    if (isBossCell(other)) {
+      snapshot.bossInfluence += other.influenceWeight;
+    }
   }
 
   const playerDist = dist2(cell.position.x, cell.position.z, playerX, playerZ);

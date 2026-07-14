@@ -43,6 +43,11 @@ export class MonsterThoughtMarker {
     marker.visible = true;
   }
 
+  hide(id: string): void {
+    const marker = this.markers.get(id);
+    if (marker) marker.visible = false;
+  }
+
   remove(id: string): void {
     const marker = this.markers.get(id);
     if (!marker) return;

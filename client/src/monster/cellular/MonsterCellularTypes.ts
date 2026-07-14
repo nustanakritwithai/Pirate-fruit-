@@ -57,9 +57,13 @@ export interface NeighborSnapshot {
   monsterDensity: number;
   monsterDensityInfluence: number;
   neighborCount: number;
+  /** CE1 — boss cells in perception (weighted) */
+  bossInfluence: number;
 }
 
 export type MonsterLocomotion = 'idle' | 'walk' | 'run' | 'flee' | 'regroup' | 'rest';
+
+export type CombatEmergentRole = 'frontliner' | 'flanker' | 'watcher' | 'retreater';
 
 export interface MonsterBehaviorIntent {
   locomotion: MonsterLocomotion;
@@ -69,6 +73,21 @@ export interface MonsterBehaviorIntent {
   returningHome: boolean;
   /** maps to legacy MonsterState for animation */
   legacyState: 'idle' | 'chase' | 'attack' | 'return' | 'dead';
+  /** CE1 — emergent combat role from situation */
+  combatRole?: CombatEmergentRole;
+  /** CE1 — formation move target; when set, chase ring not direct player */
+  moveTargetX?: number;
+  moveTargetZ?: number;
+  /** CE1 — 0..1 pressure felt this tick */
+  combatPressure?: number;
+}
+
+export interface CombatExperienceMetrics {
+  averageAttackInfluence: number;
+  averageFleeInfluence: number;
+  packCohesion: number;
+  combatPressure: number;
+  averageDecisionTimeMs: number;
 }
 
 export interface CellularTickMetrics {
@@ -78,6 +97,7 @@ export interface CellularTickMetrics {
   transitionCount: number;
   averageNeighborCount: number;
   lastTickDurationMs: number;
+  combat?: CombatExperienceMetrics;
 }
 
 export const THOUGHT_STATES: readonly MonsterThoughtState[] = [
