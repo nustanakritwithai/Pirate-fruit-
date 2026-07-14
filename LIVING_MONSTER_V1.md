@@ -2,6 +2,8 @@
 
 Pirate Fruit — **Weighted Conway-style** cellular automata for monster thought and emergent pack behavior. This document locks **M1 / Monster Core v1.0** scope: thought states, neighbor influence, propagation, and behavior adaptation — without memory, genome, or ecosystem layers.
 
+**Parent architecture:** [SIMULATION_CORE_V1.md](SIMULATION_CORE_V1.md) — *Everything emerges from Local Rules.*
+
 ## Simulation cores in Pirate Fruit
 
 Both major simulation stacks share the same design principle: **no central controller**, only **local rules**.
