@@ -6,7 +6,7 @@ services:
     runtime: static
     rootDir: client
     buildCommand: npm ci && npm run build
-    staticPublishPath: dist
+    staticPublishPath: client/dist
     pullRequestPreviewsEnabled: true
     envVars:
       - key: NODE_VERSION
