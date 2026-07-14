@@ -47,6 +47,7 @@ import { EconomyPanel } from './ui/EconomyPanel';
 import { subscribePlayerEconomyEvents, classifyPlayerEventPriority } from './trade/living/PlayerEconomyEvents';
 import type { ClassifiedEconomyEvent } from './trade/living/EconomyEventClassifier';
 import { CargoHUD } from './ui/CargoHUD';
+import { preloadPirateGameAssets } from './art/PirateAssetLibrary';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -66,9 +67,12 @@ async function main(): Promise<void> {
   const graphics = loadGraphicsProfile();
   const game = new Game(container, graphics);
   const input = new Input(game.renderer.domElement);
-  const worldTextures = await loadWorldTextures(
-    Math.min(graphics.textureAnisotropy, game.renderer.capabilities.getMaxAnisotropy()),
-  );
+  const [worldTextures] = await Promise.all([
+    loadWorldTextures(
+      Math.min(graphics.textureAnisotropy, game.renderer.capabilities.getMaxAnisotropy()),
+    ),
+    preloadPirateGameAssets(),
+  ]);
   const world = new World(game.scene, game.renderer, worldTextures, graphics);
 
   const camera: ThirdPersonCamera = new ThirdPersonCamera(

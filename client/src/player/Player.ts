@@ -14,6 +14,12 @@ import {
   type CharacterAttachmentSockets,
 } from '../art/CharacterRig';
 import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
+import { createQuaterniusPlayerVisual } from '../art/QuaterniusPlayerVisual';
+
+interface PlayerVisualAnimator {
+  update(dt: number, snapshot: PlayerActionSnapshot): void;
+  dispose?(): void;
+}
 
 /**
  * ตัวละครผู้เล่น Pirate V1: visual/rig ของโปรเจกต์เอง + animation ตาม gameplay state
@@ -21,7 +27,7 @@ import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
 export class Player {
   readonly group = new THREE.Group();
 
-  private actionAnimator: PlayerActionAnimator | null = null;
+  private actionAnimator: PlayerVisualAnimator | null = null;
   private readonly sockets: CharacterAttachmentSockets = {
     leftHand: null,
     rightHand: null,
@@ -51,6 +57,16 @@ export class Player {
   ) {}
 
   async load(scene: THREE.Scene): Promise<void> {
+    const external = createQuaterniusPlayerVisual();
+    if (external) {
+      this.group.name = 'player:gameplay-root';
+      this.group.add(external.group);
+      scene.add(this.group);
+      Object.assign(this.sockets, external.sockets);
+      this.actionAnimator = external.animator;
+      return;
+    }
+
     const visual = createPiratePlayerVisual();
     this.group.name = 'player:gameplay-root';
     this.group.add(visual.group);
