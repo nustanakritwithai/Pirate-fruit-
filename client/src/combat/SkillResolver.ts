@@ -22,6 +22,16 @@ import { getFruit } from '../fruit/FruitRegistry';
 import { getSword } from '../swords/SwordRegistry';
 import { getGun } from '../guns/GunRegistry';
 import { getFightingStyle } from '../fighting-styles/FightingStyleRegistry';
+import { getSkillGameplay } from './skillGameplay';
+
+/** สรุปสถานะแต่ละช่องสกิล (สำหรับปุ่ม/แผงสถิติ) — ยาว 4: [Z, X, C, ไม้ตาย] */
+export interface SkillSlotInfo {
+  icon: string;
+  name: string;
+  masteryRequired: number;
+  locked: boolean;
+  hasSkill: boolean;
+}
 
 export interface ActiveSkillSet {
   kind: 'weapon' | 'fruit';
@@ -29,8 +39,10 @@ export interface ActiveSkillSet {
   itemId: string | null;
   itemName: string;
   itemIcon: string;
-  /** 4 สลอต: [Z, X, C, ไม้ตาย] — null = ล็อก/ไม่มี */
+  /** 4 สลอต: [Z, X, C, ไม้ตาย] — null = ล็อก/ไม่มี (cast ได้เฉพาะที่ปลดแล้ว) */
   slots: (CastableSkill | null)[];
+  /** สถานะ 4 ช่องสำหรับ UI (โชว์ไอคอน + 🔒 เกณฑ์ mastery แม้ยังล็อก) */
+  slotInfo: SkillSlotInfo[];
   m1: M1Profile;
   /** อาวุธที่ถือ (M1 ใช้เสมอ ไม่ขึ้นกับชุดสกิลที่ active) */
   weaponId: string | null;
@@ -91,9 +103,25 @@ function activeItemMeta(loadout: SkillLoadout): {
 export function resolveActiveSet(loadout: SkillLoadout): ActiveSkillSet {
   const meta = activeItemMeta(loadout);
   const slots: (CastableSkill | null)[] = [null, null, null, null];
+  const slotInfo: SkillSlotInfo[] = [
+    { icon: '❔', name: '—', masteryRequired: 0, locked: true, hasSkill: false },
+    { icon: '❔', name: '—', masteryRequired: 0, locked: true, hasSkill: false },
+    { icon: '❔', name: '—', masteryRequired: 0, locked: true, hasSkill: false },
+    { icon: '🔒', name: '—', masteryRequired: 0, locked: true, hasSkill: false },
+  ];
 
   for (const resolved of loadout.resolveSlots()) {
     const index = SLOT_TO_INDEX[resolved.slot];
+    const hasSkill = Boolean(resolved.skillId);
+    // ไอคอนจาก databook (มีแม้ล็อก) — ปลดล็อกค่อยใส่ CastableSkill ที่ยิงได้
+    const icon = resolved.skillId ? getSkillGameplay(resolved.skillId)?.icon ?? '❔' : slotInfo[index].icon;
+    slotInfo[index] = {
+      icon,
+      name: hasSkill ? resolved.label : '—',
+      masteryRequired: resolved.masteryRequired,
+      locked: resolved.locked,
+      hasSkill,
+    };
     if (resolved.locked || !resolved.skillId) continue;
     const raw = lookupRawSkill(loadout.activeSet, loadout.equippedWeaponKind, resolved.skillId);
     if (!raw) continue;
@@ -108,6 +136,7 @@ export function resolveActiveSet(loadout: SkillLoadout): ActiveSkillSet {
     itemName: meta.name,
     itemIcon: meta.icon,
     slots,
+    slotInfo,
     m1: WEAPON_M1[loadout.equippedWeaponKind],
     weaponId: weapon.id,
     weaponCategory: weapon.category,

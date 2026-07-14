@@ -568,7 +568,12 @@ export class PlayerCombat {
   private beginCastSkill(slot: number): void {
     const skill = this.set.slots[slot];
     if (!skill) {
-      this.touch?.notify(slot === ULTIMATE_SLOT ? 'ยังไม่มีไม้ตาย' : 'ยังไม่มีสกิลช่องนี้');
+      const info = this.set.slotInfo[slot];
+      if (info?.hasSkill && info.locked) {
+        this.touch?.notify(`🔒 ต้องการ Mastery ${info.masteryRequired}`);
+      } else {
+        this.touch?.notify(slot === ULTIMATE_SLOT ? 'ยังไม่มีไม้ตาย' : 'ยังไม่มีสกิลช่องนี้');
+      }
       return;
     }
     // คูลดาวน์รายสกิล — สกิลชุดอื่นที่สลอตเดียวกันจะไม่บล็อกกัน
@@ -729,13 +734,29 @@ export class PlayerCombat {
   /** อัปเดตไอคอน/วงแหวน/ปุ่มบนจอสัมผัสให้ตรงกับชุดสกิลที่ active */
   private refreshTouchLoadout(): void {
     if (!this.touch) return;
-    const s = this.set.slots;
-    this.touch.setSkillIcons([s[0]?.icon ?? '❔', s[1]?.icon ?? '❔', s[2]?.icon ?? '❔']);
-    this.touch.setUltimateIcon(s[3]?.icon ?? '🔒');
+    const info = this.set.slotInfo;
+    // ไอคอนจาก databook — โชว์แม้ยังล็อก (ผู้เล่นเห็นท่าที่รอปลด)
+    this.touch.setSkillIcons([info[0].icon, info[1].icon, info[2].icon]);
+    this.touch.setUltimateIcon(info[3].hasSkill ? info[3].icon : '🔒');
     // ปุ่มอาวุธแสดงไอคอนของชุดสกิลที่ active (อาวุธ หรือ ผลไม้)
     this.touch.setWeaponIcon(this.set.itemIcon);
-    // สกิลที่ resolve มาแล้ว = ปลดล็อกพร้อมใช้ (mastery ล็อกถูกกรองใน resolver)
-    this.touch.setSkillMasteryState(1, [0, 0, 0]);
-    this.touch.setUltimateMastery(0);
+    // ล็อกตาม mastery จริงต่อชิ้น — ปุ่มที่ยังไม่ปลดโชว์ 🔒{เกณฑ์}
+    const mastery = this.currentItemMastery();
+    this.touch.setSkillMasteryState(mastery, [
+      info[0].locked ? info[0].masteryRequired : 0,
+      info[1].locked ? info[1].masteryRequired : 0,
+      info[2].locked ? info[2].masteryRequired : 0,
+    ]);
+    this.touch.setUltimateMastery(info[3].locked && info[3].hasSkill ? info[3].masteryRequired : 0);
+  }
+
+  /** id ของไอเทมที่ชุดสกิล active อ้างถึง (อาวุธ/ผลไม้) */
+  private activeSkillItemId(): string {
+    return this.set.itemId ?? this.set.weaponId ?? 'combat';
+  }
+
+  /** mastery ปัจจุบันของไอเทมที่ active — provider progression ก่อน */
+  private currentItemMastery(): number {
+    return this.progression?.getMasteryLevel(this.activeSkillItemId()) ?? 1;
   }
 }

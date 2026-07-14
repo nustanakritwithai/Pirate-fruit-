@@ -2,6 +2,7 @@ import type { ProgressionManager } from '../progression/ProgressionManager';
 import type { ActiveLoadoutItem, PlayerStatId } from '../progression/ProgressionTypes';
 import { PROGRESSION_CONFIG } from '../progression/ProgressionData';
 import { getMasteryExpRequired } from '../progression/MasterySystem';
+import { listSkillGates } from '../combat/SkillLoadout';
 import {
   STAT_DEFINITIONS,
   STATS_SYSTEM_CONFIG,
@@ -153,13 +154,23 @@ export class StatsPanel {
       const masteryExp = mastery?.exp ?? 0;
       const masteryRequired = getMasteryExpRequired(masteryLevel);
       const progress = Math.min(100, Math.round((masteryExp / masteryRequired) * 100));
+      // สถานะปลดล็อกต่อสกิล (Z/X/C/V) — ✓ ปลดแล้ว / 🔒 เกณฑ์ mastery
+      const gates = listSkillGates(item.category, item.itemId)
+        .map((g) => {
+          const unlocked = masteryLevel >= g.masteryRequired;
+          const cls = unlocked ? 'skill-gate unlocked' : 'skill-gate locked';
+          const tag = unlocked ? '✓' : `🔒${g.masteryRequired}`;
+          return `<li class="${cls}"><span class="gate-key">${g.key}</span> ${g.name} <span class="gate-tag">${tag}</span></li>`;
+        })
+        .join('');
       const section = document.createElement('section');
       section.className = 'stats-mastery';
       section.innerHTML = `
         <div class="stats-mastery-title">${ICON[item.category] ?? '⚔️'} ${item.name}</div>
         <div class="stats-mastery-level">Mastery ${masteryLevel}<span>/${PROGRESSION_CONFIG.masteryMaxLevel}</span></div>
         <div class="stats-mastery-bar"><i style="width:${progress}%"></i></div>
-        <div class="stats-mastery-exp">EXP ${masteryExp} / ${masteryRequired}</div>`;
+        <div class="stats-mastery-exp">EXP ${masteryExp} / ${masteryRequired}</div>
+        ${gates ? `<ul class="stats-skill-gates">${gates}</ul>` : ''}`;
       this.content.appendChild(section);
     }
   }
@@ -203,6 +214,14 @@ export class StatsPanel {
       .stats-mastery-bar i { display:block; height:100%; border-radius:4px;
         background:linear-gradient(90deg,#b98cff,#e8c2ff); }
       .stats-mastery-exp { margin-top:4px; color:#b8c5ce; font-size:10px; }
+      .stats-skill-gates { list-style:none; margin:7px 0 0; padding:0; display:flex; flex-direction:column; gap:3px; }
+      .skill-gate { display:flex; align-items:center; gap:6px; font-size:11px; padding:3px 7px; border-radius:7px;
+        background:rgba(0,0,0,.28); }
+      .skill-gate .gate-key { display:inline-flex; min-width:16px; height:16px; align-items:center; justify-content:center;
+        border-radius:4px; font-size:9px; font-weight:900; background:rgba(255,255,255,.14); }
+      .skill-gate .gate-tag { margin-left:auto; font-weight:800; font-size:10px; }
+      .skill-gate.unlocked { color:#9ff0cd; } .skill-gate.unlocked .gate-tag { color:#6fe6a8; }
+      .skill-gate.locked { color:#c7a3a3; } .skill-gate.locked .gate-tag { color:#ff9d8a; }
       .stats-panel footer { margin-top:12px; color:#82a5ac; font-size:10px; text-align:center; }
       @media(max-width:700px){ .stats-open-button{right:8px;top:88px;width:30px;height:30px;font-size:14px}
         .stats-panel-root{align-items:flex-end;padding:8px}.stats-panel{max-height:80vh} }

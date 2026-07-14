@@ -5,7 +5,7 @@
  * - ถือ SkillLoadout state จริง (activeSet/equipped/mastery) + persist localStorage
  */
 
-import { SkillLoadout, DEFAULT_SKILL_LOADOUT } from '../combat/SkillLoadout';
+import { SkillLoadout, DEFAULT_SKILL_LOADOUT, type MasteryProvider } from '../combat/SkillLoadout';
 import type { SkillLoadoutState } from '../combat/types';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { getSword } from '../swords/SwordRegistry';
@@ -15,8 +15,6 @@ import { getFruit } from '../fruit/FruitRegistry';
 import { DRAW_COST, drawGacha, STARTER_STYLE_ID, type GachaEntry, type ItemKind } from './GachaData';
 
 const STORAGE_KEY = 'pirate-fruit:items-v1';
-/** Mastery สูงพอให้ไอเทมที่ติดตั้งโชว์ moveset ครบชุด (ปรับ progression ทีหลังได้) */
-const FULL_MASTERY = 600;
 
 interface InventoryData {
   coins: number;
@@ -43,9 +41,13 @@ export class ItemInventory {
   private data: InventoryData;
   readonly loadout: SkillLoadout;
 
-  constructor(private wallet?: EconomyWallet) {
+  constructor(
+    private wallet?: EconomyWallet,
+    /** provider mastery ต่อชิ้นจริง (ProgressionManager) — ขับการปลดล็อกสกิลแบบ Blox Fruits */
+    masteryOf?: MasteryProvider,
+  ) {
     this.data = this.load();
-    this.loadout = new SkillLoadout(this.data.loadout);
+    this.loadout = new SkillLoadout(this.data.loadout, masteryOf);
   }
 
   get coins(): number {
@@ -130,13 +132,8 @@ export class ItemInventory {
       ownedGuns: [],
       ownedStyles: [STARTER_STYLE_ID],
       ownedFruits: [],
-      loadout: {
-        ...DEFAULT_SKILL_LOADOUT,
-        swordMastery: FULL_MASTERY,
-        gunMastery: FULL_MASTERY,
-        fightingStyleMastery: FULL_MASTERY,
-        fruitMastery: FULL_MASTERY,
-      },
+      // mastery มาจาก provider (ProgressionManager) — เริ่มจาก 1 แล้ว grind ปลดสกิล
+      loadout: { ...DEFAULT_SKILL_LOADOUT },
     };
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '') as Partial<InventoryData>;

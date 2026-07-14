@@ -70,7 +70,8 @@ async function main(): Promise<void> {
   world.setFocusProvider(() => controller.position);
   const progression = new ProgressionManager({ resources: controller });
   // อินเวนทอรีอาวุธ/ผลไม้ + สถานะ SkillLoadout (Phase 7) — ProgressionManager เป็นกระเป๋าเงินร่วม
-  const itemInventory = new ItemInventory(progression);
+  // mastery ต่อชิ้นจริงขับการปลดล็อกสกิล (Blox Fruits): grind ไอเทมนั้น ๆ เพื่อปลด X/C/ไม้ตาย
+  const itemInventory = new ItemInventory(progression, (id) => progression.getMasteryLevel(id));
 
   const spawnManager = new SpawnManager(controller, world.collision);
 
@@ -250,6 +251,20 @@ async function main(): Promise<void> {
   );
   progression.events.on('player:level-up', () => {
     effects.spawnShockwave(controller.position, 3.5, 0xffdf74);
+  });
+
+  // Mastery ต่อชิ้นขึ้นเลเวล → ถ้าเป็นไอเทมที่ติดตั้งอยู่ รีเฟรชชุดสกิล (อาจปลดท่าใหม่)
+  progression.events.on('mastery:level-up', ({ itemId }) => {
+    const equipped = playerCombat?.masteryItems.some((it) => it.itemId === itemId);
+    if (equipped) playerCombat?.refreshLoadout();
+  });
+  // ปลดล็อกสกิลใหม่ (mastery ถึงเกณฑ์) → แจ้งเตือน + รีเฟรชปุ่ม
+  progression.events.on('skill:unlocked', ({ itemId, skillName }) => {
+    const equipped = playerCombat?.masteryItems.some((it) => it.itemId === itemId);
+    if (equipped) {
+      playerCombat?.refreshLoadout();
+      touchControls?.notify(`✨ ปลดล็อกสกิล ${skillName}!`);
+    }
   });
 
   touchControls?.bindCooldowns(

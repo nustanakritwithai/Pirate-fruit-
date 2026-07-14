@@ -22,8 +22,11 @@ export interface SkillLoadoutState {
 
 export interface ResolvedSkillSlot {
   slot: SkillSlotIndex;
+  /** id ของสกิลในช่องนี้ (มีแม้ยังล็อก เพื่อให้ UI โชว์ไอคอน) — null = ไม่มีสกิลช่องนี้เลย */
   skillId: string | null;
   label: string;
   locked: boolean;
+  /** Mastery ขั้นต่ำที่ปลดสกิลช่องนี้ (0 = ไม่มีสกิล) */
+  masteryRequired: number;
   lockReason?: string;
 }
