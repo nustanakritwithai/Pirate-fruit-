@@ -2,6 +2,9 @@
 
 เกมโอเพนเวิลด์แนว Blox Fruits สร้างด้วย **Three.js + TypeScript** เล่นบนเบราว์เซอร์
 
+**Simulation Core v1.0** — โลกมีแกนจำลองสองระบบ (Economy + Monster Cellular) ที่ใช้หลัก *Everything emerges from Local Rules.*
+ดูรายละเอียดที่ [SIMULATION_CORE_V1.md](SIMULATION_CORE_V1.md) · [LIVING_ECONOMY_V1.md](LIVING_ECONOMY_V1.md) · [LIVING_MONSTER_V1.md](LIVING_MONSTER_V1.md)
+
 ตอนนี้จบ **Phase 7 — ระบบผลไม้ + 2 ชุดสกิล + ร้านสุ่ม (Gacha)**: ไอเทม 1 ชิ้น = 1 ชุดสกิล
 (อ้างอิง databook จาก Blox Fruits Wiki), ถืออาวุธ 1 + ผลไม้ 1 สลับชุดด้วยปุ่มอาวุธ/`R`,
 สุ่มของที่ร้านดีลเลอร์ — ต่อยอดจาก Phase 6 (Level/Stats/Mastery/Quest)
