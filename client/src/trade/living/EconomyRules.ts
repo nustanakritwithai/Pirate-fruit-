@@ -10,19 +10,72 @@ import type {
 } from './types';
 import { ECONOMY_CONFIG } from './LivingTradeConfig';
 import { calculatePrice, stockRatio } from './LivingTradeFormulas';
+import {
+  COMMODITY_RESERVE,
+  LIVING_COMMODITY_META,
+  type ProductionRecipe,
+  recipesForCell,
+} from './ProductionRecipes';
 
-/** ขั้น 1: ผลิต — ปรับกำลังผลิตตามสต็อกและแรงงาน */
+/** ความมั่นคงอาหาร 0–100 */
+export function getFoodSecurity(cell: EconomyCellState): number {
+  const fish = cell.commodities['fresh-fish'];
+  const dried = cell.commodities['dried-fish'];
+  if (!fish && !dried) return 50;
+  const fishRatio = fish ? stockRatio(fish) : 0;
+  const driedRatio = dried ? stockRatio(dried) * 0.95 : 0;
+  return Math.min(100, Math.max(fishRatio, driedRatio) * 100);
+}
+
+/** ความมั่งคั่ง 0–100 */
+export function getWealth(cell: EconomyCellState): number {
+  let score = 25 + cell.population / 50;
+  const silk = cell.commodities['sun-silk'];
+  const luxury = cell.commodities['luxury-cloth'];
+  const parts = cell.commodities.sailcloth;
+  if (silk) score += stockRatio(silk) * 25;
+  if (luxury) score += stockRatio(luxury) * 20;
+  if (parts) score += stockRatio(parts) * 15;
+  return Math.min(100, score);
+}
+
+/** เครื่องมือเพียงพอ → ผลิตเร็วขึ้น / ขาด → ช้าลง */
+export function getToolEfficiency(cell: EconomyCellState): number {
+  const tools = cell.commodities.tools;
+  if (!tools) return 1;
+  if (tools.stock >= tools.targetStock) return 1.2;
+  if (tools.stock < tools.targetStock * 0.3) return 0.75;
+  return 1;
+}
+
+export function canProduceRecipe(cell: EconomyCellState, recipe: ProductionRecipe): boolean {
+  const output = cell.commodities[recipe.id];
+  if (!output) return false;
+  if (output.stock >= output.targetStock * 1.4) return false;
+  if (recipe.id === 'luxury-cloth' && getFoodSecurity(cell) < 40) return false;
+
+  for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
+    const input = cell.commodities[inputId];
+    if (!input || amount <= 0) return false;
+    const reserve = COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0;
+    if (input.stock - amount < reserve) return false;
+  }
+  return true;
+}
+
+/** ขั้น 1: ผลิตวัตถุดิบ — ปรับกำลังผลิตตามสต็อก แรงงาน และเครื่องมือ */
 export function produceGoods(cell: EconomyCellState): void {
-  const food = cell.commodities['fresh-fish'];
-  const foodRatio = food ? stockRatio(food) : 1;
-  if (food && foodRatio < 0.4) {
+  const foodSec = getFoodSecurity(cell);
+  if (foodSec < 40) {
     cell.workforce = Math.max(0.4, cell.workforce - 0.05);
   } else {
     cell.workforce = Math.min(1, cell.workforce + 0.02);
   }
 
+  const toolEff = getToolEfficiency(cell);
+
   for (const item of Object.values(cell.commodities)) {
-    if (!item) continue;
+    if (!item || item.baseProduction <= 0) continue;
     const ratio = stockRatio(item);
     if (ratio > 1.4) {
       item.production = item.baseProduction * 0.85;
@@ -31,7 +84,7 @@ export function produceGoods(cell: EconomyCellState): void {
     } else {
       item.production = item.baseProduction;
     }
-    const output = item.production * cell.workforce;
+    let output = item.production * cell.workforce * toolEff;
     item.stock += output;
   }
 }
@@ -45,58 +98,98 @@ export function consumeGoods(cell: EconomyCellState): void {
   }
 }
 
-/** ขั้น 3: แปรรูป — อู่เรือผลิตชิ้นส่วนเรือ */
-export function transformGoods(cell: EconomyCellState, log: EconomyLogEntry[]): void {
-  if (cell.role !== 'shipyard') return;
-  const wood = cell.commodities.hardwood;
-  const iron = cell.commodities['iron-ore'];
-  const cloth = cell.commodities['sun-silk'];
-  const parts = cell.commodities.sailcloth;
-  if (!wood || !iron || !cloth || !parts) return;
+/** ขั้น 3: แปรรูปตามสูตรสายการผลิต */
+export function runProduction(cell: EconomyCellState, log: EconomyLogEntry[]): void {
+  const recipes = recipesForCell(cell.id);
+  let craftedThisTick = 0;
 
-  const recipe = ECONOMY_CONFIG.shipPartsRecipe;
-  let crafted = 0;
-  while (
-    wood.stock >= recipe.wood
-    && iron.stock >= recipe.iron
-    && cloth.stock >= recipe.cloth
-    && crafted < ECONOMY_CONFIG.maxCraftPerTick
-  ) {
-    wood.stock -= recipe.wood;
-    iron.stock -= recipe.iron;
-    cloth.stock -= recipe.cloth;
-    parts.stock += 1;
-    crafted += 1;
-  }
-  if (crafted > 0) {
-    cell.transportCapacity = Math.min(
-      ECONOMY_CONFIG.maxTransportCapacity,
-      cell.transportCapacity + crafted * 0.15,
-    );
+  for (const recipe of recipes) {
+    if (craftedThisTick >= ECONOMY_CONFIG.maxCraftPerTick) break;
+    if (!canProduceRecipe(cell, recipe)) continue;
+
+    const output = cell.commodities[recipe.id]!;
+    for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
+      cell.commodities[inputId]!.stock -= amount;
+    }
+    output.stock += recipe.outputAmount;
+    craftedThisTick += 1;
+
+    if (recipe.id === 'sailcloth') {
+      cell.transportCapacity = Math.min(
+        ECONOMY_CONFIG.maxTransportCapacity,
+        cell.transportCapacity + 0.15,
+      );
+    }
+
     log.push({
       tick: 0,
-      message: `อู่เรือผลิตชิ้นส่วนเรือ ${crafted} ชิ้น — กำลังขนส่งเพิ่ม`,
+      message: `${cell.nameTh}ผลิต${LIVING_COMMODITY_META[recipe.id].label} ${recipe.outputAmount} หน่วย`,
       cellId: cell.id,
-      commodityId: 'sailcloth',
-    });
-  } else if (parts.stock < parts.targetStock * 0.5) {
-    const missing =
-      wood.stock < recipe.wood ? 'ไม้'
-      : iron.stock < recipe.iron ? 'เหล็ก'
-      : 'ผ้า';
-    log.push({
-      tick: 0,
-      message: `การผลิตชิ้นส่วนเรือหยุดชั่วคราว — ขาด${missing}`,
-      cellId: cell.id,
-      commodityId: 'sailcloth',
+      commodityId: recipe.id,
     });
   }
+
+  const parts = cell.commodities.sailcloth;
+  if (parts && cell.role === 'shipyard' && parts.stock < parts.targetStock * 0.5) {
+    const missing = findMissingInput(cell, 'sailcloth');
+    if (missing) {
+      log.push({
+        tick: 0,
+        message: `การผลิตชิ้นส่วนเรือหยุดชั่วคราว — ขาด${missing}`,
+        cellId: cell.id,
+        commodityId: 'sailcloth',
+      });
+    }
+  }
+}
+
+function findMissingInput(cell: EconomyCellState, outputId: LivingCommodityId): string | null {
+  const recipe = recipesForCell(cell.id).find((r) => r.id === outputId);
+  if (!recipe) return null;
+  for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
+    const input = cell.commodities[inputId];
+    const reserve = COMMODITY_RESERVE[inputId] ?? 0;
+    if (!input || input.stock - amount < reserve) {
+      return LIVING_COMMODITY_META[inputId].label;
+    }
+  }
+  return null;
+}
+
+/** อัปเดตตัวคูณโลกจากสินค้าแปรรูป */
+export function updateWorldModifiers(world: EconomyWorldState): void {
+  const yard = world.cells.find((c) => c.id === 'shipyard-island');
+  const parts = yard?.commodities.sailcloth;
+  world.npcCargoCapacityMultiplier =
+    parts && parts.stock > parts.targetStock ? 1.2 : 1;
+
+  let crateReduction = 0;
+  for (const cell of world.cells) {
+    const crates = cell.commodities['trade-crate'];
+    if (crates && crates.stock >= crates.targetStock * 0.5) {
+      crateReduction = Math.max(crateReduction, 0.5);
+    }
+  }
+  world.spoilageReduction = crateReduction;
 }
 
 /** ขั้น 4: คำนวณความต้องการ */
 export function updateDemand(cell: EconomyCellState): void {
-  for (const item of Object.values(cell.commodities)) {
+  for (const [id, item] of Object.entries(cell.commodities) as [LivingCommodityId, CommodityState][]) {
     if (!item) continue;
+
+    if (id === 'luxury-cloth') {
+      const wealth = getWealth(cell);
+      const foodSec = getFoodSecurity(cell);
+      if (foodSec < 40) item.demand = 10;
+      else if (wealth > 70) item.demand = 90;
+      else if (wealth > 40) item.demand = 50;
+      else item.demand = 20;
+      item.importDemand *= 0.9;
+      item.exportDemand *= 0.9;
+      continue;
+    }
+
     const ratio = stockRatio(item);
     const shortageDemand = ratio < 0.8 ? (1 - ratio) * 40 : 0;
     const surplusDemand = ratio > 1.3 ? -10 : 0;
@@ -175,27 +268,32 @@ export function spreadDemand(world: EconomyWorldState): void {
   }
 }
 
-/** ขั้น 8: เสื่อมสภาพ */
-export function resolveSpoilage(cell: EconomyCellState, log: EconomyLogEntry[]): void {
-  for (const item of Object.values(cell.commodities)) {
+/** ขั้น 8: เสื่อมสภาพ — หีบสินค้าลดอัตราเน่าเสีย */
+export function resolveSpoilage(
+  cell: EconomyCellState,
+  log: EconomyLogEntry[],
+  spoilageReduction = 0,
+): void {
+  for (const [id, item] of Object.entries(cell.commodities) as [LivingCommodityId, CommodityState][]) {
     if (!item?.perishable) continue;
     const ratio = stockRatio(item);
     if (ratio > 1.5) {
-      const loss = Math.floor(item.stock * ECONOMY_CONFIG.spoilageRate);
+      const rate = ECONOMY_CONFIG.spoilageRate * (1 - spoilageReduction);
+      const loss = Math.floor(item.stock * rate);
       if (loss > 0) {
         item.stock -= loss;
         log.push({
           tick: 0,
-          message: `อาหารเน่าเสีย ${loss} หน่วย — สต็อกล้นเกินไป`,
+          message: `${LIVING_COMMODITY_META[id].label}เน่าเสีย ${loss} หน่วย — สต็อกล้นเกินไป`,
           cellId: cell.id,
-          commodityId: 'fresh-fish',
+          commodityId: id,
         });
       }
     }
   }
 }
 
-/** สร้างคำสั่งซื้อระหว่างเซลล์ (เรียกเมื่อ cooldown หมด) */
+/** สร้างคำสั่งซื้อระหว่างเซลล์ */
 export function createTradeRequests(world: EconomyWorldState): CargoShip[] {
   const ships: CargoShip[] = [];
   let shipId = world.ships.length;
@@ -204,7 +302,8 @@ export function createTradeRequests(world: EconomyWorldState): CargoShip[] {
     const origin = world.cells.find((c) => c.id === route.sourceCellId);
     const dest = world.cells.find((c) => c.id === route.targetCellId);
     if (!origin || !dest) continue;
-    if (world.ships.filter((s) => s.originCellId === origin.id).length >= origin.transportCapacity) {
+    const capacity = origin.transportCapacity * world.npcCargoCapacityMultiplier;
+    if (world.ships.filter((s) => s.originCellId === origin.id).length >= capacity) {
       continue;
     }
 
@@ -264,12 +363,12 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
       if (!item) continue;
       let delivered = amount;
       if (item.perishable) {
-        const spoil = Math.floor(amount * ECONOMY_CONFIG.transitSpoilageRate);
+        const spoil = Math.floor(amount * ECONOMY_CONFIG.transitSpoilageRate * (1 - world.spoilageReduction));
         delivered -= spoil;
         if (spoil > 0) {
           log.push({
             tick: world.tick,
-            message: `อาหารเสีย ${spoil} หน่วยระหว่างขนส่ง`,
+            message: `${LIVING_COMMODITY_META[id].label}เสีย ${spoil} หน่วยระหว่างขนส่ง`,
             cellId: dest.id,
             commodityId: id,
           });
@@ -278,7 +377,7 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
       item.stock += delivered;
       log.push({
         tick: world.tick,
-        message: `เรือสินค้านำ${label(id)} ${delivered} หน่วยถึง${dest.nameTh}`,
+        message: `เรือสินค้านำ${LIVING_COMMODITY_META[id].label} ${delivered} หน่วยถึง${dest.nameTh}`,
         cellId: dest.id,
         commodityId: id,
       });
@@ -286,13 +385,18 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
   }
 }
 
-function label(id: LivingCommodityId): string {
-  const map: Record<LivingCommodityId, string> = {
-    'fresh-fish': 'อาหาร',
-    hardwood: 'ไม้',
-    'iron-ore': 'เหล็ก',
-    'sun-silk': 'ผ้า',
-    sailcloth: 'ชิ้นส่วนเรือ',
-  };
-  return map[id];
+/** สถานะโรงงานสำหรับ UI */
+export function getFactoryStatus(cell: EconomyCellState): string | null {
+  for (const recipe of recipesForCell(cell.id)) {
+    const output = cell.commodities[recipe.id];
+    if (!output || output.stock >= output.targetStock * 0.8) continue;
+    const missing = findMissingInput(cell, recipe.id);
+    if (missing) return `ขาด${missing}`;
+  }
+  return null;
+}
+
+/** @deprecated ใช้ runProduction แทน */
+export function transformGoods(cell: EconomyCellState, log: EconomyLogEntry[]): void {
+  runProduction(cell, log);
 }

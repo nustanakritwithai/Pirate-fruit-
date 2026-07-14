@@ -13,10 +13,19 @@ export type EconomyRole = 'forest' | 'mine' | 'cloth' | 'shipyard';
 /** สินค้าในระบบ living (map กับ TRADE_COMMODITIES) */
 export type LivingCommodityId =
   | 'fresh-fish'
+  | 'dried-fish'
   | 'hardwood'
   | 'iron-ore'
+  | 'iron-ingot'
+  | 'tools'
   | 'sun-silk'
-  | 'sailcloth';
+  | 'rope'
+  | 'luxury-cloth'
+  | 'healing-herb'
+  | 'herbal-medicine'
+  | 'sailcloth'
+  | 'repair-kit'
+  | 'trade-crate';
 
 export type MarketState = 'surplus' | 'balanced' | 'shortage' | 'crisis' | 'collapsed';
 
@@ -106,4 +115,8 @@ export interface EconomyWorldState {
   log: EconomyLogEntry[];
   /** ticks จนกว่าเรือ NPC จะออกครั้งถัดไป */
   npcCooldown: number;
+  /** ชิ้นส่วนเรือล้น → เพิ่มกำลังขนส่ง NPC */
+  npcCargoCapacityMultiplier: number;
+  /** หีบสินค้าเพียงพอ → ลด spoilage (0–0.5) */
+  spoilageReduction: number;
 }

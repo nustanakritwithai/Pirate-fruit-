@@ -9,8 +9,32 @@ import {
   cargoTotalWeight,
 } from '../trade/TradeRegistry';
 import { priceTrend } from '../trade/living/LivingTradeFormulas';
-import { isLivingCommodity } from '../trade/living/LivingTradeConfig';
+import { isLivingCommodity, resolveTradeCell } from '../trade/living/LivingTradeConfig';
 import { filterActiveNews } from '../trade/living/LivingTradeNews';
+import {
+  LIVING_COMMODITY_META,
+  recipeForOutput,
+  type LivingBadge,
+} from '../trade/living/ProductionRecipes';
+import { getFactoryStatus } from '../trade/living/EconomyRules';
+import type { EconomyCellId } from '../trade/living/types';
+
+const MARKET_CELL: Record<string, EconomyCellId> = {
+  'starter-market': 'leaf-island',
+  'starter-shipyard-market': 'shipyard-island',
+  'mist-jungle-market': 'mine-island',
+  'sunscar-desert-market': 'cloth-island',
+};
+
+const BADGE_LABELS: Record<LivingBadge, string> = {
+  raw: 'วัตถุดิบ',
+  processed: 'แปรรูป',
+  food: 'อาหาร',
+  tool: 'เครื่องมือ',
+  'ship-supply': 'อุปกรณ์เรือ',
+  luxury: 'ฟุ่มเฟือย',
+  perishable: 'เน่าเสีย',
+};
 
 /**
  * ร้านค้าเทรดระหว่างเกาะ — ราคาและสต็อกจาก Living Trade Network
@@ -125,6 +149,13 @@ export class TradeShopUI {
       ? activeNews.map((n) => `<div class="trade-news-item">📰 ${n.message}</div>`).join('')
       : '';
 
+    const cellId = this.marketId ? MARKET_CELL[this.marketId] : resolveTradeCell(this.islandId, 'fresh-fish');
+    const factoryCell = cellId ? this.trade.living.getCell(cellId) : undefined;
+    const factoryStatus = factoryCell ? getFactoryStatus(factoryCell) : null;
+    const factoryHtml = factoryStatus
+      ? `<div class="trade-factory-warn">🏭 สถานะโรงงาน: ${factoryStatus}</div>`
+      : '';
+
     const rows = market.entries.map((entry) => {
       const commodity = TRADE_COMMODITIES.find((c) => c.id === entry.commodityId);
       if (!commodity) return '';
@@ -137,8 +168,19 @@ export class TradeShopUI {
       let stockHtml = '';
       let trendHtml = '';
       let stateBadge = '';
+      let badgeHtml = '';
+      let recipeHtml = '';
       let item: ReturnType<TradeManager['living']['getCommodityAtGameIsland']> | undefined;
       if (isLivingCommodity(commodity.id)) {
+        const meta = LIVING_COMMODITY_META[commodity.id];
+        badgeHtml = `<span class="trade-badge trade-badge-${meta.badge}">${BADGE_LABELS[meta.badge]}</span>`;
+        const recipe = recipeForOutput(commodity.id);
+        if (recipe) {
+          const inputs = Object.entries(recipe.inputs)
+            .map(([id, amt]) => `${LIVING_COMMODITY_META[id as keyof typeof LIVING_COMMODITY_META].label} ${amt}`)
+            .join(' · ');
+          recipeHtml = `<div class="trade-recipe">ใช้ผลิต: ${inputs} → ${meta.label} ${recipe.outputAmount}</div>`;
+        }
         item = this.trade.living.getCommodityAtGameIsland(this.islandId, commodity.id);
         if (item) {
           const trend = priceTrend(item);
@@ -154,8 +196,9 @@ export class TradeShopUI {
         <div class="trade-item">
           <span class="trade-icon">${commodity.icon}</span>
           <div>
-            <div class="trade-name">${commodity.nameTh} ${trendHtml} ${stateBadge}</div>
+            <div class="trade-name">${commodity.nameTh} ${trendHtml} ${stateBadge} ${badgeHtml}</div>
             <div class="trade-role trade-role-${roleClass}">${roleLabel}</div>
+            ${recipeHtml}
           </div>
         </div>
         <div class="trade-prices">
@@ -173,6 +216,7 @@ export class TradeShopUI {
     }).join('');
 
     this.table.innerHTML = `
+      ${factoryHtml}
       <div class="trade-header">
         <span>สินค้า</span><span>ซื้อ</span><span>ขาย</span><span>สต็อก/เรือ</span><span>ทำรายการ</span>
       </div>${rows}`;
@@ -201,6 +245,17 @@ export class TradeShopUI {
       .trade-cargo-info{margin-bottom:6px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.06);font-size:11px}
       .trade-news{margin-bottom:8px;font-size:10px;color:#b8ddd4}
       .trade-news-item{padding:4px 8px;margin-bottom:3px;border-radius:6px;background:rgba(255,220,120,.08)}
+      .trade-factory-warn{margin-bottom:8px;padding:6px 10px;border-radius:8px;background:rgba(255,160,90,.12);
+        color:#ffc89a;font-size:10px}
+      .trade-badge{font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700}
+      .trade-badge-raw{background:rgba(158,181,200,.2);color:#9eb5c8}
+      .trade-badge-processed{background:rgba(127,200,224,.2);color:#7fc8e0}
+      .trade-badge-food{background:rgba(127,224,163,.2);color:#7fe0a3}
+      .trade-badge-tool{background:rgba(255,200,120,.2);color:#ffc878}
+      .trade-badge-ship-supply{background:rgba(140,180,255,.2);color:#8cb4ff}
+      .trade-badge-luxury{background:rgba(220,160,255,.2);color:#dca0ff}
+      .trade-badge-perishable{background:rgba(255,142,142,.2);color:#ff9b8e}
+      .trade-recipe{font-size:9px;color:#8eb5aa;margin-top:2px;font-weight:500}
       .trade-header,.trade-row{display:grid;grid-template-columns:1.4fr .7fr .7fr .6fr 1.3fr;gap:6px;align-items:center}
       .trade-header{font-size:9px;color:#8eb5aa;text-transform:uppercase;margin-bottom:4px}
       .trade-row{padding:6px 0;border-top:1px solid rgba(255,255,255,.07)}

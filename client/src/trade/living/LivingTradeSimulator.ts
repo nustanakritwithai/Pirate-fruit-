@@ -5,10 +5,11 @@ import {
   moveCargo,
   produceGoods,
   resolveSpoilage,
+  runProduction,
   spreadDemand,
-  transformGoods,
   updateDemand,
   updatePrices,
+  updateWorldModifiers,
 } from './EconomyRules';
 import {
   CELL_TO_GAME_ISLAND,
@@ -48,8 +49,8 @@ export class LivingTradeSimulator {
   private world: EconomyWorldState;
   private tickLog: EconomyLogEntry[] = [];
 
-  constructor() {
-    const saved = loadEconomyState();
+  constructor(fresh = false) {
+    const saved = fresh ? null : loadEconomyState();
     if (saved) {
       this.world = saved;
     } else {
@@ -147,13 +148,14 @@ export class LivingTradeSimulator {
     for (const cell of this.world.cells) {
       produceGoods(cell);
       consumeGoods(cell);
-      transformGoods(cell, this.tickLog);
+      runProduction(cell, this.tickLog);
       updateDemand(cell);
       updatePrices(cell);
-      resolveSpoilage(cell, this.tickLog);
+      resolveSpoilage(cell, this.tickLog, this.world.spoilageReduction);
     }
 
     spreadDemand(this.world);
+    updateWorldModifiers(this.world);
     this.dispatchNpcCargo();
     moveCargo(this.world, this.tickLog);
 

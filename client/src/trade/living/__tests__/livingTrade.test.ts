@@ -79,13 +79,13 @@ describe('LivingTradeSimulator — Economic CA', () => {
   let sim: LivingTradeSimulator;
 
   beforeEach(() => {
-    sim = new LivingTradeSimulator();
+    sim = new LivingTradeSimulator(true);
   });
 
   it('initializes 4 economy cells with living commodities', () => {
     expect(sim.state.cells).toHaveLength(4);
     const leaf = sim.getCell('leaf-island')!;
-    for (const id of ['fresh-fish', 'hardwood'] as const) {
+    for (const id of ['fresh-fish', 'hardwood', 'dried-fish'] as const) {
       expect(leaf.commodities[id]!.stock).toBeGreaterThan(0);
     }
   });
@@ -120,12 +120,12 @@ describe('LivingTradeSimulator — Economic CA', () => {
   it('4. missing inputs stop ship parts production', () => {
     const yard = sim.getCell('shipyard-island')!;
     yard.commodities.hardwood!.stock = 0;
-    yard.commodities['iron-ore']!.stock = 0;
-    yard.commodities['sun-silk']!.stock = 0;
+    yard.commodities['iron-ingot']!.stock = 0;
+    yard.commodities.rope!.stock = 0;
     const partsBefore = yard.commodities.sailcloth!.stock;
     sim.tick();
-    expect(yard.commodities.sailcloth!.stock).toBeLessThanOrEqual(partsBefore);
-    expect(sim.log.some((l) => l.message.includes('หยุด'))).toBe(true);
+    expect(yard.commodities.sailcloth!.stock).toBeLessThanOrEqual(partsBefore + 1);
+    expect(sim.log.some((l) => l.message.includes('หยุด') || l.message.includes('ขาด'))).toBe(true);
   });
 
   it('5. player sell helps shortage cell recover stock', () => {

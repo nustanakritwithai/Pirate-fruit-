@@ -2,7 +2,6 @@ import type { IslandMarketDefinition } from '../types';
 
 /**
  * ตลาด Living Trade — ราคาจาก Economic CA (ไม่ใช้ multiplier คงที่)
- * role ใช้แสดง UI เท่านั้น
  */
 export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
   {
@@ -13,9 +12,13 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     harborDockId: 'starter-harbor',
     entries: [
       { commodityId: 'fresh-fish', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'dried-fish', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'hardwood', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
-      { commodityId: 'iron-ore', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'trade-crate', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'iron-ingot', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'tools', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'sun-silk', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'rope', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
     ],
   },
   {
@@ -26,9 +29,13 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     harborDockId: 'starter-harbor',
     entries: [
       { commodityId: 'sailcloth', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'repair-kit', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'trade-crate', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'tools', role: 'neutral', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'hardwood', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
-      { commodityId: 'iron-ore', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
-      { commodityId: 'sun-silk', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'iron-ingot', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'rope', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'dried-fish', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
     ],
   },
   {
@@ -39,7 +46,12 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     harborDockId: 'mist-jungle-harbor',
     entries: [
       { commodityId: 'iron-ore', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'iron-ingot', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'healing-herb', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'herbal-medicine', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'tools', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'fresh-fish', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'dried-fish', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'hardwood', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'sun-silk', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
     ],
@@ -52,10 +64,15 @@ export const ISLAND_MARKETS: readonly IslandMarketDefinition[] = [
     harborDockId: 'sunscar-desert-harbor',
     entries: [
       { commodityId: 'sun-silk', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'rope', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'luxury-cloth', role: 'export', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'fresh-fish', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'dried-fish', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'hardwood', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
-      { commodityId: 'iron-ore', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'iron-ingot', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'tools', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
       { commodityId: 'sailcloth', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
+      { commodityId: 'repair-kit', role: 'import', buyMultiplier: 1, sellMultiplier: 1, stockLimit: -1 },
     ],
   },
 ] as const;

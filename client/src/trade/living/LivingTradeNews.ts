@@ -5,14 +5,11 @@ import type {
   MarketState,
   TradeNewsItem,
 } from './types';
+import { LIVING_COMMODITY_META } from './ProductionRecipes';
 
-const COMMODITY_LABELS: Record<LivingCommodityId, string> = {
-  'fresh-fish': 'อาหาร',
-  hardwood: 'ไม้',
-  'iron-ore': 'เหล็ก',
-  'sun-silk': 'ผ้า',
-  sailcloth: 'ชิ้นส่วนเรือ',
-};
+const COMMODITY_LABELS: Record<LivingCommodityId, string> = Object.fromEntries(
+  Object.entries(LIVING_COMMODITY_META).map(([id, meta]) => [id, meta.label]),
+) as Record<LivingCommodityId, string>;
 
 const STATE_LABELS: Record<MarketState, string> = {
   surplus: 'ล้นตลาด',

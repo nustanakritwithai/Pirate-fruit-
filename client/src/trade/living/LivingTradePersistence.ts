@@ -2,7 +2,7 @@ import type { EconomyWorldState } from './types';
 import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 interface SavedEconomy {
   version: number;
@@ -15,7 +15,10 @@ export function loadEconomyState(): EconomyWorldState | null {
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedEconomy;
     if (saved.version !== SAVE_VERSION || !saved.world?.cells?.length) return null;
-    return saved.world;
+    const world = saved.world;
+    world.npcCargoCapacityMultiplier ??= 1;
+    world.spoilageReduction ??= 0;
+    return world;
   } catch {
     return null;
   }
@@ -40,5 +43,7 @@ export function createFreshWorld(): EconomyWorldState {
     news: [],
     log: [],
     npcCooldown: ECONOMY_CONFIG.npcDepartEveryTicks,
+    npcCargoCapacityMultiplier: 1,
+    spoilageReduction: 0,
   };
 }

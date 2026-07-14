@@ -1,14 +1,11 @@
 import type { LivingTradeSimulator } from './LivingTradeSimulator';
 import { LIVING_COMMODITY_IDS } from './LivingTradeConfig';
+import { LIVING_COMMODITY_META } from './ProductionRecipes';
 import type { LivingCommodityId } from './types';
 
-const COMMODITY_LABELS: Record<LivingCommodityId, string> = {
-  'fresh-fish': 'อาหาร',
-  hardwood: 'ไม้',
-  'iron-ore': 'เหล็ก',
-  'sun-silk': 'ผ้า',
-  sailcloth: 'ชิ้นส่วน',
-};
+const COMMODITY_LABELS: Record<LivingCommodityId, string> = Object.fromEntries(
+  LIVING_COMMODITY_IDS.map((id) => [id, LIVING_COMMODITY_META[id].label]),
+) as Record<LivingCommodityId, string>;
 
 const STATE_COLORS: Record<string, string> = {
   surplus: '#7fe0a3',
