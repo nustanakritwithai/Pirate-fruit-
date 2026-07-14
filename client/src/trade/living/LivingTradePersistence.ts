@@ -1,12 +1,16 @@
 import type { EconomyWorldState } from './types';
 import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
-import { DYNAMIC_TRADE } from './DynamicTradeConfig';
+import { TRADER_MEMORY } from './TraderMemoryConfig';
 import { migrateAllRoutes } from './TradeRouteUtils';
 import { ensureFactoryAgents } from './AdaptiveEconomy';
 import { ensureTraders } from './DynamicTradeEconomy';
+import {
+  ensureTraderMemoryState,
+  migrateRouteReputationsFromRoutes,
+} from './TraderMemoryStore';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
-const SAVE_VERSION = DYNAMIC_TRADE.saveVersion;
+const SAVE_VERSION = TRADER_MEMORY.saveVersion;
 
 interface SavedEconomy {
   version: number;
@@ -26,6 +30,10 @@ function migrateWorld(world: EconomyWorldState): EconomyWorldState {
   world.reservations ??= [];
   world.orderGenCooldowns ??= {};
   ensureTraders(world);
+  ensureTraderMemoryState(world);
+  if (!world.traderProfiles?.length) {
+    migrateRouteReputationsFromRoutes(world);
+  }
   return world;
 }
 
@@ -35,7 +43,7 @@ export function loadEconomyState(): EconomyWorldState | null {
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedEconomy;
     if (!saved.world?.cells?.length) return null;
-    if (saved.version !== SAVE_VERSION && saved.version !== 2 && saved.version !== 3) return null;
+    if (saved.version !== SAVE_VERSION && saved.version !== 2 && saved.version !== 3 && saved.version !== 4) return null;
     const world = migrateWorld(saved.world);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;
@@ -71,8 +79,15 @@ export function createFreshWorld(): EconomyWorldState {
     npcCooldown: ECONOMY_CONFIG.npcDepartEveryTicks,
     npcCargoCapacityMultiplier: 1,
     spoilageReduction: 0,
+    traderProfiles: [],
+    traderRouteMemories: [],
+    avoidedRoutes: [],
+    routeReputations: [],
+    traderRngSeed: 42_424,
   };
   ensureFactoryAgents(world);
   ensureTraders(world);
+  ensureTraderMemoryState(world);
+  migrateRouteReputationsFromRoutes(world);
   return world;
 }

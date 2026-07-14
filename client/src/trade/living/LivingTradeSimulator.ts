@@ -36,6 +36,10 @@ import {
   debugAssignBestOrder,
   debugCompleteFirstInTransit,
   debugFailFirstInTransit,
+  debugForceRaid,
+  debugAddProfitMemory,
+  clearTraderMemory,
+  resetRouteReputations,
 } from './DynamicTradeEconomy';
 import type {
   CommodityState,
@@ -253,6 +257,53 @@ export class LivingTradeSimulator {
 
   clearOrdersDebug(): void {
     debugClearOrders(this.world);
+  }
+
+  forceRouteSuccessDebug(): void {
+    debugCompleteFirstInTransit(this.world, this.tickLog);
+    moveCargo(this.world, this.tickLog);
+  }
+
+  forceRaidDebug(): void {
+    debugForceRaid(this.world, this.tickLog);
+  }
+
+  addProfitMemoryDebug(
+    traderId: string,
+    source: EconomyCellId,
+    dest: EconomyCellId,
+    commodity: LivingCommodityId,
+    profit: number,
+  ): void {
+    debugAddProfitMemory(this.world, traderId, source, dest, commodity, profit);
+  }
+
+  clearTraderMemoryDebug(traderId: string): void {
+    clearTraderMemory(this.world, traderId);
+  }
+
+  resetRouteReputationDebug(): void {
+    resetRouteReputations(this.world);
+  }
+
+  tickMany50(): void {
+    this.tickMany(50);
+  }
+
+  get traderProfiles(): readonly import('./types').TraderProfile[] {
+    return this.world.traderProfiles ?? [];
+  }
+
+  get traderMemories(): readonly import('./types').TraderRouteMemory[] {
+    return this.world.traderRouteMemories ?? [];
+  }
+
+  get routeReputations(): readonly import('./types').RouteReputation[] {
+    return this.world.routeReputations ?? [];
+  }
+
+  get avoidedRoutes(): readonly import('./types').AvoidedRouteState[] {
+    return this.world.avoidedRoutes ?? [];
   }
 
   get lastTradeTickResult(): import('./DynamicTradeEconomy').DynamicTradeTickResult | null {

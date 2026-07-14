@@ -16,7 +16,7 @@ export class EconomyPanel {
   private readonly body: HTMLDivElement;
   private readonly titleEl: HTMLHeadingElement;
   private visible = false;
-  private viewMode: 'market' | 'alerts' = 'market';
+  private viewMode: 'market' | 'alerts' | 'traders' | 'routes' = 'market';
   private islandId: IslandId = 'starter-island';
   private onCloseCallback: (() => void) | null = null;
   private eventHistory: ClassifiedEconomyEvent[] = [];
@@ -119,6 +119,75 @@ export class EconomyPanel {
       return;
     }
 
+    if (this.viewMode === 'traders') {
+      this.titleEl.textContent = '🧭 พ่อค้า & ความจำ';
+      const world = this.trade.living.state;
+      const profiles = world.traderProfiles ?? [];
+      const memories = world.traderRouteMemories ?? [];
+      const traderRows = profiles.map((p) => {
+        const trader = world.traders.find((t) => t.id === p.traderId);
+        const order = trader?.activeOrderId
+          ? world.orders.find((o) => o.id === trader.activeOrderId)
+          : null;
+        return `<tr>
+          <td>${trader?.nameTh ?? p.traderId}</td>
+          <td>${p.personality}</td>
+          <td>${order ? LIVING_COMMODITY_META[order.commodityId].label : '-'}</td>
+          <td>${Math.round(p.lifetimeProfit)}</td>
+          <td>${p.completedTrips}/${p.failedTrips}</td>
+          <td>${p.preferredCommodities.map((c) => LIVING_COMMODITY_META[c].label.slice(0, 4)).join(', ') || '-'}</td>
+        </tr>`;
+      }).join('');
+      const memRows = memories.slice(-15).reverse().map((m) => `<tr>
+        <td>${m.traderId.split('-').slice(-2).join('-')}</td>
+        <td>${CELL_LABELS[m.sourceIslandId].slice(0, 5)}→${CELL_LABELS[m.destinationIslandId].slice(0, 5)}</td>
+        <td>${LIVING_COMMODITY_META[m.commodityId].label}</td>
+        <td>${Math.round(m.profitEma)}</td>
+        <td>${(m.successRateEma * 100).toFixed(0)}%</td>
+        <td>${m.confidence.toFixed(2)}</td>
+        <td>${m.consecutiveFailures > 0 ? 'หลีกเลี่ยง' : m.profitEma > 20 ? 'ชอบ' : 'กลาง'}</td>
+      </tr>`).join('');
+      this.body.innerHTML = `
+        <table class="ep-table"><thead><tr>
+          <th>พ่อค้า</th><th>บุคลิก</th><th>งานปัจจุบัน</th><th>กำไรรวม</th><th>สำเร็จ/ล้ม</th><th>ถนัด</th>
+        </tr></thead><tbody>${traderRows || '<tr><td colspan="6">ไม่มีข้อมูล</td></tr>'}</tbody></table>
+        <div class="ep-section-title">ความจำเส้นทาง</div>
+        <table class="ep-table"><thead><tr>
+          <th>พ่อค้า</th><th>เส้นทาง</th><th>สินค้า</th><th>กำไร EMA</th><th>สำเร็จ</th><th>conf</th><th>สถานะ</th>
+        </tr></thead><tbody>${memRows || '<tr><td colspan="7">ยังไม่มีความจำ</td></tr>'}</tbody></table>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
+    if (this.viewMode === 'routes') {
+      this.titleEl.textContent = '🗺️ เส้นทาง & ชื่อเสียง';
+      const world = this.trade.living.state;
+      const reps = (world.routeReputations ?? []).slice(0, 20);
+      const repRows = reps.map((r) => `<tr>
+        <td>${CELL_LABELS[r.sourceIslandId]}→${CELL_LABELS[r.destinationIslandId]}</td>
+        <td>${LIVING_COMMODITY_META[r.commodityId].label}</td>
+        <td>${r.successfulTrips}/${r.failedTrips}</td>
+        <td>${r.raidCount}</td>
+        <td>${Math.round(r.averageProfit)}</td>
+        <td>${r.congestionEma.toFixed(2)}</td>
+        <td>${r.reputationScore.toFixed(1)}</td>
+      </tr>`).join('');
+      this.body.innerHTML = `
+        <table class="ep-table"><thead><tr>
+          <th>เส้นทาง</th><th>สินค้า</th><th>สำเร็จ/ล้ม</th><th>ปล้น</th><th>กำไรเฉลี่ย</th><th>แออัด</th><th>ชื่อเสียง</th>
+        </tr></thead><tbody>${repRows || '<tr><td colspan="7">ไม่มีข้อมูล</td></tr>'}</tbody></table>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
     this.titleEl.textContent = '📈 ตลาด & เศรษฐกิจ';
     const market = getMarketForIsland(this.islandId);
     const arb = this.trade.living.bestArbitrageFrom(this.islandId);
@@ -213,7 +282,19 @@ export class EconomyPanel {
         <tbody>${marketRows || '<tr><td colspan="7">ไม่มีข้อมูล</td></tr>'}</tbody>
       </table>
       <div class="ep-section-title">เหตุการณ์เศรษฐกิจ</div>
-      <div class="ep-log-list">${historyHtml || '<div class="ep-log">ยังไม่มีเหตุการณ์</div>'}</div>`;
+      <div class="ep-log-list">${historyHtml || '<div class="ep-log">ยังไม่มีเหตุการณ์</div>'}</div>
+      <div class="ep-tabs">
+        <button type="button" class="ep-tab-traders">🧭 พ่อค้า</button>
+        <button type="button" class="ep-tab-routes">🗺️ เส้นทาง</button>
+      </div>`;
+    this.body.querySelector('.ep-tab-traders')?.addEventListener('click', () => {
+      this.viewMode = 'traders';
+      this.render();
+    });
+    this.body.querySelector('.ep-tab-routes')?.addEventListener('click', () => {
+      this.viewMode = 'routes';
+      this.render();
+    });
   }
 
   private injectStyles(): void {
@@ -261,6 +342,8 @@ export class EconomyPanel {
       .ep-factory-row{padding:6px 8px;margin-bottom:4px;border-radius:8px;background:rgba(255,255,255,.04);
         font-size:10px;line-height:1.45}
       .ep-factory-reasons{color:#8eb5aa;font-size:9px;margin-top:2px}
+      .ep-tabs{display:flex;gap:8px;margin-top:12px}
+      .ep-tabs button{flex:1;padding:8px;border-radius:8px;border:1px solid #4a8a7a;background:#123028;color:#dff7ee;cursor:pointer;font-size:10px}
       @media(max-width:700px){.economy-panel-root{align-items:flex-end;padding:8px}
         .economy-panel{max-height:82vh;border-radius:14px 14px 0 0}}
     `;

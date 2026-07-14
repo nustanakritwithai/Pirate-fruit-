@@ -135,6 +135,89 @@ export interface TraderAgentState {
   activeOrderId?: string;
 }
 
+export type TraderPersonality =
+  | 'conservative'
+  | 'balanced'
+  | 'aggressive'
+  | 'opportunist';
+
+/** Phase E3 — บุคลิกและสถิติตลอดชีพของ Trader */
+export interface TraderProfile {
+  traderId: string;
+  personality: TraderPersonality;
+  riskTolerance: number;
+  explorationRate: number;
+  memoryWeight: number;
+  recencyBias: number;
+  lossAversion: number;
+  preferredCommodities: LivingCommodityId[];
+  avoidedRoutes: string[];
+  lifetimeProfit: number;
+  completedTrips: number;
+  failedTrips: number;
+  commodityAffinity: Partial<Record<LivingCommodityId, number>>;
+}
+
+/** Phase E3 — ความจำต่อเส้นทางและสินค้าของแต่ละ Trader */
+export interface TraderRouteMemory {
+  key: string;
+  traderId: string;
+  sourceIslandId: EconomyCellId;
+  destinationIslandId: EconomyCellId;
+  commodityId: LivingCommodityId;
+  tripCount: number;
+  successfulTrips: number;
+  failedTrips: number;
+  raidCount: number;
+  spoilageLoss: number;
+  totalRevenue: number;
+  totalCost: number;
+  totalProfit: number;
+  averageProfit: number;
+  averageProfitPerSlot: number;
+  averageTravelTicks: number;
+  averageRiskCost: number;
+  profitEma: number;
+  successRateEma: number;
+  dangerEma: number;
+  delayEma: number;
+  spoilageEma: number;
+  confidence: number;
+  lastUsedTick: number;
+  lastSuccessTick: number;
+  lastFailureTick: number;
+  consecutiveSuccesses: number;
+  consecutiveFailures: number;
+}
+
+export type AvoidRouteReason =
+  | 'repeated-failure'
+  | 'high-danger'
+  | 'high-spoilage'
+  | 'unprofitable';
+
+export interface AvoidedRouteState {
+  traderId: string;
+  routeKey: string;
+  avoidUntilTick: number;
+  reason: AvoidRouteReason;
+}
+
+/** Phase E3 — ชื่อเสียงเส้นทางระดับโลก */
+export interface RouteReputation {
+  routeKey: string;
+  sourceIslandId: EconomyCellId;
+  destinationIslandId: EconomyCellId;
+  commodityId: LivingCommodityId;
+  successfulTrips: number;
+  failedTrips: number;
+  raidCount: number;
+  averageProfit: number;
+  dangerEma: number;
+  congestionEma: number;
+  reputationScore: number;
+}
+
 export interface TradeRouteState {
   sourceCellId: EconomyCellId;
   targetCellId: EconomyCellId;
@@ -157,6 +240,11 @@ export interface CargoShip {
   travelTimeRemaining: number;
   orderId?: string;
   traderId?: string;
+  /** Phase E3 — สำหรับ delay memory */
+  plannedTravelTicks?: number;
+  departTick?: number;
+  spoilageLost?: number;
+  wasRaided?: boolean;
 }
 
 export interface EconomyLogEntry {
@@ -197,6 +285,12 @@ export interface EconomyWorldState {
   npcCargoCapacityMultiplier: number;
   /** หีบสินค้าเพียงพอ → ลด spoilage (0–0.5) */
   spoilageReduction: number;
+  /** Phase E3 — trader learning */
+  traderProfiles: TraderProfile[];
+  traderRouteMemories: TraderRouteMemory[];
+  avoidedRoutes: AvoidedRouteState[];
+  routeReputations: RouteReputation[];
+  traderRngSeed: number;
 }
 
 export type FactoryStatus =

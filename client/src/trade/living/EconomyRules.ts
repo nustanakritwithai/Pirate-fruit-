@@ -434,8 +434,9 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
       if (id && amount) {
         const item = dest.commodities[id];
         let delivered = amount;
+        let spoil = 0;
         if (item?.perishable) {
-          const spoil = Math.floor(amount * ECONOMY_CONFIG.transitSpoilageRate * (1 - world.spoilageReduction));
+          spoil = Math.floor(amount * ECONOMY_CONFIG.transitSpoilageRate * (1 - world.spoilageReduction));
           delivered -= spoil;
           if (spoil > 0) {
             log.push({
@@ -446,7 +447,8 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
             });
           }
         }
-        completeTradeShipment(world, order, delivered, log);
+        ship.spoilageLost = spoil;
+        completeTradeShipment(world, order, delivered, log, ship);
         updatePrices(dest);
       }
       continue;

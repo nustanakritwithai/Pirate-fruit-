@@ -25,6 +25,9 @@ export class EconomyDebugPanel {
   private readonly grid: HTMLDivElement;
   private readonly factoryGrid: HTMLDivElement;
   private readonly ordersGrid: HTMLDivElement;
+  private readonly traderGrid: HTMLDivElement;
+  private readonly memoryGrid: HTMLDivElement;
+  private readonly repGrid: HTMLDivElement;
   private visible = false;
 
   constructor(private sim: LivingTradeSimulator) {
@@ -53,7 +56,19 @@ export class EconomyDebugPanel {
           <button type="button" data-action="fail-ship">Fail Shipment</button>
           <button type="button" data-action="complete-ship">Complete Shipment</button>
           <button type="button" data-action="clear-orders">Clear Orders</button>
+          <button type="button" data-action="force-success">Force Success</button>
+          <button type="button" data-action="force-raid">Force Raid</button>
+          <button type="button" data-action="add-mem">Add Profit Mem</button>
+          <button type="button" data-action="clear-mem">Clear Trader Mem</button>
+          <button type="button" data-action="reset-rep">Reset Reputation</button>
+          <button type="button" data-action="tick50">+50 Tick</button>
         </div>
+        <div class="eco-factory-title">Trader Profiles (E3)</div>
+        <div class="eco-trader-grid"></div>
+        <div class="eco-factory-title">Trader Memories</div>
+        <div class="eco-memory-grid"></div>
+        <div class="eco-factory-title">Route Reputation</div>
+        <div class="eco-rep-grid"></div>
         <div class="eco-factory-title">Factory Agents</div>
         <div class="eco-factory-grid"></div>
         <div class="eco-orders-title">Trade Orders (E2)</div>
@@ -66,6 +81,9 @@ export class EconomyDebugPanel {
     this.grid = this.root.querySelector('.eco-grid')!;
     this.factoryGrid = this.root.querySelector('.eco-factory-grid')!;
     this.ordersGrid = this.root.querySelector('.eco-orders-grid')!;
+    this.traderGrid = this.root.querySelector('.eco-trader-grid')!;
+    this.memoryGrid = this.root.querySelector('.eco-memory-grid')!;
+    this.repGrid = this.root.querySelector('.eco-rep-grid')!;
     this.logEl = this.root.querySelector('.eco-log')!;
     this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
     this.root.addEventListener('click', (e) => {
@@ -94,6 +112,12 @@ export class EconomyDebugPanel {
       if (action === 'fail-ship') this.sim.failShipmentDebug();
       if (action === 'complete-ship') this.sim.completeShipmentDebug();
       if (action === 'clear-orders') this.sim.clearOrdersDebug();
+      if (action === 'force-success') this.sim.forceRouteSuccessDebug();
+      if (action === 'force-raid') this.sim.forceRaidDebug();
+      if (action === 'add-mem') this.sim.addProfitMemoryDebug('trader-leaf-safe', 'cloth-island', 'shipyard-island', 'rope', 80);
+      if (action === 'clear-mem') this.sim.clearTraderMemoryDebug('trader-leaf-safe');
+      if (action === 'reset-rep') this.sim.resetRouteReputationDebug();
+      if (action === 'tick50') this.sim.tickMany50();
       this.render();
     });
     if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
@@ -118,7 +142,31 @@ export class EconomyDebugPanel {
 
   private render(): void {
     const world = this.sim.state;
-    this.root.querySelector('.eco-tick')!.textContent = `Tick: ${world.tick} · เรือ ${world.ships.length} · Orders ${world.orders.filter((o) => o.status === 'open' || o.status === 'assigned' || o.status === 'in-transit').length}`;
+    this.root.querySelector('.eco-tick')!.textContent = `Tick: ${world.tick} · เรือ ${world.ships.length} · Orders ${world.orders.filter((o) => o.status === 'open' || o.status === 'assigned' || o.status === 'in-transit').length} · Mem ${world.traderRouteMemories?.length ?? 0}`;
+
+    this.traderGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
+      <th>Trader</th><th>personality</th><th>profit</th><th>ok/fail</th><th>explore</th>
+    </tr></thead><tbody>${(world.traderProfiles ?? []).map((p) => `<tr>
+      <td>${p.traderId.slice(-10)}</td><td>${p.personality}</td>
+      <td>${Math.round(p.lifetimeProfit)}</td><td>${p.completedTrips}/${p.failedTrips}</td>
+      <td>${p.explorationRate.toFixed(2)}</td></tr>`).join('')}</tbody></table>`;
+
+    this.memoryGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
+      <th>trader</th><th>route</th><th>profitEma</th><th>success</th><th>danger</th><th>conf</th><th>fail#</th>
+    </tr></thead><tbody>${(world.traderRouteMemories ?? []).slice(-10).reverse().map((m) => `<tr>
+      <td>${m.traderId.slice(-8)}</td>
+      <td>${CELL_LABELS[m.sourceIslandId].slice(0,4)}→${CELL_LABELS[m.destinationIslandId].slice(0,4)} ${COMMODITY_LABELS[m.commodityId].slice(0,4)}</td>
+      <td>${Math.round(m.profitEma)}</td><td>${m.successRateEma.toFixed(2)}</td>
+      <td>${m.dangerEma.toFixed(2)}</td><td>${m.confidence.toFixed(2)}</td><td>${m.consecutiveFailures}</td>
+    </tr>`).join('')}</tbody></table>`;
+
+    this.repGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
+      <th>route</th><th>ok/fail</th><th>profit</th><th>danger</th><th>cong</th><th>rep</th>
+    </tr></thead><tbody>${(world.routeReputations ?? []).slice(0, 8).map((r) => `<tr>
+      <td>${CELL_LABELS[r.sourceIslandId].slice(0,4)}→${CELL_LABELS[r.destinationIslandId].slice(0,4)}</td>
+      <td>${r.successfulTrips}/${r.failedTrips}</td><td>${Math.round(r.averageProfit)}</td>
+      <td>${r.dangerEma.toFixed(2)}</td><td>${r.congestionEma.toFixed(2)}</td><td>${r.reputationScore.toFixed(1)}</td>
+    </tr>`).join('')}</tbody></table>`;
 
     this.ordersGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
       <th>สินค้า</th><th>ต้นทาง</th><th>ปลายทาง</th><th>จำนวน</th><th>urgency</th><th>กำไร</th><th>trader</th><th>สถานะ</th>
