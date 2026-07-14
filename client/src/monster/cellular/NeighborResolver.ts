@@ -9,6 +9,79 @@ function dist2(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(dx, dz);
 }
 
+function emptySnapshot(): NeighborSnapshot {
+  return {
+    idleCount: 0,
+    alertCount: 0,
+    huntCount: 0,
+    attackCount: 0,
+    fleeCount: 0,
+    regroupCount: 0,
+    restCount: 0,
+    deadCount: 0,
+    idleInfluence: 0,
+    alertInfluence: 0,
+    huntInfluence: 0,
+    attackInfluence: 0,
+    fleeInfluence: 0,
+    regroupInfluence: 0,
+    restInfluence: 0,
+    deadInfluence: 0,
+    playerNearby: false,
+    nearestPlayerDistance: Infinity,
+    playerInAttackRange: false,
+    monsterDensity: 0,
+    monsterDensityInfluence: 0,
+    neighborCount: 0,
+  };
+}
+
+function addNeighborInfluence(
+  snapshot: NeighborSnapshot,
+  state: MonsterCell['currentState'],
+  weight: number,
+): void {
+  snapshot.neighborCount += 1;
+  snapshot.monsterDensity += 1;
+  snapshot.monsterDensityInfluence += weight;
+  switch (state) {
+    case 'idle':
+      snapshot.idleCount += 1;
+      snapshot.idleInfluence += weight;
+      break;
+    case 'alert':
+      snapshot.alertCount += 1;
+      snapshot.alertInfluence += weight;
+      break;
+    case 'hunt':
+      snapshot.huntCount += 1;
+      snapshot.huntInfluence += weight;
+      break;
+    case 'attack':
+      snapshot.attackCount += 1;
+      snapshot.attackInfluence += weight;
+      break;
+    case 'flee':
+      snapshot.fleeCount += 1;
+      snapshot.fleeInfluence += weight;
+      break;
+    case 'regroup':
+      snapshot.regroupCount += 1;
+      snapshot.regroupInfluence += weight;
+      break;
+    case 'rest':
+      snapshot.restCount += 1;
+      snapshot.restInfluence += weight;
+      break;
+    case 'dead':
+      snapshot.deadCount += 1;
+      snapshot.deadInfluence += weight;
+      break;
+    default:
+      break;
+  }
+}
+
 export function buildNeighborSnapshot(
   cell: MonsterCell,
   registry: MonsterRegistry,
@@ -18,21 +91,7 @@ export function buildNeighborSnapshot(
 ): NeighborSnapshot {
   const radius = cell.perceptionRadius;
   const candidateIds = grid.queryNearby(cell.position.x, cell.position.z, radius);
-  const snapshot: NeighborSnapshot = {
-    idleCount: 0,
-    alertCount: 0,
-    huntCount: 0,
-    attackCount: 0,
-    fleeCount: 0,
-    regroupCount: 0,
-    restCount: 0,
-    deadCount: 0,
-    playerNearby: false,
-    nearestPlayerDistance: Infinity,
-    playerInAttackRange: false,
-    monsterDensity: 0,
-    neighborCount: 0,
-  };
+  const snapshot = emptySnapshot();
 
   for (const id of candidateIds) {
     if (id === cell.id) continue;
@@ -40,19 +99,7 @@ export function buildNeighborSnapshot(
     if (!other) continue;
     const d = dist2(cell.position.x, cell.position.z, other.position.x, other.position.z);
     if (d > radius) continue;
-    snapshot.neighborCount += 1;
-    snapshot.monsterDensity += 1;
-    switch (other.currentState) {
-      case 'idle': snapshot.idleCount += 1; break;
-      case 'alert': snapshot.alertCount += 1; break;
-      case 'hunt': snapshot.huntCount += 1; break;
-      case 'attack': snapshot.attackCount += 1; break;
-      case 'flee': snapshot.fleeCount += 1; break;
-      case 'regroup': snapshot.regroupCount += 1; break;
-      case 'rest': snapshot.restCount += 1; break;
-      case 'dead': snapshot.deadCount += 1; break;
-      default: break;
-    }
+    addNeighborInfluence(snapshot, other.currentState, other.influenceWeight);
   }
 
   const playerDist = dist2(cell.position.x, cell.position.z, playerX, playerZ);

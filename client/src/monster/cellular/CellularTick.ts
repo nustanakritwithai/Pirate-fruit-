@@ -28,15 +28,16 @@ export function runCellularTick(
   tick: number,
 ): CellularTickResult {
   const t0 = performance.now();
-  const cells = registry.getAll().filter((c) => c.currentState !== 'dead' && c.hp > 0);
+  const allCells = registry.getAll();
+  const living = allCells.filter((c) => c.currentState !== 'dead' && c.hp > 0);
 
   grid.clear();
-  for (const cell of cells) {
+  for (const cell of allCells) {
     grid.insert(cell);
   }
 
   const snapshots = new Map<string, ReturnType<typeof buildNeighborSnapshot>>();
-  for (const cell of cells) {
+  for (const cell of living) {
     snapshots.set(
       cell.id,
       buildNeighborSnapshot(cell, registry, grid, context.playerX, context.playerZ),
@@ -47,7 +48,7 @@ export function runCellularTick(
   let neighborSum = 0;
   const nextStates = new Map<string, MonsterThoughtState>();
 
-  for (const cell of cells) {
+  for (const cell of living) {
     const snap = snapshots.get(cell.id)!;
     neighborSum += snap.neighborCount;
     const next = evaluateNextState(cell, snap);
@@ -55,12 +56,12 @@ export function runCellularTick(
     if (next !== cell.currentState) transitions += 1;
   }
 
-  for (const cell of cells) {
+  for (const cell of living) {
     const next = nextStates.get(cell.id)!;
     cell.nextState = next;
   }
 
-  for (const cell of cells) {
+  for (const cell of living) {
     if (cell.nextState !== cell.currentState) {
       cell.currentState = cell.nextState;
       cell.lastStateChangeTick = tick;
@@ -76,7 +77,7 @@ export function runCellularTick(
   const durationMs = performance.now() - t0;
   return {
     transitions,
-    averageNeighborCount: cells.length > 0 ? neighborSum / cells.length : 0,
+    averageNeighborCount: living.length > 0 ? neighborSum / living.length : 0,
     durationMs,
   };
 }

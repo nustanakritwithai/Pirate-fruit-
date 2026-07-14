@@ -7,7 +7,7 @@ function hpRatio(cell: MonsterCell): number {
 }
 
 function inAlertHuntBand(snapshot: NeighborSnapshot): boolean {
-  const band = snapshot.alertCount + snapshot.huntCount;
+  const band = snapshot.alertInfluence + snapshot.huntInfluence;
   return band >= CFG.idleToAlertAlertHuntMin && band <= CFG.idleToAlertAlertHuntMax;
 }
 
@@ -39,24 +39,24 @@ export function evaluateNextState(
 
     case 'alert':
       if (
-        snapshot.huntCount >= CFG.alertToHuntHuntMin
-        && snapshot.fleeCount <= CFG.alertToHuntFleeMax
+        snapshot.huntInfluence >= CFG.alertToHuntHuntMin
+        && snapshot.fleeInfluence <= CFG.alertToHuntFleeMax
       ) {
         return 'hunt';
       }
-      if (!snapshot.playerNearby && snapshot.alertCount <= 1) return 'idle';
+      if (!snapshot.playerNearby && snapshot.alertInfluence <= 1) return 'idle';
       return 'alert';
 
     case 'hunt':
       if (
         snapshot.playerInAttackRange
-        && snapshot.attackCount >= CFG.huntToAttackAttackNeighborMin
+        && snapshot.attackInfluence >= CFG.huntToAttackAttackNeighborMin
       ) {
         return 'attack';
       }
       if (
-        snapshot.deadCount >= CFG.huntToFleeDeadHigh
-        || snapshot.fleeCount >= CFG.huntToFleeFleeHigh
+        snapshot.deadInfluence >= CFG.huntToFleeDeadHigh
+        || snapshot.fleeInfluence >= CFG.huntToFleeFleeHigh
       ) {
         return 'flee';
       }
@@ -65,8 +65,8 @@ export function evaluateNextState(
 
     case 'attack':
       if (
-        snapshot.fleeCount >= CFG.huntToFleeFleeHigh
-        || snapshot.deadCount >= CFG.huntToFleeDeadHigh
+        snapshot.fleeInfluence >= CFG.huntToFleeFleeHigh
+        || snapshot.deadInfluence >= CFG.huntToFleeDeadHigh
       ) {
         return 'flee';
       }
@@ -74,17 +74,15 @@ export function evaluateNextState(
       return 'attack';
 
     case 'flee':
-      if (
-        snapshot.nearestPlayerDistance >= CFG.fleePlayerFarDistance
-        && snapshot.regroupCount >= CFG.fleeToRegroupRegroupMin
-      ) {
-        return 'regroup';
+      if (snapshot.nearestPlayerDistance >= CFG.fleePlayerFarDistance) {
+        if (snapshot.regroupInfluence >= CFG.fleeToRegroupRegroupMin) return 'regroup';
+        if (snapshot.fleeInfluence >= CFG.fleeToRegroupFleeMin) return 'regroup';
       }
       return 'flee';
 
     case 'regroup':
       if (snapshot.playerNearby) return 'alert';
-      if (snapshot.monsterDensity >= CFG.regroupToAlertDensityMin) return 'alert';
+      if (snapshot.monsterDensityInfluence >= CFG.regroupToAlertDensityMin) return 'alert';
       return 'regroup';
 
     default:

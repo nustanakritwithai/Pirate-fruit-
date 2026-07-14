@@ -14,6 +14,7 @@ export {
   fleeDirection,
   regroupTarget,
 } from './MonsterBehaviorAdapter';
-export { MonsterCellularWorld } from './MonsterCellularWorld';
+export { resolveInfluenceWeight } from './CellularInfluence';
 export { MonsterCellularDebugPanel } from './MonsterCellularDebugPanel';
+export { MonsterCellularWorld } from './MonsterCellularWorld';
 export { MonsterThoughtMarker } from './MonsterThoughtMarker';

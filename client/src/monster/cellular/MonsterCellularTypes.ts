@@ -30,6 +30,8 @@ export interface MonsterCell {
   attackRange: number;
   perceptionRadius: number;
   moveSpeed: number;
+  /** Weighted Conway — contributes this much to neighbor influence sums */
+  influenceWeight: number;
 }
 
 export interface NeighborSnapshot {
@@ -41,10 +43,19 @@ export interface NeighborSnapshot {
   regroupCount: number;
   restCount: number;
   deadCount: number;
+  idleInfluence: number;
+  alertInfluence: number;
+  huntInfluence: number;
+  attackInfluence: number;
+  fleeInfluence: number;
+  regroupInfluence: number;
+  restInfluence: number;
+  deadInfluence: number;
   playerNearby: boolean;
   nearestPlayerDistance: number;
   playerInAttackRange: boolean;
   monsterDensity: number;
+  monsterDensityInfluence: number;
   neighborCount: number;
 }
 

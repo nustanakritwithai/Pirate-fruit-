@@ -1,4 +1,5 @@
 import type { Monster } from '../Monster';
+import { resolveInfluenceWeight } from './CellularInfluence';
 import { MONSTER_CELLULAR_CONFIG } from './MonsterCellularConfig';
 import {
   emptyMetrics,
@@ -54,6 +55,7 @@ export class MonsterCellularWorld {
         MONSTER_CELLULAR_CONFIG.defaultPerceptionRadius,
       ),
       moveSpeed: monster.type.moveSpeed,
+      influenceWeight: resolveInfluenceWeight(monster.type.id, monster.type.kind),
     };
     this.registry.register(cell);
     this.bindings.set(id, { monster, cellId: id });
@@ -142,6 +144,7 @@ export class MonsterCellularWorld {
         attackRange: monster.type.attackRange,
         perceptionRadius: MONSTER_CELLULAR_CONFIG.defaultPerceptionRadius,
         moveSpeed: monster.type.moveSpeed,
+        influenceWeight: resolveInfluenceWeight(monster.type.id, monster.type.kind),
       });
     }
     return behaviorIntentFromThought(cell);

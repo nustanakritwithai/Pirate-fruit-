@@ -34,6 +34,7 @@ function baseCell(overrides: Partial<MonsterCell> = {}): MonsterCell {
     attackRange: 2.5,
     perceptionRadius: 12,
     moveSpeed: 4,
+    influenceWeight: 1,
     ...overrides,
   };
 }
@@ -48,10 +49,19 @@ function snap(overrides: Partial<NeighborSnapshot> = {}): NeighborSnapshot {
     regroupCount: 0,
     restCount: 0,
     deadCount: 0,
+    idleInfluence: 0,
+    alertInfluence: 0,
+    huntInfluence: 0,
+    attackInfluence: 0,
+    fleeInfluence: 0,
+    regroupInfluence: 0,
+    restInfluence: 0,
+    deadInfluence: 0,
     playerNearby: false,
     nearestPlayerDistance: 99,
     playerInAttackRange: false,
     monsterDensity: 0,
+    monsterDensityInfluence: 0,
     neighborCount: 0,
     ...overrides,
   };
@@ -97,6 +107,8 @@ describe('Phase M1 — Monster Cellular AI', () => {
     const s = buildNeighborSnapshot(reg.get('self')!, reg, grid, 100, 100);
     expect(s.alertCount).toBe(1);
     expect(s.huntCount).toBe(1);
+    expect(s.alertInfluence).toBe(1);
+    expect(s.huntInfluence).toBe(1);
     expect(s.neighborCount).toBe(2);
   });
 
@@ -114,7 +126,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('6. idle → alert when player nearby', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'idle' }),
-      snap({ playerNearby: true, alertCount: 1 }),
+      snap({ playerNearby: true, alertInfluence: 1 }),
     );
     expect(next).toBe('alert');
   });
@@ -122,7 +134,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('7. alert → hunt with hunt neighbors', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'alert' }),
-      snap({ huntCount: 2, fleeCount: 0, playerNearby: true }),
+      snap({ huntInfluence: 2, fleeInfluence: 0, playerNearby: true }),
     );
     expect(next).toBe('hunt');
   });
@@ -130,7 +142,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('8. hunt → attack in range with attack neighbors', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'hunt' }),
-      snap({ playerInAttackRange: true, attackCount: 1, playerNearby: true }),
+      snap({ playerInAttackRange: true, attackInfluence: 1, playerNearby: true }),
     );
     expect(next).toBe('attack');
   });
@@ -138,7 +150,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('9. hunt → flee on high flee neighbors', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'hunt', hp: 80 }),
-      snap({ fleeCount: 4, playerNearby: true }),
+      snap({ fleeInfluence: 4, playerNearby: true }),
     );
     expect(next).toBe('flee');
   });
@@ -156,7 +168,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
       baseCell({ currentState: 'flee' }),
       snap({
         nearestPlayerDistance: 20,
-        regroupCount: 3,
+        fleeInfluence: 3,
         playerNearby: false,
       }),
     );
@@ -166,7 +178,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('12. regroup → alert when pack density high', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'regroup' }),
-      snap({ monsterDensity: 4, playerNearby: false }),
+      snap({ monsterDensityInfluence: 4, playerNearby: false }),
     );
     expect(next).toBe('alert');
   });
@@ -302,7 +314,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('28. attack → flee under pressure', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'attack', hp: 80 }),
-      snap({ fleeCount: 4, playerInAttackRange: true }),
+      snap({ fleeInfluence: 4, playerInAttackRange: true }),
     );
     expect(next).toBe('flee');
   });
@@ -310,7 +322,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('29. attack stays when in range', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'attack' }),
-      snap({ playerInAttackRange: true, fleeCount: 0 }),
+      snap({ playerInAttackRange: true, fleeInfluence: 0 }),
     );
     expect(next).toBe('attack');
   });
@@ -318,7 +330,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('30. hunt stays without flee signal', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'hunt', hp: 90 }),
-      snap({ playerNearby: true, fleeCount: 0, deadCount: 0 }),
+      snap({ playerNearby: true, fleeInfluence: 0, deadInfluence: 0 }),
     );
     expect(next).toBe('hunt');
   });
@@ -326,7 +338,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('31. alert stays without enough hunt neighbors', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'alert' }),
-      snap({ huntCount: 1, fleeCount: 0, playerNearby: true }),
+      snap({ huntInfluence: 1, fleeInfluence: 0, playerNearby: true }),
     );
     expect(next).toBe('alert');
   });
@@ -357,6 +369,38 @@ describe('Phase M1 — Monster Cellular AI', () => {
     for (const c of reg.getAll()) grid.insert(c);
     const s = buildNeighborSnapshot(reg.get('self')!, reg, grid, 50, 50);
     expect(s.deadCount).toBe(1);
+    expect(s.deadInfluence).toBe(1);
+  });
+
+  it('43. boss influence weight is 2', () => {
+    const reg = new MonsterRegistry();
+    const grid = new SpatialGrid(6);
+    reg.register(baseCell({ id: 'self', position: { x: 0, z: 0 } }));
+    reg.register(baseCell({
+      id: 'boss',
+      speciesId: 'boss',
+      currentState: 'alert',
+      influenceWeight: 2,
+      position: { x: 2, z: 0 },
+    }));
+    grid.clear();
+    for (const c of reg.getAll()) grid.insert(c);
+    const s = buildNeighborSnapshot(reg.get('self')!, reg, grid, 100, 100);
+    expect(s.alertInfluence).toBe(2);
+    expect(s.alertCount).toBe(1);
+  });
+
+  it('44. boss alert wakes pack faster than lone grunt', () => {
+    const gruntWake = evaluateNextState(
+      baseCell({ currentState: 'alert' }),
+      snap({ huntInfluence: 1, fleeInfluence: 0, playerNearby: true }),
+    );
+    const bossWake = evaluateNextState(
+      baseCell({ currentState: 'alert' }),
+      snap({ huntInfluence: 2, fleeInfluence: 0, playerNearby: true }),
+    );
+    expect(gruntWake).toBe('alert');
+    expect(bossWake).toBe('hunt');
   });
 
   it('35. MonsterCellularWorld binds metrics', () => {
@@ -392,7 +436,7 @@ describe('Phase M1 — Monster Cellular AI', () => {
   it('39. hunt flees on dead neighbor threshold', () => {
     const next = evaluateNextState(
       baseCell({ currentState: 'hunt', hp: 90 }),
-      snap({ deadCount: 3, playerNearby: true }),
+      snap({ deadInfluence: 3, playerNearby: true }),
     );
     expect(next).toBe('flee');
   });

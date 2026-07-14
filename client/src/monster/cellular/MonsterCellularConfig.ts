@@ -23,6 +23,7 @@ export const MONSTER_CELLULAR_CONFIG = {
 
   /** Flee → Regroup */
   fleeToRegroupRegroupMin: 2,
+  fleeToRegroupFleeMin: 2,
   fleePlayerFarDistance: 16,
 
   /** Regroup → Alert */
@@ -36,6 +37,10 @@ export const MONSTER_CELLULAR_CONFIG = {
   restEnergyGainPerTick: 0.06,
 
   debugMarkerHeight: 3.8,
+
+  /** Weighted cellular automata — boss wakes pack faster without leader script */
+  influenceDefault: 1,
+  influenceBoss: 2,
 } as const;
 
 export const THOUGHT_STATE_COLORS: Record<
