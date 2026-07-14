@@ -8,10 +8,12 @@ import {
   recipeForOutput,
   recipesForCell,
 } from './ProductionRecipes';
+import { genomeProductionBonus } from './GenomeGameplayBias';
 import type {
   CommodityState,
   EconomyCellState,
   EconomyLogEntry,
+  EconomyWorldState,
   FactoryAgentState,
   FactoryEvent,
   FactoryEventType,
@@ -129,6 +131,7 @@ export function scoreFactory(
   cell: EconomyCellState,
   recipe: ProductionRecipe,
   forecast = false,
+  world?: EconomyWorldState,
 ): FactoryScore {
   const reasons: string[] = [];
   let effectiveScale: number;
@@ -171,7 +174,8 @@ export function scoreFactory(
   const oversupplyPenalty = getOutputOversupplyPenalty(cell, recipe.id, reasons);
 
   const unitProfit = expectedRevenue - inputCost - laborCost - maintenanceCost;
-  const finalScore = unitProfit - shortagePenalty - oversupplyPenalty;
+  const genomeBonus = world ? genomeProductionBonus(world, cell.id, recipe.id) : 0;
+  const finalScore = unitProfit - shortagePenalty - oversupplyPenalty + genomeBonus;
 
   if (inputCost > expectedRevenue * 0.6) {
     const expensive = Object.keys(recipe.inputs)[0] as LivingCommodityId | undefined;
@@ -281,18 +285,19 @@ function emitFactoryEvent(
 export function evaluateBestRecipe(
   factory: FactoryAgentState,
   cell: EconomyCellState,
+  world?: EconomyWorldState,
 ): { recipeId: LivingCommodityId; score: FactoryScore } {
   const forecast = factory.status === 'paused';
   const candidates = [factory.activeRecipeId, ...factory.alternativeRecipeIds];
   let best = {
     recipeId: factory.activeRecipeId,
-    score: scoreFactory(factory, cell, recipeForOutput(factory.activeRecipeId)!, forecast),
+    score: scoreFactory(factory, cell, recipeForOutput(factory.activeRecipeId)!, forecast, world),
   };
 
   for (const id of candidates) {
     const recipe = recipeForOutput(id);
     if (!recipe) continue;
-    const s = scoreFactory(factory, cell, recipe, forecast);
+    const s = scoreFactory(factory, cell, recipe, forecast, world);
     if (s.finalScore > best.score.finalScore) {
       best = { recipeId: id, score: s };
     }
@@ -303,18 +308,19 @@ export function evaluateBestRecipe(
 export function updateFactoryAgent(
   factory: FactoryAgentState,
   cell: EconomyCellState,
+  world?: EconomyWorldState,
 ): FactoryEvent | null {
   tickCooldown(factory);
 
-  const best = evaluateBestRecipe(factory, cell);
+  const best = evaluateBestRecipe(factory, cell, world);
   const currentRecipe = recipeForOutput(factory.activeRecipeId);
   const forecast = factory.status === 'paused';
   const currentScore = currentRecipe
-    ? scoreFactory(factory, cell, currentRecipe, forecast)
+    ? scoreFactory(factory, cell, currentRecipe, forecast, world)
     : best.score;
 
   const activeScore = factory.activeRecipeId === best.recipeId
-    ? (forecast ? scoreFactory(factory, cell, recipeForOutput(best.recipeId)!, true) : best.score)
+    ? (forecast ? scoreFactory(factory, cell, recipeForOutput(best.recipeId)!, true, world) : best.score)
     : currentScore;
 
   updateProfitMemory(factory, activeScore.finalScore);

@@ -15,6 +15,7 @@ import {
   scoreRouteMemoryComponent,
   scoreUncertaintyPenalty,
 } from './TraderMemoryStore';
+import { genomeTradeBonus, genomeRiskModifier } from './GenomeGameplayBias';
 import { shouldExplore, traderRandom } from './TraderMemoryRng';
 
 export interface OrderScoreBreakdown {
@@ -126,8 +127,10 @@ export function scoreOrderDetailed(
   const failPen = scoreFailurePenalty(memory, profile);
   const uncPen = scoreUncertaintyPenalty(memory);
   const congPen = congestion * 4;
+  const tradeBonus = genomeTradeBonus(world, order.sourceIslandId);
+  const riskMod = genomeRiskModifier(world, order.sourceIslandId) * order.riskCost;
 
-  const finalScore = opp + mem * profile.memoryWeight + pref + explore - failPen - uncPen - congPen;
+  const finalScore = opp + mem * profile.memoryWeight + pref + explore - failPen - uncPen - congPen + tradeBonus - riskMod;
 
   return {
     order,

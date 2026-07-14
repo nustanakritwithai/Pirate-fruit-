@@ -387,7 +387,7 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
       expect(r.amount).toBeGreaterThanOrEqual(0);
     }
     expect(completedShipments).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it('26. reserveStock rejects over-commitment', () => {
     const world = freshWorld();

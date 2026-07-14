@@ -1,6 +1,7 @@
 import type { EconomyWorldState } from './types';
 import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
-import { PLAYER_REPUTATION_CONFIG } from './PlayerReputationConfig';
+import { ECONOMY_GENOME_CONFIG } from './EconomyGenomeConfig';
+import { ensureGenomeState, migrateGenomeFromSave } from './EconomyGenomeInitializer';
 import { migrateAllRoutes } from './TradeRouteUtils';
 import { ensureFactoryAgents } from './AdaptiveEconomy';
 import { ensureTraders } from './DynamicTradeEconomy';
@@ -11,7 +12,7 @@ import {
 import { createDefaultPlayerEconomy } from './PlayerEconomyHistory';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
-const SAVE_VERSION = PLAYER_REPUTATION_CONFIG.saveVersion;
+const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
 
 interface SavedEconomy {
   version: number;
@@ -30,7 +31,7 @@ function ensurePlayerEconomyState(world: EconomyWorldState): void {
   if (pe.trackedContractId === undefined) pe.trackedContractId = null;
 }
 
-function migrateWorld(world: EconomyWorldState): EconomyWorldState {
+function migrateWorld(world: EconomyWorldState, fromVersion: number): EconomyWorldState {
   for (const cell of world.cells) {
     cell.availableWorkforce ??= 0;
     cell.unemployment ??= Math.floor(cell.population * 0.08);
@@ -48,6 +49,11 @@ function migrateWorld(world: EconomyWorldState): EconomyWorldState {
     migrateRouteReputationsFromRoutes(world);
   }
   ensurePlayerEconomyState(world);
+  if (fromVersion < SAVE_VERSION) {
+    migrateGenomeFromSave(world);
+  } else {
+    ensureGenomeState(world);
+  }
   return world;
 }
 
@@ -61,8 +67,9 @@ export function loadEconomyState(): EconomyWorldState | null {
       && saved.version !== 2
       && saved.version !== 3
       && saved.version !== 4
-      && saved.version !== 5) return null;
-    const world = migrateWorld(saved.world);
+      && saved.version !== 5
+      && saved.version !== 6) return null;
+    const world = migrateWorld(saved.world, saved.version);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;
     return world;
@@ -74,6 +81,7 @@ export function loadEconomyState(): EconomyWorldState | null {
 export function saveEconomyState(world: EconomyWorldState): void {
   try {
     ensurePlayerEconomyState(world);
+    ensureGenomeState(world);
     const payload: SavedEconomy = { version: SAVE_VERSION, world };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
@@ -109,5 +117,6 @@ export function createFreshWorld(): EconomyWorldState {
   ensureTraders(world);
   ensureTraderMemoryState(world);
   migrateRouteReputationsFromRoutes(world);
+  ensureGenomeState(world);
   return world;
 }

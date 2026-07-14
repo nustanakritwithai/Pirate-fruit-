@@ -27,6 +27,15 @@ import {
 import { generateNewsFromTick } from './LivingTradeNews';
 import { createFreshWorld, loadEconomyState, saveEconomyState } from './LivingTradePersistence';
 import { appendFactoryEventsToLog, updateAdaptiveEconomy } from './AdaptiveEconomy';
+import {
+  forceDriftGenomes,
+  forceEvaluateFitness,
+  forceResolveIdentities,
+  updateEconomyGenome,
+} from './EconomyGenomeOrchestrator';
+import { ensureGenomeState, createGenomeForCell } from './EconomyGenomeInitializer';
+import { addPressure, clearPressures } from './GenomePressureStore';
+import { clearEvolutionHistory } from './EvolutionHistory';
 import { createFactoryAgentsForCell, initCellWorkforce } from './FactoryAgent';
 import {
   updateDynamicTradeEconomy,
@@ -285,6 +294,7 @@ export class LivingTradeSimulator {
     updatePlayerEconomy(this.world, this.tickLog, this.contractWallet ?? undefined);
     this.runDynamicTrade();
     moveCargo(this.world, this.tickLog);
+    updateEconomyGenome(this.world);
 
     for (const entry of this.tickLog) entry.tick = this.world.tick;
     this.world.log = [...this.tickLog, ...this.world.log].slice(0, 40);
@@ -420,6 +430,79 @@ export class LivingTradeSimulator {
   resetPlayerEconomyDebug(): void {
     this.world.playerEconomy = createDefaultPlayerEconomy();
     saveEconomyState(this.world);
+  }
+
+  freezeGenomeDebug(pressureToo = false): void {
+    ensureGenomeState(this.world);
+    this.world.genomeState!.genomeDebug.freezeDrift = true;
+    if (pressureToo) this.world.genomeState!.genomeDebug.freezePressureCollection = true;
+  }
+
+  resumeGenomeDebug(): void {
+    ensureGenomeState(this.world);
+    this.world.genomeState!.genomeDebug.freezeDrift = false;
+    this.world.genomeState!.genomeDebug.freezePressureCollection = false;
+    this.world.genomeState!.genomeDebug.accelMultiplier = 1;
+  }
+
+  accelGenomeDebug(multiplier: number): void {
+    ensureGenomeState(this.world);
+    this.world.genomeState!.genomeDebug.accelMultiplier = multiplier;
+  }
+
+  addGenomePressureDebug(
+    cellId: EconomyCellId,
+    source: 'factory' | 'trader' | 'player' | 'market',
+    strength: number,
+    commodityId?: LivingCommodityId,
+  ): void {
+    addPressure(this.world, {
+      cellId,
+      source,
+      target: 'production-bias',
+      commodityId,
+      strength,
+    });
+  }
+
+  forceWoodPressureDebug(cellId: EconomyCellId, positive: boolean): void {
+    addPressure(this.world, {
+      cellId,
+      source: 'factory',
+      target: 'production-bias',
+      commodityId: 'hardwood',
+      strength: positive ? 0.5 : -0.5,
+    });
+  }
+
+  evaluateFitnessDebug(): void {
+    forceEvaluateFitness(this.world);
+  }
+
+  driftGenomeDebug(): void {
+    forceDriftGenomes(this.world);
+  }
+
+  resolveIdentityDebug(): void {
+    forceResolveIdentities(this.world);
+  }
+
+  resetGenomeDebug(cellId?: EconomyCellId): void {
+    ensureGenomeState(this.world);
+    if (cellId) {
+      const idx = this.world.genomeState!.genomes.findIndex((g) => g.cellId === cellId);
+      if (idx >= 0) this.world.genomeState!.genomes[idx] = createGenomeForCell(cellId);
+    } else {
+      this.world.genomeState!.genomes = this.world.cells.map((c) => createGenomeForCell(c.id));
+    }
+  }
+
+  clearPressuresDebug(cellId?: EconomyCellId): void {
+    clearPressures(this.world, cellId);
+  }
+
+  clearEvolutionHistoryDebug(): void {
+    clearEvolutionHistory(this.world);
   }
 
   private runDynamicTrade(): void {

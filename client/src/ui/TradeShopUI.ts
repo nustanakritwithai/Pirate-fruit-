@@ -18,6 +18,8 @@ import {
 } from '../trade/living/ProductionRecipes';
 import type { EconomyCellId } from '../trade/living/types';
 import { getPlayerNpcDialogue } from '../trade/living/PlayerNpcDialogue';
+import { getGenomeDialogue } from '../trade/living/GenomeDialogueData';
+import { getGenome } from '../trade/living/EconomyGenomeInitializer';
 import { getPlayerTitleAtIsland } from '../trade/living/PlayerEconomyOrchestrator';
 
 const MARKET_CELL: Record<string, EconomyCellId> = {
@@ -137,7 +139,17 @@ export class TradeShopUI {
       return;
     }
     const title = getPlayerTitleAtIsland(this.trade.living.state, this.islandId);
-    const greeting = getPlayerNpcDialogue(title);
+    const cellId = this.marketId ? MARKET_CELL[this.marketId] : resolveTradeCell(this.islandId, 'fresh-fish');
+    let greeting = getPlayerNpcDialogue(title);
+    if (cellId) {
+      const genome = getGenome(this.trade.living.state, cellId);
+      const genomeLine = getGenomeDialogue(
+        genome.identity.dominantIndustry,
+        genome.identity.economicStage,
+        genome.fitness.emaScore,
+      );
+      greeting = `${greeting} — ${genomeLine}`;
+    }
     this.title.textContent = `🏪 ${this.vendorName}`;
     const sub = this.root.querySelector('.trade-shop-head p')!;
     sub.textContent = greeting;
@@ -154,10 +166,10 @@ export class TradeShopUI {
       ? activeNews.map((n) => `<div class="trade-news-item">📰 ${n.message}</div>`).join('')
       : '';
 
-    const cellId = this.marketId ? MARKET_CELL[this.marketId] : resolveTradeCell(this.islandId, 'fresh-fish');
-    const factoryCell = cellId ? this.trade.living.getCell(cellId) : undefined;
-    const factoryStatus = factoryCell && cellId
-      ? this.trade.living.getFactoryStatus(cellId)
+    const tradeCellId = this.marketId ? MARKET_CELL[this.marketId] : resolveTradeCell(this.islandId, 'fresh-fish');
+    const factoryCell = tradeCellId ? this.trade.living.getCell(tradeCellId) : undefined;
+    const factoryStatus = factoryCell && tradeCellId
+      ? this.trade.living.getFactoryStatus(tradeCellId)
       : null;
     const factoryHtml = factoryStatus
       ? `<div class="trade-factory-warn">🏭 สถานะโรงงาน: ${factoryStatus}</div>`

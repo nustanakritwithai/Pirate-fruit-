@@ -297,6 +297,8 @@ export interface EconomyWorldState {
   traderRngSeed: number;
   /** Phase E3.5 — player influence & contracts */
   playerEconomy?: import('./PlayerEconomyTypes').PlayerEconomyState;
+  /** Phase E4A — evolutionary economy genome */
+  genomeState?: import('./EconomyGenomeTypes').EconomyGenomeWorldState;
 }
 
 export type FactoryStatus =

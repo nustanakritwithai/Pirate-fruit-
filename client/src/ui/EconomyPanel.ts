@@ -9,6 +9,11 @@ import type { ClassifiedEconomyEvent } from '../trade/living/EconomyEventClassif
 import { titleLabel } from '../trade/living/PlayerEconomicProfileManager';
 import { getPlayerEconomySummary } from '../trade/living/PlayerEconomyHistory';
 import { getIsland } from '../island/IslandRegistry';
+import { getGenome } from '../trade/living/EconomyGenomeInitializer';
+import { dominantIndustryLabel } from '../trade/living/GenomeDialogueData';
+import { getEvolutionHistoryForCell } from '../trade/living/EvolutionHistory';
+import { getPressuresForCell } from '../trade/living/GenomePressureStore';
+import { LIVING_COMMODITY_IDS } from '../trade/living/LivingTradeConfig';
 
 /**
  * Economy Panel — ข้อมูลเศรษฐกิจเต็ม (เปิดจากปุ่ม 📈)
@@ -18,7 +23,7 @@ export class EconomyPanel {
   private readonly body: HTMLDivElement;
   private readonly titleEl: HTMLHeadingElement;
   private visible = false;
-  private viewMode: 'market' | 'alerts' | 'traders' | 'routes' | 'contracts' | 'reputation' | 'history' | 'records' = 'market';
+  private viewMode: 'market' | 'alerts' | 'traders' | 'routes' | 'contracts' | 'reputation' | 'history' | 'records' | 'genome' = 'market';
   private islandId: IslandId = 'starter-island';
   private onCloseCallback: (() => void) | null = null;
   private eventHistory: ClassifiedEconomyEvent[] = [];
@@ -290,6 +295,65 @@ export class EconomyPanel {
       return;
     }
 
+    if (this.viewMode === 'genome') {
+      this.titleEl.textContent = '🧬 Genome เศรษฐกิจ';
+      const world = this.trade.living.state;
+      const cellId = resolveTradeCell(this.islandId, 'fresh-fish');
+      const genome = getGenome(world, cellId);
+      const id = genome.identity;
+      const fit = genome.fitness;
+      const stageLabels: Record<string, string> = {
+        primitive: 'ดั้งเดิม',
+        specializing: 'เชี่ยวชาญ',
+        industrial: 'อุตสาหกรรม',
+        advanced: 'ก้าวหน้า',
+      };
+      const biasBar = (label: string, value: number) => `
+        <div class="ep-genome-bar-row">
+          <span>${label}</span>
+          <div class="ep-genome-bar"><div class="ep-genome-fill" style="width:${(value * 100).toFixed(0)}%"></div></div>
+          <span>${(value * 100).toFixed(0)}%</span>
+        </div>`;
+      const prodBiases = LIVING_COMMODITY_IDS
+        .filter((cid) => genome.productionBias[cid] != null)
+        .sort((a, b) => (genome.productionBias[b] ?? 0) - (genome.productionBias[a] ?? 0))
+        .slice(0, 6)
+        .map((cid) => biasBar(LIVING_COMMODITY_META[cid].label, genome.productionBias[cid] ?? 0.5))
+        .join('');
+      const pressures = getPressuresForCell(world, cellId)
+        .sort((a, b) => Math.abs(b.strength) - Math.abs(a.strength))
+        .slice(0, 5)
+        .map((p) => `<div class="ep-factory-row">${p.source} → ${p.target}${p.commodityId ? ` (${LIVING_COMMODITY_META[p.commodityId].label})` : ''}: ${p.strength.toFixed(3)}</div>`)
+        .join('');
+      const history = getEvolutionHistoryForCell(world, cellId).slice(0, 8).map((e) => `
+        <div class="ep-log">วัน ${e.day ?? '?'} — ${e.title}: ${e.description}</div>`).join('');
+      this.body.innerHTML = `
+        <div class="ep-summary">
+          <span>อุตสาหกรรมหลัก: ${dominantIndustryLabel(id.dominantIndustry)}</span>
+          <span>ขั้น: ${stageLabels[id.economicStage] ?? id.economicStage}</span>
+          <span>ความมั่นใจ: ${(id.specializationConfidence * 100).toFixed(0)}%</span>
+          <span>รุ่น DNA: ${id.genomeGeneration}</span>
+        </div>
+        <div class="ep-factory-list">
+          <div class="ep-factory-row">Fitness: ${(fit.emaScore * 100).toFixed(0)}% (ล่าสุด ${(fit.score * 100).toFixed(0)}%)</div>
+          <div class="ep-factory-row">กำไร ${(fit.averageProfit * 100).toFixed(0)}% · จ้างงาน ${(fit.averageEmployment * 100).toFixed(0)}% · ขาดแคลน ${(fit.shortageScore * 100).toFixed(0)}%</div>
+          <div class="ep-factory-row">การค้า ${(fit.traderTraffic * 100).toFixed(0)}% · ผู้เล่น ${(fit.playerParticipation * 100).toFixed(0)}% · สมดุลตลาด ${(fit.marketBalance * 100).toFixed(0)}%</div>
+          <div class="ep-factory-row">เก็บสต็อก ${(genome.storagePreference * 100).toFixed(0)}% · ค้า ${(genome.tradePreference * 100).toFixed(0)}% · อุตสาหกรรม ${(genome.industrialization * 100).toFixed(0)}%</div>
+        </div>
+        <div class="ep-section-title">Production Bias</div>
+        <div class="ep-genome-bars">${prodBiases || '<div class="ep-log">ยังไม่มีข้อมูล</div>'}</div>
+        <div class="ep-section-title">แรงกดดันสำคัญ</div>
+        <div class="ep-factory-list">${pressures || '<div class="ep-log">ไม่มีแรงกดดันที่โดดเด่น</div>'}</div>
+        <div class="ep-section-title">Evolution History</div>
+        <div class="ep-log-list">${history || '<div class="ep-log">ยังไม่มีเหตุการณ์วิวัฒนาการ</div>'}</div>
+        <button type="button" class="ep-tab-market">📈 ตลาด</button>`;
+      this.body.querySelector('.ep-tab-market')?.addEventListener('click', () => {
+        this.viewMode = 'market';
+        this.render();
+      });
+      return;
+    }
+
     if (this.viewMode === 'routes') {
       this.titleEl.textContent = '🗺️ เส้นทาง & ชื่อเสียง';
       const world = this.trade.living.state;
@@ -411,6 +475,7 @@ export class EconomyPanel {
       <div class="ep-section-title">เหตุการณ์เศรษฐกิจ</div>
       <div class="ep-log-list">${historyHtml || '<div class="ep-log">ยังไม่มีเหตุการณ์</div>'}</div>
       <div class="ep-tabs">
+        <button type="button" class="ep-tab-genome">🧬 Genome</button>
         <button type="button" class="ep-tab-contracts">📦 สัญญา</button>
         <button type="button" class="ep-tab-reputation">⭐ ชื่อเสียง</button>
         <button type="button" class="ep-tab-history">📜 ประวัติ</button>
@@ -418,6 +483,10 @@ export class EconomyPanel {
         <button type="button" class="ep-tab-traders">🧭 พ่อค้า</button>
         <button type="button" class="ep-tab-routes">🗺️ เส้นทาง</button>
       </div>`;
+    this.body.querySelector('.ep-tab-genome')?.addEventListener('click', () => {
+      this.viewMode = 'genome';
+      this.render();
+    });
     this.body.querySelector('.ep-tab-contracts')?.addEventListener('click', () => {
       this.viewMode = 'contracts';
       this.render();
@@ -489,6 +558,10 @@ export class EconomyPanel {
       .ep-factory-row{padding:6px 8px;margin-bottom:4px;border-radius:8px;background:rgba(255,255,255,.04);
         font-size:10px;line-height:1.45}
       .ep-factory-reasons{color:#8eb5aa;font-size:9px;margin-top:2px}
+      .ep-genome-bars{margin-bottom:8px}
+      .ep-genome-bar-row{display:grid;grid-template-columns:72px 1fr 36px;gap:6px;align-items:center;font-size:10px;margin-bottom:4px}
+      .ep-genome-bar{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+      .ep-genome-fill{height:100%;background:linear-gradient(90deg,#3a8a6a,#8ff0c5)}
       .ep-tabs{display:flex;gap:8px;margin-top:12px}
       .ep-tabs button{flex:1;padding:8px;border-radius:8px;border:1px solid #4a8a7a;background:#123028;color:#dff7ee;cursor:pointer;font-size:10px}
       @media(max-width:700px){.economy-panel-root{align-items:flex-end;padding:8px}
