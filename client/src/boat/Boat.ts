@@ -11,11 +11,17 @@ export class Boat {
   readonly hull: THREE.Mesh;
   readonly wakeLeft: THREE.Mesh;
   readonly wakeRight: THREE.Mesh;
+  /** ใบเรือ (null สำหรับเรือพาย) — หุบ/กางตามเกียร์ */
+  readonly sail: THREE.Mesh | null;
   state: BoatState = 'spawned';
   speed = 0;
   heading = Math.PI;
   hp: number;
   anchor = false;
+  /** เกียร์ใบเรือ 0-3 (0 = เก็บใบ/หยุด) */
+  sailLevel = 0;
+  /** ความเร็วเชิงมุมของการเลี้ยว (rad/s) — เลี้ยวมีความเฉื่อย */
+  turnVelocity = 0;
   boostTimer = 0;
   boostCooldown = 0;
   collisionCooldown = 0;
@@ -31,6 +37,9 @@ export class Boat {
     this.hull = model.hull;
     this.wakeLeft = model.wakeLeft;
     this.wakeRight = model.wakeRight;
+    this.sail = model.sail;
+    // เริ่มด้วยใบเรือหุบ (เกียร์ 0)
+    if (this.sail) this.sail.scale.y = 0.14;
     this.hp = definition.maxHp;
   }
 

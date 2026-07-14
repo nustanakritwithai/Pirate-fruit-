@@ -9,6 +9,8 @@ export interface BoatModelResult {
   hull: THREE.Mesh;
   wakeLeft: THREE.Mesh;
   wakeRight: THREE.Mesh;
+  /** ใบเรือ (null สำหรับเรือพาย) — pivot อยู่ขอบบน scale.y เพื่อหุบ/กางจากด้านบน */
+  sail: THREE.Mesh | null;
 }
 
 function makeWakeMaterial(): THREE.MeshBasicMaterial {
@@ -97,11 +99,15 @@ export function createBoatModel(
   wheel.rotation.x = -0.22;
   root.add(wheel);
 
+  let sail: THREE.Mesh | null = null;
   if (definition.hasSail) {
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4.8, 7), darkWood);
     mast.position.set(0, 2.75, 0.35);
-    const sail = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.7, 3.35),
+    // เลื่อน pivot ไปขอบบนของผ้าใบ — scale.y แล้วใบหุบขึ้นหาคานบน (เกียร์ใบเรือ)
+    const sailGeometry = new THREE.PlaneGeometry(2.7, 3.35);
+    sailGeometry.translate(0, -3.35 / 2, 0);
+    sail = new THREE.Mesh(
+      sailGeometry,
       createMobileMaterial('cloth', {
         color: 0xe6d5ad,
         side: THREE.DoubleSide,
@@ -109,7 +115,7 @@ export function createBoatModel(
         normalStrength: 0.3,
       }),
     );
-    sail.position.set(0.05, 3.15, 0.42);
+    sail.position.set(0.05, 3.15 + 3.35 / 2, 0.42);
     sail.rotation.y = Math.PI / 2;
     sail.castShadow = graphics.shadows;
     root.add(mast, sail);
@@ -172,5 +178,5 @@ export function createBoatModel(
     mesh.frustumCulled = true;
   });
 
-  return { root, hull, wakeLeft, wakeRight };
+  return { root, hull, wakeLeft, wakeRight, sail };
 }

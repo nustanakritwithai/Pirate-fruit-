@@ -7,6 +7,7 @@ export class BoatHUD {
   private readonly speedText: HTMLSpanElement;
   private readonly stateText: HTMLSpanElement;
   private readonly boostText: HTMLSpanElement;
+  private sailText!: HTMLSpanElement;
   private readonly toast: HTMLDivElement;
   private toastTimer = 0;
 
@@ -21,13 +22,15 @@ export class BoatHUD {
         <span>ความเร็ว <b class="boat-speed">0</b></span>
         <span class="boat-state">ลอยลำ</span>
         <span>Boost <b class="boat-boost">พร้อม</b></span>
-      </div>`;
+      </div>
+      <div class="boat-hud-sail">⛵ ใบเรือ <b class="boat-sail">▯▯▯</b></div>`;
     document.body.appendChild(this.root);
     this.hpFill = this.root.querySelector('.boat-hp-fill')!;
     this.hpText = this.root.querySelector('.boat-hp-text')!;
     this.speedText = this.root.querySelector('.boat-speed')!;
     this.stateText = this.root.querySelector('.boat-state')!;
     this.boostText = this.root.querySelector('.boat-boost')!;
+    this.sailText = this.root.querySelector('.boat-sail')!;
 
     this.toast = document.createElement('div');
     this.toast.className = 'boat-toast';
@@ -55,6 +58,8 @@ export class BoatHUD {
     this.speedText.textContent = `${Math.abs(boat.speed).toFixed(1)} m/s`;
     this.stateText.textContent = boat.anchor ? '⚓ ทอดสมอ' : boat.boostTimer > 0 ? '⚡ Boost' : 'กำลังแล่น';
     this.boostText.textContent = boat.boostCooldown <= 0 ? 'พร้อม' : `${boat.boostCooldown.toFixed(1)}s`;
+    // เกียร์ใบเรือ 0-3: ▮ = กาง, ▯ = หุบ (ดันจอยขึ้น/ลงเพื่อเปลี่ยน)
+    this.sailText.textContent = '▮'.repeat(boat.sailLevel) + '▯'.repeat(3 - boat.sailLevel);
   }
 
   notify(message: string, danger = false): void {
@@ -82,6 +87,8 @@ export class BoatHUD {
       .boat-hp-fill.critical { background:linear-gradient(90deg,#d82e2e,#ff6a45); }
       .boat-hud-metrics { color:#cfe6ea; font-size:9px; }
       .boat-hud-metrics b { color:#fff; }
+      .boat-hud-sail { margin-top:3px; color:#cfe6ea; font-size:9px; }
+      .boat-hud-sail b { color:#ffe6a0; letter-spacing:2px; }
       .boat-toast { position:fixed; z-index:72; left:50%; top:25%; transform:translate(-50%,-8px);
         opacity:0; color:#fff; padding:9px 17px; border-radius:20px; background:rgba(7,34,45,.9);
         border:1px solid rgba(126,225,241,.6); font:700 13px 'Segoe UI',Tahoma,sans-serif;

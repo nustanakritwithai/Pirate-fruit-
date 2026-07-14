@@ -17,6 +17,10 @@ export interface BoatDefinition {
   color: number;
 }
 
+/** เกียร์ใบเรือ 4 ระดับ (0 = เก็บใบ … 3 = เต็มใบ) → สัดส่วนของ maxSpeed */
+export const SAIL_GEAR_RATIO = [0, 0.35, 0.7, 1] as const;
+export const MAX_SAIL_LEVEL = SAIL_GEAR_RATIO.length - 1;
+
 export const BOAT_DEFINITIONS: BoatDefinition[] = [
   {
     id: 'training-dinghy',
