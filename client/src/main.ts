@@ -33,6 +33,9 @@ import { FullscreenManager } from './ui/FullscreenManager';
 import { EquipmentVisuals } from './art/EquipmentVisuals';
 import { PBRPerformanceMonitor } from './art/PBRPerformanceMonitor';
 import { IslandManager } from './island/IslandManager';
+import { TradeManager } from './trade/TradeManager';
+import { TradeShopUI } from './ui/TradeShopUI';
+import { TradeRouteHint } from './ui/TradeRouteHint';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -127,6 +130,18 @@ async function main(): Promise<void> {
     () => spawnManager.respawn(),
     progression,
   );
+  const tradeManager = new TradeManager(progression, boatManager.selectedBoatId ?? 'training-dinghy');
+  tradeManager.onTransaction((result) => {
+    if (!result.ok || !result.action || !result.islandId || !result.commodityId) return;
+    progression.events.emit('trade:completed', {
+      action: result.action,
+      islandId: result.islandId,
+      commodityId: result.commodityId,
+      quantity: Math.abs(result.quantityDelta ?? 0),
+    });
+  });
+  const tradeShop = new TradeShopUI(tradeManager);
+  const tradeRouteHint = new TradeRouteHint();
   // ร้านสุ่มของดีลเลอร์ (Phase 7) — onChange รีเฟรชชุดสกิลของ PlayerCombat หลัง equip/สุ่ม
   const dealerShop = new DealerShopUI(itemInventory, () => playerCombat?.refreshLoadout());
   const npcManager = new NPCManager(game.scene, input, controller, world.collision, {
@@ -138,6 +153,10 @@ async function main(): Promise<void> {
     openDealerShop: () => {
       controller.setControlsEnabled(false);
       dealerShop.open(() => controller.setControlsEnabled(true));
+    },
+    openTradeShop: (npc) => {
+      controller.setControlsEnabled(false);
+      tradeShop.open(npc.islandId, npc.tradeVendorId, () => controller.setControlsEnabled(true));
     },
   });
   new GraphicsSettings(graphics);
@@ -299,6 +318,12 @@ async function main(): Promise<void> {
   game.add(rewardFeed);
   game.add(progressionDebug);
   game.add(pbrPerformance);
+  game.add({ update: () => {
+    tradeRouteHint.setIsland(islandManager.activeIsland);
+    tradeRouteHint.setVisible(!tradeShop.isOpen && input.controlMode === 'player');
+    const boatId = boatManager.selectedBoatId;
+    if (boatId) tradeManager.setBoat(boatId);
+  } });
   game.add({ update: () => hud.update() });
   game.add({ update: () => minimap.update() });
   if (touchControls) {

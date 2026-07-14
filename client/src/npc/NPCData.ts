@@ -10,8 +10,9 @@ export interface NPCDefinition {
   z: number;
   color: number;
   dialogue: string[];
-  action?: 'boat-shop' | 'quest-board' | 'dealer-shop';
+  action?: 'boat-shop' | 'quest-board' | 'dealer-shop' | 'trade-shop';
   dockId?: string;
+  tradeVendorId?: string;
 }
 
 export const STARTER_NPCS: NPCDefinition[] = [
@@ -69,9 +70,12 @@ export const STARTER_NPCS: NPCDefinition[] = [
     x: 7,
     z: 8.5,
     color: 0xa67935,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-starter-pao',
     dialogue: [
-      'ร้านยังจัดของไม่เสร็จ วันนี้เดินชมหมู่บ้านไปก่อนนะ',
-      'ต่อไปที่นี่จะขายของใช้ ยาฟื้นพลัง และอุปกรณ์สำหรับออกทะเล',
+      'ของจากทะเลและป่าไม้ ซื้อขายได้ที่นี่!',
+      'ซื้อถูกที่เกาะเรา แล้วแล่นเรือไปขายเกาะอื่นให้แพงกว่า — ของเก็บใน cargo เรือ',
+      'ลองซื้อปลาสดหรือไม้เนื้อแข็ง แล้วนำไปขายที่ทะเลทรายหรือพงไพรหมอก',
     ],
   },
 ];
@@ -129,9 +133,11 @@ export const MIST_JUNGLE_NPCS: NPCDefinition[] = [
     x: 157,
     z: -43,
     color: 0x8a3653,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-mist-expedition',
     dialogue: [
       'พักในวงเขียวของค่ายก่อนออกล่า พื้นที่ด้านนอกมีศัตรูแข็งแกร่งกว่าเกาะแรกมาก',
-      'เตรียมค่าสถานะ Vitality และอุปกรณ์ที่มี Mastery ให้พร้อมก่อนสู้บอส',
+      'ข้ารับซื้อสมุนไพรและเครื่องเทศจากป่า — แลกกับเสบียงจากทะเลได้ที่นี่',
     ],
   },
 ];
@@ -180,6 +186,22 @@ export const SUNSCAR_DESERT_NPCS: NPCDefinition[] = [
     dialogue: [
       'คาราวานของข้านำอาวุธและผลไม้หายากข้ามทะเลมา เจ้าสุ่มของจากที่นี่ได้เช่นเดียวกับเกาะแรก',
       'ศัตรูบนเกาะนี้มี HP สูง เตรียม Mastery และค่าสถานะของอุปกรณ์หลักให้พร้อม',
+    ],
+  },
+  {
+    id: 'caravan-trader-sahir',
+    islandId: 'sunscar-desert',
+    name: 'ซาฮีร์',
+    role: 'พ่อค้าคาราวาน',
+    x: 168,
+    z: 98,
+    color: 0xc47a3a,
+    action: 'trade-shop',
+    tradeVendorId: 'vendor-sunscar-bazaar',
+    dialogue: [
+      'ผ้าไหมและอัญมณีจากทะเลทราย — ราคาดีวันนี้',
+      'ซื้อเกลือทรายและน้ำกระบองเพชรที่นี่ถูก แล้วขายข้ามทะเลให้กำไร',
+      'อย่าลืมเช็ค cargo เรือก่อนออกเดินทาง',
     ],
   },
   {

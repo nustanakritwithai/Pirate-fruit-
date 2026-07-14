@@ -115,4 +115,8 @@ export interface TradeTransactionResult {
   coinsDelta?: number;
   commodityId?: string;
   quantityDelta?: number;
+  islandId?: string;
+  action?: 'buy' | 'sell';
 }
+
+export type TradeTransactionListener = (result: TradeTransactionResult) => void;

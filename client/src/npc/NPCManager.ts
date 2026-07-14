@@ -20,6 +20,7 @@ export interface NPCActions {
   openBoatShop?: (definition: NPCDefinition) => void;
   openQuestBoard?: () => void;
   openDealerShop?: () => void;
+  openTradeShop?: (definition: NPCDefinition) => void;
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -149,14 +150,18 @@ export class NPCManager {
         ? this.actions.openQuestBoard
         : definition.action === 'dealer-shop'
           ? this.actions.openDealerShop
-          : undefined;
+          : definition.action === 'trade-shop' && this.actions.openTradeShop
+            ? () => this.actions.openTradeShop!(definition)
+            : undefined;
     const actionLabel = definition.action === 'boat-shop'
       ? '⚓ เปิดอู่เรือ'
       : definition.action === 'quest-board'
         ? '📜 ดูภารกิจ'
         : definition.action === 'dealer-shop'
           ? '🎴 เปิดร้านสุ่ม'
-          : undefined;
+          : definition.action === 'trade-shop'
+            ? '🏪 เปิดตลาดเทรด'
+            : undefined;
     this.dialogue.open(
       {
         name: definition.name,

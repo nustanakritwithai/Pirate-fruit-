@@ -11,6 +11,9 @@ const TARGET_NAMES: Record<string, string> = {
   'desert-raider': 'โจรคาราวาน',
   'sand-golem': 'โกเลมศิลาทราย',
   'sun-guardian-boss': 'ผู้พิทักษ์สุริยะ',
+  'fresh-fish': 'ปลาสด',
+  'jungle-herb': 'สมุนไพรป่า',
+  'sun-silk': 'ผ้าไหมสุริยะ',
 };
 
 export class QuestTracker {
@@ -66,10 +69,14 @@ export class QuestTracker {
     }
     this.root.style.display = 'block';
     this.root.classList.remove('complete');
-    const objectives = active.definition.objectives.map((objective, index) =>
-      `<div class="quest-tracker-objective">${TARGET_NAMES[objective.targetId] ?? objective.targetId} ` +
-      `${active.progress[index]} / ${objective.requiredAmount}</div>`,
-    ).join('');
+    const objectives = active.definition.objectives.map((objective, index) => {
+      const label = TARGET_NAMES[objective.targetId] ?? objective.targetId;
+      const suffix = objective.type === 'deliver' && objective.islandId
+        ? ` → ${objective.islandId === 'starter-island' ? 'เกาะแรก' : objective.islandId === 'mist-jungle' ? 'ป่าหมอก' : 'ทะเลทราย'}`
+        : '';
+      return `<div class="quest-tracker-objective">${label}${suffix} ` +
+        `${active.progress[index]} / ${objective.requiredAmount}</div>`;
+    }).join('');
     this.root.innerHTML = `<div class="quest-tracker-title">📜 ${active.definition.name}</div>${objectives}`;
   }
 }

@@ -103,6 +103,48 @@ export const QUEST_DEFINITIONS: readonly QuestDefinition[] = [
     objectives: [{ type: 'boss', targetId: 'sun-guardian-boss', requiredAmount: 1 }],
     rewards: { playerExp: 5200, coins: 3200, masteryBonus: 650 },
   },
+  {
+    id: 'trade-fish-to-desert',
+    name: 'ส่งปลาสดสู่ทะเลทราย',
+    description: 'ซื้อปลาสดที่เกาะเริ่มต้น แล่นเรือไปขายที่ทะเลทรายสุริยะ 5 ชิ้น',
+    minimumLevel: 5,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'fresh-fish',
+      requiredAmount: 5,
+      islandId: 'sunscar-desert',
+    }],
+    rewards: { playerExp: 280, coins: 200, masteryBonus: 20 },
+  },
+  {
+    id: 'trade-herbs-to-starter',
+    name: 'สมุนไพรกลับหมู่บ้าน',
+    description: 'ขายสมุนไพรป่าให้ตลาดหมู่บ้านโจรสลัด 8 ชิ้น',
+    minimumLevel: 16,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'jungle-herb',
+      requiredAmount: 8,
+      islandId: 'starter-island',
+    }],
+    rewards: { playerExp: 520, coins: 380, masteryBonus: 45 },
+  },
+  {
+    id: 'trade-silk-route',
+    name: 'เส้นทางผ้าไหมสุริยะ',
+    description: 'ซื้อผ้าไหมสุริยะที่ทะเลทราย แล้วขายที่เกาะพงไพรหมอก 6 ชิ้น',
+    minimumLevel: 32,
+    repeatable: true,
+    objectives: [{
+      type: 'deliver',
+      targetId: 'sun-silk',
+      requiredAmount: 6,
+      islandId: 'mist-jungle',
+    }],
+    rewards: { playerExp: 980, coins: 720, masteryBonus: 80 },
+  },
 ];
 
 export const QUESTS_BY_ID = new Map(QUEST_DEFINITIONS.map((quest) => [quest.id, quest]));

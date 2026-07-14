@@ -4,7 +4,7 @@ import type { ActiveQuest, QuestAcceptResult, QuestClaimResult } from './QuestDa
 import { QUESTS_BY_ID } from './QuestDefinitions';
 import { createActiveQuest, isQuestComplete } from './QuestProgress';
 
-/** Quest framework เล็กและแยกจาก MonsterManager; รับเฉพาะ monster:killed event */
+/** Quest framework เล็กและแยกจาก MonsterManager; รับ monster:killed และ trade:completed */
 export class QuestManager {
   constructor(
     private progression: ProgressionManager,
@@ -12,6 +12,9 @@ export class QuestManager {
   ) {
     progression.events.on('monster:killed', ({ monsterId, isBoss }) => {
       this.recordKill(monsterId, isBoss);
+    });
+    progression.events.on('trade:completed', ({ action, islandId, commodityId, quantity }) => {
+      if (action === 'sell') this.recordDeliver(commodityId, islandId, quantity);
     });
   }
 
@@ -59,6 +62,32 @@ export class QuestManager {
       const typeMatches = objective.type === 'kill' || (objective.type === 'boss' && isBoss);
       if (!typeMatches || objective.targetId !== monsterId) return;
       const next = Math.min(objective.requiredAmount, active.progress[index] + 1);
+      if (next === active.progress[index]) return;
+      active.progress[index] = next;
+      changed = true;
+      this.progression.events.emit('quest:progress', {
+        questId: active.definition.id,
+        objectiveIndex: index,
+        current: next,
+        required: objective.requiredAmount,
+      });
+    });
+
+    if (!changed) return;
+    this.progression.setQuestProgress(active.progress);
+    if (isQuestComplete(active.definition, active.progress)) this.claimQuestReward();
+  }
+
+  recordDeliver(commodityId: string, islandId: string, quantity: number): void {
+    const active = this.getActiveQuest();
+    if (!active || active.completed) return;
+
+    let changed = false;
+    active.definition.objectives.forEach((objective, index) => {
+      if (objective.type !== 'deliver') return;
+      if (objective.targetId !== commodityId) return;
+      if (objective.islandId && objective.islandId !== islandId) return;
+      const next = Math.min(objective.requiredAmount, active.progress[index] + quantity);
       if (next === active.progress[index]) return;
       active.progress[index] = next;
       changed = true;

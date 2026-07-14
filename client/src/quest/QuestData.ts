@@ -1,9 +1,11 @@
-export type QuestObjectiveType = 'kill' | 'boss' | 'collect' | 'talk';
+export type QuestObjectiveType = 'kill' | 'boss' | 'collect' | 'talk' | 'deliver';
 
 export interface QuestObjective {
   type: QuestObjectiveType;
   targetId: string;
   requiredAmount: number;
+  /** เกาะปลายทางสำหรับ deliver */
+  islandId?: string;
 }
 
 export interface QuestReward {

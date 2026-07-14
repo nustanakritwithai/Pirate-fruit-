@@ -159,18 +159,18 @@ flowchart TB
 - [x] `TradeFormulas` + `TradeManager` scaffold
 - [x] Unit tests
 
-### Phase T2 — UI ร้านค้า ⬜
+### Phase T2 — UI ร้านค้า ✅
 
-- [ ] `TradeShopUI.ts` — แสดงสินค้า, ราคาซื้อ/ขาย, ปุ่ม +/- quantity
-- [ ] `CargoPanel.ts` — แสดงของบนเรือ, น้ำหนัก/ช่อง
-- [ ] ผูก NPC vendor (เถ้าแก่เปา, นายท่าคราม, ฯลฯ)
-- [ ] เปิดร้านได้เฉพาะเมื่อ **จอดท่า + มีเรือ** (หรืออยู่ใน safe zone หมู่บ้าน)
+- [x] `TradeShopUI.ts` — แสดงสินค้า, ราคาซื้อ/ขาย, ปุ่ม +/- quantity
+- [x] `TradeRouteHint` — แสดงเส้นทางกำไรจากเกาะปัจจุบัน
+- [x] ผูก NPC vendor (เถ้าแก่เปา, แพทย์สาย, ซาฮีร์)
+- [x] wire `TradeManager` + `main.ts` + boat cargo sync
 
-### Phase T3 — Gameplay Loop ⬜
+### Phase T3 — Gameplay Loop ✅ (บางส่วน)
 
-- [ ] Quest เทรด: "ซื้อปลา 10 ตัว ส่งไปทะเลทราย"
-- [ ] แจ้งเตือนเส้นทางกำไรสูง (`TradeRouteMap` หรือ tooltip)
-- [ ] รีเฟรชสต็อกร้าน (optional, ตาม `stockLimit`)
+- [x] Quest เทรด 3 รายการ (deliver objective)
+- [x] `QuestManager` รับ `trade:completed` event
+- [ ] รีเฟรชสต็อกร้าน (optional)
 - [ ] เสียง/เอฟเฟกต์เมื่อทำกำไร
 
 ### Phase T4 — ขยายเกาะ ⬜

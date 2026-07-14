@@ -60,6 +60,10 @@ export class BoatManager {
     return this.active?.boostCooldownFraction ?? 0;
   }
 
+  get selectedBoatId(): string | null {
+    return this.progress.selectedBoatId;
+  }
+
   openShop(dockId = 'starter-harbor'): void {
     if (this.controller.isMounted) {
       this.hud.notify('ต้องลงจากเรือก่อนเปิดร้าน');
