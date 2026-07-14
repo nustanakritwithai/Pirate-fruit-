@@ -190,7 +190,7 @@ repo นี้พร้อม deploy เป็น **Static Site** บน [Render
 4. Render อ่าน `render.yaml` แล้วตั้งค่าให้อัตโนมัติ:
    - **Root Directory:** `client`
    - **Build Command:** `npm ci && npm run build`
-   - **Publish Directory:** `dist`
+   - **Publish Directory:** `client/dist` (ใน Blueprint อ้างอิงจาก root ของ repo)
    - **Node:** 22
 5. กด **Apply** — รอ build เสร็จได้ URL เช่น `https://pirate-fruit.onrender.com`
 
