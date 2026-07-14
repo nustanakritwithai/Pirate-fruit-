@@ -181,4 +181,8 @@ export class NPCManager {
       },
     );
   }
+
+  getNpcCount(): number {
+    return this.npcs.length;
+  }
 }

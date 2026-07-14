@@ -6,7 +6,7 @@ export type EconomicStage =
   | 'industrial'
   | 'advanced';
 
-export type GenomePressureSource = 'factory' | 'trader' | 'player' | 'market';
+export type GenomePressureSource = 'factory' | 'trader' | 'player' | 'market' | 'environment';
 
 export type GenomePressureTarget =
   | 'production-bias'

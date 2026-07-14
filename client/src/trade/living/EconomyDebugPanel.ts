@@ -10,6 +10,7 @@ import { completeContractWithWallet, failContractDebug } from './PlayerContractM
 import { getGenome } from './EconomyGenomeInitializer';
 import { getPressuresForCell } from './GenomePressureStore';
 import { getEvolutionHistoryForCell } from './EvolutionHistory';
+import type { DebugPanelEmbedOptions } from '../../simulation/inspector/DebugPanelEmbed';
 
 const COMMODITY_LABELS: Record<LivingCommodityId, string> = Object.fromEntries(
   LIVING_COMMODITY_IDS.map((id) => [id, LIVING_COMMODITY_META[id].label]),
@@ -39,17 +40,22 @@ export class EconomyDebugPanel {
   private readonly genomeGrid: HTMLDivElement;
   private genomeCell: import('./types').EconomyCellId = 'leaf-island';
   private visible = false;
+  private readonly embedded: boolean;
 
-  constructor(private sim: LivingTradeSimulator) {
+  constructor(
+    private sim: LivingTradeSimulator,
+    options: DebugPanelEmbedOptions = {},
+  ) {
+    this.embedded = options.embedded ?? false;
     this.injectStyles();
     this.root = document.createElement('div');
-    this.root.className = 'eco-debug-root';
+    this.root.className = this.embedded ? 'eco-debug-root eco-debug-embedded' : 'eco-debug-root';
     this.root.innerHTML = `
       <div class="eco-debug">
         <div class="eco-debug-head">
           <h3>🌊 Economic Cellular Automata</h3>
           <span class="eco-tick">Tick: 0</span>
-          <button type="button" class="eco-close">×</button>
+          ${this.embedded ? '' : '<button type="button" class="eco-close">×</button>'}
         </div>
         <div class="eco-actions">
           <button type="button" data-action="tick1">+1 Tick</button>
@@ -127,7 +133,7 @@ export class EconomyDebugPanel {
         <div class="eco-log-title">เหตุการณ์ล่าสุด</div>
         <div class="eco-log"></div>
       </div>`;
-    document.body.appendChild(this.root);
+    (options.mountParent ?? document.body).appendChild(this.root);
     this.grid = this.root.querySelector('.eco-grid')!;
     this.factoryGrid = this.root.querySelector('.eco-factory-grid')!;
     this.ordersGrid = this.root.querySelector('.eco-orders-grid')!;
@@ -141,7 +147,9 @@ export class EconomyDebugPanel {
       this.genomeCell = (e.target as HTMLSelectElement).value as import('./types').EconomyCellId;
       this.render();
     });
-    this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
+    if (!this.embedded) {
+      this.root.querySelector('.eco-close')?.addEventListener('click', () => this.setVisible(false));
+    }
     this.root.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
       if (!btn) return;
@@ -230,20 +238,28 @@ export class EconomyDebugPanel {
       if (action === 'clear-evo') this.sim.clearEvolutionHistoryDebug();
       this.render();
     });
-    if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'F8') {
-        e.preventDefault();
-        this.setVisible(!this.visible);
-      }
-    });
-    this.root.style.display = 'none';
+    if (!this.embedded) {
+      if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'F8') {
+          e.preventDefault();
+          this.setVisible(!this.visible);
+        }
+      });
+    } else {
+      this.visible = true;
+    }
+    this.root.style.display = this.embedded ? 'block' : 'none';
   }
 
   setVisible(show: boolean): void {
     this.visible = show;
-    this.root.style.display = show ? 'flex' : 'none';
+    this.root.style.display = show ? (this.embedded ? 'block' : 'flex') : 'none';
     if (show) this.render();
+  }
+
+  getElement(): HTMLDivElement {
+    return this.root;
   }
 
   refresh(): void {
@@ -407,6 +423,9 @@ export class EconomyDebugPanel {
       .eco-log-title{margin-top:10px;font-size:10px;color:#8eb5aa;text-transform:uppercase}
       .eco-log{max-height:140px;overflow:auto;margin-top:4px;font-size:10px;line-height:1.45}
       .eco-log-tick{color:#6a9a8a;margin-right:4px}
+      .eco-debug-embedded{position:static;inset:auto;background:transparent;padding:0;display:block}
+      .eco-debug-embedded .eco-debug{width:100%;max-height:none;border:0;border-radius:0;padding:0}
+      .eco-debug-embedded .eco-debug-head{display:none}
     `;
     document.head.appendChild(style);
   }

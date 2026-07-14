@@ -213,6 +213,7 @@ export class PlayerCombat {
   private skillBuffMultiplier = 1;
   private readonly shield: THREE.Mesh;
   private visualAnchors: CombatVisualAnchorProvider | null = null;
+  private onSkillInfluence: ((skill: CastableSkill, x: number, z: number) => void) | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -344,6 +345,13 @@ export class PlayerCombat {
   /** late-bind หลังสร้าง EquipmentVisuals เพื่อเลี่ยง ownership/circular dependency */
   bindVisualAnchors(provider: CombatVisualAnchorProvider): void {
     this.visualAnchors = provider;
+  }
+
+  /** DF1 — world influence hook when skill releases (not damage override) */
+  bindSkillInfluenceHook(
+    hook: (skill: CastableSkill, x: number, z: number) => void,
+  ): void {
+    this.onSkillInfluence = hook;
   }
 
   // ------------------------------------------------------------------
@@ -714,6 +722,7 @@ export class PlayerCombat {
 
   private releaseSkill(skill: CastableSkill): void {
     const position = this.controller.position;
+    this.onSkillInfluence?.(skill, position.x, position.z);
     const heading = this.controller.heading;
     const dirX = Math.sin(heading);
     const dirZ = Math.cos(heading);
