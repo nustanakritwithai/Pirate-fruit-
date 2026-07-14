@@ -50,7 +50,8 @@ export class ProgressionHUD {
         35%{border-color:#ffe27a;box-shadow:0 0 24px rgba(255,221,94,.9);transform:scale(1.04)} }
       @media(max-width:700px){ .progression-hud{
         top:auto; bottom:calc(88px + env(safe-area-inset-bottom,0px)); left:10px; width:154px; padding:7px 8px}
-        .progression-hud-coins{display:inline} }
+        .progression-hud-coins{display:none} }
+      @media(max-width:599px){ .progression-hud-coins{display:none} }
     `;
     document.head.appendChild(style);
 

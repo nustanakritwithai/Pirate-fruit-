@@ -1,65 +1,63 @@
 import { isTouchDevice } from '../engine/device';
 import type { IslandId } from '../island/IslandTypes';
 import type { TradeManager } from '../trade/TradeManager';
-import { TRADE_COMMODITIES } from '../trade/databook/commodities';
 import { cargoSlotsUsed } from '../trade/TradeFormulas';
 import { filterActiveNews } from '../trade/living/LivingTradeNews';
 import {
   batchSilentEvents,
   classifyLogEntry,
   classifyNewsItem,
+  formatToastLine,
+  mergeToastEvents,
   type ClassifiedEconomyEvent,
-  type EconomyEventPriority,
 } from '../trade/living/EconomyEventClassifier';
 import type { EconomyPanel } from './EconomyPanel';
 
-const TOAST_DURATION: Record<EconomyEventPriority, number> = {
-  silent: 0,
-  low: 0,
-  medium: 2.5,
-  high: 4,
-  critical: 4,
-};
+const TOAST_DURATION_S = 2.5;
+
+function isCompactHud(): boolean {
+  return window.innerWidth < 600 || isTouchDevice();
+}
+
+function rectsOverlap(a: DOMRect, b: DOMRect, pad = 6): boolean {
+  return !(
+    a.right + pad < b.left
+    || a.left - pad > b.right
+    || a.bottom + pad < b.top
+    || a.top - pad > b.bottom
+  );
+}
 
 /**
- * Mobile-first Economy HUD — 3 ระดับ:
- * 1) chip กะทัดรัดใต้ minimap
- * 2) toast / banner ชั่วคราว
- * 3) EconomyPanel เต็ม (เปิดเอง)
+ * Mobile-first Economy HUD — chip กะทัดรัด + toast บนกลาง (ไม่ทับ Player HUD)
  */
 export class EconomyMobileHUD {
   private readonly chip: HTMLDivElement;
   private readonly toast: HTMLDivElement;
-  private readonly banner: HTMLDivElement;
   private readonly economyBtn: HTMLButtonElement;
   private toastTimer = 0;
-  private bannerTimer = 0;
+  private toastQueue: ClassifiedEconomyEvent[] = [];
   private currentToast: ClassifiedEconomyEvent | null = null;
-  private currentBanner: ClassifiedEconomyEvent | null = null;
-  private trendLabel = '';
   private lastLogTick = -1;
   private eventHistory: ClassifiedEconomyEvent[] = [];
+  private activeAlerts = new Map<string, ClassifiedEconomyEvent>();
   private panel: EconomyPanel | null = null;
   private onOpenPanel: (() => void) | null = null;
+  private onOpenAlerts: (() => void) | null = null;
 
   constructor(private trade: TradeManager) {
     this.injectStyles();
     const minimapSize = isTouchDevice() ? 112 : 144;
-    const topBase = 14 + minimapSize + 8;
+    const chipTop = 14 + minimapSize + 8;
 
     this.chip = document.createElement('div');
     this.chip.className = 'eco-chip';
-    this.chip.style.top = `${topBase}px`;
+    this.chip.style.top = `${chipTop}px`;
     document.body.appendChild(this.chip);
 
     this.toast = document.createElement('div');
     this.toast.className = 'eco-toast';
-    this.toast.style.top = `${topBase + 44}px`;
     document.body.appendChild(this.toast);
-
-    this.banner = document.createElement('div');
-    this.banner.className = 'eco-banner';
-    document.body.appendChild(this.banner);
 
     this.economyBtn = document.createElement('button');
     this.economyBtn.type = 'button';
@@ -69,16 +67,32 @@ export class EconomyMobileHUD {
     this.economyBtn.addEventListener('click', () => this.onOpenPanel?.());
     document.body.appendChild(this.economyBtn);
 
-    this.chip.addEventListener('click', () => this.onOpenPanel?.());
+    this.chip.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.eco-chip-alert')) {
+        this.onOpenAlerts?.();
+      } else {
+        this.onOpenPanel?.();
+      }
+    });
   }
 
-  bindPanel(panel: EconomyPanel, onOpen: () => void): void {
+  bindPanel(
+    panel: EconomyPanel,
+    onOpen: () => void,
+    onOpenAlerts: () => void,
+  ): void {
     this.panel = panel;
     this.onOpenPanel = onOpen;
+    this.onOpenAlerts = onOpenAlerts;
   }
 
   getEventHistory(): readonly ClassifiedEconomyEvent[] {
     return this.eventHistory;
+  }
+
+  getActiveAlerts(): readonly ClassifiedEconomyEvent[] {
+    return [...this.activeAlerts.values()];
   }
 
   ingestTick(): void {
@@ -101,17 +115,19 @@ export class EconomyMobileHUD {
     this.eventHistory = this.eventHistory.slice(0, 40);
     this.panel?.setEventHistory(this.eventHistory);
 
-    const displayable = classified
-      .filter((e) => e.priority !== 'silent')
+    for (const event of classified) {
+      if (event.isAlert) {
+        this.activeAlerts.set(event.mergeKey, event);
+      }
+    }
+    this.panel?.setActiveAlerts(this.getActiveAlerts());
+
+    const toastCandidates = classified
+      .filter((e) => e.toastEligible)
       .sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority));
 
-    if (!displayable.length) return;
-
-    const top = displayable[0];
-    if (top.priority === 'critical') {
-      this.showBanner(top);
-    } else if (TOAST_DURATION[top.priority] > 0) {
-      this.showToast(top);
+    for (const event of toastCandidates) {
+      this.toastQueue = mergeToastEvents(this.toastQueue, event);
     }
   }
 
@@ -120,7 +136,7 @@ export class EconomyMobileHUD {
     opts: { shopOpen: boolean; panelOpen: boolean; islandId: IslandId },
   ): void {
     if (opts.shopOpen || opts.panelOpen) {
-      this.hideTransient();
+      this.hideToast();
       this.chip.style.display = 'none';
       this.economyBtn.style.display = 'none';
       return;
@@ -128,74 +144,96 @@ export class EconomyMobileHUD {
     this.economyBtn.style.display = '';
 
     this.ingestTick();
-    this.updateTrend(opts.islandId);
     this.renderChip();
-
-    if (this.toastTimer > 0) {
-      this.toastTimer -= dt;
-      if (this.toastTimer <= 0) this.hideToast();
-    }
-    if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) this.hideBanner();
-    }
+    this.advanceToastQueue(dt);
+    this.positionToast();
   }
 
-  private updateTrend(islandId: IslandId): void {
-    const arb = this.trade.living.bestArbitrageFrom(islandId);
-    if (!arb) {
-      this.trendLabel = '';
+  private advanceToastQueue(dt: number): void {
+    if (this.currentToast) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) {
+        this.currentToast = null;
+        this.hideToast();
+      }
       return;
     }
-    const name = TRADE_COMMODITIES.find((c) => c.id === arb.commodityId)?.nameTh ?? '';
-    this.trendLabel = name ? `📈 ${name}` : '';
+    if (!this.toastQueue.length) return;
+    const next = this.toastQueue.shift()!;
+    this.showToast(next);
   }
 
   private renderChip(): void {
     const hold = this.trade.hold;
     const slots = cargoSlotsUsed(hold.slots);
-    const coins = this.trade.walletCoins;
-    const hint = this.currentToast?.message ?? this.trendLabel;
+    const coins = this.trade.walletCoins.toLocaleString('th-TH');
+    const alertCount = this.activeAlerts.size;
+
     this.chip.style.display = 'flex';
     this.chip.innerHTML = `
-      <span class="eco-chip-coins">🪙 ${coins}</span>
+      <span class="eco-chip-coins">💰 ${coins}</span>
       <span class="eco-chip-cargo">📦 ${slots}/${hold.maxSlots}</span>
-      ${hint ? `<span class="eco-chip-hint">${hint}</span>` : ''}`;
+      ${alertCount > 0
+        ? `<button type="button" class="eco-chip-alert" aria-label="แจ้งเตือนเศรษฐกิจ">⚠️ ${alertCount}</button>`
+        : ''}`;
   }
 
   private showToast(event: ClassifiedEconomyEvent): void {
-    if (this.currentBanner) return;
     this.currentToast = event;
-    this.toastTimer = TOAST_DURATION[event.priority];
-    this.toast.textContent = event.message;
+    this.toastTimer = TOAST_DURATION_S;
+    const line = formatToastLine(event);
+    this.toast.textContent = line;
+    this.toast.classList.toggle('eco-toast-critical', event.priority === 'critical');
     this.toast.style.display = 'flex';
     this.toast.classList.add('eco-toast-visible');
+    this.positionToast();
   }
 
   private hideToast(): void {
-    this.currentToast = null;
-    this.toast.classList.remove('eco-toast-visible');
+    this.toast.classList.remove('eco-toast-visible', 'eco-toast-critical');
     this.toast.style.display = 'none';
   }
 
-  private showBanner(event: ClassifiedEconomyEvent): void {
-    this.hideToast();
-    this.currentBanner = event;
-    this.bannerTimer = TOAST_DURATION.critical;
-    this.banner.textContent = `${event.icon} ${event.message}`;
-    this.banner.style.display = 'block';
-    this.banner.classList.add('eco-banner-visible');
-  }
+  /** วาง toast บนกลาง ใต้เวลา/FPS — เลี่ยง Minimap, Player HUD, ปุ่มมือถือ */
+  private positionToast(): void {
+    if (this.toast.style.display === 'none') return;
 
-  private hideBanner(): void {
-    this.currentBanner = null;
-    this.banner.classList.remove('eco-banner-visible');
-    this.banner.style.display = 'none';
-  }
+    const compact = isCompactHud();
+    const safeTop = parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-top)') || '0',
+      10,
+    );
+    let top = safeTop + (compact ? 78 : 72);
+    let left = window.innerWidth / 2;
 
-  private hideTransient(): void {
-    this.hideToast();
-    this.hideBanner();
+    this.toast.style.top = `${top}px`;
+    this.toast.style.left = `${left}px`;
+    this.toast.style.transform = 'translateX(-50%)';
+
+    const blockers = [
+      '.progression-hud',
+      '.eco-chip',
+      '.game-minimap',
+      '.tc-root',
+      '.hud-info',
+      '.graphics-setting',
+    ];
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const toastRect = this.toast.getBoundingClientRect();
+      let hit = false;
+      for (const sel of blockers) {
+        const el = document.querySelector(sel);
+        if (!el) continue;
+        if (rectsOverlap(toastRect, el.getBoundingClientRect())) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) break;
+      top += 28;
+      this.toast.style.top = `${top}px`;
+    }
   }
 
   private injectStyles(): void {
@@ -204,38 +242,40 @@ export class EconomyMobileHUD {
     style.id = 'eco-mobile-hud-styles';
     const minimapSize = isTouchDevice() ? 112 : 144;
     const chipTop = 14 + minimapSize + 8;
-    const toastTop = chipTop + 44;
     style.textContent = `
-      .eco-chip{position:fixed;z-index:20;left:14px;top:${chipTop}px;max-width:280px;height:36px;
-        display:flex;align-items:center;gap:8px;padding:0 10px;box-sizing:border-box;
+      .eco-chip{position:fixed;z-index:20;left:14px;top:${chipTop}px;max-width:min(280px,88vw);height:34px;
+        display:flex;align-items:center;gap:10px;padding:0 10px;box-sizing:border-box;
         background:rgba(6,28,32,.88);border:1px solid rgba(120,200,170,.35);border-radius:10px;
-        color:#dff7ee;font:600 10px 'Segoe UI',Tahoma,sans-serif;cursor:pointer;
+        color:#dff7ee;font:600 10px 'Segoe UI',Tahoma,sans-serif;
         pointer-events:auto;touch-action:manipulation;overflow:hidden}
       .eco-chip-coins{color:#ffe49a;white-space:nowrap}
       .eco-chip-cargo{color:#b8e8d4;white-space:nowrap}
-      .eco-chip-hint{color:#9ec5bc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-      .eco-toast{position:fixed;z-index:30;left:14px;top:${toastTop}px;max-width:280px;height:36px;
-        display:none;align-items:center;padding:0 10px;box-sizing:border-box;
+      .eco-chip-alert{margin-left:auto;border:0;background:rgba(255,180,80,.15);color:#ffb86c;
+        border-radius:8px;padding:2px 7px;font:inherit;cursor:pointer;white-space:nowrap;
+        touch-action:manipulation}
+      .eco-chip-alert:active{transform:scale(.95)}
+      .eco-toast{position:fixed;z-index:30;left:50%;transform:translateX(-50%);
+        max-width:min(260px,78vw);height:38px;max-height:42px;
+        display:none;align-items:center;justify-content:center;padding:0 12px;box-sizing:border-box;
         background:rgba(8,32,38,.92);border:1px solid rgba(140,220,190,.4);border-radius:10px;
         color:#e8f8f0;font:600 10px 'Segoe UI',Tahoma,sans-serif;pointer-events:none;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;
-        transition:opacity .25s ease}
+        transition:opacity .2s ease}
       .eco-toast.eco-toast-visible{opacity:1}
-      .eco-banner{position:fixed;z-index:30;left:50%;top:calc(12px + env(safe-area-inset-top,0px));
-        transform:translateX(-50%);max-width:min(360px,92vw);display:none;
-        padding:8px 14px;box-sizing:border-box;text-align:center;
-        background:rgba(120,20,20,.88);border:1px solid rgba(255,140,120,.5);border-radius:12px;
-        color:#fff;font:700 11px 'Segoe UI',Tahoma,sans-serif;pointer-events:none;
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .2s}
-      .eco-banner.eco-banner-visible{opacity:1}
+      .eco-toast.eco-toast-critical{background:rgba(100,18,18,.9);
+        border-color:rgba(255,140,120,.55);color:#fff}
       .eco-open-btn{position:fixed;z-index:20;left:${14 + minimapSize - 36}px;top:14px;
         width:34px;height:34px;border-radius:50%;border:1px solid rgba(120,200,170,.45);
         background:rgba(6,28,32,.9);color:#fff;font-size:16px;cursor:pointer;
         touch-action:manipulation;box-shadow:0 2px 8px rgba(0,0,0,.35)}
       .eco-open-btn:active{transform:scale(.94)}
+      @media(max-width:599px){
+        .eco-chip{height:32px;font-size:9px;gap:8px}
+        .eco-toast{height:36px;font-size:9px;max-width:min(260px,82vw)}
+      }
       @media(min-width:701px){
-        .eco-chip{max-width:320px;height:32px;font-size:11px}
-        .eco-toast{max-width:320px}
+        .eco-chip{max-width:300px;height:32px;font-size:11px}
+        .eco-toast{max-width:280px}
         .eco-open-btn{left:${14 + 144 - 36}px}
       }
     `;
@@ -243,6 +283,6 @@ export class EconomyMobileHUD {
   }
 }
 
-function priorityRank(p: EconomyEventPriority): number {
+function priorityRank(p: ClassifiedEconomyEvent['priority']): number {
   return { silent: 0, low: 1, medium: 2, high: 3, critical: 4 }[p];
 }

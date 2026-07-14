@@ -18,7 +18,8 @@ export class TradeRouteHint {
         touch-action:manipulation;max-width:200px}
       .trade-route-toggle{width:100%;border:1px solid rgba(120,200,170,.35);border-radius:10px;
         padding:6px 10px;background:rgba(6,28,32,.85);color:#dff7ee;cursor:pointer;
-        font:600 10px 'Segoe UI',Tahoma,sans-serif;text-align:left;display:flex;gap:6px;align-items:center}
+        font:600 10px 'Segoe UI',Tahoma,sans-serif;text-align:left;display:flex;gap:6px;align-items:center;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .trade-route-toggle:active{transform:scale(.98)}
       .trade-route-body{display:none;margin-top:4px;padding:8px 10px;border-radius:10px;
         background:rgba(6,28,32,.88);border:1px solid rgba(120,200,170,.3);
@@ -26,8 +27,11 @@ export class TradeRouteHint {
       .trade-route-hint.expanded .trade-route-body{display:block}
       .trade-route-profit{color:#8ff0c5;margin-top:3px}
       @media(max-width:700px){
-        .trade-route-hint{top:52px;right:10px;max-width:168px}
+        .trade-route-hint{top:52px;right:10px;max-width:150px}
         .trade-route-toggle{font-size:9px;padding:5px 8px}
+      }
+      @media(max-width:599px){
+        .trade-route-hint{top:48px;max-width:132px}
       }
       @media(min-width:701px){
         .trade-route-hint{top:108px}
@@ -76,7 +80,7 @@ export class TradeRouteHint {
     if (!this.trade || this.root.style.display === 'none') return;
 
     const arb = this.trade.living.bestArbitrageFrom(this.islandId);
-    if (!arb) {
+    if (!arb || arb.profit <= 0) {
       this.root.style.display = 'none';
       return;
     }
@@ -85,9 +89,10 @@ export class TradeRouteHint {
     const icon = commodity?.icon ?? '📦';
     const name = commodity?.nameTh ?? arb.commodityId;
     const toName = getIsland(arb.toIslandId).name;
+    const shortDest = toName.split(' ').slice(0, 2).join(' ');
 
-    if (isTouchDevice()) {
-      compact.textContent = `${icon} → ${toName.split(' ')[0]} +${arb.profit}`;
+    if (isTouchDevice() || window.innerWidth < 600) {
+      compact.textContent = `${icon} → ${shortDest}`;
     } else {
       compact.textContent = `${icon} ${name} → ${toName}`;
     }

@@ -144,10 +144,17 @@ async function main(): Promise<void> {
   const economyDebug = new EconomyDebugPanel(tradeManager.living);
   const economyHud = new EconomyMobileHUD(tradeManager);
   const economyPanel = new EconomyPanel(tradeManager, () => islandManager.activeIsland);
-  economyHud.bindPanel(economyPanel, () => {
-    controller.setControlsEnabled(false);
-    economyPanel.open(() => controller.setControlsEnabled(true));
-  });
+  economyHud.bindPanel(
+    economyPanel,
+    () => {
+      controller.setControlsEnabled(false);
+      economyPanel.open(() => controller.setControlsEnabled(true));
+    },
+    () => {
+      controller.setControlsEnabled(false);
+      economyPanel.openAlerts(() => controller.setControlsEnabled(true));
+    },
+  );
   const cargoHud = new CargoHUD(tradeManager);
   cargoHud.refresh();
   tradeRouteHint.bindTradeManager(tradeManager);

@@ -57,6 +57,7 @@ export class Minimap {
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.size;
     this.canvas.height = this.size;
+    this.canvas.className = 'game-minimap';
     this.canvas.style.cssText = `
       position: fixed; left: 14px; top: 14px; z-index: 15; pointer-events: none;
       width: ${this.size}px; height: ${this.size}px; border-radius: 50%;

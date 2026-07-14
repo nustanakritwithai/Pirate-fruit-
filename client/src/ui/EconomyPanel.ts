@@ -15,10 +15,13 @@ import { getIsland } from '../island/IslandRegistry';
 export class EconomyPanel {
   private readonly root: HTMLDivElement;
   private readonly body: HTMLDivElement;
+  private readonly titleEl: HTMLHeadingElement;
   private visible = false;
+  private viewMode: 'market' | 'alerts' = 'market';
   private islandId: IslandId = 'starter-island';
   private onCloseCallback: (() => void) | null = null;
   private eventHistory: ClassifiedEconomyEvent[] = [];
+  private activeAlerts: ClassifiedEconomyEvent[] = [];
 
   constructor(
     private trade: TradeManager,
@@ -37,6 +40,7 @@ export class EconomyPanel {
       </div>`;
     document.body.appendChild(this.root);
     this.body = this.root.querySelector('.economy-panel-body')!;
+    this.titleEl = this.root.querySelector('h2')!;
     this.root.querySelector('.economy-panel-close')!
       .addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
@@ -54,7 +58,22 @@ export class EconomyPanel {
     if (this.visible) this.render();
   }
 
+  setActiveAlerts(alerts: readonly ClassifiedEconomyEvent[]): void {
+    this.activeAlerts = [...alerts];
+    if (this.visible && this.viewMode === 'alerts') this.render();
+  }
+
   open(onClose?: () => void): void {
+    this.viewMode = 'market';
+    this.show(onClose);
+  }
+
+  openAlerts(onClose?: () => void): void {
+    this.viewMode = 'alerts';
+    this.show(onClose);
+  }
+
+  private show(onClose?: () => void): void {
     if (document.pointerLockElement) document.exitPointerLock();
     this.onCloseCallback = onClose ?? null;
     this.visible = true;
@@ -66,6 +85,7 @@ export class EconomyPanel {
   close(): void {
     if (!this.visible) return;
     this.visible = false;
+    this.viewMode = 'market';
     this.root.style.display = 'none';
     const cb = this.onCloseCallback;
     this.onCloseCallback = null;
@@ -80,6 +100,27 @@ export class EconomyPanel {
   }
 
   private render(): void {
+    if (this.viewMode === 'alerts') {
+      this.titleEl.textContent = '⚠️ แจ้งเตือนเศรษฐกิจ';
+      const alertsHtml = this.activeAlerts.length
+        ? [...this.activeAlerts.values()].map((a) => `
+            <div class="ep-alert-item ep-pri-${a.priority}">
+              <div class="ep-alert-short">${a.icon} ${a.message}</div>
+              <div class="ep-alert-full">${a.fullMessage}</div>
+            </div>`).join('')
+        : '<div class="ep-log">ไม่มีแจ้งเตือนที่ต้องติดตาม</div>';
+      this.body.innerHTML = `
+        <div class="ep-alert-list">${alertsHtml}</div>
+        <button type="button" class="ep-tab-market">📈 ดูตลาดทั้งหมด</button>`;
+      this.body.querySelector('.ep-tab-market')
+        ?.addEventListener('click', () => {
+          this.viewMode = 'market';
+          this.render();
+        });
+      return;
+    }
+
+    this.titleEl.textContent = '📈 ตลาด & เศรษฐกิจ';
     const market = getMarketForIsland(this.islandId);
     const arb = this.trade.living.bestArbitrageFrom(this.islandId);
     const hold = this.trade.hold;
@@ -176,6 +217,13 @@ export class EconomyPanel {
       .ep-log{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:10px;line-height:1.4}
       .ep-pri-critical{color:#ff8e8e}.ep-pri-high{color:#ffb86c}.ep-pri-medium{color:#b8e8d4}
       .ep-pri-low,.ep-pri-silent{color:#8eb5aa}
+      .ep-alert-list{max-height:min(360px,55vh);overflow:auto;margin-bottom:10px}
+      .ep-alert-item{padding:8px 10px;margin-bottom:6px;border-radius:8px;
+        background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+      .ep-alert-short{font-size:11px;color:#e8f4f2;margin-bottom:4px}
+      .ep-alert-full{font-size:10px;color:#8eb5aa;line-height:1.45}
+      .ep-tab-market{width:100%;border:1px solid rgba(120,210,180,.35);border-radius:10px;
+        padding:8px;background:rgba(255,220,120,.08);color:#ffe9a8;font:inherit;cursor:pointer}
       @media(max-width:700px){.economy-panel-root{align-items:flex-end;padding:8px}
         .economy-panel{max-height:82vh;border-radius:14px 14px 0 0}}
     `;
