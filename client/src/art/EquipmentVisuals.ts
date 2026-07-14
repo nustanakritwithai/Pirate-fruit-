@@ -14,6 +14,15 @@ const EQUIPMENT_NAME: Record<LoadoutCategory, string> = {
 const TRAINING_SWORD_SCALE = 0.85;
 /** เฉียงใบดาบออกจากลำตัว (+Z ด้านหน้า, +X ด้านขวาของผู้เล่น) */
 const TRAINING_SWORD_ROTATION: THREE.Vector3Tuple = [1.34, 0.08, -0.28];
+/**
+ * Calibration จาก Weapon_Sword ใน Pirate Kit โดยตรง:
+ * - Sword clip ของชุดนี้ขยับมือซ้าย
+ * - หมุนแกนใบดาบจาก +Y ของ procedural mesh ให้ตรงกับ -Y ของ asset ต้นฉบับ
+ * - วาง origin กลับเข้ากลางฝ่ามือ ไม่ซ้อนลำตัว
+ */
+const QUATERNIUS_SWORD_POSITION: THREE.Vector3Tuple = [0.05, 0.13, -0.09];
+const QUATERNIUS_SWORD_ROTATION: THREE.Vector3Tuple = [2.901, -0.01, -1.513];
+const QUATERNIUS_GUN_ROTATION: THREE.Vector3Tuple = [-Math.PI / 2, 0, 0];
 /** อาวุธทุกชิ้นใช้ origin เป็นจุดจับ ส่วน socket ของ Pirate V1 อยู่กลางฝ่ามือ */
 const GRIP_ORIGIN: THREE.Vector3Tuple = [0, 0, 0];
 
@@ -276,16 +285,23 @@ export class EquipmentVisuals {
 
   /** ผูก visual กับ calibrated socket หลัง animation อัปเดต โดยไม่แตะ gameplay state */
   private updateSocketTransforms(): boolean {
+    const quaternius = this.sockets.assetProfile === 'quaternius';
     this.followSocket(this.leftWrap, this.sockets.leftHand, GRIP_ORIGIN, [0, 0, 0], 0.9);
     this.followSocket(this.rightWrap, this.sockets.rightHand, GRIP_ORIGIN, [0, 0, 0], 0.9);
     this.followSocket(
       this.sword,
+      quaternius ? this.sockets.leftHand : this.sockets.rightHand,
+      quaternius ? QUATERNIUS_SWORD_POSITION : GRIP_ORIGIN,
+      quaternius ? QUATERNIUS_SWORD_ROTATION : TRAINING_SWORD_ROTATION,
+      quaternius ? 0.9 : TRAINING_SWORD_SCALE,
+    );
+    this.followSocket(
+      this.gun,
       this.sockets.rightHand,
       GRIP_ORIGIN,
-      TRAINING_SWORD_ROTATION,
-      TRAINING_SWORD_SCALE,
+      quaternius ? QUATERNIUS_GUN_ROTATION : [0, 0, 0],
+      0.75,
     );
-    this.followSocket(this.gun, this.sockets.rightHand, GRIP_ORIGIN, [0, 0, 0], 0.75);
     const fruitMounted = this.followSocket(
       this.fruit,
       this.sockets.leftHand,

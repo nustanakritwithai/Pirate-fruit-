@@ -6,6 +6,11 @@ import {
   type CharacterVisualResult,
 } from '../art/CharacterVisuals';
 import { ProceduralCharacterAnimator, type ProceduralLoopAction } from '../animation/ProceduralCharacterAnimator';
+import { GltfMonsterAnimator } from '../animation/GltfCharacterAnimator';
+import {
+  instantiatePirateAsset,
+  pirateAssetForMonster,
+} from '../art/PirateAssetLibrary';
 
 export type MonsterState = 'idle' | 'chase' | 'attack' | 'return' | 'dead';
 
@@ -36,6 +41,28 @@ function createModel(type: MonsterType): CharacterVisualResult {
 
   group.scale.setScalar(type.scale);
   return visual;
+}
+
+interface MonsterVisualAnimator {
+  triggerAttack(heavy?: boolean): void;
+  triggerHit(): void;
+  reset(): void;
+  update(dt: number, action: ProceduralLoopAction, deathProgress?: number): void;
+  dispose?(): void;
+}
+
+function flashableMaterials(root: THREE.Object3D): THREE.MeshStandardMaterial[] {
+  const found = new Set<THREE.MeshStandardMaterial>();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      const standard = material as THREE.MeshStandardMaterial;
+      if (standard.isMeshStandardMaterial) found.add(standard);
+    }
+  });
+  return [...found];
 }
 
 /** แถบ HP ลอยหัวมอนสเตอร์ (canvas sprite) */
@@ -90,9 +117,12 @@ class HealthBar {
 /** มอนสเตอร์หนึ่งตัว: ถือ state/hp/โมเดล ส่วน AI ขับจาก MonsterManager */
 export class Monster {
   readonly group: THREE.Group;
-  private readonly hull: THREE.Mesh;
   private readonly healthBar: HealthBar;
-  private readonly animator: ProceduralCharacterAnimator;
+  private readonly animator: MonsterVisualAnimator;
+  private readonly visualRoot: THREE.Group;
+  private readonly proceduralRoot: THREE.Group | null;
+  private readonly flashMaterials: THREE.MeshStandardMaterial[];
+  private readonly disposeExternalMaterials: (() => void) | null;
 
   hp: number;
   state: MonsterState = 'idle';
@@ -123,15 +153,32 @@ export class Monster {
     y: number,
     private readonly respawnDelay = 12,
   ) {
-    const model = createModel(type);
-    this.group = model.group;
-    this.hull = model.hull;
+    this.group = new THREE.Group();
+    this.group.name = `monster:${type.id}`;
+    const assetId = pirateAssetForMonster(type);
+    const external = assetId ? instantiatePirateAsset(assetId) : null;
     const phase = Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * Math.PI * 2;
-    this.animator = new ProceduralCharacterAnimator(model.rig, phase);
+    if (external) {
+      this.visualRoot = external.root;
+      this.visualRoot.scale.setScalar(type.scale * 1.35);
+      this.proceduralRoot = null;
+      this.animator = new GltfMonsterAnimator(this.visualRoot, external.animations);
+      this.disposeExternalMaterials = external.disposeMaterials;
+    } else {
+      const model = createModel(type);
+      this.visualRoot = model.group;
+      this.proceduralRoot = model.group;
+      this.animator = new ProceduralCharacterAnimator(model.rig, phase);
+      this.disposeExternalMaterials = null;
+    }
+    this.group.add(this.visualRoot);
+    this.flashMaterials = flashableMaterials(this.visualRoot);
     this.group.position.set(x, y, z);
     this.home.set(x, z);
     this.hp = type.maxHp;
-    const headHeight = (type.kind === 'crab' ? 1.5 : 3.4) ;
+    const headHeight = external
+      ? (type.kind === 'boss' ? 2.05 : 1.82) * type.scale * 1.35
+      : (type.kind === 'crab' ? 1.5 : 3.4) * type.scale;
     this.healthBar = new HealthBar(type.level, type.kind === 'boss', headHeight);
     this.group.add(this.healthBar.sprite);
   }
@@ -151,9 +198,10 @@ export class Monster {
     this.healthBar.draw(this.hpFraction);
     this.hitFlash = 0.18;
     this.animator.triggerHit();
-    const material = this.hull.material as THREE.MeshStandardMaterial;
-    material.emissive.setHex(0xff3a20);
-    material.emissiveIntensity = 1.4;
+    for (const material of this.flashMaterials) {
+      material.emissive.setHex(0xff3a20);
+      material.emissiveIntensity = 1.4;
+    }
     if (this.hp <= 0) {
       this.die();
       return true;
@@ -185,7 +233,7 @@ export class Monster {
     this.kbZ = 0;
     this.staggerTimer = 0;
     this.group.position.set(this.home.x, y, this.home.y);
-    this.group.scale.setScalar(this.type.scale);
+    this.group.scale.set(1, 1, 1);
     this.group.rotation.x = 0;
     this.group.rotation.z = 0;
     this.animator.reset();
@@ -198,17 +246,20 @@ export class Monster {
   updateVisual(dt: number): boolean {
     if (this.hitFlash > 0) {
       this.hitFlash -= dt;
-      const material = this.hull.material as THREE.MeshStandardMaterial;
-      material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 8);
+      for (const material of this.flashMaterials) {
+        material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 8);
+      }
     } else if (this.pendingHeavy) {
       // telegraph ท่าหนัก: กะพริบส้มเตือนให้ผู้เล่นหลบ
-      const material = this.hull.material as THREE.MeshStandardMaterial;
-      material.emissive.setHex(0xff9020);
-      material.emissiveIntensity = 0.6 + Math.sin(performance.now() * 0.03) * 0.5;
+      for (const material of this.flashMaterials) {
+        material.emissive.setHex(0xff9020);
+        material.emissiveIntensity = 0.6 + Math.sin(performance.now() * 0.03) * 0.5;
+      }
     } else if (this.state !== 'dead') {
-      const material = this.hull.material as THREE.MeshStandardMaterial;
-      if (material.emissiveIntensity > 0 && this.hitFlash <= 0) {
-        material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 6);
+      for (const material of this.flashMaterials) {
+        if (material.emissiveIntensity > 0 && this.hitFlash <= 0) {
+          material.emissiveIntensity = Math.max(0, material.emissiveIntensity - dt * 6);
+        }
       }
     }
     let deathProgress = 0;
@@ -237,12 +288,14 @@ export class Monster {
 
   dispose(): void {
     this.healthBar.dispose();
-    this.group.traverse((object) => {
+    this.animator.dispose?.();
+    this.proceduralRoot?.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.geometry.dispose();
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const material of materials) material.dispose();
     });
+    this.disposeExternalMaterials?.();
   }
 }

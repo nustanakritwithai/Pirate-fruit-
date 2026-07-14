@@ -51,6 +51,8 @@ export interface CharacterAttachmentSockets {
   hips: THREE.Object3D | null;
   /** true เมื่อ object เป็น anchor ที่ศิลปินวางตรงจุดจับแล้ว ไม่ต้องใช้ bone offset */
   calibrated?: boolean;
+  /** ใช้เลือก calibration ของอุปกรณ์ โดยไม่ให้ EquipmentVisuals รู้โครง skeleton */
+  assetProfile?: 'pirate-v1' | 'quaternius';
 }
 
 export function attachmentSocketsFromPirateRig(rig: PiratePlayerRig): CharacterAttachmentSockets {
@@ -59,5 +61,6 @@ export function attachmentSocketsFromPirateRig(rig: PiratePlayerRig): CharacterA
     rightHand: rig.rightPalmSocket,
     hips: rig.hipsSocket,
     calibrated: true,
+    assetProfile: 'pirate-v1',
   };
 }
