@@ -180,10 +180,37 @@ npm run preview   # เสิร์ฟไฟล์ที่ build แล้ว
 
 ## Deploy ขึ้น Render
 
-repo นี้มี [`render.yaml`](render.yaml) เป็น Blueprint พร้อม deploy เป็น Static Site:
+repo นี้พร้อม deploy เป็น **Static Site** บน [Render](https://render.com) ผ่าน Blueprint [`render.yaml`](render.yaml)
 
-1. เข้า [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
-2. เลือก repo นี้ (branch ที่ต้องการ) — Render จะอ่าน `render.yaml` แล้วตั้งค่า build/publish ให้อัตโนมัติ
-3. กด **Apply** รอ build เสร็จก็ได้ URL ใช้งานทันที
+### วิธีที่ 1 — Blueprint (แนะนำ)
 
-Build command และ publish directory (`client` → `npm run build` → `dist/`) ถูกกำหนดไว้ใน `render.yaml` แล้ว ไม่ต้องตั้งค่าเองในหน้าเว็บ
+1. Push branch ที่ต้องการ deploy ขึ้น GitHub
+2. เข้า [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+3. เลือก repo `Pirate-fruit-` และ branch (เช่น `claude/blox-fruits-three-js-roadmap-1f2f5u` หรือ PR branch)
+4. Render อ่าน `render.yaml` แล้วตั้งค่าให้อัตโนมัติ:
+   - **Root Directory:** `client`
+   - **Build Command:** `npm ci && npm run build`
+   - **Publish Directory:** `dist`
+   - **Node:** 22
+5. กด **Apply** — รอ build เสร็จได้ URL เช่น `https://pirate-fruit.onrender.com`
+
+### วิธีที่ 2 — Static Site แบบตั้งเอง
+
+| ค่า | ตั้งเป็น |
+|-----|----------|
+| Environment | Static Site |
+| Root Directory | `client` |
+| Build Command | `npm ci && npm run build` |
+| Publish Directory | `dist` |
+| Rewrite | `/*` → `/index.html` |
+
+### ตรวจ build ก่อน deploy (เครื่อง local)
+
+```bash
+cd client
+npm ci
+npm run build
+npm run preview   # เปิด http://localhost:4173
+```
+
+`dist/` ถูก gitignore — Render จะ build ใหม่ทุกครั้งที่ deploy
