@@ -415,6 +415,7 @@ async function main(): Promise<void> {
         : controller.dashCooldownFraction,
     () => playerCombat.attackCooldownFraction,
   );
+  touchControls?.bindCannonCooldown(() => navalCombat.playerFireCooldownFraction);
 
   // ตกทะเล → กลับ Safe Zone ของหมู่บ้าน ไม่วนเกิดซ้ำในตำแหน่งอันตราย
   controller.onDrown = () => {

@@ -16,17 +16,20 @@ export class InteractionPrompt {
     document.body.appendChild(this.element);
     this.hide();
 
+    // มือถือ: เป็นปุ่มกดชิดขอบล่างจอ (ไม่บังกลางภาพ) / PC: ป้ายบอกกด E ใกล้ขอบล่าง
     const style = document.createElement('style');
     style.textContent = `
       .interaction-prompt {
-        position: fixed; z-index: 34; left: 50%; bottom: ${isTouchDevice() ? '168px' : '72px'};
-        transform: translateX(-50%); color: #fff; border: 1px solid rgba(255,226,145,.72);
-        border-radius: 22px; padding: 9px 16px; background: rgba(10,22,32,.8);
-        box-shadow: 0 3px 14px rgba(0,0,0,.4); font: 600 13px 'Segoe UI',Tahoma,sans-serif;
+        position: fixed; z-index: 34; left: 50%; bottom: ${isTouchDevice() ? '10px' : '72px'};
+        transform: translateX(-50%); color: #fff; border: 2px solid rgba(255,226,145,.85);
+        border-radius: 24px; padding: ${isTouchDevice() ? '11px 22px' : '9px 16px'};
+        background: linear-gradient(180deg, rgba(24,40,54,.92), rgba(10,22,32,.92));
+        box-shadow: 0 3px 14px rgba(0,0,0,.5); font: 700 ${isTouchDevice() ? '15px' : '13px'} 'Segoe UI',Tahoma,sans-serif;
         white-space: nowrap; touch-action: manipulation; backdrop-filter: blur(6px);
+        max-width: 62vw; overflow: hidden; text-overflow: ellipsis;
       }
       .interaction-prompt strong { color: #ffdd7d; }
-      .interaction-prompt:active { transform: translateX(-50%) scale(.96); }
+      .interaction-prompt:active { transform: translateX(-50%) scale(.94); background: rgba(90,130,90,.85); }
     `;
     document.head.appendChild(style);
   }

@@ -23,6 +23,7 @@ export class Input {
   private attackQueue = 0;
   private interactQueue = 0;
   private anchorQueue = 0;
+  private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา (เฉพาะโหมดเรือ)
   private skillQueue = 0; // 1-3 = สกิลที่กด, 0 = ไม่มี
   private ultimateQueue = 0;
   private weaponSwitchQueue = 0;
@@ -42,7 +43,12 @@ export class Input {
       if (e.code === 'Space' && !e.repeat) this.anchorQueue++;
       if (e.code === 'KeyR' && !e.repeat) this.weaponSwitchQueue++;
       if (!e.repeat && (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3')) {
-        this.skillQueue = Number(e.code.slice(-1));
+        // โหมดเรือ: 1/2 = ยิงปืนใหญ่กราบซ้าย/ขวา แทนสกิล
+        if (this.mode === 'boat' && e.code !== 'Digit3') {
+          this.cannonQueue = Number(e.code.slice(-1));
+        } else {
+          this.skillQueue = Number(e.code.slice(-1));
+        }
       }
       if (!e.repeat && (e.code === 'Digit4' || e.code === 'KeyG')) this.ultimateQueue++;
       if (!e.repeat && e.code === 'KeyZ') this.potionQueue = 1;
@@ -88,6 +94,7 @@ export class Input {
     this.mode = mode;
     this.anchorQueue = 0;
     this.dashQueue = 0;
+    this.cannonQueue = 0;
     this.touch?.setMode(mode);
   }
 
@@ -200,6 +207,15 @@ export class Input {
       return true;
     }
     return false;
+  }
+
+  /** อ่านคำสั่งยิงปืนใหญ่หนึ่งครั้ง คืน 1 = กราบซ้าย, 2 = กราบขวา, 0 = ไม่มี */
+  consumeCannon(): number {
+    const fromTouch = this.touch?.consumeCannon() ?? 0;
+    if (fromTouch > 0) return fromTouch;
+    const n = this.cannonQueue;
+    this.cannonQueue = 0;
+    return n;
   }
 
   /** Space/ปุ่มสมอแบบ edge trigger ใช้เฉพาะตอนขับเรือ */

@@ -488,61 +488,72 @@ export class NavalCombat {
     this.spawnBall(from, velocity, false, ship.defn.cannonDamage);
   }
 
+  /** สัดส่วนคูลดาวน์ปืนใหญ่ที่เหลือ 0..1 (ให้วงแหวนปุ่มยิงบนมือถือ) */
+  get playerFireCooldownFraction(): number {
+    return this.playerFireCooldown / PLAYER_FIRE_COOLDOWN;
+  }
+
   private updatePlayerFire(playerOnBoat: boolean): void {
     const boat = this.boats.activeBoat;
     if (!playerOnBoat || !boat || this.boats.riderState !== 'helm') return;
-    if (!this.input.consumeAttack()) return;
+    // ปุ่มยิงซ้าย/ขวา (มือถือ/คีย์ 1-2) = เลือกกราบเอง, คลิกซ้าย = เล็งเป้าใกล้สุดอัตโนมัติ
+    const sideCommand = this.input.consumeCannon();
+    const autoCommand = this.input.consumeAttack();
+    if (sideCommand === 0 && !autoCommand) return;
     if (this.playerFireCooldown > 0) return;
     this.playerFireCooldown = PLAYER_FIRE_COOLDOWN;
 
     const bx = boat.group.position.x;
     const bz = boat.group.position.z;
-    // เป้า = เรือศัตรูใกล้สุดในระยะ
+    const rightX = Math.cos(boat.heading);
+    const rightZ = -Math.sin(boat.heading);
+
+    // เป้า = เรือศัตรูใกล้สุดในระยะ (ถ้าสั่งกราบเอง เล็งเฉพาะเป้าฝั่งนั้น)
+    let side = sideCommand === 1 ? -1 : 1;
     let target: EnemyShip | null = null;
     let best = 34;
     for (const ship of this.ships) {
       if (!ship.alive) continue;
-      const d = Math.hypot(ship.group.position.x - bx, ship.group.position.z - bz);
-      if (d < best) {
-        best = d;
-        target = ship;
-      }
+      const toTargetX = ship.group.position.x - bx;
+      const toTargetZ = ship.group.position.z - bz;
+      const d = Math.hypot(toTargetX, toTargetZ);
+      if (d >= best) continue;
+      if (sideCommand !== 0 && (toTargetX * rightX + toTargetZ * rightZ) * side < 0) continue;
+      best = d;
+      target = ship;
+    }
+    if (sideCommand === 0 && target) {
+      const toTargetX = target.group.position.x - bx;
+      const toTargetZ = target.group.position.z - bz;
+      side = toTargetX * rightX + toTargetZ * rightZ >= 0 ? 1 : -1;
     }
 
     const count = Math.max(1, boat.definition.cannonsPerSide ?? 1);
     for (let i = 0; i < count; i++) {
       const zSpread = count > 1 ? (i - (count - 1) / 2) * 1.5 : 0.4;
+      const from = this.tempVector.set(side * boat.definition.width * 0.5, 0.9, zSpread);
+      boat.group.localToWorld(from);
+      let velocity: { vx: number; vy: number; vz: number };
       if (target) {
-        // ยิงจากกราบฝั่งที่หันหาเป้า
-        const toTargetX = target.group.position.x - bx;
-        const toTargetZ = target.group.position.z - bz;
-        const rightX = Math.cos(boat.heading);
-        const rightZ = -Math.sin(boat.heading);
-        const side = toTargetX * rightX + toTargetZ * rightZ >= 0 ? 1 : -1;
-        const from = this.tempVector.set(side * boat.definition.width * 0.5, 0.9, zSpread);
-        boat.group.localToWorld(from);
         const spread = (Math.random() - 0.5) * 2.4;
-        const velocity = aimCannonball(
+        velocity = aimCannonball(
           from.x,
           from.y,
           from.z,
           target.group.position.x + spread,
           target.group.position.z + spread,
         );
-        this.spawnBall(from.clone(), velocity, true, PLAYER_CANNON_DAMAGE);
       } else {
-        // ไม่มีเป้า → ยิงตรงออกกราบขวา (ซ้อมยิง/เอฟเฟกต์)
-        const from = this.tempVector.set(boat.definition.width * 0.5, 0.9, zSpread);
-        boat.group.localToWorld(from);
-        const velocity = aimCannonball(
+        // ไม่มีเป้าฝั่งนั้น → ยิงตรงออกกราบที่เลือก (ซ้อมยิง/เอฟเฟกต์)
+        velocity = aimCannonball(
           from.x,
           from.y,
           from.z,
-          from.x + Math.cos(boat.heading) * 18,
-          from.z - Math.sin(boat.heading) * 18,
+          from.x + side * rightX * 18,
+          from.z + side * rightZ * 18,
         );
-        this.spawnBall(from.clone(), velocity, true, PLAYER_CANNON_DAMAGE);
       }
+      this.spawnBall(from.clone(), velocity, true, PLAYER_CANNON_DAMAGE);
     }
     if (!target) this.notify?.('💣 ยิงปืนใหญ่! (ไม่มีเป้าในระยะ)');
   }

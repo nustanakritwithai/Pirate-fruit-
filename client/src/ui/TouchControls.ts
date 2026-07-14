@@ -43,6 +43,7 @@ export class TouchControls {
   private dashQueue = 0;
   private attackQueue = 0;
   private anchorQueue = 0;
+  private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา
   private skillTapQueue = 0;
   private ultTapQueue = 0;
   private weaponQueue = 0;
@@ -77,6 +78,8 @@ export class TouchControls {
   private attackBtn: HTMLDivElement;
   private dashBtn: HTMLDivElement;
   private jumpBtn: HTMLDivElement;
+  private cannonLeftBtn: HTMLDivElement;
+  private cannonRightBtn: HTMLDivElement;
   private blockBtn: HTMLDivElement;
   private weaponBtn: HTMLDivElement;
   private ultBtn: HTMLDivElement;
@@ -187,6 +190,12 @@ export class TouchControls {
 
     this.weaponBtn = this.makeButton('tc-weapon', '👊', () => (this.weaponQueue = 1));
 
+    // ---------- ปุ่มยิงปืนใหญ่กราบซ้าย/ขวา (โชว์เฉพาะโหมดเรือ) ----------
+    this.cannonLeftBtn = this.makeButton('tc-cannon tc-cannon-left', '◀💣', () => (this.cannonQueue = 1));
+    this.cannonRightBtn = this.makeButton('tc-cannon tc-cannon-right', '💣▶', () => (this.cannonQueue = 2));
+    this.cannonLeftBtn.style.display = 'none';
+    this.cannonRightBtn.style.display = 'none';
+
     // ---------- ช่องลัดใช้ยา (2 ช่อง) ----------
     for (let i = 1; i <= 2; i++) {
       const btn = this.makeButton(`tc-potion tc-potion${i}`, '➕', () => (this.potionTapQueue = i));
@@ -222,6 +231,7 @@ export class TouchControls {
     this.blockBtn.classList.remove('tc-on');
     this.anchorQueue = 0;
     this.dashQueue = 0;
+    this.cannonQueue = 0;
     this.skillTapQueue = 0;
     this.ultTapQueue = 0;
     if (mode === 'boat') {
@@ -230,10 +240,11 @@ export class TouchControls {
     }
     this.setButtonLabel(this.dashBtn, mode === 'boat' ? '⚡' : '💨');
     this.setButtonLabel(this.jumpBtn, mode === 'boat' ? '⚓' : '⬆️');
-    // ปุ่มโจมตีคงอยู่ในโหมดเรือ = ยิงปืนใหญ่ (Naval Combat)
-    this.setButtonLabel(this.attackBtn, mode === 'boat' ? '💣' : '⚔️');
     const display = mode === 'boat' ? 'none' : 'flex';
-    this.attackBtn.style.display = 'flex';
+    // โหมดเรือ: สลับปุ่มโจมตีเป็นปุ่มยิงปืนใหญ่กราบซ้าย/ขวา (Naval Combat)
+    this.attackBtn.style.display = display;
+    this.cannonLeftBtn.style.display = mode === 'boat' ? 'flex' : 'none';
+    this.cannonRightBtn.style.display = mode === 'boat' ? 'flex' : 'none';
     // จุด auto-run ใช้ class ควบคุมการแสดงผล เพื่อให้ซ่อนจนกว่าจะดันจอยขึ้น
     this.autoRunBtn.style.display = mode === 'boat' ? 'none' : '';
     this.blockBtn.style.display = display;
@@ -376,6 +387,19 @@ export class TouchControls {
     if (this.anchorQueue <= 0) return false;
     this.anchorQueue = 0;
     return true;
+  }
+
+  /** อ่านคำสั่งยิงปืนใหญ่หนึ่งครั้ง คืน 1 = กราบซ้าย, 2 = กราบขวา, 0 = ไม่มี */
+  consumeCannon(): number {
+    const n = this.cannonQueue;
+    this.cannonQueue = 0;
+    return n;
+  }
+
+  /** ผูกวงแหวนคูลดาวน์ของปืนใหญ่ทั้งสองกราบ (แชร์คูลดาวน์เดียวกัน) */
+  bindCannonCooldown(getter: CooldownGetter): void {
+    this.cooldownRings.set(this.cannonLeftBtn, getter);
+    this.cooldownRings.set(this.cannonRightBtn, getter);
   }
 
   /** เรียกทุกเฟรมจาก game loop เพื่ออัปเดตวงแหวนคูลดาวน์ */
@@ -564,6 +588,11 @@ export class TouchControls {
 
       .tc-attack { right: 14px;  bottom: 18px;  width: 70px; height: 70px; font-size: 28px;
                    border-color: rgba(255,120,90,.8); background: rgba(120,35,20,.55); }
+      /* ปุ่มยิงปืนใหญ่โหมดเรือ: [◀💣] ⚡ [💣▶] เรียงแถวล่างขวา */
+      .tc-cannon { width: 62px; height: 62px; font-size: 19px;
+                   border-color: rgba(255,150,80,.85); background: rgba(120,45,15,.6); }
+      .tc-cannon-right { right: 14px;  bottom: 18px; }
+      .tc-cannon-left  { right: 156px; bottom: 18px; }
       .tc-dash   { right: 92px; bottom: 24px;  width: 48px; height: 48px; font-size: 21px;
                    border-color: rgba(120,220,255,.8); }
       .tc-dash.tc-boat-boost { border-color:rgba(255,220,95,.9); background:rgba(100,72,12,.62); }
