@@ -1,8 +1,16 @@
 import { ECONOMY_CONFIG } from './LivingTradeConfig';
-import type { CommodityState } from './types';
+import { effectiveTargetStock } from './GenomeGameplayBias';
+import type { CommodityState, EconomyCellId, EconomyWorldState } from './types';
 
-export function stockRatio(item: CommodityState): number {
-  return item.stock / Math.max(item.targetStock, 1);
+export function stockRatio(
+  item: CommodityState,
+  world?: EconomyWorldState,
+  cellId?: EconomyCellId,
+): number {
+  const target = world && cellId
+    ? effectiveTargetStock(world, cellId, item.targetStock)
+    : item.targetStock;
+  return item.stock / Math.max(target, 1);
 }
 
 /** สูตรราคา Economic CA */

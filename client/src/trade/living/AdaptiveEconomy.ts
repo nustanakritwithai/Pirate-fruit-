@@ -45,7 +45,7 @@ export function updateAdaptiveEconomy(world: EconomyWorldState): FactoryEvent[] 
   for (const factory of world.factories) {
     const cell = world.cells.find((c) => c.id === factory.cellId);
     if (!cell) continue;
-    const event = updateFactoryAgent(factory, cell);
+    const event = updateFactoryAgent(factory, cell, world);
     if (event) events.push(event);
   }
 

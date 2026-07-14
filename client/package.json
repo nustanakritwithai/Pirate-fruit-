@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:extended": "LIVING_ECONOMY_EXTENDED=1 vitest run src/trade/living/__tests__/livingEconomyCoreExtended.test.ts",
     "gen:skills": "vite-node scripts/gen-skill-gameplay.ts"
   },
   "dependencies": {

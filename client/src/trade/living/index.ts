@@ -40,3 +40,25 @@ export { getPlayerNpcDialogue } from './PlayerNpcDialogue';
 export { subscribePlayerEconomyEvents } from './PlayerEconomyEvents';
 export { updatePlayerEconomy } from './PlayerEconomyOrchestrator';
 export type * from './PlayerEconomyTypes';
+export { ECONOMY_GENOME_CONFIG } from './EconomyGenomeConfig';
+export type * from './EconomyGenomeTypes';
+export {
+  ensureGenomeState,
+  getGenome,
+  createGenomeForCell,
+} from './EconomyGenomeInitializer';
+export {
+  updateEconomyGenome,
+  forceEvaluateFitness,
+  forceDriftGenomes,
+  forceResolveIdentities,
+} from './EconomyGenomeOrchestrator';
+export {
+  genomeProductionBonus,
+  genomeTradeBonus,
+  effectiveTargetStock,
+} from './GenomeGameplayBias';
+export { getGenomeDialogue, dominantIndustryLabel } from './GenomeDialogueData';
+export { getEvolutionHistoryForCell } from './EvolutionHistory';
+export { addPressure, getPressuresForCell } from './GenomePressureStore';
+export { LIVING_ECONOMY_BOUNDS, trimEconomyWorldState } from './LivingEconomyBounds';

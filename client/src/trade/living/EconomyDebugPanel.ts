@@ -7,6 +7,9 @@ import { ensurePlayerEconomy } from './PlayerEconomicProfileManager';
 import { getOrCreateIslandReputation, resolveEconomicTitle } from './PlayerReputationManager';
 import { generatePlayerContracts } from './PlayerContractGenerator';
 import { completeContractWithWallet, failContractDebug } from './PlayerContractManager';
+import { getGenome } from './EconomyGenomeInitializer';
+import { getPressuresForCell } from './GenomePressureStore';
+import { getEvolutionHistoryForCell } from './EvolutionHistory';
 
 const COMMODITY_LABELS: Record<LivingCommodityId, string> = Object.fromEntries(
   LIVING_COMMODITY_IDS.map((id) => [id, LIVING_COMMODITY_META[id].label]),
@@ -33,6 +36,8 @@ export class EconomyDebugPanel {
   private readonly memoryGrid: HTMLDivElement;
   private readonly repGrid: HTMLDivElement;
   private readonly playerGrid: HTMLDivElement;
+  private readonly genomeGrid: HTMLDivElement;
+  private genomeCell: import('./types').EconomyCellId = 'leaf-island';
   private visible = false;
 
   constructor(private sim: LivingTradeSimulator) {
@@ -78,6 +83,35 @@ export class EconomyDebugPanel {
         <div class="eco-factory-grid"></div>
         <div class="eco-orders-title">Trade Orders (E2)</div>
         <div class="eco-orders-grid"></div>
+        <div class="eco-factory-title">Economy Genome (E4A)</div>
+        <div class="eco-genome-cell-select">
+          <label>Cell <select class="eco-genome-cell">
+            <option value="leaf-island">Leaf</option>
+            <option value="mine-island">Mine</option>
+            <option value="cloth-island">Cloth</option>
+            <option value="shipyard-island">Shipyard</option>
+          </select></label>
+        </div>
+        <div class="eco-genome-grid"></div>
+        <div class="eco-actions eco-genome-actions">
+          <button type="button" data-action="freeze-drift">Freeze Drift</button>
+          <button type="button" data-action="freeze-all">Freeze Drift+Pressure</button>
+          <button type="button" data-action="resume-genome">Resume Genome</button>
+          <button type="button" data-action="accel-x10">Accel x10</button>
+          <button type="button" data-action="accel-x100">Accel x100</button>
+          <button type="button" data-action="add-factory-pressure">+Factory Pressure</button>
+          <button type="button" data-action="add-trader-pressure">+Trader Pressure</button>
+          <button type="button" data-action="add-player-pressure">+Player Pressure</button>
+          <button type="button" data-action="add-market-pressure">+Market Pressure</button>
+          <button type="button" data-action="wood-pos">+Wood Pressure</button>
+          <button type="button" data-action="wood-neg">-Wood Pressure</button>
+          <button type="button" data-action="eval-fitness">Eval Fitness</button>
+          <button type="button" data-action="drift-now">Drift Now</button>
+          <button type="button" data-action="identity-now">Identity Now</button>
+          <button type="button" data-action="reset-genome">Reset Genome</button>
+          <button type="button" data-action="clear-pressures">Clear Pressures</button>
+          <button type="button" data-action="clear-evo">Clear Evo History</button>
+        </div>
         <div class="eco-factory-title">Player Economy (E3.5)</div>
         <div class="eco-player-grid"></div>
         <div class="eco-actions eco-player-actions">
@@ -101,7 +135,12 @@ export class EconomyDebugPanel {
     this.memoryGrid = this.root.querySelector('.eco-memory-grid')!;
     this.repGrid = this.root.querySelector('.eco-rep-grid')!;
     this.playerGrid = this.root.querySelector('.eco-player-grid')!;
+    this.genomeGrid = this.root.querySelector('.eco-genome-grid')!;
     this.logEl = this.root.querySelector('.eco-log')!;
+    this.root.querySelector('.eco-genome-cell')!.addEventListener('change', (e) => {
+      this.genomeCell = (e.target as HTMLSelectElement).value as import('./types').EconomyCellId;
+      this.render();
+    });
     this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
     this.root.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
@@ -172,6 +211,23 @@ export class EconomyDebugPanel {
       if (action === 'reset-player-econ') {
         this.sim.resetPlayerEconomyDebug();
       }
+      if (action === 'freeze-drift') this.sim.freezeGenomeDebug(false);
+      if (action === 'freeze-all') this.sim.freezeGenomeDebug(true);
+      if (action === 'resume-genome') this.sim.resumeGenomeDebug();
+      if (action === 'accel-x10') this.sim.accelGenomeDebug(10);
+      if (action === 'accel-x100') this.sim.accelGenomeDebug(100);
+      if (action === 'add-factory-pressure') this.sim.addGenomePressureDebug(this.genomeCell, 'factory', 0.3, 'hardwood');
+      if (action === 'add-trader-pressure') this.sim.addGenomePressureDebug(this.genomeCell, 'trader', 0.25);
+      if (action === 'add-player-pressure') this.sim.addGenomePressureDebug(this.genomeCell, 'player', 0.2, 'fresh-fish');
+      if (action === 'add-market-pressure') this.sim.addGenomePressureDebug(this.genomeCell, 'market', 0.15);
+      if (action === 'wood-pos') this.sim.forceWoodPressureDebug(this.genomeCell, true);
+      if (action === 'wood-neg') this.sim.forceWoodPressureDebug(this.genomeCell, false);
+      if (action === 'eval-fitness') this.sim.evaluateFitnessDebug();
+      if (action === 'drift-now') this.sim.driftGenomeDebug();
+      if (action === 'identity-now') this.sim.resolveIdentityDebug();
+      if (action === 'reset-genome') this.sim.resetGenomeDebug(this.genomeCell);
+      if (action === 'clear-pressures') this.sim.clearPressuresDebug(this.genomeCell);
+      if (action === 'clear-evo') this.sim.clearEvolutionHistoryDebug();
       this.render();
     });
     if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
@@ -248,6 +304,31 @@ export class EconomyDebugPanel {
       <td>${(this.sim.getFeeModifierForIsland('starter-island') * 100).toFixed(1)}%</td>
     </tr></tbody></table>
     <div style="font-size:9px;margin-top:4px">Reps: ${Object.values(pe.profile.islandReputations).map((r) => `${r.islandId}:${r.title}`).join(', ') || 'none'}</div>` : 'no player economy';
+
+    const genome = getGenome(world, this.genomeCell);
+    const pressures = getPressuresForCell(world, this.genomeCell);
+    const evo = getEvolutionHistoryForCell(world, this.genomeCell).slice(0, 5);
+    const pressureTotals = ['factory', 'trader', 'player', 'market'].map((src) => {
+      const sum = pressures.filter((p) => p.source === src).reduce((s, p) => s + Math.abs(p.strength), 0);
+      return `${src}:${sum.toFixed(2)}`;
+    }).join(' · ');
+    this.genomeGrid.innerHTML = `
+      <table class="eco-factory-table"><thead><tr>
+        <th>stage</th><th>dominant</th><th>conf</th><th>gen</th><th>fitness</th><th>ind</th><th>trade</th><th>storage</th>
+      </tr></thead><tbody><tr>
+        <td>${genome.identity.economicStage}</td>
+        <td>${genome.identity.dominantIndustry ?? '-'}</td>
+        <td>${genome.identity.specializationConfidence.toFixed(2)}</td>
+        <td>${genome.identity.genomeGeneration}</td>
+        <td>${genome.fitness.emaScore.toFixed(2)}</td>
+        <td>${genome.industrialization.toFixed(2)}</td>
+        <td>${genome.tradePreference.toFixed(2)}</td>
+        <td>${genome.storagePreference.toFixed(2)}</td>
+      </tr></tbody></table>
+      <div style="font-size:9px;margin:4px 0">Pressures (${pressures.length}): ${pressureTotals}</div>
+      <div style="font-size:9px">hardwood bias ${(genome.productionBias.hardwood ?? 0.5).toFixed(3)} vel ${(genome.productionVelocity.hardwood ?? 0).toFixed(4)}</div>
+      <div style="font-size:9px">freeze drift=${world.genomeState?.genomeDebug.freezeDrift} pressure=${world.genomeState?.genomeDebug.freezePressureCollection} accel=${world.genomeState?.genomeDebug.accelMultiplier}</div>
+      <div style="font-size:9px;margin-top:4px">Evo: ${evo.map((e) => `D${e.day} ${e.type}`).join(' · ') || 'none'}</div>`;
 
     this.factoryGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
       <th>เกาะ</th><th>สูตร</th><th>สถานะ</th><th>scale</th><th>กำไร</th><th>แรงงาน</th><th>+/-</th><th>cd</th><th>ตัดสินใจ</th>
