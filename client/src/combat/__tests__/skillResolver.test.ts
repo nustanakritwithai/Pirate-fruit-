@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SkillLoadout, DEFAULT_SKILL_LOADOUT } from '../SkillLoadout';
+import { SkillLoadout, DEFAULT_SKILL_LOADOUT, SKILL_LOCK_ENABLED } from '../SkillLoadout';
 import { resolveActiveSet } from '../SkillResolver';
 import { inferRenderType, toCastable, WEAPON_M1, type RawSkill } from '../SkillCasting';
 import { ALL_SKILL_GAMEPLAY } from '../skillGameplay';
@@ -141,42 +141,49 @@ describe('resolveActiveSet', () => {
 
 describe('per-item mastery gating (Blox Fruits style)', () => {
   // หมัดเริ่มต้น 'combat': Z@1, X@20, C@50, V@150 (จาก databook)
-  it('locks skills above the item mastery and reports the requirement', () => {
+  // เทสต์อิงฟลไก SKILL_LOCK_ENABLED — เขียวทั้งตอนเปิดและปิดล็อก
+  it('reports masteryRequired; locks only when the lock system is enabled', () => {
     const loadout = new SkillLoadout({ ...DEFAULT_SKILL_LOADOUT }, () => 1);
     const slots = loadout.resolveSlots();
     const z = slots.find((s) => s.slot === 1)!;
     const x = slots.find((s) => s.slot === 2)!;
     const v = slots.find((s) => s.slot === 'ultimate')!;
-    expect(z.locked).toBe(false); // Z ปลดตั้งแต่ mastery 1
-    expect(x.locked).toBe(true);
+    expect(z.locked).toBe(false); // Z req 1 ≤ mastery 1 → ไม่ล็อกไม่ว่ากรณีใด
     expect(x.masteryRequired).toBe(20);
-    expect(v.locked).toBe(true);
     expect(v.masteryRequired).toBe(150);
-    // slotInfo ยังมีไอคอน/ชื่อไว้โชว์แม้ล็อก
+    expect(x.locked).toBe(SKILL_LOCK_ENABLED); // req 20 > mastery 1
+    expect(v.locked).toBe(SKILL_LOCK_ENABLED); // req 150 > mastery 1
+    // slotInfo ยังมีไอคอน/ชื่อ + masteryRequired เสมอ
     const set = resolveActiveSet(loadout);
-    expect(set.slots[1]).toBeNull(); // ยิงไม่ได้
     expect(set.slotInfo[1].hasSkill).toBe(true);
-    expect(set.slotInfo[1].locked).toBe(true);
     expect(set.slotInfo[1].masteryRequired).toBe(20);
+    expect(set.slotInfo[1].locked).toBe(SKILL_LOCK_ENABLED);
+    expect(set.slots[1] === null).toBe(SKILL_LOCK_ENABLED); // ปิดล็อก = ยิงได้
   });
 
-  it('unlocks more slots as the item mastery rises', () => {
+  it('unlocks more slots as the item mastery rises (เมื่อเปิดล็อก)', () => {
     const at50 = new SkillLoadout({ ...DEFAULT_SKILL_LOADOUT }, () => 50);
     const slots = at50.resolveSlots();
-    expect(slots.find((s) => s.slot === 2)!.locked).toBe(false); // X@20 ✓
-    expect(slots.find((s) => s.slot === 3)!.locked).toBe(false); // C@50 ✓
-    expect(slots.find((s) => s.slot === 'ultimate')!.locked).toBe(true); // V@150 ✗
-    expect(resolveActiveSet(at50).slots.filter(Boolean).length).toBe(3);
+    expect(slots.find((s) => s.slot === 2)!.locked).toBe(false); // X@20 ≤ 50 ✓ เสมอ
+    expect(slots.find((s) => s.slot === 3)!.locked).toBe(false); // C@50 ≤ 50 ✓ เสมอ
+    expect(slots.find((s) => s.slot === 'ultimate')!.locked).toBe(SKILL_LOCK_ENABLED); // V@150 > 50
+    expect(resolveActiveSet(at50).slots.filter(Boolean).length).toBe(SKILL_LOCK_ENABLED ? 3 : 4);
   });
 
   it('resolves per item, not per category — same category, different mastery', () => {
-    // provider คืน mastery ต่างกันต่อ id → equip คนละชิ้นได้ผลต่างกัน
+    // provider คืน mastery ต่างกันต่อ id → equip คนละชิ้นได้ผลต่างกัน (เฉพาะเมื่อเปิดล็อก)
     const masteryOf = (id: string) => (id === 'combat' ? 1 : 999);
     const combat = new SkillLoadout({ ...DEFAULT_SKILL_LOADOUT, equippedFightingStyleId: 'combat' }, masteryOf);
     const other = new SkillLoadout({ ...DEFAULT_SKILL_LOADOUT, equippedFightingStyleId: 'dark-step' }, masteryOf);
     const combatUnlocked = resolveActiveSet(combat).slots.filter(Boolean).length;
     const otherUnlocked = resolveActiveSet(other).slots.filter(Boolean).length;
-    expect(combatUnlocked).toBe(1); // combat mastery 1 → เฉพาะ Z
-    expect(otherUnlocked).toBeGreaterThan(combatUnlocked); // อีกชิ้น mastery สูง → ปลดมากกว่า
+    if (SKILL_LOCK_ENABLED) {
+      expect(combatUnlocked).toBe(1); // combat mastery 1 → เฉพาะ Z
+      expect(otherUnlocked).toBeGreaterThan(combatUnlocked); // อีกชิ้น mastery สูง → ปลดมากกว่า
+    } else {
+      // ปิดล็อก → ทั้งคู่ปลดครบทุกท่าที่มี
+      expect(combatUnlocked).toBeGreaterThan(1);
+      expect(otherUnlocked).toBeGreaterThan(0);
+    }
   });
 });

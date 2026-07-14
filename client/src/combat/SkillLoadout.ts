@@ -13,6 +13,12 @@ import { listSkillsForFruit } from '../fruit/skills/FruitSkillRegistry';
 /** provider ให้ mastery ต่อชิ้นจริง (จาก ProgressionManager) — ไม่มี → ใช้ค่าใน state */
 export type MasteryProvider = (itemId: string) => number;
 
+/**
+ * ระบบล็อกสกิลตาม mastery (Blox Fruits style) — ปิดชั่วคราวตามคำขอ
+ * เปิดคืน = เปลี่ยนเป็น true ที่เดียว (masteryRequired ยังคำนวณไว้เผื่อเปิด)
+ */
+export const SKILL_LOCK_ENABLED = false;
+
 /** เลือกสกิล "ตัวแทน" ต่อ key จาก moveset เต็ม = ท่าที่ mastery ต่ำสุด (ท่าฐาน) */
 function baseSkillByKey<T extends { key: string; mastery: number | null }>(all: T[]): Map<string, T> {
   const byKey = new Map<string, T>();
@@ -225,7 +231,7 @@ export class SkillLoadout {
         return { slot, skillId: null, label: key, locked: true, masteryRequired: 0, lockReason: missingLabel };
       }
       const req = skill.mastery ?? 1;
-      const locked = currentMastery < req;
+      const locked = SKILL_LOCK_ENABLED && currentMastery < req;
       return {
         slot,
         // เก็บ id ไว้แม้ล็อก เพื่อให้ปุ่มโชว์ไอคอนจริงพร้อมป้าย 🔒
@@ -268,7 +274,7 @@ export class SkillLoadout {
         return { slot, skillId: null, label: key, locked: true, masteryRequired: 0, lockReason: `ไม่มีสกิล ${key}` };
       }
       const req = skill.mastery ?? 1;
-      const locked = currentMastery < req;
+      const locked = SKILL_LOCK_ENABLED && currentMastery < req;
       return {
         slot,
         skillId: skill.id,

@@ -2,7 +2,7 @@ import type { ProgressionManager } from '../progression/ProgressionManager';
 import type { ActiveLoadoutItem, PlayerStatId } from '../progression/ProgressionTypes';
 import { PROGRESSION_CONFIG } from '../progression/ProgressionData';
 import { getMasteryExpRequired } from '../progression/MasterySystem';
-import { listSkillGates } from '../combat/SkillLoadout';
+import { listSkillGates, SKILL_LOCK_ENABLED } from '../combat/SkillLoadout';
 import {
   STAT_DEFINITIONS,
   STATS_SYSTEM_CONFIG,
@@ -157,7 +157,7 @@ export class StatsPanel {
       // สถานะปลดล็อกต่อสกิล (Z/X/C/V) — ✓ ปลดแล้ว / 🔒 เกณฑ์ mastery
       const gates = listSkillGates(item.category, item.itemId)
         .map((g) => {
-          const unlocked = masteryLevel >= g.masteryRequired;
+          const unlocked = !SKILL_LOCK_ENABLED || masteryLevel >= g.masteryRequired;
           const cls = unlocked ? 'skill-gate unlocked' : 'skill-gate locked';
           const tag = unlocked ? '✓' : `🔒${g.masteryRequired}`;
           return `<li class="${cls}"><span class="gate-key">${g.key}</span> ${g.name} <span class="gate-tag">${tag}</span></li>`;
