@@ -16,7 +16,6 @@ import {
   recipeForOutput,
   type LivingBadge,
 } from '../trade/living/ProductionRecipes';
-import { getFactoryStatus } from '../trade/living/EconomyRules';
 import type { EconomyCellId } from '../trade/living/types';
 
 const MARKET_CELL: Record<string, EconomyCellId> = {
@@ -151,7 +150,9 @@ export class TradeShopUI {
 
     const cellId = this.marketId ? MARKET_CELL[this.marketId] : resolveTradeCell(this.islandId, 'fresh-fish');
     const factoryCell = cellId ? this.trade.living.getCell(cellId) : undefined;
-    const factoryStatus = factoryCell ? getFactoryStatus(factoryCell) : null;
+    const factoryStatus = factoryCell && cellId
+      ? this.trade.living.getFactoryStatus(cellId)
+      : null;
     const factoryHtml = factoryStatus
       ? `<div class="trade-factory-warn">🏭 สถานะโรงงาน: ${factoryStatus}</div>`
       : '';

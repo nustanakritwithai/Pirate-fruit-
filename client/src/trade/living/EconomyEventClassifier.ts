@@ -141,7 +141,55 @@ export function classifyLogEntry(entry: EconomyLogEntry, now = Date.now()): Clas
     };
   }
 
-  if (msg.includes('หยุดชั่วคราว') || (msg.includes('หยุด') && msg.includes('ขาด'))) {
+  if (msg.includes('เปลี่ยนผลิต')) {
+    return {
+      id: `log-${entry.tick}-switch`,
+      priority: 'medium',
+      kind: 'other',
+      mergeKey: `switch:${commodityId ?? 'x'}`,
+      message: truncateDisplay(msg),
+      fullMessage: msg,
+      icon: '🔧',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('เปิดผลิต')) {
+    return {
+      id: `log-${entry.tick}-reopen`,
+      priority: 'medium',
+      kind: 'production_stopped',
+      mergeKey: `reopen:${commodityId ?? cellId ?? 'f'}`,
+      message: truncateDisplay(msg),
+      fullMessage: msg,
+      icon: '🏭',
+      commodityId,
+      createdAt: now,
+      toastEligible: true,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('ลดผลิต') || msg.includes('ขยายผลิต')) {
+    return {
+      id: `log-${entry.tick}-scale`,
+      priority: 'silent',
+      kind: 'other',
+      mergeKey: `scale:${commodityId ?? 'x'}`,
+      message: truncateDisplay(msg),
+      fullMessage: msg,
+      icon: '🏭',
+      commodityId,
+      createdAt: now,
+      toastEligible: false,
+      isAlert: false,
+    };
+  }
+
+  if (msg.includes('หยุดผลิต') || msg.includes('หยุดชั่วคราว') || (msg.includes('หยุด') && msg.includes('ขาด'))) {
     const short = compactStopped(msg, cellId);
     return {
       id: `log-${entry.tick}-stop-${commodityId ?? cellId ?? 'x'}`,

@@ -4,6 +4,7 @@ import type {
   EconomyCellState,
   EconomyLogEntry,
   EconomyWorldState,
+  FactoryAgentState,
   LivingCommodityId,
   MarketState,
   PriceTrend,
@@ -14,6 +15,7 @@ import {
   COMMODITY_RESERVE,
   LIVING_COMMODITY_META,
   type ProductionRecipe,
+  recipeForOutput,
   recipesForCell,
 } from './ProductionRecipes';
 
@@ -89,17 +91,93 @@ export function produceGoods(cell: EconomyCellState): void {
   }
 }
 
-/** ขั้น 2: บริโภค */
+/** ขั้น 2: บริโภค — ปรับตาม unemployment */
 export function consumeGoods(cell: EconomyCellState): void {
+  const laborPool = Math.max(1, cell.population * 0.32);
+  const unemployedRate = Math.min(1, cell.unemployment / laborPool);
+  const demandMult = 1 - unemployedRate * 0.15;
+
   for (const item of Object.values(cell.commodities)) {
     if (!item) continue;
-    const use = item.consumption * (0.8 + cell.population / 2000);
+    const use = item.consumption * (0.8 + cell.population / 2000) * demandMult;
     item.stock = Math.max(0, item.stock - use);
   }
 }
 
-/** ขั้น 3: แปรรูปตามสูตรสายการผลิต */
-export function runProduction(cell: EconomyCellState, log: EconomyLogEntry[]): void {
+/** ขั้น 3: แปรรูปตามสูตร — ควบคุมโดย FactoryAgent */
+export function runProduction(
+  cell: EconomyCellState,
+  log: EconomyLogEntry[],
+  factories: FactoryAgentState[] = [],
+): void {
+  if (!factories.length) {
+    runProductionLegacy(cell, log);
+    return;
+  }
+
+  const cellAgents = factories
+    .filter((f) => f.cellId === cell.id && f.status !== 'paused' && f.outputScale > 0 && f.retoolingTicks <= 0)
+    .sort((a, b) => {
+      const pa = recipeForOutput(a.activeRecipeId)?.priority ?? 99;
+      const pb = recipeForOutput(b.activeRecipeId)?.priority ?? 99;
+      return pa - pb;
+    });
+
+  let craftedThisTick = 0;
+
+  for (const agent of cellAgents) {
+    if (craftedThisTick >= ECONOMY_CONFIG.maxCraftPerTick) break;
+    const recipe = recipeForOutput(agent.activeRecipeId);
+    if (!recipe) continue;
+    if (!canProduceRecipeScaled(cell, recipe, agent.outputScale)) continue;
+
+    const scale = agent.outputScale;
+    const output = cell.commodities[recipe.id]!;
+    for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
+      cell.commodities[inputId]!.stock -= amount * scale;
+    }
+    const produced = recipe.outputAmount * scale;
+    output.stock += produced;
+    craftedThisTick += 1;
+
+    if (recipe.id === 'sailcloth') {
+      cell.transportCapacity = Math.min(
+        ECONOMY_CONFIG.maxTransportCapacity,
+        cell.transportCapacity + 0.15 * scale,
+      );
+    }
+
+    if (produced >= 0.5) {
+      log.push({
+        tick: 0,
+        message: `${cell.nameTh}ผลิต${LIVING_COMMODITY_META[recipe.id].label} ${produced.toFixed(1)} หน่วย`,
+        cellId: cell.id,
+        commodityId: recipe.id,
+      });
+    }
+  }
+}
+
+export function canProduceRecipeScaled(
+  cell: EconomyCellState,
+  recipe: ProductionRecipe,
+  scale: number,
+): boolean {
+  const output = cell.commodities[recipe.id];
+  if (!output) return false;
+  if (output.stock >= output.targetStock * 1.4) return false;
+  if (recipe.id === 'luxury-cloth' && getFoodSecurity(cell) < 40) return false;
+
+  for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
+    const input = cell.commodities[inputId];
+    if (!input || amount <= 0) return false;
+    const reserve = COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0;
+    if (input.stock - amount * scale < reserve) return false;
+  }
+  return scale > 0;
+}
+
+function runProductionLegacy(cell: EconomyCellState, log: EconomyLogEntry[]): void {
   const recipes = recipesForCell(cell.id);
   let craftedThisTick = 0;
 
@@ -127,19 +205,6 @@ export function runProduction(cell: EconomyCellState, log: EconomyLogEntry[]): v
       cellId: cell.id,
       commodityId: recipe.id,
     });
-  }
-
-  const parts = cell.commodities.sailcloth;
-  if (parts && cell.role === 'shipyard' && parts.stock < parts.targetStock * 0.5) {
-    const missing = findMissingInput(cell, 'sailcloth');
-    if (missing) {
-      log.push({
-        tick: 0,
-        message: `การผลิตชิ้นส่วนเรือหยุดชั่วคราว — ขาด${missing}`,
-        cellId: cell.id,
-        commodityId: 'sailcloth',
-      });
-    }
   }
 }
 
@@ -386,7 +451,19 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
 }
 
 /** สถานะโรงงานสำหรับ UI */
-export function getFactoryStatus(cell: EconomyCellState): string | null {
+export function getFactoryStatus(
+  cell: EconomyCellState,
+  factories: FactoryAgentState[] = [],
+): string | null {
+  const cellFactories = factories.filter((f) => f.cellId === cell.id);
+  const paused = cellFactories.find((f) => f.status === 'paused');
+  if (paused) {
+    return `หยุดผลิต${LIVING_COMMODITY_META[paused.activeRecipeId].label}`;
+  }
+  const reducing = cellFactories.find((f) => f.status === 'reducing');
+  if (reducing) {
+    return `ลดผลิต${Math.round(reducing.outputScale * 100)}%`;
+  }
   for (const recipe of recipesForCell(cell.id)) {
     const output = cell.commodities[recipe.id];
     if (!output || output.stock >= output.targetStock * 0.8) continue;
@@ -397,6 +474,10 @@ export function getFactoryStatus(cell: EconomyCellState): string | null {
 }
 
 /** @deprecated ใช้ runProduction แทน */
-export function transformGoods(cell: EconomyCellState, log: EconomyLogEntry[]): void {
-  runProduction(cell, log);
+export function transformGoods(
+  cell: EconomyCellState,
+  log: EconomyLogEntry[],
+  factories: FactoryAgentState[] = [],
+): void {
+  runProduction(cell, log, factories);
 }

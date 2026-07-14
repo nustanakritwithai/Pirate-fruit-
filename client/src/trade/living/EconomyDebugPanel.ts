@@ -1,4 +1,5 @@
 import type { LivingTradeSimulator } from './LivingTradeSimulator';
+import { debugForcePause, debugForceReopen } from './FactoryAgent';
 import { LIVING_COMMODITY_IDS } from './LivingTradeConfig';
 import { LIVING_COMMODITY_META } from './ProductionRecipes';
 import type { LivingCommodityId } from './types';
@@ -22,6 +23,7 @@ export class EconomyDebugPanel {
   private readonly root: HTMLDivElement;
   private readonly logEl: HTMLDivElement;
   private readonly grid: HTMLDivElement;
+  private readonly factoryGrid: HTMLDivElement;
   private visible = false;
 
   constructor(private sim: LivingTradeSimulator) {
@@ -38,14 +40,21 @@ export class EconomyDebugPanel {
         <div class="eco-actions">
           <button type="button" data-action="tick1">+1 Tick</button>
           <button type="button" data-action="tick5">+5 Tick</button>
+          <button type="button" data-action="tick10">+10 Tick</button>
           <button type="button" data-action="shortage">ขาดอาหารเหมือง</button>
+          <button type="button" data-action="force-pause-yard">Pause อู่เรือ</button>
+          <button type="button" data-action="force-reopen-yard">Reopen อู่เรือ</button>
+          <button type="button" data-action="reset-factories">Reset Factories</button>
         </div>
+        <div class="eco-factory-title">Factory Agents</div>
+        <div class="eco-factory-grid"></div>
         <div class="eco-grid"></div>
         <div class="eco-log-title">เหตุการณ์ล่าสุด</div>
         <div class="eco-log"></div>
       </div>`;
     document.body.appendChild(this.root);
     this.grid = this.root.querySelector('.eco-grid')!;
+    this.factoryGrid = this.root.querySelector('.eco-factory-grid')!;
     this.logEl = this.root.querySelector('.eco-log')!;
     this.root.querySelector('.eco-close')!.addEventListener('click', () => this.setVisible(false));
     this.root.addEventListener('click', (e) => {
@@ -54,7 +63,19 @@ export class EconomyDebugPanel {
       const action = btn.dataset.action;
       if (action === 'tick1') this.sim.tick();
       if (action === 'tick5') this.sim.tickMany(5);
+      if (action === 'tick10') this.sim.tickMany(10);
       if (action === 'shortage') this.sim.injectShortage('mine-island', 'fresh-fish', 40);
+      if (action === 'force-pause-yard') {
+        const f = this.sim.factories.find((x) => x.cellId === 'shipyard-island' && x.recipeId === 'sailcloth');
+        const c = this.sim.getCell('shipyard-island');
+        if (f && c) debugForcePause(f, c);
+      }
+      if (action === 'force-reopen-yard') {
+        const f = this.sim.factories.find((x) => x.cellId === 'shipyard-island' && x.recipeId === 'sailcloth');
+        const c = this.sim.getCell('shipyard-island');
+        if (f && c) debugForceReopen(f, c);
+      }
+      if (action === 'reset-factories') this.sim.resetFactoryAgents();
       this.render();
     });
     if (new URLSearchParams(location.search).has('economy')) this.setVisible(true);
@@ -80,6 +101,23 @@ export class EconomyDebugPanel {
   private render(): void {
     const world = this.sim.state;
     this.root.querySelector('.eco-tick')!.textContent = `Tick: ${world.tick} · เรือ ${world.ships.length}`;
+
+    this.factoryGrid.innerHTML = `<table class="eco-factory-table"><thead><tr>
+      <th>เกาะ</th><th>สูตร</th><th>สถานะ</th><th>scale</th><th>กำไร</th><th>แรงงาน</th><th>+/-</th><th>cd</th><th>ตัดสินใจ</th>
+    </tr></thead><tbody>${world.factories.map((f) => {
+      const cell = world.cells.find((c) => c.id === f.cellId);
+      return `<tr>
+        <td>${cell?.nameTh ?? f.cellId}</td>
+        <td>${f.activeRecipeId}</td>
+        <td>${f.status}</td>
+        <td>${f.outputScale.toFixed(2)}</td>
+        <td>${Math.round(f.expectedUnitProfit)}</td>
+        <td>${f.workforceAssigned}</td>
+        <td>${f.profitableTicks}/${f.unprofitableTicks}</td>
+        <td>${f.adaptationCooldown}</td>
+        <td>${f.lastDecision}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
 
     this.grid.innerHTML = world.cells.map((cell) => {
       const rows = LIVING_COMMODITY_IDS
@@ -126,6 +164,11 @@ export class EconomyDebugPanel {
       .eco-actions button{padding:4px 10px;border-radius:6px;border:1px solid #4a8a7a;background:#123028;
         color:#dff7ee;cursor:pointer;font-size:10px;font-weight:700}
       .eco-actions button:hover{background:#1a4038}
+      .eco-factory-title{margin:8px 0 4px;font-size:10px;color:#8eb5aa;text-transform:uppercase}
+      .eco-factory-grid{overflow:auto;margin-bottom:8px;max-height:160px}
+      .eco-factory-table{width:100%;border-collapse:collapse;font-size:9px}
+      .eco-factory-table th{text-align:left;color:#7a9a90}
+      .eco-factory-table td{padding:2px 4px;border-top:1px solid rgba(255,255,255,.06)}
       .eco-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
       .eco-cell{background:rgba(255,255,255,.04);border-radius:8px;padding:8px}
       .eco-cell-name{font-weight:700;color:#ffe9a8;margin-bottom:2px}

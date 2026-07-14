@@ -226,8 +226,16 @@ describe('LivingTradeSimulator — ship parts (updated recipe)', () => {
     yard.commodities['iron-ingot']!.stock = 0;
     yard.commodities.rope!.stock = 0;
     const partsBefore = yard.commodities.sailcloth!.stock;
-    sim.tick();
+    sim.tickMany(8);
+    const sailAgent = sim.factories.find(
+      (f) => f.cellId === 'shipyard-island' && f.activeRecipeId === 'sailcloth',
+    );
     expect(yard.commodities.sailcloth!.stock).toBeLessThanOrEqual(partsBefore + 1);
-    expect(sim.log.some((l) => l.message.includes('หยุด') || l.message.includes('ขาด'))).toBe(true);
+    const stopped =
+      sailAgent?.status === 'paused'
+      || sailAgent?.status === 'reducing'
+      || (sailAgent?.lastReasons.some((r) => r.includes('ขาด')) ?? false)
+      || sim.log.some((l) => l.message.includes('หยุด') || l.message.includes('ขาด'));
+    expect(stopped).toBe(true);
   });
 });

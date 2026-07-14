@@ -69,6 +69,12 @@ export interface EconomyCellState {
   population: number;
   /** 0–1 กำลังแรงงาน (ลดเมื่อขาดอาหาร) */
   workforce: number;
+  /** แรงงานว่างรับจ้างได้ */
+  availableWorkforce: number;
+  /** ว่างงาน — ส่งผลต่อ demand */
+  unemployment: number;
+  /** ค่าแรงพื้นฐานต่อคน */
+  wageLevel: number;
   /** กำลังขนส่ง — เพิ่มเมื่อมีชิ้นส่วนเรือมาก */
   transportCapacity: number;
   commodities: Partial<Record<LivingCommodityId, CommodityState>>;
@@ -114,10 +120,66 @@ export interface EconomyWorldState {
   ships: CargoShip[];
   news: TradeNewsItem[];
   log: EconomyLogEntry[];
+  /** Adaptive factory agents (Phase E1) */
+  factories: FactoryAgentState[];
   /** ticks จนกว่าเรือ NPC จะออกครั้งถัดไป */
   npcCooldown: number;
   /** ชิ้นส่วนเรือล้น → เพิ่มกำลังขนส่ง NPC */
   npcCargoCapacityMultiplier: number;
   /** หีบสินค้าเพียงพอ → ลด spoilage (0–0.5) */
   spoilageReduction: number;
+}
+
+export type FactoryStatus =
+  | 'expanding'
+  | 'operating'
+  | 'reducing'
+  | 'paused'
+  | 'recovering';
+
+export type FactoryDecision =
+  | 'expand'
+  | 'hold'
+  | 'reduce'
+  | 'pause'
+  | 'reopen'
+  | 'switch-recipe';
+
+export interface FactoryAgentState {
+  id: string;
+  cellId: EconomyCellId;
+  /** สูตรเริ่มต้นของ agent นี้ */
+  recipeId: LivingCommodityId;
+  status: FactoryStatus;
+  outputScale: number;
+  workforceAssigned: number;
+  expectedUnitProfit: number;
+  profitEma: number;
+  profitableTicks: number;
+  unprofitableTicks: number;
+  shortageTicks: number;
+  adaptationCooldown: number;
+  pausedTicks: number;
+  activeRecipeId: LivingCommodityId;
+  alternativeRecipeIds: LivingCommodityId[];
+  lastDecision: FactoryDecision;
+  retoolingTicks: number;
+  recipeSwitchCooldown: number;
+  /** เหตุผลล่าสุดสำหรับ UI */
+  lastReasons: string[];
+}
+
+export type FactoryEventType =
+  | 'FACTORY_EXPANDED'
+  | 'FACTORY_REDUCED'
+  | 'FACTORY_PAUSED'
+  | 'FACTORY_REOPENED'
+  | 'FACTORY_RECIPE_SWITCHED';
+
+export interface FactoryEvent {
+  type: FactoryEventType;
+  agent: FactoryAgentState;
+  cellName: string;
+  message: string;
+  toastEligible: boolean;
 }

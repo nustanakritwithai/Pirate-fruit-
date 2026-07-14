@@ -1,12 +1,25 @@
 import type { EconomyWorldState } from './types';
 import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
+import { ADAPTIVE_ECONOMY } from './AdaptiveEconomyConfig';
+import { ensureFactoryAgents } from './AdaptiveEconomy';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = ADAPTIVE_ECONOMY.saveVersion;
 
 interface SavedEconomy {
   version: number;
   world: EconomyWorldState;
+}
+
+function migrateWorld(world: EconomyWorldState): EconomyWorldState {
+  for (const cell of world.cells) {
+    cell.availableWorkforce ??= 0;
+    cell.unemployment ??= Math.floor(cell.population * 0.08);
+    cell.wageLevel ??= 10;
+  }
+  world.factories ??= [];
+  ensureFactoryAgents(world);
+  return world;
 }
 
 export function loadEconomyState(): EconomyWorldState | null {
@@ -14,8 +27,9 @@ export function loadEconomyState(): EconomyWorldState | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedEconomy;
-    if (saved.version !== SAVE_VERSION || !saved.world?.cells?.length) return null;
-    const world = saved.world;
+    if (!saved.world?.cells?.length) return null;
+    if (saved.version !== SAVE_VERSION && saved.version !== 2) return null;
+    const world = migrateWorld(saved.world);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;
     return world;
@@ -35,15 +49,18 @@ export function saveEconomyState(world: EconomyWorldState): void {
 
 export function createFreshWorld(): EconomyWorldState {
   const { cells, routes } = createInitialWorld();
-  return {
+  const world: EconomyWorldState = {
     tick: 0,
     cells,
     routes,
     ships: [],
     news: [],
     log: [],
+    factories: [],
     npcCooldown: ECONOMY_CONFIG.npcDepartEveryTicks,
     npcCargoCapacityMultiplier: 1,
     spoilageReduction: 0,
   };
+  ensureFactoryAgents(world);
+  return world;
 }

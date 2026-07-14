@@ -10,6 +10,7 @@ import {
   updateDemand,
   updatePrices,
   updateWorldModifiers,
+  getFactoryStatus,
 } from './EconomyRules';
 import {
   CELL_TO_GAME_ISLAND,
@@ -26,6 +27,8 @@ import {
 } from './LivingTradeFormulas';
 import { generateNewsFromTick } from './LivingTradeNews';
 import { createFreshWorld, loadEconomyState, saveEconomyState } from './LivingTradePersistence';
+import { appendFactoryEventsToLog, updateAdaptiveEconomy } from './AdaptiveEconomy';
+import { createFactoryAgentsForCell, initCellWorkforce } from './FactoryAgent';
 import type {
   CargoShip,
   CommodityState,
@@ -141,6 +144,16 @@ export class LivingTradeSimulator {
     saveEconomyState(this.world);
   }
 
+  get factories(): readonly import('./types').FactoryAgentState[] {
+    return this.world.factories;
+  }
+
+  getFactoryStatus(cellId: import('./types').EconomyCellId): string | null {
+    const cell = this.getCell(cellId);
+    if (!cell) return null;
+    return getFactoryStatus(cell, this.world.factories);
+  }
+
   tick(): void {
     this.world.tick += 1;
     this.tickLog = [];
@@ -148,7 +161,13 @@ export class LivingTradeSimulator {
     for (const cell of this.world.cells) {
       produceGoods(cell);
       consumeGoods(cell);
-      runProduction(cell, this.tickLog);
+    }
+
+    const factoryEvents = updateAdaptiveEconomy(this.world);
+    appendFactoryEventsToLog(factoryEvents, this.tickLog, this.world.tick);
+
+    for (const cell of this.world.cells) {
+      runProduction(cell, this.tickLog, this.world.factories);
       updateDemand(cell);
       updatePrices(cell);
       resolveSpoilage(cell, this.tickLog, this.world.spoilageReduction);
@@ -201,6 +220,14 @@ export class LivingTradeSimulator {
     if (!cell || !item) return;
     item.stock = Math.max(0, item.stock - amount);
     updatePrices(cell);
+  }
+
+  resetFactoryAgents(): void {
+    this.world.factories = [];
+    for (const cell of this.world.cells) {
+      this.world.factories.push(...createFactoryAgentsForCell(cell));
+      initCellWorkforce(cell, this.world.factories);
+    }
   }
 
   private dispatchNpcCargo(): void {

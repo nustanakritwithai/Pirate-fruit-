@@ -4,7 +4,6 @@ import { TRADE_COMMODITIES } from '../trade/databook/commodities';
 import { getMarketForIsland } from '../trade/TradeRegistry';
 import { isLivingCommodity, resolveTradeCell } from '../trade/living/LivingTradeConfig';
 import { LIVING_COMMODITY_META, recipeForOutput } from '../trade/living/ProductionRecipes';
-import { getFactoryStatus } from '../trade/living/EconomyRules';
 import { priceTrend } from '../trade/living/LivingTradeFormulas';
 import type { ClassifiedEconomyEvent } from '../trade/living/EconomyEventClassifier';
 import { getIsland } from '../island/IslandRegistry';
@@ -153,8 +152,20 @@ export class EconomyPanel {
 
     const cellId = market ? resolveTradeCell(this.islandId, 'fresh-fish') : null;
     const factoryStatus = cellId
-      ? getFactoryStatus(this.trade.living.getCell(cellId)!)
+      ? this.trade.living.getFactoryStatus(cellId)
       : null;
+
+    const cellFactories = cellId
+      ? this.trade.living.factories.filter((f) => f.cellId === cellId)
+      : [];
+    const factoryRows = cellFactories.map((f) => `
+      <div class="ep-factory-row">
+        <b>${LIVING_COMMODITY_META[f.activeRecipeId].label}</b>
+        สถานะ: ${f.status} · กำลังผลิต ${Math.round(f.outputScale * 100)}%
+        · กำไรคาดการณ์ ${Math.round(f.expectedUnitProfit)} Beli/รอบ
+        · แรงงาน ${f.workforceAssigned}
+        ${f.lastReasons.length ? `<div class="ep-factory-reasons">สาเหตุ: ${f.lastReasons.join(', ')}</div>` : ''}
+      </div>`).join('');
 
     const arbHtml = arb
       ? `<div class="ep-arb">⚓ ซื้อ <b>${TRADE_COMMODITIES.find((c) => c.id === arb.commodityId)?.nameTh}</b>
@@ -172,6 +183,7 @@ export class EconomyPanel {
         ${factoryStatus ? `<span class="ep-warn">🏭 ${factoryStatus}</span>` : ''}
       </div>
       ${arbHtml}
+      ${factoryRows ? `<div class="ep-section-title">โรงงาน</div><div class="ep-factory-list">${factoryRows}</div>` : ''}
       <div class="ep-section-title">ตลาดเกาะปัจจุบัน</div>
       <table class="ep-table">
         <thead><tr>
@@ -224,6 +236,10 @@ export class EconomyPanel {
       .ep-alert-full{font-size:10px;color:#8eb5aa;line-height:1.45}
       .ep-tab-market{width:100%;border:1px solid rgba(120,210,180,.35);border-radius:10px;
         padding:8px;background:rgba(255,220,120,.08);color:#ffe9a8;font:inherit;cursor:pointer}
+      .ep-factory-list{margin-bottom:8px}
+      .ep-factory-row{padding:6px 8px;margin-bottom:4px;border-radius:8px;background:rgba(255,255,255,.04);
+        font-size:10px;line-height:1.45}
+      .ep-factory-reasons{color:#8eb5aa;font-size:9px;margin-top:2px}
       @media(max-width:700px){.economy-panel-root{align-items:flex-end;padding:8px}
         .economy-panel{max-height:82vh;border-radius:14px 14px 0 0}}
     `;
