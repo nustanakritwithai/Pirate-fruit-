@@ -61,3 +61,4 @@ export {
 export { getGenomeDialogue, dominantIndustryLabel } from './GenomeDialogueData';
 export { getEvolutionHistoryForCell } from './EvolutionHistory';
 export { addPressure, getPressuresForCell } from './GenomePressureStore';
+export { LIVING_ECONOMY_BOUNDS, trimEconomyWorldState } from './LivingEconomyBounds';

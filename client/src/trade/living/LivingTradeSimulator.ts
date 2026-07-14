@@ -24,6 +24,7 @@ import {
   marketImpact,
   marketSaturation,
 } from './LivingTradeFormulas';
+import { LIVING_ECONOMY_BOUNDS, mergeNewsBatch, prependBounded, trimEconomyWorldState } from './LivingEconomyBounds';
 import { generateNewsFromTick } from './LivingTradeNews';
 import { createFreshWorld, loadEconomyState, saveEconomyState } from './LivingTradePersistence';
 import { appendFactoryEventsToLog, updateAdaptiveEconomy } from './AdaptiveEconomy';
@@ -297,10 +298,19 @@ export class LivingTradeSimulator {
     updateEconomyGenome(this.world);
 
     for (const entry of this.tickLog) entry.tick = this.world.tick;
-    this.world.log = [...this.tickLog, ...this.world.log].slice(0, 40);
+    this.world.log = prependBounded(
+      this.world.log,
+      this.tickLog,
+      LIVING_ECONOMY_BOUNDS.maxEconomyLogEntries,
+    );
 
     const newNews = generateNewsFromTick(this.world, this.tickLog);
-    this.world.news = [...newNews, ...this.world.news].slice(0, 15);
+    this.world.news = mergeNewsBatch(
+      this.world.news,
+      newNews,
+      LIVING_ECONOMY_BOUNDS.maxNewsEntries,
+    );
+    trimEconomyWorldState(this.world);
     saveEconomyState(this.world);
   }
 

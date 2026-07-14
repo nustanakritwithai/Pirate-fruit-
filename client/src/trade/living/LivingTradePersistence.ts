@@ -10,6 +10,7 @@ import {
   migrateRouteReputationsFromRoutes,
 } from './TraderMemoryStore';
 import { createDefaultPlayerEconomy } from './PlayerEconomyHistory';
+import { trimEconomyWorldState } from './LivingEconomyBounds';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
 const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
@@ -72,6 +73,7 @@ export function loadEconomyState(): EconomyWorldState | null {
     const world = migrateWorld(saved.world, saved.version);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;
+    trimEconomyWorldState(world);
     return world;
   } catch {
     return null;
@@ -82,6 +84,7 @@ export function saveEconomyState(world: EconomyWorldState): void {
   try {
     ensurePlayerEconomyState(world);
     ensureGenomeState(world);
+    trimEconomyWorldState(world);
     const payload: SavedEconomy = { version: SAVE_VERSION, world };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
