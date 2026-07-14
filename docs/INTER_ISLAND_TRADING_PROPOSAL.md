@@ -288,66 +288,34 @@ tradeManager.hold; // { slots, maxSlots, maxWeight }
 
 ---
 
-## 11. Living Trade Network (เศรษฐกิจแบบ Game of Life)
+## 11. Economic Cellular Automata (Living Trade)
 
-ระบบเศรษฐกิจไดนามิกที่แต่ละเกาะเป็น "เซลล์" — ราคาเกิดจากสต็อก ความต้องการ การผลิต/บริโภค และผลจากเกาะข้างเคียง
+เศรษฐกิจแบบเซลล์มีชีวิต — โฟกัสสินค้าและตลาดเท่านั้น (ตัดโจร/มอนสเตอร์/ยึดเกาะ)
 
 ### 11.1 โมดูล `client/src/trade/living/`
 
-```
-living/
-├── types.ts                 # CommodityState, TradeIslandState, TradeRouteState
-├── LivingTradeConfig.ts     # เกาะป่า/เหมือง/ท่า, สินค้า 4 ชนิด, tick 5 วินาที
-├── LivingTradeFormulas.ts   # calculateMarketPrice, spread, market impact
-├── LivingTradeSimulator.ts  # economyTick, NPC เรือสินค้า, โจรปล้น
-├── LivingTradeNews.ts       # ข่าวลือตลาด
-└── __tests__/livingTrade.test.ts
-```
+- `EconomyRules.ts` — produce → consume → transform → demand → price → spread → spoilage
+- `LivingTradeSimulator.ts` — 4 เซลล์, tick ทุก 5 วินาที
+- `EconomyDebugPanel.ts` — F8 หรือ `?economy=1`
 
-### 11.2 สินค้าหลัก (ต้นแบบ)
+### 11.2 สี่เซลล์
 
-| Living ID | สินค้า | เกาะป่า | เกาะเหมือง | เกาะท่า |
-|-----------|--------|---------|------------|---------|
-| `fresh-fish` | อาหาร | ผลิต | ต้องการ | ต้องการ |
-| `hardwood` | ไม้ | ผลิต | ต้องการ | ต้องการ |
-| `iron-ore` | เหล็ก | ต้องการ | ผลิต | ต้องการ |
-| `sun-silk` | ผ้า | ต้องการ | — | ผลิต |
+| เซลล์ | เกาะในเกม | ผลิต |
+|-------|-----------|------|
+| leaf-island | starter-island | อาหาร, ไม้ |
+| mine-island | mist-jungle | เหล็ก |
+| cloth-island | sunscar-desert | ผ้า |
+| shipyard-island | starter-island | ชิ้นส่วนเรือ (ไม้+เหล็ก+ผ้า) |
 
-### 11.3 สูตรราคา
+### 11.3 สถานะตลาด
 
-```
-scarcity = targetStock / max(stock, 1) × demandMultiplier
-price = clamp(basePrice × 0.4, basePrice × 3, basePrice × scarcity)
-buyPrice = price × 1.08 + marketImpact
-sellPrice = price × 0.82 − saturation
-```
+`surplus` → `balanced` → `shortage` → `crisis` → `collapsed`
 
-### 11.4 Simulation Loop (ทุก 5 วินาที)
+### 11.4 Debug
 
-1. ผลิต + บริโภคสินค้า
-2. อัปเดตความต้องการ + ราคา
-3. แพร่ demand จากเกาะข้างเคียง
-4. ส่งเรือ NPC ตามเส้นทาง
-5. โจรปล้นเรือ (เพิ่มราคาปลายทาง)
-6. สร้างข่าวลือตลาด
-
-### 11.5 การผูกเข้าเกม
-
-- `TradeManager.living` — simulator ร่วมกับซื้อ/ขาย
-- `main.ts` — `living.tick()` ทุก 5 วินาที
-- `TradeShopUI` — แสดงสต็อก, แนวโน้มราคา, ข่าว
-- `TradeRouteHint` — arbitrage จากราคาสด
-
-### 11.6 Roadmap ถัดไป
-
-| Phase | รายการ |
-|-------|--------|
-| LT2 | เหตุการณ์ (สงคราม, พายุ, เทศกาล) |
-| LT3 | ตลาดมืด + marine/pirate influence |
-| LT4 | พัฒนาเกาะจากการค้า (portLevel, population) |
-| LT5 | ข่าวมีอายุ + แผนที่ราคาไม่ฟรี |
+กด **F8** ดูสต็อก/ราคา/log ทุกเซลล์ · ปุ่มเร่ง tick · จำลองวิกฤต
 
 ---
 
-*อัปเดต: กรกฎาคม 2026 · Living Trade Network prototype*
+*อัปเดต: กรกฎาคม 2026 · Economic CA prototype*
 

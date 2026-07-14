@@ -134,12 +134,13 @@ export class TradeShopUI {
       let stockHtml = '';
       let trendHtml = '';
       if (isLivingCommodity(commodity.id)) {
-        const item = this.trade.living.getCommodity(this.islandId, commodity.id);
+        const item = this.trade.living.getCommodityAtGameIsland(this.islandId, commodity.id);
         if (item) {
           const trend = priceTrend(item);
           const trendIcon = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→';
           const trendClass = trend;
-          stockHtml = `<span class="trade-stock">${Math.floor(item.stock)}</span>`;
+          const stateLabel = item.marketState;
+          stockHtml = `<span class="trade-stock" title="${stateLabel}">${Math.floor(item.stock)}</span>`;
           trendHtml = `<span class="trade-trend trade-trend-${trendClass}">${trendIcon}</span>`;
         }
       }

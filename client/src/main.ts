@@ -35,6 +35,7 @@ import { PBRPerformanceMonitor } from './art/PBRPerformanceMonitor';
 import { IslandManager } from './island/IslandManager';
 import { TradeManager } from './trade/TradeManager';
 import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
+import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
 
@@ -143,6 +144,7 @@ async function main(): Promise<void> {
   });
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
+  const economyDebug = new EconomyDebugPanel(tradeManager.living);
   tradeRouteHint.bindTradeManager(tradeManager);
 
   let livingTickAccum = 0;
@@ -154,6 +156,7 @@ async function main(): Promise<void> {
         tradeManager.living.tick();
         tradeRouteHint.refresh();
         tradeShop.refresh();
+        economyDebug.refresh();
       }
     },
   });

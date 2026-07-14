@@ -1,12 +1,24 @@
 import type { IslandId } from '../../island/IslandTypes';
 import {
+  consumeGoods,
+  createTradeRequests,
+  moveCargo,
+  produceGoods,
+  resolveSpoilage,
+  spreadDemand,
+  transformGoods,
+  updateDemand,
+  updatePrices,
+} from './EconomyRules';
+import {
+  CELL_TO_GAME_ISLAND,
+  ECONOMY_CONFIG,
   LIVING_COMMODITY_IDS,
-  LIVING_TRADE_CONFIG,
   createInitialWorld,
   isLivingCommodity,
+  resolveTradeCell,
 } from './LivingTradeConfig';
 import {
-  calculateMarketPrice,
   livingBuyPrice,
   livingSellPrice,
   marketImpact,
@@ -14,27 +26,43 @@ import {
 } from './LivingTradeFormulas';
 import { generateNewsFromTick } from './LivingTradeNews';
 import type {
+  CargoShip,
   CommodityState,
+  EconomyCellId,
+  EconomyCellState,
+  EconomyLogEntry,
+  EconomyWorldState,
   LivingCommodityId,
-  TradeIslandState,
   TradeNewsItem,
-  TradeRouteState,
-  TradeShip,
-  TradeWorldState,
 } from './types';
 
-let shipCounter = 0;
+const CELL_LABELS: Record<EconomyCellId, string> = {
+  'leaf-island': 'เกาะใบไม้',
+  'mine-island': 'เกาะเหมือง',
+  'cloth-island': 'เกาะทอผ้า',
+  'shipyard-island': 'เกาะอู่เรือ',
+};
 
+/** Economic Cellular Automata — หัวใจคือสินค้าและเศรษฐกิจเท่านั้น */
 export class LivingTradeSimulator {
-  private world: TradeWorldState;
+  private world: EconomyWorldState;
+  private tickLog: EconomyLogEntry[] = [];
 
   constructor() {
-    const { islands, routes } = createInitialWorld();
-    this.world = { tick: 0, islands, routes, ships: [], news: [] };
-    this.refreshAllPrices();
+    const { cells, routes } = createInitialWorld();
+    this.world = {
+      tick: 0,
+      cells,
+      routes,
+      ships: [],
+      news: [],
+      log: [],
+      npcCooldown: ECONOMY_CONFIG.npcDepartEveryTicks,
+    };
+    for (const cell of this.world.cells) updatePrices(cell);
   }
 
-  get state(): Readonly<TradeWorldState> {
+  get state(): Readonly<EconomyWorldState> {
     return this.world;
   }
 
@@ -42,258 +70,149 @@ export class LivingTradeSimulator {
     return this.world.news;
   }
 
-  getIsland(islandId: IslandId): TradeIslandState | undefined {
-    return this.world.islands.find((i) => i.id === islandId);
+  get log(): readonly EconomyLogEntry[] {
+    return this.world.log;
   }
 
-  getCommodity(islandId: IslandId, commodityId: LivingCommodityId): CommodityState | undefined {
-    return this.getIsland(islandId)?.commodities[commodityId];
+  getCell(cellId: EconomyCellId): EconomyCellState | undefined {
+    return this.world.cells.find((c) => c.id === cellId);
+  }
+
+  getIsland(islandId: IslandId): EconomyCellState | undefined {
+    return this.world.cells.find((c) => c.gameIslandId === islandId);
+  }
+
+  getCommodity(cellId: EconomyCellId, commodityId: LivingCommodityId): CommodityState | undefined {
+    return this.getCell(cellId)?.commodities[commodityId];
+  }
+
+  getCommodityAtGameIsland(
+    gameIslandId: IslandId,
+    commodityId: LivingCommodityId,
+  ): CommodityState | undefined {
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    return this.getCommodity(cellId, commodityId);
   }
 
   isLivingCommodity(id: string): id is LivingCommodityId {
     return isLivingCommodity(id);
   }
 
-  getBuyPrice(islandId: IslandId, commodityId: string, amount = 1): number | null {
+  getBuyPrice(gameIslandId: IslandId, commodityId: string, amount = 1): number | null {
     if (!isLivingCommodity(commodityId)) return null;
-    const item = this.getCommodity(islandId, commodityId);
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    const item = this.getCommodity(cellId, commodityId);
     if (!item) return null;
     return livingBuyPrice(item, marketImpact(amount));
   }
 
-  getSellPrice(islandId: IslandId, commodityId: string, amount = 1): number | null {
+  getSellPrice(gameIslandId: IslandId, commodityId: string, amount = 1): number | null {
     if (!isLivingCommodity(commodityId)) return null;
-    const item = this.getCommodity(islandId, commodityId);
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    const item = this.getCommodity(cellId, commodityId);
     if (!item) return null;
     return livingSellPrice(item, marketSaturation(amount, item.stock));
   }
 
-  getStock(islandId: IslandId, commodityId: string): number | null {
+  getStock(gameIslandId: IslandId, commodityId: string): number | null {
     if (!isLivingCommodity(commodityId)) return null;
-    return this.getCommodity(islandId, commodityId)?.stock ?? null;
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    return this.getCommodity(cellId, commodityId)?.stock ?? null;
   }
 
-  /** ผู้เล่นซื้อ — ลดสต็อก ดันราคาขึ้น */
-  applyPlayerBuy(islandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
-    const item = this.getCommodity(islandId, commodityId);
-    if (!item) return;
+  applyPlayerBuy(gameIslandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    const cell = this.getCell(cellId);
+    const item = this.getCommodity(cellId, commodityId);
+    if (!cell || !item) return;
     item.stock = Math.max(0, item.stock - amount);
-    item.demand += amount * 0.15;
-    this.updatePrice(item);
+    item.memory.recentBuyVolume += amount;
+    item.importDemand += amount * 0.1;
+    updatePrices(cell);
   }
 
-  /** ผู้เล่นขาย — เพิ่มสต็อก กดราคาลง */
-  applyPlayerSell(islandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
-    const item = this.getCommodity(islandId, commodityId);
-    if (!item) return;
+  applyPlayerSell(gameIslandId: IslandId, commodityId: LivingCommodityId, amount: number): void {
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    const cell = this.getCell(cellId);
+    const item = this.getCommodity(cellId, commodityId);
+    if (!cell || !item) return;
     item.stock += amount;
-    item.demand = Math.max(item.demand * 0.95, item.consumption * 0.5);
-    this.updatePrice(item);
+    item.memory.recentSellVolume += amount;
+    updatePrices(cell);
   }
 
-  /** รัน simulation tick */
   tick(): void {
     this.world.tick += 1;
-    for (const island of this.world.islands) {
-      this.produceAndConsume(island);
-      this.updateDemand(island);
-      this.updatePrices(island);
-      this.updateWealth(island);
+    this.tickLog = [];
+
+    for (const cell of this.world.cells) {
+      produceGoods(cell);
+      consumeGoods(cell);
+      transformGoods(cell, this.tickLog);
+      updateDemand(cell);
+      updatePrices(cell);
+      resolveSpoilage(cell, this.tickLog);
     }
-    this.spreadRegionalDemand();
-    this.createNpcTradeOrders();
-    this.moveTradeShips();
-    this.resolvePirateAttacks();
-    const newNews = generateNewsFromTick(this.world);
-    this.world.news = [...newNews, ...this.world.news].slice(0, 12);
+
+    spreadDemand(this.world);
+    this.dispatchNpcCargo();
+    moveCargo(this.world, this.tickLog);
+
+    for (const entry of this.tickLog) entry.tick = this.world.tick;
+    this.world.log = [...this.tickLog, ...this.world.log].slice(0, 40);
+
+    const newNews = generateNewsFromTick(this.world, this.tickLog);
+    this.world.news = [...newNews, ...this.world.news].slice(0, 15);
   }
 
-  /** หาเส้นทาง arbitrage ที่กำไรสูงสุดจากเกาะ */
-  bestArbitrageFrom(islandId: IslandId): {
+  tickMany(count: number): void {
+    for (let i = 0; i < count; i++) this.tick();
+  }
+
+  bestArbitrageFrom(gameIslandId: IslandId): {
     commodityId: LivingCommodityId;
     profit: number;
     toIslandId: IslandId;
   } | null {
     let best: { commodityId: LivingCommodityId; profit: number; toIslandId: IslandId } | null = null;
     for (const commodityId of LIVING_COMMODITY_IDS) {
-      const buy = this.getBuyPrice(islandId, commodityId, 1);
+      const buyCellId = resolveTradeCell(gameIslandId, commodityId);
+      if (CELL_TO_GAME_ISLAND[buyCellId] !== gameIslandId) continue;
+      const buy = this.getBuyPrice(gameIslandId, commodityId, 1);
       if (buy == null) continue;
-      for (const target of this.world.islands) {
-        if (target.id === islandId) continue;
-        const sell = this.getSellPrice(target.id, commodityId, 1);
+      for (const targetCell of this.world.cells) {
+        if (targetCell.id === buyCellId) continue;
+        const sell = this.getSellPrice(targetCell.gameIslandId, commodityId, 1);
         if (sell == null) continue;
-        const profit = sell - buy;
+        const profit = sell - buy - ECONOMY_CONFIG.baseTransportTicks;
         if (profit > 0 && (!best || profit > best.profit)) {
-          best = { commodityId, profit, toIslandId: target.id };
+          best = { commodityId, profit, toIslandId: targetCell.gameIslandId };
         }
       }
     }
     return best;
   }
 
-  private produceAndConsume(island: TradeIslandState): void {
-    for (const id of LIVING_COMMODITY_IDS) {
-      const item = island.commodities[id];
-      const stabilityFactor = 0.5 + island.stability * 0.5;
-      const effectiveProduction = item.production * stabilityFactor * (1 - island.pirateThreat * 0.3);
-      item.stock += effectiveProduction;
-      item.stock -= item.consumption;
-      item.stock = Math.max(0, item.stock);
-    }
-    if (island.pirateThreat > 0.4) {
-      island.stability = Math.max(0.3, island.stability - 0.01);
-    } else {
-      island.stability = Math.min(1, island.stability + 0.005);
-    }
+  injectShortage(cellId: EconomyCellId, commodityId: LivingCommodityId, amount: number): void {
+    const cell = this.getCell(cellId);
+    const item = this.getCommodity(cellId, commodityId);
+    if (!cell || !item) return;
+    item.stock = Math.max(0, item.stock - amount);
+    updatePrices(cell);
   }
 
-  private updateDemand(island: TradeIslandState): void {
-    for (const id of LIVING_COMMODITY_IDS) {
-      const item = island.commodities[id];
-      const scarcity = item.demand / Math.max(item.stock, 1);
-      if (scarcity > 2) {
-        item.demandMultiplier = Math.min(2, item.demandMultiplier + 0.05);
-      } else {
-        item.demandMultiplier = Math.max(0.8, item.demandMultiplier - 0.02);
-      }
-      item.demand = item.demand * 0.92 + item.consumption * 0.08;
-    }
-  }
-
-  private updatePrices(island: TradeIslandState): void {
-    for (const id of LIVING_COMMODITY_IDS) {
-      this.updatePrice(island.commodities[id]);
-    }
-  }
-
-  private updatePrice(item: CommodityState): void {
-    item.previousPrice = item.currentPrice;
-    item.currentPrice = calculateMarketPrice(item);
-  }
-
-  private refreshAllPrices(): void {
-    for (const island of this.world.islands) this.updatePrices(island);
-  }
-
-  private updateWealth(island: TradeIslandState): void {
-    let tradeValue = 0;
-    for (const id of LIVING_COMMODITY_IDS) {
-      const item = island.commodities[id];
-      tradeValue += item.stock * item.currentPrice * 0.01;
-    }
-    island.wealth = island.wealth * 0.98 + tradeValue;
-    if (island.portLevel < 3 && island.wealth > 2500) {
-      island.portLevel += 0.01;
-    }
-  }
-
-  private spreadRegionalDemand(): void {
-    for (const island of this.world.islands) {
-      for (const targetId of island.routeTargets) {
-        const neighbor = this.getIsland(targetId);
-        if (!neighbor) continue;
-        for (const id of LIVING_COMMODITY_IDS) {
-          const nItem = neighbor.commodities[id];
-          if (nItem.demand > nItem.stock * 2) {
-            island.commodities[id].demand += 2;
-          }
-        }
-      }
-    }
-  }
-
-  private createNpcTradeOrders(): void {
-    for (const route of this.world.routes) {
-      if (this.world.ships.filter((s) => s.originIslandId === route.sourceIslandId).length
-        >= route.transportCapacity) {
-        continue;
-      }
-      const origin = this.getIsland(route.sourceIslandId);
-      const dest = this.getIsland(route.targetIslandId);
-      if (!origin || !dest) continue;
-
-      let best: { id: LivingCommodityId; surplus: number } | null = null;
-      for (const id of LIVING_COMMODITY_IDS) {
-        const o = origin.commodities[id];
-        const d = dest.commodities[id];
-        const surplus = o.stock - o.targetStock;
-        const need = d.targetStock - d.stock;
-        if (surplus > 15 && need > 10) {
-          const score = surplus + need;
-          if (!best || score > best.surplus) best = { id, surplus: score };
-        }
-      }
-      if (!best) continue;
-
-      const cargoAmount = Math.min(
-        LIVING_TRADE_CONFIG.npcShipCargo,
-        Math.floor(origin.commodities[best.id].stock * 0.15),
-      );
-      if (cargoAmount < 3) continue;
-
-      origin.commodities[best.id].stock -= cargoAmount;
-      this.updatePrice(origin.commodities[best.id]);
-
-      this.world.ships.push({
-        id: `npc-ship-${++shipCounter}`,
-        originIslandId: route.sourceIslandId,
-        destinationIslandId: route.targetIslandId,
-        cargo: { [best.id]: cargoAmount },
-        travelTimeRemaining: LIVING_TRADE_CONFIG.shipTravelTicks,
-        dangerRisk: 1 - route.safety + route.pirateActivity * 0.5,
+  private dispatchNpcCargo(): void {
+    this.world.npcCooldown -= 1;
+    if (this.world.npcCooldown > 0) return;
+    this.world.npcCooldown = ECONOMY_CONFIG.npcDepartEveryTicks;
+    const newShips: CargoShip[] = createTradeRequests(this.world);
+    this.world.ships.push(...newShips);
+    for (const ship of newShips) {
+      this.tickLog.push({
+        tick: this.world.tick,
+        message: `เรือสินค้าออกจาก${CELL_LABELS[ship.originCellId]} → ${CELL_LABELS[ship.destinationCellId]}`,
+        cellId: ship.originCellId,
       });
-      route.traffic = Math.min(1, route.traffic + 0.05);
     }
-  }
-
-  private moveTradeShips(): void {
-    const arrived: TradeShip[] = [];
-    const remaining: TradeShip[] = [];
-
-    for (const ship of this.world.ships) {
-      ship.travelTimeRemaining -= 1;
-      if (ship.travelTimeRemaining <= 0) arrived.push(ship);
-      else remaining.push(ship);
-    }
-    this.world.ships = remaining;
-
-    for (const ship of arrived) {
-      const dest = this.getIsland(ship.destinationIslandId);
-      if (!dest) continue;
-      for (const [id, amount] of Object.entries(ship.cargo)) {
-        if (!amount || !isLivingCommodity(id)) continue;
-        dest.commodities[id].stock += amount;
-        this.updatePrice(dest.commodities[id]);
-      }
-    }
-  }
-
-  private resolvePirateAttacks(): void {
-    const surviving: TradeShip[] = [];
-    for (const ship of this.world.ships) {
-      if (Math.random() > ship.dangerRisk * LIVING_TRADE_CONFIG.pirateLootChance) {
-        surviving.push(ship);
-        continue;
-      }
-      const origin = this.getIsland(ship.originIslandId);
-      const dest = this.getIsland(ship.destinationIslandId);
-      if (origin) origin.pirateThreat = Math.min(1, origin.pirateThreat + 0.03);
-      if (dest) {
-        for (const id of LIVING_COMMODITY_IDS) {
-          dest.commodities[id].demandMultiplier = Math.min(2.2, dest.commodities[id].demandMultiplier + 0.08);
-          this.updatePrice(dest.commodities[id]);
-        }
-      }
-      const route = this.findRoute(ship.originIslandId, ship.destinationIslandId);
-      if (route) {
-        route.pirateActivity = Math.min(1, route.pirateActivity + 0.06);
-        route.safety = Math.max(0.2, route.safety - 0.04);
-      }
-    }
-    this.world.ships = surviving;
-  }
-
-  private findRoute(source: IslandId, target: IslandId): TradeRouteState | undefined {
-    return this.world.routes.find((r) => r.sourceIslandId === source && r.targetIslandId === target);
   }
 }

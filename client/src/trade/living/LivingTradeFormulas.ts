@@ -1,46 +1,56 @@
-import { LIVING_TRADE_CONFIG } from './LivingTradeConfig';
+import { ECONOMY_CONFIG } from './LivingTradeConfig';
 import type { CommodityState } from './types';
 
-/** ราคาตลาดจาก scarcity + demand */
-export function calculateMarketPrice(item: CommodityState): number {
-  const scarcityRatio = (item.targetStock / Math.max(item.stock, 1)) * item.demandMultiplier;
-  const raw = item.basePrice * scarcityRatio;
+export function stockRatio(item: CommodityState): number {
+  return item.stock / Math.max(item.targetStock, 1);
+}
+
+/** สูตรราคา Economic CA */
+export function calculatePrice(item: CommodityState): number {
+  const scarcity = item.targetStock / Math.max(item.stock, 1);
+  const demandFactor = 0.7 + item.demand / 100;
+  const memoryDrag =
+    item.memory.recentSellVolume > item.memory.recentBuyVolume
+      ? 0.95
+      : item.memory.recentBuyVolume > item.memory.recentSellVolume
+        ? 1.05
+        : 1;
+  const raw = item.basePrice * scarcity * demandFactor * memoryDrag;
   return Math.round(
     Math.max(
-      item.basePrice * LIVING_TRADE_CONFIG.minPriceRatio,
-      Math.min(item.basePrice * LIVING_TRADE_CONFIG.maxPriceRatio, raw),
+      item.basePrice * ECONOMY_CONFIG.minPriceRatio,
+      Math.min(item.basePrice * ECONOMY_CONFIG.maxPriceRatio, raw),
     ),
   );
 }
 
-/** ราคาซื้อจากร้าน (สูงกว่าราคากลาง — spread) */
-export function livingBuyPrice(item: CommodityState, marketImpact = 0): number {
-  const base = item.currentPrice * LIVING_TRADE_CONFIG.buySpread;
-  return Math.round(base * (1 + marketImpact));
+/** @deprecated use calculatePrice */
+export function calculateMarketPrice(item: CommodityState): number {
+  return calculatePrice(item);
 }
 
-/** ราคาขายให้ร้าน (ต่ำกว่าราคากลาง — spread + saturation) */
+export function livingBuyPrice(item: CommodityState, impact = 0): number {
+  return Math.round(item.currentPrice * ECONOMY_CONFIG.buySpread * (1 + impact));
+}
+
 export function livingSellPrice(item: CommodityState, saturation = 0): number {
-  const base = item.currentPrice * LIVING_TRADE_CONFIG.sellSpread;
-  return Math.round(base * (1 - saturation));
+  return Math.round(item.currentPrice * ECONOMY_CONFIG.sellSpread * (1 - saturation));
 }
 
-/** ผลกระทบราคาเมื่อซื้อ/ขายปริมาณมาก */
 export function marketImpact(amount: number): number {
-  const impact = amount / LIVING_TRADE_CONFIG.marketLiquidity;
-  return Math.min(LIVING_TRADE_CONFIG.maxMarketImpact, impact);
+  return Math.min(
+    ECONOMY_CONFIG.maxMarketImpact,
+    amount / ECONOMY_CONFIG.marketLiquidity,
+  );
 }
 
-/** ความอิ่มตัวตลาดเมื่อขายปริมาณมาก */
 export function marketSaturation(amount: number, stock: number): number {
   const ratio = amount / Math.max(stock + amount, 1);
   return Math.min(0.4, ratio * 0.5);
 }
 
-/** แนวโน้มราคา */
 export function priceTrend(item: CommodityState): 'up' | 'down' | 'flat' {
-  const diff = item.currentPrice - item.previousPrice;
-  if (diff > 1) return 'up';
-  if (diff < -1) return 'down';
+  if (item.trend === 'rising') return 'up';
+  if (item.trend === 'falling') return 'down';
   return 'flat';
 }

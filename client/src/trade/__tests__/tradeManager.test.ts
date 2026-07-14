@@ -36,7 +36,7 @@ describe('TradeManager', () => {
     expect(result.ok).toBe(true);
     expect(wallet.coins).toBeLessThan(10_000);
     expect(trade.hold.slots.find((s) => s.commodityId === 'fresh-fish')?.quantity).toBe(5);
-    expect(trade.living.getStock('starter-island', 'fresh-fish')).toBeLessThan(150);
+    expect(trade.living.getStock('starter-island', 'fresh-fish')).toBeLessThan(160);
   });
 
   it('sells with profit on import island', () => {
