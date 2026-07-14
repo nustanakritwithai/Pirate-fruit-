@@ -13,6 +13,8 @@ export class DayNightCycle {
   private readonly daySun = new THREE.Color(0xfff1dc);
   private readonly duskSun = new THREE.Color(0xff9d62);
   private readonly nightSun = new THREE.Color(0x7792bf);
+  private focusX = 0;
+  private focusZ = 0;
 
   constructor(
     private scene: THREE.Scene,
@@ -43,6 +45,13 @@ export class DayNightCycle {
     this.applyLighting();
   }
 
+  /** เลื่อนกรอบแสงเงาตามผู้เล่น เพื่อให้เกาะไกลจาก origin ยังมี dynamic shadow คมชัด */
+  setFocus(x: number, z: number): void {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    this.focusX = x;
+    this.focusZ = z;
+  }
+
   update(dt: number): void {
     this.time = (this.time + dt / DAY_LENGTH_SECONDS) % 1;
     this.applyTimer += dt;
@@ -67,7 +76,10 @@ export class DayNightCycle {
     this.sky.material.uniforms.rayleigh.value = THREE.MathUtils.lerp(0.35, 2.25, daylight);
     this.sky.material.uniforms.turbidity.value = THREE.MathUtils.lerp(8.5, 5.8, daylight);
 
+    this.sun.target.position.set(this.focusX, 0, this.focusZ);
     this.sun.position.copy(sunDirection).multiplyScalar(130);
+    this.sun.position.x += this.focusX;
+    this.sun.position.z += this.focusZ;
     this.sun.intensity = THREE.MathUtils.lerp(0.12, 3, daylight);
     this.sun.color.copy(this.nightSun).lerp(this.daySun, daylight).lerp(this.duskSun, dusk * 0.72);
     this.hemisphere.intensity = THREE.MathUtils.lerp(0.12, 0.42, daylight);

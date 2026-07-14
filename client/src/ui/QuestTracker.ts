@@ -4,6 +4,9 @@ const TARGET_NAMES: Record<string, string> = {
   crab: 'ปูทะเลดุ',
   grunt: 'โจรสลัดเร่ร่อน',
   boss: 'กัปตันหนวดดำ',
+  'jungle-bandit': 'โจรป่าพงไพร',
+  'ruin-guardian': 'ผู้พิทักษ์ศิลา',
+  'venom-ape-boss': 'วานรพิษโบราณ',
 };
 
 export class QuestTracker {

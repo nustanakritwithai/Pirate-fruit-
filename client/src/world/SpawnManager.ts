@@ -1,6 +1,7 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { CollisionSystem } from './Collision';
-import { WORLD_POIS } from './WorldPOI';
+import { ISLANDS, findIslandAt, getIsland, inferIslandId } from '../island/IslandRegistry';
+import type { IslandId } from '../island/IslandTypes';
 
 export interface SpawnLocation {
   id: string;
@@ -13,26 +14,60 @@ export interface SpawnLocation {
 /** ดูแลจุดเกิดที่ปลอดภัย แยกจากตำแหน่ง autosave ของผู้เล่น */
 export class SpawnManager {
   readonly defaultSpawn: SpawnLocation;
+  private checkpointSpawn: SpawnLocation;
+  private checkpointIslandId: IslandId = 'starter-island';
 
   constructor(
     private controller: CharacterController,
     private collision: CollisionSystem,
   ) {
-    const { x, z, id } = WORLD_POIS.village;
+    const { spawn } = getIsland('starter-island');
+    const { x, z, id } = spawn;
     this.defaultSpawn = {
       id,
       x,
       y: collision.heightAt(x, z) + 0.02,
       z,
-      heading: Math.PI,
+      heading: spawn.heading,
     };
+    this.checkpointSpawn = this.defaultSpawn;
+  }
+
+  get islandId(): IslandId {
+    return this.checkpointIslandId;
+  }
+
+  get checkpoint(): { spawnId: string; islandId: IslandId } {
+    return { spawnId: this.checkpointSpawn.id, islandId: this.checkpointIslandId };
   }
 
   isSafeSavedPosition(value: { x: number; y: number; z: number }): boolean {
     if (![value.x, value.y, value.z].every(Number.isFinite)) return false;
-    if (Math.hypot(value.x, value.z) > 95) return false;
+    if (!findIslandAt(value.x, value.z, 9)) return false;
     const ground = this.collision.heightAt(value.x, value.z);
     return ground > -0.25 && value.y >= ground - 1 && value.y < ground + 12;
+  }
+
+  /** โหลด checkpoint จาก Save v3; Save v1-v2 จะอนุมานเกาะจากตำแหน่งเดิม */
+  restoreCheckpoint(value: { x: number; z: number; spawnId?: string; islandId?: IslandId }): void {
+    const islandId = value.islandId ?? inferIslandId(value.x, value.z);
+    const island = ISLANDS.find((candidate) => candidate.id === islandId)
+      ?? ISLANDS.find((candidate) => candidate.spawn.id === value.spawnId);
+    if (island) this.activateIsland(island.id);
+  }
+
+  /** เมื่อขึ้นฝั่งและค้นพบเกาะ จุดเกิดใหม่จะย้ายมาที่ Safe Zone ของเกาะนั้น */
+  activateIsland(islandId: IslandId): void {
+    const island = getIsland(islandId);
+    const spawn = island.spawn;
+    this.checkpointIslandId = islandId;
+    this.checkpointSpawn = {
+      id: spawn.id,
+      x: spawn.x,
+      y: this.collision.heightAt(spawn.x, spawn.z) + 0.02,
+      z: spawn.z,
+      heading: spawn.heading,
+    };
   }
 
   teleportToDefault(): void {
@@ -41,8 +76,14 @@ export class SpawnManager {
     this.controller.heading = spawn.heading;
   }
 
+  teleportToCheckpoint(): void {
+    const spawn = this.checkpointSpawn;
+    this.controller.teleport(spawn.x, spawn.y, spawn.z);
+    this.controller.heading = spawn.heading;
+  }
+
   respawn(): void {
-    this.teleportToDefault();
+    this.teleportToCheckpoint();
     this.controller.hp = this.controller.hpMax;
     this.controller.energy = this.controller.energyMax;
   }

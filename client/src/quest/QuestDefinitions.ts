@@ -28,6 +28,45 @@ export const QUEST_DEFINITIONS: readonly QuestDefinition[] = [
     objectives: [{ type: 'boss', targetId: 'boss', requiredAmount: 1 }],
     rewards: { playerExp: 600, coins: 350, masteryBonus: 80 },
   },
+  {
+    id: 'mist-jungle-bandits',
+    name: 'เงาโจรในพงไพร',
+    description: 'กำจัดโจรป่าพงไพร 6 คนที่คุมเส้นทางใต้ของเกาะ',
+    minimumLevel: 15,
+    repeatable: true,
+    objectives: [{ type: 'kill', targetId: 'jungle-bandit', requiredAmount: 6 }],
+    rewards: { playerExp: 720, coins: 420, masteryBonus: 90 },
+  },
+  {
+    id: 'ancient-guardians',
+    name: 'ผู้พิทักษ์ที่ตื่นขึ้น',
+    description: 'ปราบผู้พิทักษ์ศิลา 5 ตนรอบซากวิหารโบราณ',
+    minimumLevel: 20,
+    repeatable: true,
+    objectives: [{ type: 'kill', targetId: 'ruin-guardian', requiredAmount: 5 }],
+    rewards: { playerExp: 1100, coins: 650, masteryBonus: 140 },
+  },
+  {
+    id: 'mist-jungle-cleansing',
+    name: 'กวาดล้างเส้นทางวิหาร',
+    description: 'เปิดเส้นทางด้วยการกำจัดโจรป่าและผู้พิทักษ์ศิลา',
+    minimumLevel: 23,
+    repeatable: true,
+    objectives: [
+      { type: 'kill', targetId: 'jungle-bandit', requiredAmount: 3 },
+      { type: 'kill', targetId: 'ruin-guardian', requiredAmount: 3 },
+    ],
+    rewards: { playerExp: 1450, coins: 850, masteryBonus: 180 },
+  },
+  {
+    id: 'venom-ape-hunt',
+    name: 'ราชาแห่งม่านหมอก',
+    description: 'โค่นวานรพิษโบราณที่เฝ้าถ้ำทางเหนือ',
+    minimumLevel: 25,
+    repeatable: true,
+    objectives: [{ type: 'boss', targetId: 'venom-ape-boss', requiredAmount: 1 }],
+    rewards: { playerExp: 2600, coins: 1600, masteryBonus: 320 },
+  },
 ];
 
 export const QUESTS_BY_ID = new Map(QUEST_DEFINITIONS.map((quest) => [quest.id, quest]));

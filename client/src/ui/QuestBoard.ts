@@ -15,7 +15,7 @@ export class QuestBoard {
     this.injectStyles();
     this.root = document.createElement('div');
     this.root.className = 'quest-board-root';
-    this.root.innerHTML = `<section class="quest-board"><header><div><h2>📜 งานของหัวหน้ามะลิ</h2>
+    this.root.innerHTML = `<section class="quest-board"><header><div><h2>📜 กระดานภารกิจหมู่เกาะ</h2>
       <p>รับได้ครั้งละ 1 ภารกิจ · รางวัลเข้าทันทีเมื่อทำครบ</p></div>
       <button class="quest-board-close" type="button" aria-label="ปิด">×</button></header>
       <div class="quest-board-cards"></div><div class="quest-board-status"></div></section>`;
@@ -78,12 +78,12 @@ export class QuestBoard {
     for (const quest of QUEST_DEFINITIONS) {
       const card = document.createElement('article');
       card.className = `quest-card${state.activeQuestId === quest.id ? ' active' : ''}`;
-      const objective = quest.objectives[0];
+      const targetAmount = quest.objectives.reduce((total, objective) => total + objective.requiredAmount, 0);
       const locked = state.player.level < quest.minimumLevel;
       const active = state.activeQuestId === quest.id;
       card.innerHTML = `<h3>${quest.name}</h3><p>${quest.description}</p>
         <div class="quest-card-meta"><span>Lv.${quest.minimumLevel}+</span>
-          <span>${objective.requiredAmount} เป้าหมาย</span><span>ทำซ้ำได้</span></div>
+          <span>${targetAmount} เป้าหมาย</span><span>${quest.objectives.length > 1 ? `${quest.objectives.length} ขั้น` : 'ทำซ้ำได้'}</span></div>
         <div class="quest-card-reward">+${quest.rewards.playerExp} EXP · +${quest.rewards.coins} Coins · +${quest.rewards.masteryBonus ?? 0} Mastery</div>
         <button type="button" data-quest="${quest.id}" ${locked || active ? 'disabled' : ''}>${
           active ? 'กำลังทำภารกิจ' : locked ? `ต้องการ Lv.${quest.minimumLevel}` : 'รับภารกิจ'
