@@ -94,6 +94,11 @@ export class Minimap {
           color = [221 - t * 34, 239 - t * 31, 243 - t * 24];
         }
         else if (terrainIsland?.id === 'azure-frost') color = [128, 157, 169];
+        else if (terrainIsland?.id === 'tempest-sky' && h < 4.2) {
+          const t = Math.max(0, Math.min(1, h / 4.2));
+          color = [190 - t * 38, 211 - t * 35, 210 - t * 28];
+        }
+        else if (terrainIsland?.id === 'tempest-sky') color = [119, 137, 154];
         else if (h < 0.7) color = [222, 205, 158];
         else if (h < 3.4) {
           const t = (h - 0.7) / 2.7;

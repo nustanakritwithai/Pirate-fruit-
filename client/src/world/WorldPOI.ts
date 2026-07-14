@@ -192,9 +192,22 @@ export const AZURE_FROST_POIS = {
 } as const satisfies Record<string, WorldPOI>;
 
 export const AZURE_FROST_POI_LIST: WorldPOI[] = Object.values(AZURE_FROST_POIS);
+
+/** จุดสำคัญของเกาะที่ห้า: นครหน้าผา สวนเมฆ โรงตีพายุ และวิหารยอดเกาะ */
+export const TEMPEST_SKY_POIS = {
+  cliffVillage: { id: 'tempest-cliff-village', islandId: 'tempest-sky', name: 'หมู่บ้านหน้าผานภา', icon: '◆', x: -96, z: 210, safeRadius: 12 },
+  harbor: { id: 'tempest-sky-harbor', islandId: 'tempest-sky', name: 'ท่าเรือนภาวายุ', icon: '⚓', x: -99, z: 210, safeRadius: 8 },
+  cloudGarden: { id: 'tempest-cloud-garden', islandId: 'tempest-sky', name: 'สวนเมฆลอย', icon: '●', x: -124, z: 190, safeRadius: 9 },
+  raiderCamp: { id: 'tempest-raider-camp', islandId: 'tempest-sky', name: 'ค่ายโจรเวหา', icon: '⚔', x: -145, z: 207, safeRadius: 8 },
+  stormForge: { id: 'tempest-storm-forge', islandId: 'tempest-sky', name: 'โรงตีผลึกพายุ', icon: '◇', x: -124, z: 232, safeRadius: 9 },
+  skyTemple: { id: 'tempest-sky-temple', islandId: 'tempest-sky', name: 'วิหารเจ้าแห่งพายุ', icon: '▲', x: -153, z: 241, safeRadius: 11 },
+} as const satisfies Record<string, WorldPOI>;
+
+export const TEMPEST_SKY_POI_LIST: WorldPOI[] = Object.values(TEMPEST_SKY_POIS);
 export const ALL_WORLD_POI_LIST: WorldPOI[] = [
   ...WORLD_POI_LIST,
   ...MIST_JUNGLE_POI_LIST,
   ...SUNSCAR_DESERT_POI_LIST,
   ...AZURE_FROST_POI_LIST,
+  ...TEMPEST_SKY_POI_LIST,
 ];

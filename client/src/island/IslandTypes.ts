@@ -2,7 +2,8 @@ export type IslandId =
   | 'starter-island'
   | 'mist-jungle'
   | 'sunscar-desert'
-  | 'azure-frost';
+  | 'azure-frost'
+  | 'tempest-sky';
 
 export interface IslandPoint {
   x: number;
