@@ -1,12 +1,12 @@
 /** ระบบสเตตัส — อ้างอิง https://blox-fruits.fandom.com/wiki/Stats */
 
-/** สเตตัส 5 แบบใน Blox Fruits */
-export type BloxStatId = 'melee' | 'defense' | 'sword' | 'gun' | 'fruit';
+/** สเตตัส 5 แบบใน Blox Fruits + 'mana' (พลังเวท) ที่เพิ่มเข้ามาสำหรับระบบ MP */
+export type BloxStatId = 'melee' | 'defense' | 'sword' | 'gun' | 'fruit' | 'mana';
 
 /** แมปกับ PlayerStatId ใน progression */
-export type InternalStatId = 'combat' | 'vitality' | 'blade' | 'ranged' | 'fruitPower';
+export type InternalStatId = 'combat' | 'vitality' | 'blade' | 'ranged' | 'fruitPower' | 'mana';
 
-export type StatEffectKind = 'damage' | 'health' | 'energy';
+export type StatEffectKind = 'damage' | 'health' | 'energy' | 'mana';
 
 export interface StatEffect {
   kind: StatEffectKind;
@@ -61,5 +61,7 @@ export interface StatsSystemConfig {
   damageMultiplierAtMax: number;
   healthPerDefensePoint: number;
   energyPerMeleePoint: number;
+  /** MP ที่เพิ่มต่อ 1 แต้มสเตต "พลังเวท" */
+  manaPerManaPoint: number;
   meleeDamagePerPoint: number;
 }

@@ -24,7 +24,7 @@ export function createDefaultProgressionState(coins = 0): ProgressionState {
       level: 1,
       exp: 0,
       statPoints: 0,
-      stats: { combat: 1, vitality: 1, blade: 1, ranged: 1, fruitPower: 1 },
+      stats: { combat: 1, vitality: 1, blade: 1, ranged: 1, fruitPower: 1, mana: 1 },
     },
     mastery: {
       'basic-brawl': { itemId: 'basic-brawl', category: 'style', level: 1, exp: 0 },
@@ -55,6 +55,7 @@ function sanitizeStats(value: unknown): PlayerStats {
     blade: finiteInt(stats.blade, 1, 1, PROGRESSION_CONFIG.maxStatPerCategory),
     ranged: finiteInt(stats.ranged, 1, 1, PROGRESSION_CONFIG.maxStatPerCategory),
     fruitPower: finiteInt(stats.fruitPower, 1, 1, PROGRESSION_CONFIG.maxStatPerCategory),
+    mana: finiteInt(stats.mana, 1, 1, PROGRESSION_CONFIG.maxStatPerCategory),
   };
 }
 

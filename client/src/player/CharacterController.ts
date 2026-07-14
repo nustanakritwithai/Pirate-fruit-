@@ -14,6 +14,10 @@ const ENERGY_REGEN = 16; // ต่อวินาที ตอนไม่ sprin
 /** ถ้าพลังหมด ต้องฟื้นถึงค่านี้ก่อนถึงจะ sprint ได้อีก */
 const ENERGY_RECOVER_THRESHOLD = 25;
 
+// MP (พลังเวท) — ทรัพยากรร่ายสกิล แยกจาก Energy (สเตมินา)
+const MP_MAX = 100;
+const MP_REGEN = 9; // ต่อวินาที (คืนตลอดเวลา)
+
 // พุ่งหลบ (ติดตัวทุกคน ใช้ได้ตั้งแต่ Phase 1)
 const DASH_SPEED = 22;
 const DASH_DURATION = 0.18;
@@ -50,6 +54,9 @@ export class CharacterController {
   private _hpMax = 100;
   energy = ENERGY_MAX;
   private _energyMax = ENERGY_MAX;
+  /** MP (พลังเวท) — ใช้ร่ายสกิล */
+  mp = MP_MAX;
+  private _mpMax = MP_MAX;
 
   private verticalVelocity = 0;
   private onGround = false;
@@ -93,28 +100,38 @@ export class CharacterController {
     return this._energyMax;
   }
 
-  /** ใช้ HP/Energy ชุดเดิม แต่รับเพดานใหม่จาก ProgressionManager */
+  get mpMax(): number {
+    return this._mpMax;
+  }
+
+  /** ใช้ HP/Energy/MP ชุดเดิม แต่รับเพดานใหม่จาก ProgressionManager */
   applyProgressionCaps(
     maxHp: number,
     maxEnergy: number,
+    maxMp: number,
     mode: 'clamp' | 'preserve-delta' | 'full',
   ): void {
     const oldHpMax = this._hpMax;
     const oldEnergyMax = this._energyMax;
+    const oldMpMax = this._mpMax;
     this._hpMax = Math.max(1, Math.floor(maxHp));
     this._energyMax = Math.max(1, Math.floor(maxEnergy));
+    this._mpMax = Math.max(1, Math.floor(maxMp));
     if (mode === 'full') {
       this.hp = this._hpMax;
       this.energy = this._energyMax;
+      this.mp = this._mpMax;
     } else if (mode === 'preserve-delta') {
       this.hp = Math.min(this._hpMax, Math.max(0, this.hp + this._hpMax - oldHpMax));
       this.energy = Math.min(
         this._energyMax,
         Math.max(0, this.energy + this._energyMax - oldEnergyMax),
       );
+      this.mp = Math.min(this._mpMax, Math.max(0, this.mp + this._mpMax - oldMpMax));
     } else {
       this.hp = Math.min(this.hp, this._hpMax);
       this.energy = Math.min(this.energy, this._energyMax);
+      this.mp = Math.min(this.mp, this._mpMax);
     }
   }
 
@@ -217,6 +234,11 @@ export class CharacterController {
       if (this.energy === 0) this.exhausted = true;
     } else {
       this.energy = Math.min(this.energyMax, this.energy + ENERGY_REGEN * dt);
+    }
+
+    // ---------- MP (พลังเวท) regen ตลอดเวลา ----------
+    if (this.mp < this._mpMax) {
+      this.mp = Math.min(this._mpMax, this.mp + MP_REGEN * dt);
     }
 
     // ---------- พุ่งหลบ (Dash) ----------

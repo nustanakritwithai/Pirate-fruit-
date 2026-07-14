@@ -663,11 +663,12 @@ export class PlayerCombat {
     }
     // คูลดาวน์รายสกิล — สกิลชุดอื่นที่สลอตเดียวกันจะไม่บล็อกกัน
     if ((this.skillCooldowns.get(skill.id) ?? 0) > 0) return;
-    if (this.controller.energy < skill.energyCost) {
-      this.touch?.notify('พลังงานไม่พอ ⚡');
+    // สกิลใช้ MP (พลังเวท) — Energy เหลือไว้เป็นสเตมินา (วิ่ง/พุ่ง)
+    if (this.controller.mp < skill.energyCost) {
+      this.touch?.notify('MP ไม่พอ 🔵');
       return;
     }
-    this.controller.energy -= skill.energyCost;
+    this.controller.mp -= skill.energyCost;
     this.skillCooldowns.set(skill.id, skill.cooldown);
     this.swing = null;
     this.comboIndex = 0;
@@ -1142,13 +1143,14 @@ export class PlayerCombat {
     }
   }
 
-  /** buff/heal — ฮีล + เพิ่มพลังงาน + บัฟดาเมจชั่วคราว */
+  /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
     this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + healHp);
-    this.controller.energy = Math.min(
-      this.controller.energyMax,
-      this.controller.energy + (skill.isUltimate ? 30 : 18),
+    // คืน MP (ทรัพยากรสกิล) แทน Energy
+    this.controller.mp = Math.min(
+      this.controller.mpMax,
+      this.controller.mp + (skill.isUltimate ? 30 : 18),
     );
     this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
     this.skillBuffTimer = 8;

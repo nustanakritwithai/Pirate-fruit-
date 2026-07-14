@@ -15,5 +15,6 @@ export const STATS_SYSTEM_CONFIG: StatsSystemConfig = {
   damageMultiplierAtMax: 78.26,
   healthPerDefensePoint: 5,
   energyPerMeleePoint: 5,
+  manaPerManaPoint: 5,
   meleeDamagePerPoint: 0.5,
 } as const;

@@ -86,5 +86,6 @@ export class SpawnManager {
     this.teleportToCheckpoint();
     this.controller.hp = this.controller.hpMax;
     this.controller.energy = this.controller.energyMax;
+    this.controller.mp = this.controller.mpMax;
   }
 }

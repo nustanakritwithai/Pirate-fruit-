@@ -11,11 +11,14 @@ import {
 import { getBuildPreset, getStatByInternalId } from '../StatsRegistry';
 
 describe('Stats databook', () => {
-  it('defines all 5 Blox Fruits stats', () => {
-    expect(STAT_DEFINITIONS).toHaveLength(5);
+  it('defines the 5 Blox Fruits stats + mana (พลังเวท → MP)', () => {
+    expect(STAT_DEFINITIONS).toHaveLength(6);
     expect(STAT_DEFINITIONS.map((s) => s.id).sort()).toEqual(
-      ['defense', 'fruit', 'gun', 'melee', 'sword'].sort(),
+      ['defense', 'fruit', 'gun', 'mana', 'melee', 'sword'].sort(),
     );
+    const mana = STAT_DEFINITIONS.find((s) => s.id === 'mana')!;
+    expect(mana.internalId).toBe('mana');
+    expect(mana.effects.some((e) => e.kind === 'mana' && e.perPoint > 0)).toBe(true);
   });
 
   it('maps internal stat ids to blox ids', () => {

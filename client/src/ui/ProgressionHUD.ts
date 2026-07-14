@@ -11,8 +11,10 @@ export class ProgressionHUD {
   private readonly coins: HTMLSpanElement;
   private readonly fill: HTMLDivElement;
   private readonly hpFill: HTMLDivElement;
+  private readonly mpFill: HTMLDivElement;
   private readonly energyFill: HTMLDivElement;
   private readonly hpText: HTMLSpanElement;
+  private readonly mpText: HTMLSpanElement;
   private readonly energyText: HTMLSpanElement;
 
   constructor(
@@ -41,6 +43,7 @@ export class ProgressionHUD {
       .progression-vital-label { position:absolute; inset:0; text-align:center; font-size:8px; line-height:8px;
         color:#fff; font-weight:700; text-shadow:0 1px 2px #000; }
       .progression-hp-fill { background:linear-gradient(90deg,#ff6b61,#d92f1f); }
+      .progression-mp-fill { background:linear-gradient(90deg,#7aa8ff,#4a6ff0); }
       .progression-energy-fill { background:linear-gradient(90deg,#ffe77a,#e8b820); }
       .progression-hud.level-up { animation:progression-level-flash .8s ease; }
       @keyframes progression-level-flash { 0%,100%{box-shadow:0 4px 14px rgba(0,0,0,.3)}
@@ -60,6 +63,8 @@ export class ProgressionHUD {
       <div class="progression-vitals">
         <div class="progression-vital"><div class="progression-vital-fill progression-hp-fill"></div>
           <div class="progression-vital-label">HP <span class="progression-hp-text"></span></div></div>
+        <div class="progression-vital"><div class="progression-vital-fill progression-mp-fill"></div>
+          <div class="progression-vital-label">MP <span class="progression-mp-text"></span></div></div>
         <div class="progression-vital"><div class="progression-vital-fill progression-energy-fill"></div>
           <div class="progression-vital-label">Energy <span class="progression-energy-text"></span></div></div>
       </div>`;
@@ -69,8 +74,10 @@ export class ProgressionHUD {
     this.coins = this.root.querySelector('.progression-hud-coins')!;
     this.fill = this.root.querySelector('.progression-exp-fill')!;
     this.hpFill = this.root.querySelector('.progression-hp-fill')!;
+    this.mpFill = this.root.querySelector('.progression-mp-fill')!;
     this.energyFill = this.root.querySelector('.progression-energy-fill')!;
     this.hpText = this.root.querySelector('.progression-hp-text')!;
+    this.mpText = this.root.querySelector('.progression-mp-text')!;
     this.energyText = this.root.querySelector('.progression-energy-text')!;
 
     progression.events.on('player:exp-gained', () => this.render());
@@ -85,12 +92,15 @@ export class ProgressionHUD {
 
   update(): void {
     const hpFraction = this.controller.hpMax > 0 ? this.controller.hp / this.controller.hpMax : 0;
+    const mpFraction = this.controller.mpMax > 0 ? this.controller.mp / this.controller.mpMax : 0;
     const energyFraction = this.controller.energyMax > 0
       ? this.controller.energy / this.controller.energyMax
       : 0;
     this.hpFill.style.width = `${Math.max(0, Math.min(1, hpFraction)) * 100}%`;
+    this.mpFill.style.width = `${Math.max(0, Math.min(1, mpFraction)) * 100}%`;
     this.energyFill.style.width = `${Math.max(0, Math.min(1, energyFraction)) * 100}%`;
     this.hpText.textContent = `${Math.round(this.controller.hp)}/${this.controller.hpMax}`;
+    this.mpText.textContent = `${Math.round(this.controller.mp)}/${this.controller.mpMax}`;
     this.energyText.textContent = `${Math.round(this.controller.energy)}/${this.controller.energyMax}`;
   }
 

@@ -9,7 +9,7 @@ export interface ProgressionEventMap {
   'player:exp-gained': { amount: number; source?: string; currentExp: number };
   'player:level-up': { oldLevel: number; newLevel: number; statPointsGained: number };
   'player:stat-spent': { statId: PlayerStatId; amount: number; newValue: number };
-  'player:stats-changed': { maxHp: number; maxEnergy: number };
+  'player:stats-changed': { maxHp: number; maxEnergy: number; maxMp: number };
   'mastery:exp-gained': {
     itemId: string;
     category: LoadoutCategory;

@@ -8,6 +8,7 @@ import { grantEnemyRewards as grantRewards } from './RewardSystem';
 import {
   getMaxEnergy,
   getMaxHp,
+  getMaxMp,
   getStatDamageMultiplier,
   spendStatPoint as applyStatPoint,
 } from './StatSystem';
@@ -44,7 +45,7 @@ export class ProgressionManager implements Updatable {
     this.storage = options.storage === undefined ? browserStorage() : options.storage;
     this.resources = options.resources;
     this.state = loadProgression(this.storage);
-    this.resources?.applyProgressionCaps(this.getMaxHp(), this.getMaxEnergy(), 'clamp');
+    this.resources?.applyProgressionCaps(this.getMaxHp(), this.getMaxEnergy(), this.getMaxMp(), 'clamp');
     if (typeof window !== 'undefined') window.addEventListener('beforeunload', () => this.save());
   }
 
@@ -72,7 +73,7 @@ export class ProgressionManager implements Updatable {
       });
     }
     if (result.levelsGained > 0) {
-      this.resources?.applyProgressionCaps(this.getMaxHp(), this.getMaxEnergy(), 'full');
+      this.resources?.applyProgressionCaps(this.getMaxHp(), this.getMaxEnergy(), this.getMaxMp(), 'full');
       this.events.emit('player:level-up', {
         oldLevel: result.previousLevel,
         newLevel: result.newLevel,
@@ -146,19 +147,21 @@ export class ProgressionManager implements Updatable {
   spendStatPoint(statId: PlayerStatId, amount = 1): boolean {
     const oldMaxHp = this.getMaxHp();
     const oldMaxEnergy = this.getMaxEnergy();
+    const oldMaxMp = this.getMaxMp();
     if (!applyStatPoint(this.state.player, statId, amount)) return false;
 
     const maxHp = this.getMaxHp();
     const maxEnergy = this.getMaxEnergy();
-    this.resources?.applyProgressionCaps(maxHp, maxEnergy, 'preserve-delta');
+    const maxMp = this.getMaxMp();
+    this.resources?.applyProgressionCaps(maxHp, maxEnergy, maxMp, 'preserve-delta');
     this.dirty = true;
     this.events.emit('player:stat-spent', {
       statId,
       amount,
       newValue: this.state.player.stats[statId],
     });
-    if (maxHp !== oldMaxHp || maxEnergy !== oldMaxEnergy) {
-      this.events.emit('player:stats-changed', { maxHp, maxEnergy });
+    if (maxHp !== oldMaxHp || maxEnergy !== oldMaxEnergy || maxMp !== oldMaxMp) {
+      this.events.emit('player:stats-changed', { maxHp, maxEnergy, maxMp });
     }
     this.save();
     return true;
@@ -174,6 +177,10 @@ export class ProgressionManager implements Updatable {
 
   getMaxEnergy(): number {
     return getMaxEnergy(this.state.player.stats);
+  }
+
+  getMaxMp(): number {
+    return getMaxMp(this.state.player.stats);
   }
 
   getMasteryLevel(itemId: string): number {

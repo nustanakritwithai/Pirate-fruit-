@@ -7,7 +7,7 @@ const SAVE_KEY = 'pirate-fruit:save-v1';
 const AUTOSAVE_INTERVAL = 3; // วินาที
 
 export interface SaveData {
-  saveVersion?: 2 | 3;
+  saveVersion?: 2 | 3 | 4;
   x: number;
   y: number;
   z: number;
@@ -18,6 +18,7 @@ export interface SaveData {
   islandId?: IslandId;
   hp?: number;
   energy?: number;
+  mp?: number;
 }
 
 /**
@@ -61,7 +62,7 @@ export class SaveSystem {
     const p = this.controller.position;
     const checkpoint = this.getCheckpoint();
     const data: SaveData = {
-      saveVersion: 3,
+      saveVersion: 4,
       x: p.x,
       y: p.y,
       z: p.z,
@@ -72,6 +73,7 @@ export class SaveSystem {
       islandId: checkpoint.islandId,
       hp: this.controller.hp,
       energy: this.controller.energy,
+      mp: this.controller.mp,
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));

@@ -53,6 +53,15 @@ export const STAT_DEFINITIONS: readonly StatDefinition[] = [
     description: 'เพิ่มดาเมจผลไม้ (+0.5 ต่อแต้ม, สเกลแบบ 2.795% ต่อแต้มสำหรับตัวคูณรวม)',
     effects: [{ kind: 'damage', perPoint: 0.5, appliesTo: ['fruit'] }],
   },
+  {
+    id: 'mana',
+    name: 'Mana',
+    nameTh: 'พลังเวท',
+    wikiUrl: WIKI,
+    internalId: 'mana',
+    description: 'เพิ่ม MP (+5 ต่อแต้ม) — พลังเวทที่ใช้ร่ายสกิลทุกชนิด',
+    effects: [{ kind: 'mana', perPoint: 5 }],
+  },
 ] as const;
 
 export const STAT_BY_ID: Readonly<Record<BloxStatId, StatDefinition>> = Object.fromEntries(
@@ -65,6 +74,7 @@ export const INTERNAL_TO_BLOX: Record<string, BloxStatId> = {
   blade: 'sword',
   ranged: 'gun',
   fruitPower: 'fruit',
+  mana: 'mana',
 };
 
 export const BLOX_TO_INTERNAL: Record<BloxStatId, string> = {
@@ -73,4 +83,5 @@ export const BLOX_TO_INTERNAL: Record<BloxStatId, string> = {
   sword: 'blade',
   gun: 'ranged',
   fruit: 'fruitPower',
+  mana: 'mana',
 };

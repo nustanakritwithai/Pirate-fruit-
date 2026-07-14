@@ -94,6 +94,7 @@ async function main(): Promise<void> {
     controller.energyMax,
     Math.max(0, saved?.energy ?? controller.energyMax),
   );
+  controller.mp = Math.min(controller.mpMax, Math.max(0, saved?.mp ?? controller.mpMax));
   world.setTimeOfDay(saved?.worldTime ?? 0.31);
 
   const player = new Player(controller, graphics, game.renderer.capabilities.getMaxAnisotropy());

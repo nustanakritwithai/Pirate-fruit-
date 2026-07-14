@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getMaxEnergy,
   getMaxHp,
+  getMaxMp,
   getStatDamageMultiplier,
   spendStatPoint,
 } from '../StatSystem';
@@ -17,6 +18,15 @@ describe('StatSystem', () => {
     stats.combat = 10; // Melee +5 Energy ต่อแต้ม
     expect(getMaxHp(stats)).toBe(145);
     expect(getMaxEnergy(stats)).toBe(145);
+  });
+
+  it('mana stat raises Max MP (+5/pt), base 100', () => {
+    const stats = createDefaultProgressionState().player.stats;
+    expect(getMaxMp(stats)).toBe(100);
+    stats.mana = 10; // พลังเวท +5 MP ต่อแต้ม
+    expect(getMaxMp(stats)).toBe(145);
+    // MP แยกจาก Energy — เพิ่ม mana ไม่กระทบ Energy
+    expect(getMaxEnergy(stats)).toBe(100);
   });
 
   it('maps damage scaling to the correct equipment category', () => {

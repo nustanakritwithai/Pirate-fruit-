@@ -17,6 +17,7 @@ const BLOX_TO_CATEGORY: Record<BloxStatId, 'style' | 'sword' | 'gun' | 'fruit' |
   sword: 'sword',
   gun: 'gun',
   fruit: 'fruit',
+  mana: null,
 };
 
 export class StatsPanel {
@@ -96,6 +97,9 @@ export class StatsPanel {
     if (stat.id === 'defense') {
       return `+${points * PROGRESSION_CONFIG.healthPerVitality} HP`;
     }
+    if (stat.id === 'mana') {
+      return `+${points * PROGRESSION_CONFIG.manaPerMana} MP`;
+    }
     if (stat.id === 'melee') {
       const mult = this.progression.getDamageMultiplier('style');
       return `+${points * PROGRESSION_CONFIG.energyPerCombat} Energy · ดาเมจหมัด ${mult.toFixed(2)}x`;
@@ -138,7 +142,9 @@ export class StatsPanel {
 
     const derived = document.createElement('div');
     derived.className = 'stats-derived';
-    derived.textContent = `Max HP ${this.progression.getMaxHp()} · Max Energy ${this.progression.getMaxEnergy()}`;
+    derived.textContent =
+      `Max HP ${this.progression.getMaxHp()} · Max MP ${this.progression.getMaxMp()} · ` +
+      `Max Energy ${this.progression.getMaxEnergy()}`;
     this.content.appendChild(derived);
 
     // Mastery แยกต่อชิ้น — โชว์อาวุธที่ถือ + ผลไม้พร้อมกัน (แต่ละชิ้นเก็บเลเวลของตัวเอง)

@@ -1,4 +1,4 @@
-export type PlayerStatId = 'combat' | 'vitality' | 'blade' | 'ranged' | 'fruitPower';
+export type PlayerStatId = 'combat' | 'vitality' | 'blade' | 'ranged' | 'fruitPower' | 'mana';
 
 export type LoadoutCategory = 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
 
@@ -8,6 +8,8 @@ export interface PlayerStats {
   blade: number;
   ranged: number;
   fruitPower: number;
+  /** พลังเวท → Max MP (ทรัพยากรร่ายสกิล) */
+  mana: number;
 }
 
 export interface PlayerProgression {
@@ -109,6 +111,7 @@ export interface PlayerResourceAdapter {
   applyProgressionCaps(
     maxHp: number,
     maxEnergy: number,
+    maxMp: number,
     mode: 'clamp' | 'preserve-delta' | 'full',
   ): void;
 }

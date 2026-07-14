@@ -12,6 +12,7 @@ export const PLAYER_STAT_IDS: readonly PlayerStatId[] = [
   'blade',
   'ranged',
   'fruitPower',
+  'mana',
 ];
 
 export function isPlayerStatId(value: unknown): value is PlayerStatId {
@@ -29,6 +30,13 @@ export function getMaxEnergy(stats: PlayerStats): number {
   return (
     PROGRESSION_CONFIG.baseEnergy +
     (Math.max(1, stats.combat) - 1) * PROGRESSION_CONFIG.energyPerCombat
+  );
+}
+
+export function getMaxMp(stats: PlayerStats): number {
+  return (
+    PROGRESSION_CONFIG.baseMana +
+    (Math.max(1, stats.mana) - 1) * PROGRESSION_CONFIG.manaPerMana
   );
 }
 

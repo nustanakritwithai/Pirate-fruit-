@@ -17,6 +17,9 @@ export const PROGRESSION_CONFIG = {
   healthPerVitality: STATS_SYSTEM_CONFIG.healthPerDefensePoint, // +5 ต่อ Defense
   baseEnergy: 100,
   energyPerCombat: STATS_SYSTEM_CONFIG.energyPerMeleePoint, // +5 ต่อ Melee
+  // ---------- Mana → MP (สเตต "พลังเวท" → พลังงานร่ายสกิล) ----------
+  baseMana: 100,
+  manaPerMana: STATS_SYSTEM_CONFIG.manaPerManaPoint, // +5 ต่อ พลังเวท
 
   // ---------- Damage per stat point (wiki: ~78.26x ที่ 2800 แต้ม) ----------
   damagePerStatPoint: STATS_SYSTEM_CONFIG.damagePerStatPoint, // (78.26-1)/2800
