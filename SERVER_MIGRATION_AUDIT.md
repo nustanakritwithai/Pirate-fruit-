@@ -1,22 +1,23 @@
 # Pirate Fruit — Phase S0 Server Migration Audit
 
 วันที่ตรวจ: 2026-07-15 (Asia/Bangkok)  
-ขอบเขต: Phase S0 เท่านั้น — ไม่มีการเปลี่ยน Gameplay, UI, Three.js rendering หรือเริ่มสร้าง Server
+ปรับปรุงผล baseline gate: 2026-07-16  
+ขอบเขต: Phase S0 เท่านั้น — ไม่มีการเปลี่ยน Gameplay, UI, Three.js rendering หรือเริ่มสร้าง Server; มีเฉพาะ test-harness stabilization
 
 ## 1. Executive status
 
-สถานะ Phase S0: **Audit เสร็จ แต่ baseline gate ยัง BLOCKED**
+สถานะ Phase S0: **Code/test baseline ผ่าน; รอยืนยัน deploy branch ใน Render Dashboard**
 
 - Remote default branch ที่ตรวจ: `claude/blox-fruits-three-js-roadmap-1f2f5u`
 - Code baseline commit: `5b2690f31a92c0eee3c9a3f965bdee6912be1f73`
 - Render Blueprint ปัจจุบัน deploy Static Site จาก `client/`, build ด้วย `npm install && npm run build`, publish `dist/`
 - TypeScript check: PASS
 - Production build: PASS
-- Unit/integration suite: FAIL จาก timeout 4 tests; assertion อื่นผ่าน 431 tests
-- Extended economy 20,000 ticks: assertions PASS แต่ process exit 1 เพราะ Vitest worker heartbeat timeout
-- ยังไม่ควรเริ่ม S1 จนกว่าจะทำ test gate ให้ command จบ exit code 0 และยืนยัน branch ใน Render Dashboard
+- Unit/integration suite: PASS — 39 files / 435 tests, exit 0
+- Extended economy 20,000 ticks: PASS — 1 file / 1 test, exit 0, ไม่มี worker heartbeat error
+- ก่อนเริ่ม S1 เหลือยืนยัน branch และ deployed commit ใน Render Dashboard
 
-Baseline commit ข้างต้นเป็น rollback anchor แบบ immutable ได้ทันที แต่ยังไม่ควรติด release tag `singleplayer-v1.0` จนกว่า gate สองข้อด้านบนจะผ่าน
+Baseline commit ข้างต้นเป็น rollback anchor แบบ immutable ได้ทันที แต่ยังไม่ควรติด release tag `singleplayer-v1.0` จนกว่าจะยืนยัน Render deploy branch
 
 ## 2. Repository และ deployment baseline
 
@@ -164,31 +165,31 @@ Coupling ที่ต้องแก้ตามลำดับ:
 
 | Check | Command | Result |
 |---|---|---|
-| TypeScript | `npx tsc --noEmit` | PASS, exit 0, 8.82s |
-| Production build | `npm run build` | PASS, exit 0, 192 modules, 16.02s รวม typecheck |
+| TypeScript | `npx tsc --noEmit` | PASS, exit 0 |
+| Production build | `npm run build` | PASS, exit 0, 192 modules, 20.56s รวม typecheck |
 | Bundle | Vite output | `dist/assets/index-usG6SNuF.js` 1,594.54 kB; gzip 398.85 kB; chunk-size warning only |
-| Full tests | `npm test -- --reporter=verbose` | FAIL, 36 files passed / 3 failed; 431 tests passed / 4 timed out; 2 worker errors; 177.80s wall |
-| Extended soak | `npm run test:extended -- --reporter=verbose` | Domain assertion PASS at 20,000 ticks in 474.406s; command exit 1 from one worker `onTaskUpdate` timeout |
+| Full tests | `npm test` | PASS, 39 files / 435 tests, exit 0, 191.39s wall |
+| Extended soak | `npm run test:extended` | PASS, 20,000 ticks, exit 0, 490.50s test / 492.87s wall |
 
-Timeout tests:
+Baseline timeout tests ที่แก้ test harness แล้ว:
 
 1. Adaptive Factory 1,000 ticks — limit 30s
 2. Trader Memory route diversity — limit 5s
 3. Trader Memory commodity specialization — limit 5s
 4. Player Influence 5,000 ticks — limit 120s
 
-Interpretation:
+Test-harness resolution:
 
-- ไม่พบ assertion failure ที่ชี้ว่า NaN, negative stock, unbounded history หรือ duplicate active state ใน extended soak
-- 20,000 ticks เฉลี่ยประมาณ 23.7 ms/tick บน audit runner; ต่ำกว่า production interval 5s แต่ยังไม่มีผลเมื่อรวม PostgreSQL/network/persist
-- Current CI gate ยังแดงเพราะ synchronous long tests block worker heartbeat และ timeout budgets ต่ำกว่าระยะจริง
-- ก่อน S1 ให้ปรับ **test harness เท่านั้น**: yield event loop เป็นช่วง, แยก soak ออกจาก default unit suite, กำหนด timeout/CI job ที่สมเหตุผล และเก็บ benchmark threshold โดยไม่เปลี่ยนสูตร Gameplay
+- เพิ่ม helper ฝั่ง test ให้ long simulations คืน event loop ทุก 25 ticks เพื่อให้ Vitest ส่ง worker heartbeat ได้
+- ปรับเฉพาะ timeout budgets ตาม benchmark จริง; ไม่เปลี่ยนจำนวน tick, assertion, seed หรือสูตร Gameplay
+- ไม่พบ NaN, negative stock, unbounded history หรือ duplicate active state ใน extended soak
+- 20,000 ticks เฉลี่ยประมาณ 24.5 ms/tick บน audit runner; ต่ำกว่า production interval 5s แต่ยังไม่มีผลเมื่อรวม PostgreSQL/network/persist
 
 ## 9. Key risks
 
 | ระดับ | ความเสี่ยง | Mitigation |
 |---|---|---|
-| Blocker | Test command ไม่จบ exit 0 | PR แรกก่อน S1: stabilize test harness/CI โดยไม่แตะ gameplay |
+| Resolved | Test command เดิมไม่จบ exit 0 | cooperative test batches + benchmark-based timeout; full/extended suites ผ่าน exit 0 |
 | Blocker | Render deploy branch พิสูจน์ไม่ได้จาก repo | ยืนยัน Dashboard branch + deployed commit; บันทึกใน audit PR |
 | Critical | PR #30→#33 เป็น stacked dependency บน base เก่าและ mergeable=false | rebase/retarget ตามลำดับหรือปิด; ห้าม squash ทั้ง stack เข้า S1 |
 | Critical | Local checkout stale/dirty 71 files | S1 ใช้ clean clone/worktree จาก baseline/merged audit branch |
@@ -233,7 +234,7 @@ Interpretation:
 - เพิ่ม local DB integration tests, seed, forward migration และ rollback procedure
 - ยังไม่ย้าย authoritative gameplay จน S5 identity พร้อม
 
-Dependency: `S0 gate fix → S1 → S2 → S3 → S4`; ห้ามทำ S3/S4 ขนานแบบ merge ก่อน S1 เพราะ shared schemas เป็น contract กลาง
+Dependency: `Render deploy confirmation → S1 → S2 → S3 → S4`; ห้ามทำ S3/S4 ขนานแบบ merge ก่อน S1 เพราะ shared schemas เป็น contract กลาง
 
 ## 11. Baseline tag และ rollback
 
@@ -241,7 +242,7 @@ Tag ที่แนะนำ: `singleplayer-v1.0`
 
 ให้สร้าง annotated tag ที่ code baseline commit `5b2690f31a92c0eee3c9a3f965bdee6912be1f73` **หลัง**:
 
-1. test commands จบ exit code 0 โดยไม่เปลี่ยน gameplay assertions
+1. test commands จบ exit code 0 โดยไม่เปลี่ยน gameplay assertions — **ผ่านแล้ว 2026-07-16**
 2. ยืนยัน Render Dashboard deploy branch และ live commit ตรงกัน
 
 คำสั่งเมื่อผ่าน gate:
@@ -261,8 +262,8 @@ Rollback ระหว่าง S1–S4: ปิด remote feature flags, deploy S
 - [ ] ยืนยัน deploy branch ใน Render Dashboard
 - [x] TypeScript check ผ่าน
 - [x] Production build ผ่าน
-- [ ] Full test command ผ่าน exit 0
-- [ ] Extended soak command ผ่าน exit 0 (assertions ผ่าน แต่ worker error)
+- [x] Full test command ผ่าน exit 0 — 435/435 tests
+- [x] Extended soak command ผ่าน exit 0 — 20,000 ticks
 - [x] ล็อก localStorage keys/save schemas
 - [x] ระบุ client ticks และ state ownership
 - [x] จัดทำ risk register และแผน PR S1–S4
@@ -273,4 +274,3 @@ Rollback ระหว่าง S1–S4: ปิด remote feature flags, deploy S
 ยังไม่ให้เริ่ม S1 จนกว่าจะปิด blocker ในข้อ 12 แล้ว จากนั้นใช้คำสั่ง:
 
 > เริ่ม Phase S1 เท่านั้นจาก `singleplayer-v1.0`: สร้าง clean branch `agent/s1-monorepo-shared`, ปรับเป็น npm-workspaces monorepo `client/server/shared` โดยห้ามเปลี่ยน Gameplay/UI/Three.js, ย้ายเฉพาะ browser-free types/config/pure formulas เข้า shared, เพิ่ม boundary tests และ root scripts build/test, รัน client/server builds และ tests ทั้งหมด, push และเปิด Draft PR แล้วหยุดก่อน S2
-
