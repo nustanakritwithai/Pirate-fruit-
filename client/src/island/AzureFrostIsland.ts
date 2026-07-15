@@ -4,6 +4,7 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
+import { scaledVegetationCount } from '../engine/GraphicsQuality';
 import { AZURE_FROST_LEGACY_CENTER as AZURE_FROST_CENTER, AZURE_FROST_RADIUS, layoutOffset } from './IslandRegistry';
 import { LEGACY_AZURE_FROST_POI_LIST as AZURE_FROST_POI_LIST, LEGACY_AZURE_FROST_POIS as AZURE_FROST_POIS } from '../world/WorldPOI';
 import { addPirateBuildingAsset, upgradePirateBuildingAssetWhenReady } from '../art/PirateBuildingAssetLibrary';
@@ -95,7 +96,7 @@ export function buildAzureFrostIsland(
   arena.rotation.x = Math.PI / 2; arena.position.set(fort.x, collision.heightAt(fort.x, fort.z - 5) + 0.1, fort.z - 5); root.add(arena);
 
   // ป่าสนแบบ instancing
-  const random = mulberry32(20260716); const target = graphics.tier === 'low' ? 16 : graphics.tier === 'medium' ? 26 : 36;
+  const random = mulberry32(20260716); const target = scaledVegetationCount(graphics.tier === 'low' ? 16 : graphics.tier === 'medium' ? 26 : 36);
   const spots: { x: number; y: number; z: number; scale: number }[] = [];
   for (let attempt = 0; attempt < target * 40 && spots.length < target; attempt++) { const a = random() * Math.PI * 2; const d = Math.sqrt(random()) * AZURE_FROST_RADIUS * 0.82; const x = AZURE_FROST_CENTER.x + Math.cos(a) * d; const z = AZURE_FROST_CENTER.z + Math.sin(a) * d; const y = collision.heightAt(x, z); if (y < 0.3 || AZURE_FROST_POI_LIST.some((poi) => Math.hypot(x - poi.x, z - poi.z) < poi.safeRadius) || spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < 3.3)) continue; spots.push({ x, y, z, scale: 0.72 + random() * 0.68 }); }
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.3, 1, 7), darkWood, spots.length);

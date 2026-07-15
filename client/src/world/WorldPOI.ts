@@ -245,3 +245,19 @@ export const ALL_WORLD_POI_LIST: WorldPOI[] = [
   ...TEMPEST_SKY_POI_LIST,
   ...EMBER_VOLCANO_POI_LIST,
 ];
+
+/** Safe zone จริงสำหรับหมู่บ้าน/ท่าเรือเท่านั้น — ไม่รวมค่ายมอนสเตอร์และลานบอส */
+export const SAFE_ZONE_POI_LIST: WorldPOI[] = [
+  WORLD_POIS.village,
+  WORLD_POIS.harbor,
+  MIST_JUNGLE_POIS.expeditionCamp,
+  MIST_JUNGLE_POIS.harbor,
+  SUNSCAR_DESERT_POIS.caravanCity,
+  SUNSCAR_DESERT_POIS.harbor,
+  AZURE_FROST_POIS.hunterVillage,
+  AZURE_FROST_POIS.harbor,
+  TEMPEST_SKY_POIS.cliffVillage,
+  TEMPEST_SKY_POIS.harbor,
+  EMBER_VOLCANO_POIS.forgeVillage,
+  EMBER_VOLCANO_POIS.harbor,
+];

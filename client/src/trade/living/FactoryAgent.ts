@@ -11,6 +11,7 @@ import {
 import { genomeProductionBonus } from './GenomeGameplayBias';
 import type {
   CommodityState,
+  EconomyCellId,
   EconomyCellState,
   EconomyLogEntry,
   EconomyWorldState,
@@ -33,24 +34,48 @@ export interface FactoryScore {
   reasons: string[];
 }
 
-export function factoryAgentId(cellId: string, recipeId: LivingCommodityId): string {
-  return `${cellId}:${recipeId}`;
+/** จำนวนหน่วยโรงงาน/เวิร์กช็อปเริ่มต้นต่อเกาะ — แต่ละหน่วยมี memory และปรับกำลังผลิตเอง */
+export const FACTORY_UNITS_PER_CELL: Record<EconomyCellId, number> = {
+  'leaf-island': 2,
+  'mine-island': 2,
+  'cloth-island': 2,
+  'shipyard-island': 3,
+  'frost-island': 1,
+  'sky-island': 1,
+  'volcano-island': 1,
+};
+
+export function factoryUnitsForCell(cellId: EconomyCellId): number {
+  return FACTORY_UNITS_PER_CELL[cellId] ?? 1;
+}
+
+export function factoryAgentId(
+  cellId: string,
+  recipeId: LivingCommodityId,
+  unitIndex = 1,
+): string {
+  return unitIndex <= 1
+    ? `${cellId}:${recipeId}`
+    : `${cellId}:${recipeId}:unit-${unitIndex}`;
 }
 
 export function createFactoryAgentsForCell(cell: EconomyCellState): FactoryAgentState[] {
+  const units = factoryUnitsForCell(cell.id);
   return recipesForCell(cell.id)
     .filter((r) => recipeMeta(r.id).requiredWorkers > 0)
-    .map((recipe) => createDefaultAgent(cell, recipe.id));
+    .flatMap((recipe) => Array.from({ length: units }, (_, index) =>
+      createDefaultAgent(cell, recipe.id, index + 1)));
 }
 
 export function createDefaultAgent(
   cell: EconomyCellState,
   recipeId: LivingCommodityId,
+  unitIndex = 1,
 ): FactoryAgentState {
   const meta = recipeMeta(recipeId);
   const alts = alternativeRecipeIds(cell.id, recipeId);
   return {
-    id: factoryAgentId(cell.id, recipeId),
+    id: factoryAgentId(cell.id, recipeId, unitIndex),
     cellId: cell.id,
     recipeId,
     status: 'operating',

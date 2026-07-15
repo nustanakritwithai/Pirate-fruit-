@@ -367,7 +367,7 @@ export class EconomyDebugPanel {
         }).join('');
       return `<div class="eco-cell">
         <div class="eco-cell-name">${cell.nameTh}</div>
-        <div class="eco-cell-meta">แรงงาน ${Math.round(cell.workforce * 100)}% · ขนส่ง ${cell.transportCapacity.toFixed(1)}</div>
+        <div class="eco-cell-meta">แรงงาน ${Math.round(cell.workforce * 100)}% · หน่วยผลิต ${cell.productionUnits} · ขนส่ง ${cell.transportCapacity.toFixed(1)}</div>
         <table><thead><tr><th>สินค้า</th><th>สต็อก</th><th>ราคา</th><th>สถานะ</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>
       </div>`;

@@ -47,6 +47,8 @@ function mergeCurrentTradeNetwork(world: EconomyWorldState): void {
     existing.gameIslandId ??= seedCell.gameIslandId;
     existing.role ??= seedCell.role;
     existing.nameTh ||= seedCell.nameTh;
+    existing.productionUnits = Math.max(existing.productionUnits ?? 1, seedCell.productionUnits);
+    existing.transportCapacity = Math.max(existing.transportCapacity ?? 1, seedCell.transportCapacity);
     existing.commodities = { ...seedCell.commodities, ...existing.commodities };
   }
   ensureCommodityCoverage(world.cells);
@@ -74,6 +76,7 @@ function migrateWorld(world: EconomyWorldState, fromVersion: number): EconomyWor
   world.ships ??= [];
   mergeCurrentTradeNetwork(world);
   for (const cell of world.cells) {
+    cell.productionUnits ??= 1;
     cell.availableWorkforce ??= 0;
     cell.unemployment ??= Math.floor(cell.population * 0.08);
     cell.wageLevel ??= 10;

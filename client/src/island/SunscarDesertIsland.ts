@@ -4,6 +4,7 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
+import { scaledVegetationCount } from '../engine/GraphicsQuality';
 import { SUNSCAR_DESERT_LEGACY_CENTER as SUNSCAR_DESERT_CENTER, SUNSCAR_DESERT_RADIUS, layoutOffset } from './IslandRegistry';
 import { LEGACY_SUNSCAR_DESERT_POI_LIST as SUNSCAR_DESERT_POI_LIST, LEGACY_SUNSCAR_DESERT_POIS as SUNSCAR_DESERT_POIS } from '../world/WorldPOI';
 import { createIslandBuildCollision } from './IslandLayout';
@@ -233,7 +234,7 @@ function buildOasis(
   water.receiveShadow = false;
   root.add(water);
 
-  const palmCount = graphics.tier === 'low' ? 3 : graphics.tier === 'medium' ? 5 : 6;
+  const palmCount = scaledVegetationCount(graphics.tier === 'low' ? 3 : graphics.tier === 'medium' ? 5 : 6);
   const trunks = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.18, 0.3, 1, 7),
     materials.darkWood,
@@ -342,7 +343,7 @@ function buildDesertProps(
   graphics: GraphicsProfile,
 ): void {
   const random = mulberry32(20260715);
-  const target = graphics.tier === 'low' ? 15 : graphics.tier === 'medium' ? 24 : 32;
+  const target = scaledVegetationCount(graphics.tier === 'low' ? 15 : graphics.tier === 'medium' ? 24 : 32);
   const spots: { x: number; y: number; z: number; scale: number; rotation: number }[] = [];
   for (let attempt = 0; attempt < target * 40 && spots.length < target; attempt++) {
     const angle = random() * Math.PI * 2;

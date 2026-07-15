@@ -1,6 +1,8 @@
 import type { EconomyLogEntry, EconomyWorldState, FactoryEvent } from './types';
 import {
   createFactoryAgentsForCell,
+  createDefaultAgent,
+  factoryUnitsForCell,
   factoryEventsToLog,
   initCellWorkforce,
   updateFactoryAgent,
@@ -25,13 +27,14 @@ export function ensureFactoryAgents(world: EconomyWorldState): void {
     cell.unemployment ??= 0;
     cell.wageLevel ??= 10;
 
-    const existing = new Set(
-      world.factories.filter((f) => f.cellId === cell.id).map((f) => f.recipeId),
-    );
     for (const recipe of recipesForCell(cell.id)) {
       if (recipeMeta(recipe.id).requiredWorkers <= 0) continue;
-      if (!existing.has(recipe.id)) {
-        world.factories.push(...createFactoryAgentsForCell(cell).filter((a) => a.recipeId === recipe.id));
+      const existingCount = world.factories.filter(
+        (f) => f.cellId === cell.id && f.recipeId === recipe.id,
+      ).length;
+      const desiredCount = factoryUnitsForCell(cell.id);
+      for (let unitIndex = existingCount + 1; unitIndex <= desiredCount; unitIndex++) {
+        world.factories.push(createDefaultAgent(cell, recipe.id, unitIndex));
       }
     }
   }

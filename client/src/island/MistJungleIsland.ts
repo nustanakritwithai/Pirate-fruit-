@@ -4,6 +4,7 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
+import { scaledVegetationCount } from '../engine/GraphicsQuality';
 import { MIST_JUNGLE_LEGACY_CENTER as MIST_JUNGLE_CENTER, MIST_JUNGLE_RADIUS, layoutOffset } from './IslandRegistry';
 import { LEGACY_MIST_JUNGLE_POI_LIST as MIST_JUNGLE_POI_LIST, LEGACY_MIST_JUNGLE_POIS as MIST_JUNGLE_POIS } from '../world/WorldPOI';
 import { createIslandBuildCollision } from './IslandLayout';
@@ -288,7 +289,7 @@ function buildJungleVegetation(
   graphics: GraphicsProfile,
 ): void {
   const random = mulberry32(20260714);
-  const treeTarget = graphics.tier === 'low' ? 18 : graphics.tier === 'medium' ? 28 : 38;
+  const treeTarget = scaledVegetationCount(graphics.tier === 'low' ? 18 : graphics.tier === 'medium' ? 28 : 38);
   const spots: { x: number; y: number; z: number; scale: number; rotation: number }[] = [];
   for (let attempt = 0; attempt < treeTarget * 45 && spots.length < treeTarget; attempt++) {
     const angle = random() * Math.PI * 2;
@@ -338,7 +339,7 @@ function buildJungleVegetation(
   crowns.receiveShadow = graphics.shadows;
   root.add(trunks, crowns);
 
-  const shrubTarget = graphics.tier === 'low' ? 22 : graphics.tier === 'medium' ? 38 : 54;
+  const shrubTarget = scaledVegetationCount(graphics.tier === 'low' ? 22 : graphics.tier === 'medium' ? 38 : 54);
   const shrubGeometry = new THREE.IcosahedronGeometry(0.62, 1);
   const shrubs = new THREE.InstancedMesh(shrubGeometry, materials.foliageDark, shrubTarget);
   let created = 0;

@@ -85,6 +85,8 @@ export interface EconomyCellState {
   unemployment: number;
   /** ค่าแรงพื้นฐานต่อคน */
   wageLevel: number;
+  /** จำนวนหน่วยผลิตอิสระของเกาะ (เหมือง/แหล่งวัตถุดิบ/เวิร์กช็อป) */
+  productionUnits: number;
   /** กำลังขนส่ง — เพิ่มเมื่อมีชิ้นส่วนเรือมาก */
   transportCapacity: number;
   commodities: Partial<Record<LivingCommodityId, CommodityState>>;

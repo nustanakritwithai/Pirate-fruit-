@@ -38,10 +38,10 @@ export const ECONOMY_CONFIG = {
   marketLiquidity: 40,
   maxMarketImpact: 0.35,
   npcCargoMax: 8,
-  npcDepartEveryTicks: 4,
+  npcDepartEveryTicks: 3,
   maxCraftPerTick: 2,
   maxTransportCapacity: 4,
-  maxSupplyConvoysPerTick: 6,
+  maxSupplyConvoysPerTick: 8,
   spoilageRate: 0.05,
   transitSpoilageRate: 0.03,
   baseTransportTicks: 2,
@@ -131,6 +131,7 @@ function cell(
   commodities: Partial<Record<LivingCommodityId, CommodityState>>,
   neighbors: EconomyCellId[],
   transportCapacity = 1,
+  productionUnits = 1,
 ): EconomyCellState {
   return {
     id,
@@ -142,6 +143,7 @@ function cell(
     availableWorkforce: 0,
     unemployment: Math.floor(population * 0.1),
     wageLevel: 10,
+    productionUnits,
     transportCapacity,
     commodities,
     neighbors,
@@ -168,6 +170,8 @@ function leafCell(): EconomyCellState {
       'volcanic-ore': goods(300, 3, 0, 1, 20, 20),
     },
     ['mine-island', 'cloth-island', 'shipyard-island'],
+    2,
+    6,
   );
 }
 
@@ -193,6 +197,8 @@ function mineCell(): EconomyCellState {
       'volcanic-ore': goods(300, 5, 0, 1, 22, 24),
     },
     ['leaf-island', 'cloth-island', 'shipyard-island'],
+    2,
+    6,
   );
 }
 
@@ -217,6 +223,8 @@ function clothCell(): EconomyCellState {
       'volcanic-ore': goods(300, 4, 0, 1, 18, 20),
     },
     ['leaf-island', 'mine-island', 'shipyard-island'],
+    2,
+    6,
   );
 }
 
@@ -243,7 +251,8 @@ function shipyardCell(): EconomyCellState {
       'volcanic-ore': goods(300, 5, 0, 1, 24, 26),
     },
     ['leaf-island', 'mine-island', 'cloth-island'],
-    2,
+    3,
+    8,
   );
 }
 
@@ -268,6 +277,8 @@ function frostCell(): EconomyCellState {
       'volcanic-ore': goods(300, 6, 0, 1, 28, 24),
     },
     [],
+    2,
+    6,
   );
 }
 
@@ -292,6 +303,8 @@ function skyCell(): EconomyCellState {
       sailcloth: goods(240, 12, 0, 1, 25, 28),
     },
     [],
+    2,
+    7,
   );
 }
 
@@ -316,6 +329,8 @@ function volcanoCell(): EconomyCellState {
       'repair-kit': goods(195, 10, 0, 1, 28, 30),
     },
     [],
+    2,
+    7,
   );
 }
 

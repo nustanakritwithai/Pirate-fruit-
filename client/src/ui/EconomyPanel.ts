@@ -411,6 +411,7 @@ export class EconomyPanel {
     }).join('');
 
     const cellId = market ? resolveTradeCell(this.islandId, 'fresh-fish') : null;
+    const economyCell = cellId ? this.trade.living.getCell(cellId) : null;
     const factoryStatus = cellId
       ? this.trade.living.getFactoryStatus(cellId)
       : null;
@@ -461,6 +462,8 @@ export class EconomyPanel {
       <div class="ep-summary">
         <span>🪙 ${this.trade.walletCoins} Beli</span>
         <span>📦 Cargo ${hold.slots.reduce((s, x) => s + x.quantity, 0)} ชิ้น</span>
+        ${economyCell ? `<span>🏗 หน่วยผลิต ${economyCell.productionUnits}</span>` : ''}
+        <span>🚢 กลุ่มขนส่ง ${this.trade.living.state.traders.length}</span>
         ${factoryStatus ? `<span class="ep-warn">🏭 ${factoryStatus}</span>` : ''}
       </div>
       <div class="ep-cargo-manifest"><b>สินค้าบนเรือ:</b> ${cargoManifest}</div>

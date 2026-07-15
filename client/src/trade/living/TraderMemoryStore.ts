@@ -39,9 +39,16 @@ export function routeAvoidKey(
 
 const PERSONALITY_BY_TRADER: Record<string, TraderPersonality> = {
   'trader-leaf-safe': 'conservative',
+  'trader-leaf-coastal': 'balanced',
   'trader-mine-bal': 'balanced',
+  'trader-mine-hauler': 'opportunist',
   'trader-cloth-bold': 'aggressive',
+  'trader-cloth-silk': 'opportunist',
   'trader-yard': 'balanced',
+  'trader-yard-supply': 'conservative',
+  'trader-frost-safe': 'conservative',
+  'trader-sky-rush': 'aggressive',
+  'trader-volcano-hauler': 'aggressive',
   'trader-roamer': 'opportunist',
 };
 

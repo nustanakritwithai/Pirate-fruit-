@@ -87,7 +87,8 @@ export function produceGoods(cell: EconomyCellState): void {
     } else {
       item.production = item.baseProduction;
     }
-    let output = item.production * cell.workforce * toolEff;
+    const unitMultiplier = 1 + Math.min(0.35, Math.max(0, (cell.productionUnits ?? 1) - 1) * 0.05);
+    let output = item.production * cell.workforce * toolEff * unitMultiplier;
     item.stock += output;
   }
 }

@@ -51,11 +51,29 @@ export function createDefaultTraders(): TraderAgentState[] {
       totalProfit: 0,
     },
     {
+      id: 'trader-leaf-coastal',
+      cellId: 'leaf-island',
+      nameTh: 'เรือประมงชายฝั่ง',
+      riskTolerance: 0.42,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
       id: 'trader-mine-bal',
       cellId: 'mine-island',
       nameTh: 'พ่อค้าเหมือง',
       riskTolerance: 0.55,
       cargoCapacity: ECONOMY_CONFIG.npcCargoMax,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
+      id: 'trader-mine-hauler',
+      cellId: 'mine-island',
+      nameTh: 'กองคาราวานแร่',
+      riskTolerance: 0.62,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 1,
       cooldown: 0,
       totalProfit: 0,
     },
@@ -69,10 +87,55 @@ export function createDefaultTraders(): TraderAgentState[] {
       totalProfit: 0,
     },
     {
+      id: 'trader-cloth-silk',
+      cellId: 'cloth-island',
+      nameTh: 'เรือผ้าไหมตะวัน',
+      riskTolerance: 0.68,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 1,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
       id: 'trader-yard',
       cellId: 'shipyard-island',
       nameTh: 'พ่อค้าอู่เรือ',
       riskTolerance: 0.45,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 2,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
+      id: 'trader-yard-supply',
+      cellId: 'shipyard-island',
+      nameTh: 'เรือเสบียงอู่ใหญ่',
+      riskTolerance: 0.52,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 3,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
+      id: 'trader-frost-safe',
+      cellId: 'frost-island',
+      nameTh: 'เรือเสบียงเหมันต์',
+      riskTolerance: 0.36,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 1,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
+      id: 'trader-sky-rush',
+      cellId: 'sky-island',
+      nameTh: 'พ่อค้าเมฆสายฟ้า',
+      riskTolerance: 0.82,
+      cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 2,
+      cooldown: 0,
+      totalProfit: 0,
+    },
+    {
+      id: 'trader-volcano-hauler',
+      cellId: 'volcano-island',
+      nameTh: 'ขบวนแร่ภูผา',
+      riskTolerance: 0.74,
       cargoCapacity: ECONOMY_CONFIG.npcCargoMax + 2,
       cooldown: 0,
       totalProfit: 0,
@@ -90,8 +153,14 @@ export function createDefaultTraders(): TraderAgentState[] {
 }
 
 export function ensureTraders(world: EconomyWorldState): void {
+  const defaults = createDefaultTraders();
   if (!world.traders?.length) {
-    world.traders = createDefaultTraders();
+    world.traders = defaults;
+  } else {
+    const existingIds = new Set(world.traders.map((trader) => trader.id));
+    for (const trader of defaults) {
+      if (!existingIds.has(trader.id)) world.traders.push(trader);
+    }
   }
   world.orders ??= [];
   world.reservations ??= [];

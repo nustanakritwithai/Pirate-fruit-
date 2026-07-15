@@ -25,6 +25,17 @@ export interface GraphicsProfile {
   maxVisibleTriangles: number;
 }
 
+/**
+ * Vegetation is intentionally kept at 50% of the original art density.
+ * The game uses instancing, but the alpha foliage still costs fill-rate when
+ * the camera approaches an island, which is the mobile stutter hotspot.
+ */
+export const VEGETATION_DENSITY = 0.5;
+
+export function scaledVegetationCount(baseCount: number): number {
+  return Math.max(1, Math.round(baseCount * VEGETATION_DENSITY));
+}
+
 const STORAGE_KEY = 'pirate-fruit:graphics-v1';
 
 const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
@@ -36,14 +47,14 @@ const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
     shadowMapSize: 512,
     terrainSegments: 72,
     waterSegments: 32,
-    palmCount: 16,
+    palmCount: 8,
     palmFronds: 4,
     rockCount: 12,
     crateCount: 6,
     cloudCount: 5,
     pointLights: 0,
-    grassPatchCount: 48,
-    shrubCount: 8,
+    grassPatchCount: 24,
+    shrubCount: 4,
     textureAnisotropy: 1,
     exposure: 0.92,
     maxDrawCalls: 85,
@@ -57,14 +68,14 @@ const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
     shadowMapSize: 1024,
     terrainSegments: 100,
     waterSegments: 48,
-    palmCount: 22,
+    palmCount: 11,
     palmFronds: 5,
     rockCount: 16,
     crateCount: 7,
     cloudCount: 7,
     pointLights: 1,
-    grassPatchCount: 96,
-    shrubCount: 12,
+    grassPatchCount: 48,
+    shrubCount: 6,
     textureAnisotropy: 4,
     exposure: 0.98,
     maxDrawCalls: 120,
@@ -78,14 +89,14 @@ const PROFILES: Record<GraphicsTier, Omit<GraphicsProfile, 'tier'>> = {
     shadowMapSize: 1536,
     terrainSegments: 140,
     waterSegments: 64,
-    palmCount: 30,
+    palmCount: 15,
     palmFronds: 6,
     rockCount: 20,
     crateCount: 8,
     cloudCount: 10,
     pointLights: 3,
-    grassPatchCount: 160,
-    shrubCount: 18,
+    grassPatchCount: 80,
+    shrubCount: 9,
     textureAnisotropy: 8,
     exposure: 1.04,
     maxDrawCalls: 150,

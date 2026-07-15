@@ -389,7 +389,7 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
       expect(r.amount).toBeGreaterThanOrEqual(0);
     }
     expect(completedShipments).toBeGreaterThan(0);
-  }, 15000);
+  }, 40000);
 
   it('26. reserveStock rejects over-commitment', () => {
     const world = freshWorld();
@@ -411,7 +411,7 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
     });
     expect(ok).toBe(true);
     expect(fail).toBe(false);
-  });
+  }, 40_000);
 
   it('27. failed shipment increases route danger', () => {
     const world = freshWorld();

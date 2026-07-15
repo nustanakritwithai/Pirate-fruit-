@@ -5,6 +5,7 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
+import { scaledVegetationCount } from '../engine/GraphicsQuality';
 import { EMBER_VOLCANO_LEGACY_CENTER as EMBER_VOLCANO_CENTER, EMBER_VOLCANO_RADIUS, layoutOffset } from './IslandRegistry';
 import { LEGACY_EMBER_VOLCANO_POI_LIST as EMBER_VOLCANO_POI_LIST, LEGACY_EMBER_VOLCANO_POIS as EMBER_VOLCANO_POIS } from '../world/WorldPOI';
 import { createIslandBuildCollision } from './IslandLayout';
@@ -294,7 +295,7 @@ export function buildEmberVolcanoIsland(
 
   // ต้นไม้ไหม้และเสาหินกระจายแบบ instancing
   const random = mulberry32(20260718);
-  const target = graphics.tier === 'low' ? 13 : graphics.tier === 'medium' ? 22 : 30;
+  const target = scaledVegetationCount(graphics.tier === 'low' ? 13 : graphics.tier === 'medium' ? 22 : 30);
   const spots: { x: number; y: number; z: number; scale: number; lean: number }[] = [];
   for (let attempt = 0; attempt < target * 45 && spots.length < target; attempt++) {
     const a = random() * Math.PI * 2;

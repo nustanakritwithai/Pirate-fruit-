@@ -315,7 +315,56 @@ const LEGACY_ALL_NPCS: readonly NPCDefinition[] = [
   ...EMBER_VOLCANO_NPCS,
 ];
 
-export const ALL_NPCS: NPCDefinition[] = LEGACY_ALL_NPCS.map((npc) => ({
-  ...npc,
-  ...layoutPoint(npc.islandId, npc.x, npc.z),
-}));
+/** จุดรวม NPC ของแต่ละเกาะ — อยู่ในวง safe zone เพื่อให้เปิดร้าน/รับเควสได้โดยไม่โดนมอนลากเข้ามา */
+export const NPC_SAFE_HUBS: Record<IslandId, { x: number; z: number }> = {
+  'starter-island': { x: WORLD_POIS.village.x, z: WORLD_POIS.village.z },
+  'mist-jungle': layoutPoint('mist-jungle', 153, -40),
+  'sunscar-desert': layoutPoint('sunscar-desert', 170, 100),
+  'azure-frost': layoutPoint('azure-frost', 59, 201),
+  'tempest-sky': layoutPoint('tempest-sky', -96, 210),
+  'ember-volcano': layoutPoint('ember-volcano', -218, 100),
+};
+
+/** จุดจอดเรือสำหรับ NPC นายท่า/พ่อค้าท่าเรือ — ใกล้ท่าและยังอยู่ใน safe POI */
+const NPC_DOCK_HUBS: Record<IslandId, { x: number; z: number }> = {
+  'starter-island': { x: WORLD_POIS.harbor.x, z: WORLD_POIS.harbor.z },
+  'mist-jungle': layoutPoint('mist-jungle', 137, -40),
+  'sunscar-desert': layoutPoint('sunscar-desert', 170, 94),
+  'azure-frost': layoutPoint('azure-frost', 66, 190),
+  'tempest-sky': layoutPoint('tempest-sky', -99, 210),
+  'ember-volcano': layoutPoint('ember-volcano', -212, 112),
+};
+
+const NPC_HUB_OFFSETS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [2.2, 0],
+  [-2.2, 0],
+  [0, 2.2],
+  [0, -2.2],
+  [1.6, 1.6],
+  [-1.6, 1.6],
+];
+
+function isDockNpc(npc: NPCDefinition): boolean {
+  return npc.action === 'boat-shop'
+    || npc.id.startsWith('dock-trader-')
+    || npc.tradeVendorId?.includes('-harbor') === true;
+}
+
+const npcIndexByIsland = new Map<IslandId, number>();
+
+export const ALL_NPCS: NPCDefinition[] = LEGACY_ALL_NPCS.map((npc) => {
+  const laidOut = {
+    ...npc,
+    ...layoutPoint(npc.islandId, npc.x, npc.z),
+  };
+  const slot = npcIndexByIsland.get(npc.islandId) ?? 0;
+  npcIndexByIsland.set(npc.islandId, slot + 1);
+  const hub = isDockNpc(npc) ? NPC_DOCK_HUBS[npc.islandId] : NPC_SAFE_HUBS[npc.islandId];
+  const [offsetX, offsetZ] = NPC_HUB_OFFSETS[slot % NPC_HUB_OFFSETS.length];
+  return {
+    ...laidOut,
+    x: hub.x + offsetX,
+    z: hub.z + offsetZ,
+  };
+});

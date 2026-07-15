@@ -34,6 +34,16 @@ describe('Worldwide island economy', () => {
       .toBeGreaterThan(0);
   });
 
+  it('starts with more independent transport groups and production units', () => {
+    const world = createFreshWorld();
+    expect(world.traders.length).toBeGreaterThanOrEqual(12);
+    expect(new Set(world.traders.map((trader) => trader.id)).size).toBe(world.traders.length);
+    expect(world.factories.length).toBeGreaterThanOrEqual(24);
+    expect(new Set(world.factories.map((factory) => factory.id)).size).toBe(world.factories.length);
+    expect(world.cells.every((cell) => cell.productionUnits >= 2)).toBe(true);
+    expect(world.cells.every((cell) => cell.transportCapacity >= 2)).toBe(true);
+  });
+
   it('dispatches and delivers an import convoy when a market is empty', () => {
     const world = createFreshWorld();
     ensureCommodityCoverage(world.cells);

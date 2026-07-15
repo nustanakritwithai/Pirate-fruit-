@@ -8,8 +8,15 @@ import { BossBar } from '../ui/BossBar';
 import { Monster } from './Monster';
 import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWNS, type MonsterType } from './MonsterData';
 import type { CombatRewardSource } from '../combat/CombatData';
+import { SAFE_ZONE_POI_LIST } from '../world/WorldPOI';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
+
+function isInSafeZone(x: number, z: number): boolean {
+  return SAFE_ZONE_POI_LIST.some((poi) =>
+    Math.hypot(x - poi.x, z - poi.z) <= poi.safeRadius,
+  );
+}
 
 export interface AttackOptions {
   damage: number;
@@ -231,6 +238,7 @@ export class MonsterManager {
     const engageable =
       this.controller.inputEnabled &&
       !this.controller.isMounted &&
+      !isInSafeZone(player.x, player.z) &&
       this.collision.heightAt(player.x, player.z) > -0.4;
 
     let engagedBoss: Monster | null = null;
