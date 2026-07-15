@@ -6,7 +6,7 @@ import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
 import { AZURE_FROST_CENTER, AZURE_FROST_RADIUS } from './IslandRegistry';
 import { AZURE_FROST_POI_LIST, AZURE_FROST_POIS } from '../world/WorldPOI';
-import { addPirateBuildingAsset } from '../art/PirateBuildingAssetLibrary';
+import { addPirateBuildingAsset, upgradePirateBuildingAssetWhenReady } from '../art/PirateBuildingAssetLibrary';
 
 export interface AzureFrostIslandResult { root: THREE.Group }
 
@@ -54,6 +54,7 @@ export function buildAzureFrostIsland(
     const cap = new THREE.Mesh(new THREE.ConeGeometry(4.18, 0.62, 4), snow); cap.position.y = 4.25; cap.rotation.y = Math.PI / 4;
     const door = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.05, 0.15), darkWood); door.position.set(0, 1.05, 2.16);
     shadow(body, graphics); shadow(roof, graphics); shadow(cap, graphics); group.add(body, roof, cap, door); root.add(group);
+    upgradePirateBuildingAssetWhenReady(root, collision, graphics, asset, x, z, rotation, 4.7, 3, group);
     collision.addCollider({ x, z, radius: 3, minY: y - 1, maxY: y + 4.6 });
   };
   addCabin(55, 211, 0.2, 'house-alt'); addCabin(68, 209, -0.35, 'barracks'); addCabin(69, 199, -1.25, 'house-alt');

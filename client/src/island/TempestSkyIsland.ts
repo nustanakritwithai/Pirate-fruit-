@@ -6,7 +6,7 @@ import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
 import { TEMPEST_SKY_CENTER, TEMPEST_SKY_RADIUS } from './IslandRegistry';
 import { TEMPEST_SKY_POI_LIST, TEMPEST_SKY_POIS } from '../world/WorldPOI';
-import { addPirateBuildingAsset } from '../art/PirateBuildingAssetLibrary';
+import { addPirateBuildingAsset, upgradePirateBuildingAssetWhenReady } from '../art/PirateBuildingAssetLibrary';
 
 export interface TempestSkyIslandResult { root: THREE.Group }
 
@@ -54,6 +54,7 @@ export function buildTempestSkyIsland(
     const roof = new THREE.Mesh(new THREE.ConeGeometry(3.9, 2.1, 4), blueRoof); roof.position.y = 3.75; roof.rotation.y = Math.PI / 4;
     const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.1, 0.14), darkWood); door.position.set(0, 1.05, 2.06);
     shadow(body, graphics); shadow(roof, graphics); group.add(body, roof, door); root.add(group);
+    upgradePirateBuildingAssetWhenReady(root, collision, graphics, asset, x, z, rotation, asset === 'gazebo' ? 3.2 : 4.4, asset === 'gazebo' ? 1.7 : 2.8, group);
     collision.addCollider({ x, z, radius: 2.8, minY: y - 1, maxY: y + 5 });
   };
   addHouse(-96, 220, 0.15, 'house'); addHouse(-88, 214, -0.85, 'gazebo'); addHouse(-91, 201, -2.2, 'house');

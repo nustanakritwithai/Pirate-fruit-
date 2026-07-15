@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { addPirateBuildingAsset } from '../art/PirateBuildingAssetLibrary';
+import { addPirateBuildingAsset, upgradePirateBuildingAssetWhenReady } from '../art/PirateBuildingAssetLibrary';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
@@ -115,6 +115,7 @@ export function buildEmberVolcanoIsland(
     shadow(roof, graphics);
     group.add(body, roof, door);
     root.add(group);
+    upgradePirateBuildingAssetWhenReady(root, collision, graphics, asset, x, z, rotation, 4.6, 2.8, group);
     collision.addCollider({ x, z, radius: 2.8, minY: y - 1, maxY: y + 5 });
   };
   addForgeHouse(-221, 96, 0.18, 'blacksmith');

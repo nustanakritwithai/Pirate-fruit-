@@ -131,3 +131,27 @@ export function addPirateBuildingAsset(
   collision.addCollider({ x, z, radius: colliderRadius, minY: y - 1, maxY: y + targetHeight + 0.5 });
   return true;
 }
+
+/** โหลดอาคารเบื้องหลังแล้วแทนที่ procedural fallback โดยไม่บล็อกการสร้างเกาะ */
+export function upgradePirateBuildingAssetWhenReady(
+  parent: THREE.Object3D,
+  collision: CollisionSystem,
+  graphics: GraphicsProfile,
+  id: PirateBuildingAssetId,
+  x: number,
+  z: number,
+  rotation: number,
+  targetHeight: number,
+  colliderRadius: number,
+  fallback: THREE.Object3D,
+): void {
+  void loadSource(id)
+    .then(() => {
+      if (!fallback.parent) return;
+      fallback.visible = false;
+      addPirateBuildingAsset(parent, collision, graphics, id, x, z, rotation, targetHeight, colliderRadius);
+    })
+    .catch((error: unknown) => {
+      console.warn(`[PirateBuildingAssetLibrary] คง procedural fallback สำหรับ ${id}`, error);
+    });
+}

@@ -5,6 +5,7 @@ import type { WorldTextures } from '../world/textures';
 import { WORLD_POIS } from '../world/WorldPOI';
 import {
   addPirateBuildingAsset,
+  upgradePirateBuildingAssetWhenReady,
   type PirateBuildingAssetId,
 } from '../art/PirateBuildingAssetLibrary';
 import {
@@ -148,6 +149,7 @@ function makeHut(
   group.add(beams);
 
   ctx.scene.add(group);
+  upgradePirateBuildingAssetWhenReady(ctx.scene, ctx.collision, ctx.graphics, assetId, x, z, rotation, 4.6 * scale, 3 * scale, group);
   ctx.collision.addCollider({
     x,
     z,
