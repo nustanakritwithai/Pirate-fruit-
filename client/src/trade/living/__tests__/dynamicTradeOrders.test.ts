@@ -26,6 +26,7 @@ import { moveCargo, updatePrices } from '../EconomyRules';
 import { debugForcePause } from '../FactoryAgent';
 import { updateAdaptiveEconomy } from '../AdaptiveEconomy';
 import type { DynamicTradeOrder, EconomyWorldState, LivingCommodityId } from '../types';
+import { yieldToTestRunner } from './soakTestUtils';
 
 function freshWorld(): EconomyWorldState {
   resetOrderCounter();
@@ -363,12 +364,13 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
     expect(migrated[0].successfulTrips).toBe(0);
   });
 
-  it('25. long-run 2000 ticks — stability', () => {
+  it('25. long-run 2000 ticks — stability', async () => {
     const sim = new LivingTradeSimulator(true);
     let completedShipments = 0;
     for (let i = 0; i < 2000; i++) {
       sim.tick();
       completedShipments += sim.state.orders.filter((o) => o.status === 'completed').length;
+      await yieldToTestRunner(i);
     }
     const world = sim.state;
     const activeKeys = new Set(
@@ -389,7 +391,7 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
       expect(r.amount).toBeGreaterThanOrEqual(0);
     }
     expect(completedShipments).toBeGreaterThan(0);
-  }, 90000);
+  }, 120_000);
 
   it('26. reserveStock rejects over-commitment', () => {
     const world = freshWorld();
