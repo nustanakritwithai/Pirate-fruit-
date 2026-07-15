@@ -4,7 +4,7 @@ import type { CharacterController } from '../player/CharacterController';
 import type { MonsterManager, IncomingAttack } from '../monster/MonsterManager';
 import type { Effects, EnergyProjectileVisual } from '../effects/Effects';
 import type { NavalCombat } from '../boat/NavalCombat';
-import type { TouchControls } from '../ui/TouchControls';
+import type { SkillAimCommand, SkillAimPreview, TouchControls } from '../ui/TouchControls';
 import type { Monster } from '../monster/Monster';
 import {
   COMBO_WINDOW,
@@ -134,6 +134,8 @@ interface PendingCast {
   skill: CastableSkill;
   slot: number;
   timer: number;
+  dirX?: number;
+  dirZ?: number;
 }
 
 /** จังหวะโจมตี M1 ที่กำลังดำเนินอยู่ (windup → hitbox event → recovery) */
@@ -213,6 +215,9 @@ export class PlayerCombat {
   private skillBuffTimer = 0;
   private skillBuffMultiplier = 1;
   private readonly shield: THREE.Mesh;
+  private readonly skillPreviewRoot: THREE.Group;
+  private readonly skillPreviewRing: THREE.Mesh;
+  private readonly skillPreviewArrow: THREE.Mesh;
   private visualAnchors: CombatVisualAnchorProvider | null = null;
 
   constructor(
@@ -226,6 +231,7 @@ export class PlayerCombat {
     private onLoadoutChanged?: () => void,
     private progression?: CombatProgressionAdapter,
     private navalCombat?: Pick<NavalCombat, 'damageNearestEnemyShipFromSkill'>,
+    private getCameraYaw?: () => number,
   ) {
     this.set = resolveActiveSet(this.loadout);
 
@@ -241,6 +247,20 @@ export class PlayerCombat {
     );
     this.shield.visible = false;
     this.scene.add(this.shield);
+
+    this.skillPreviewRoot = new THREE.Group();
+    this.skillPreviewRoot.name = 'skill-aim-preview';
+    this.skillPreviewRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.45, 0.58, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x8ff0cd, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    this.skillPreviewArrow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.035, 1),
+      new THREE.MeshBasicMaterial({ color: 0x8ff0cd, transparent: true, opacity: 0.58, depthWrite: false }),
+    );
+    this.skillPreviewRoot.add(this.skillPreviewRing, this.skillPreviewArrow);
+    this.skillPreviewRoot.visible = false;
+    this.scene.add(this.skillPreviewRoot);
 
     if (touch) {
       touch.unlockSkills(['❔', '❔', '❔']);
@@ -493,6 +513,9 @@ export class PlayerCombat {
     }
     this.controller.setMovementLock(lock);
 
+    // ---------- เป้า preview ของสกิลมือถือ (กดค้าง/ลาก) ----------
+    this.updateSkillAimPreview();
+
     // ---------- ปุ่มอาวุธ/R = สลับชุดสกิล (อาวุธ ↔ ผลไม้) ----------
     if (
       this.input.consumeWeaponSwitch() &&
@@ -509,14 +532,15 @@ export class PlayerCombat {
     }
 
     // ---------- คำขอสกิล 1-3 ----------
-    const skillRequested = this.input.consumeSkill();
-    if (skillRequested >= 1 && canAct && canCastSkill(this.combatState) && !this.pendingCast) {
-      this.beginCastSkill(skillRequested - 1);
+    const skillAim = this.input.consumeSkillAim();
+    if (skillAim && skillAim.slot >= 1 && skillAim.slot <= 3 && canAct && canCastSkill(this.combatState) && !this.pendingCast) {
+      this.beginCastSkill(skillAim.slot - 1, skillAim);
     }
 
     // ---------- คำขอไม้ตาย ----------
-    if (this.input.consumeUltimate() && canAct && canCastSkill(this.combatState) && !this.pendingCast) {
-      this.beginCastSkill(ULTIMATE_SLOT);
+    const ultimateAim = this.input.consumeUltimateAim();
+    if (ultimateAim && canAct && canCastSkill(this.combatState) && !this.pendingCast) {
+      this.beginCastSkill(ULTIMATE_SLOT, ultimateAim);
     }
 
     this.updateProjectiles(dt);
@@ -652,7 +676,54 @@ export class PlayerCombat {
   // สกิล: casting → ปล่อยผล
   // ------------------------------------------------------------------
 
-  private beginCastSkill(slot: number): void {
+  private screenAimToWorld(aim: Pick<SkillAimCommand, 'screenX' | 'screenZ'>): { x: number; z: number } {
+    const rawX = aim.screenX ?? 0;
+    const rawZ = aim.screenZ ?? -1;
+    const length = Math.hypot(rawX, rawZ) || 1;
+    const x = rawX / length;
+    const z = rawZ / length;
+    const yaw = this.getCameraYaw?.() ?? this.controller.heading - Math.PI;
+    const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    const worldX = x * cos + z * sin;
+    const worldZ = -x * sin + z * cos;
+    const worldLength = Math.hypot(worldX, worldZ) || 1;
+    return { x: worldX / worldLength, z: worldZ / worldLength };
+  }
+
+  private updateSkillAimPreview(): void {
+    const aim: SkillAimPreview | null = this.input.getSkillAimPreview();
+    if (!aim || !this.controller.inputEnabled || this.controller.isMounted) {
+      this.skillPreviewRoot.visible = false;
+      return;
+    }
+    const slot = aim.slot === 4 ? ULTIMATE_SLOT : aim.slot - 1;
+    const skill = this.set.slots[slot];
+    if (!skill) {
+      this.skillPreviewRoot.visible = false;
+      return;
+    }
+    const direction = this.screenAimToWorld(aim);
+    const distance =
+      skill.renderType === 'aoe' || skill.renderType === 'buff'
+        ? 0
+        : skill.renderType === 'ground' || skill.renderType === 'summon'
+          ? skill.range * 0.65
+          : Math.min(Math.max(skill.range, 2.5), 14);
+    const radius = Math.min(5, Math.max(0.5, skill.radius || 0.65));
+    this.skillPreviewRoot.position.copy(this.controller.position);
+    this.skillPreviewRing.position.set(direction.x * distance, 0.04, direction.z * distance);
+    this.skillPreviewRing.scale.setScalar(radius / 0.52);
+    this.skillPreviewArrow.visible = distance > 0.1;
+    this.skillPreviewArrow.position.set(direction.x * distance * 0.5, 0.045, direction.z * distance * 0.5);
+    this.skillPreviewArrow.rotation.y = Math.atan2(direction.x, direction.z);
+    this.skillPreviewArrow.scale.set(1, 1, distance);
+    (this.skillPreviewRing.material as THREE.MeshBasicMaterial).color.setHex(skill.color);
+    (this.skillPreviewArrow.material as THREE.MeshBasicMaterial).color.setHex(skill.color);
+    this.skillPreviewRoot.visible = true;
+  }
+
+  private beginCastSkill(slot: number, aim?: SkillAimCommand): void {
     const skill = this.set.slots[slot];
     if (!skill) {
       const info = this.set.slotInfo[slot];
@@ -674,7 +745,15 @@ export class PlayerCombat {
     this.skillCooldowns.set(skill.id, skill.cooldown);
     this.swing = null;
     this.comboIndex = 0;
-    this.pendingCast = { skill, slot, timer: skill.castTime };
+    const direction = aim && (aim.screenX !== undefined || aim.screenZ !== undefined)
+      ? this.screenAimToWorld(aim)
+      : undefined;
+    this.pendingCast = {
+      skill,
+      slot,
+      timer: skill.castTime,
+      ...(direction ? { dirX: direction.x, dirZ: direction.z } : {}),
+    };
     const followThrough =
       skill.renderType === 'aoe' ||
       skill.renderType === 'ground' ||
@@ -708,17 +787,18 @@ export class PlayerCombat {
     }
     this.pendingCast.timer -= dt;
     if (this.pendingCast.timer > 0) return;
-    const { skill } = this.pendingCast;
+    const { skill, dirX, dirZ } = this.pendingCast;
     this.pendingCast = null;
     this.combatState = 'idle';
-    this.releaseSkill(skill);
+    this.releaseSkill(skill, dirX, dirZ);
   }
 
-  private releaseSkill(skill: CastableSkill): void {
+  private releaseSkill(skill: CastableSkill, forcedDirX?: number, forcedDirZ?: number): void {
     const position = this.controller.position;
-    const heading = this.controller.heading;
-    const dirX = Math.sin(heading);
-    const dirZ = Math.cos(heading);
+    const hasForcedDirection = forcedDirX !== undefined && forcedDirZ !== undefined;
+    const dirX = forcedDirX ?? Math.sin(this.controller.heading);
+    const dirZ = forcedDirZ ?? Math.cos(this.controller.heading);
+    if (hasForcedDirection) this.controller.heading = Math.atan2(dirX, dirZ);
     const source = this.skillSource();
     const scaledDamage = skill.damage * this.damageMultiplier(skill.category);
 

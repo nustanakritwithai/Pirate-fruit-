@@ -350,6 +350,7 @@ async function main(): Promise<void> {
     () => itemInventory.save(),
     progression,
     navalCombat,
+    () => camera.yaw,
   );
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',

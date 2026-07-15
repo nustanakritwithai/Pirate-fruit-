@@ -7,6 +7,20 @@ const CAMERA_TOUCH_SENSITIVITY = 2.2;
 /** getter คืนค่า 0..1 = สัดส่วนคูลดาวน์ที่เหลือ (0 = พร้อมใช้) */
 export type CooldownGetter = () => number;
 
+export interface SkillAimCommand {
+  slot: number;
+  /** ทิศบนจอ: x ขวา, z ลง; มีค่าเฉพาะตอนลากเล็ง */
+  screenX?: number;
+  screenZ?: number;
+}
+
+export interface SkillAimPreview {
+  slot: number;
+  screenX: number;
+  screenZ: number;
+  dragged: boolean;
+}
+
 /**
  * ระบบบังคับบนจอสัมผัสสไตล์ PUBG:
  * - ซ้าย: จอยสติ๊กเสมือนแบบลอย; ดันขึ้นแรงจะแสดงจุดล็อกวิ่งอัตโนมัติ
@@ -45,7 +59,10 @@ export class TouchControls {
   private anchorQueue = 0;
   private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา
   private skillTapQueue = 0;
+  private skillAimQueue: SkillAimCommand | null = null;
   private ultTapQueue = 0;
+  private ultimateAimQueue: SkillAimCommand | null = null;
+  private zoomQueue = 0;
   private weaponQueue = 0;
   private potionTapQueue = 0;
   private skillsUnlocked = false;
@@ -64,6 +81,14 @@ export class TouchControls {
 
   private joyPointerId: number | null = null;
   private camPointerId: number | null = null;
+  private skillPointerId: number | null = null;
+  private aimingSkillSlot = 0;
+  private aimingUltimate = false;
+  private skillDragActive = false;
+  private skillDragX = 0;
+  private skillDragZ = -1;
+  private skillGestureOrigin = { x: 0, y: 0 };
+  private skillAimPreview: SkillAimPreview | null = null;
   private joyCenter = { x: 0, y: 0 };
   private lastCam = { x: 0, y: 0 };
   private autoRunReleaseTarget = false;
@@ -78,6 +103,9 @@ export class TouchControls {
   private attackBtn: HTMLDivElement;
   private dashBtn: HTMLDivElement;
   private jumpBtn: HTMLDivElement;
+  private zoomInBtn: HTMLDivElement;
+  private zoomOutBtn: HTMLDivElement;
+  private skillCancelBtn: HTMLDivElement;
   private cannonLeftBtn: HTMLDivElement;
   private cannonRightBtn: HTMLDivElement;
   private blockBtn: HTMLDivElement;
@@ -146,32 +174,23 @@ export class TouchControls {
     jump.addEventListener('pointercancel', jumpOff);
     jump.addEventListener('pointerleave', jumpOff);
 
-    // สกิล 1-3 (ปลดล็อกผ่าน unlockSkills โดย PlayerCombat)
+    // สกิล 1-3: กดค้างแล้วลากเพื่อเล็ง ปล่อยเพื่อใช้ (แตะสั้น = ใช้ทิศกล้องปัจจุบัน)
     for (let i = 1; i <= 3; i++) {
-      this.skillButtons.push(
-        this.makeButton(`tc-skill tc-skill${i}`, '🔒', () => {
-          const required = this.skillMasteryRequirements[i - 1];
-          if (this.activeMasteryLevel < required) {
-            this.showToast(`ต้องการ Mastery ${required}`);
-          } else if (this.skillsUnlocked) {
-            this.skillTapQueue = i;
-          } else {
-            this.showToast(`สกิล ${i} ปลดล็อกใน Phase 5 (Combat)`);
-          }
-        }),
-      );
+      const button = this.makeButton(`tc-skill tc-skill${i}`, '🔒', null);
+      button.addEventListener('pointerdown', (event) => this.beginSkillAim(event, i, false));
+      this.skillButtons.push(button);
     }
-    // ไม้ตาย (Ultimate) — ใช้งานได้จริงตั้งแต่ Phase 7
-    this.ultBtn = this.makeButton('tc-ult', '🔒', () => {
-      if (!this.ultUnlocked) {
-        this.showToast('ยังไม่มีไม้ตาย');
-      } else if (this.activeMasteryLevel < this.ultRequirement) {
-        this.showToast(`ต้องการ Mastery ${this.ultRequirement}`);
-      } else {
-        this.ultTapQueue = 1;
-      }
-    });
+    // ไม้ตายใช้ gesture เดียวกัน โดย slot 4 map ไป index 3 ใน PlayerCombat
+    this.ultBtn = this.makeButton('tc-ult', '🔒', null);
+    this.ultBtn.addEventListener('pointerdown', (event) => this.beginSkillAim(event, 4, true));
     this.skillButtons.push(this.ultBtn);
+
+    this.skillCancelBtn = this.makeButton('tc-skill-cancel', 'ยกเลิก', null);
+    this.skillCancelBtn.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      this.cancelSkillAim();
+    });
+    this.skillCancelBtn.classList.remove('tc-visible');
 
     // ---------- Block (กดค้างเพื่อกัน) + สลับอาวุธ ----------
     this.blockBtn = this.makeButton('tc-block', '🛡️', null);
@@ -189,6 +208,12 @@ export class TouchControls {
     this.blockBtn.addEventListener('pointerleave', blockOff);
 
     this.weaponBtn = this.makeButton('tc-weapon', '👊', () => (this.weaponQueue = 1));
+
+    // ซูมมือถือแบบกดเพิ่ม/ลดระยะ ใช้ได้ทั้งตอนเดินและขับเรือ
+    this.zoomInBtn = this.makeButton('tc-zoom tc-zoom-in', '＋', () => (this.zoomQueue = 1));
+    this.zoomOutBtn = this.makeButton('tc-zoom tc-zoom-out', '－', () => (this.zoomQueue = -1));
+    this.zoomInBtn.title = 'ซูมเข้า';
+    this.zoomOutBtn.title = 'ซูมออก';
 
     // ---------- ปุ่มยิงปืนใหญ่กราบซ้าย/ขวา (โชว์เฉพาะโหมดเรือ) ----------
     this.cannonLeftBtn = this.makeButton('tc-cannon tc-cannon-left', '◀💣', () => (this.cannonQueue = 1));
@@ -233,7 +258,11 @@ export class TouchControls {
     this.dashQueue = 0;
     this.cannonQueue = 0;
     this.skillTapQueue = 0;
+    this.skillAimQueue = null;
     this.ultTapQueue = 0;
+    this.ultimateAimQueue = null;
+    this.zoomQueue = 0;
+    this.cancelSkillAim();
     if (mode === 'boat') {
       this.autoRunOn = false;
       this.autoRunBtn.classList.remove('tc-on', 'tc-visible');
@@ -320,9 +349,18 @@ export class TouchControls {
 
   /** อ่านคำสั่งไม้ตายหนึ่งครั้ง */
   consumeUltimate(): boolean {
-    if (this.ultTapQueue <= 0) return false;
+    return this.consumeUltimateAim() !== null;
+  }
+
+  consumeUltimateAim(): SkillAimCommand | null {
+    if (this.ultimateAimQueue) {
+      const command = this.ultimateAimQueue;
+      this.ultimateAimQueue = null;
+      return command;
+    }
+    if (this.ultTapQueue <= 0) return null;
     this.ultTapQueue = 0;
-    return true;
+    return { slot: 4 };
   }
 
   /** Phase 6: แสดงล็อกและเลข Mastery โดยไม่เพิ่มปุ่มมือถือใหม่ */
@@ -346,9 +384,23 @@ export class TouchControls {
 
   /** อ่านสกิลที่แตะหนึ่งครั้ง คืน 1-3 หรือ 0 */
   consumeSkill(): number {
+    const command = this.consumeSkillAim();
+    return command?.slot ?? 0;
+  }
+
+  consumeSkillAim(): SkillAimCommand | null {
+    if (this.skillAimQueue) {
+      const command = this.skillAimQueue;
+      this.skillAimQueue = null;
+      return command;
+    }
     const n = this.skillTapQueue;
     this.skillTapQueue = 0;
-    return n;
+    return n > 0 ? { slot: n } : null;
+  }
+
+  getSkillAimPreview(): SkillAimPreview | null {
+    return this.skillAimPreview;
   }
 
   consumeWeaponSwitch(): boolean {
@@ -396,6 +448,12 @@ export class TouchControls {
     return n;
   }
 
+  consumeZoom(): number {
+    const value = this.zoomQueue;
+    this.zoomQueue = 0;
+    return value;
+  }
+
   /** ผูกวงแหวนคูลดาวน์ของปืนใหญ่ทั้งสองกราบ (แชร์คูลดาวน์เดียวกัน) */
   bindCannonCooldown(getter: CooldownGetter): void {
     this.cooldownRings.set(this.cannonLeftBtn, getter);
@@ -422,6 +480,52 @@ export class TouchControls {
     }
   }
 
+  private beginSkillAim(event: PointerEvent, slot: number, ultimate: boolean): void {
+    event.preventDefault();
+    const required = ultimate
+      ? this.ultRequirement
+      : this.skillMasteryRequirements[slot - 1] ?? 0;
+    const unlocked = ultimate ? this.ultUnlocked : this.skillsUnlocked;
+    if (!unlocked) {
+      this.showToast(ultimate ? 'ยังไม่มีไม้ตาย' : `สกิล ${slot} ปลดล็อกใน Phase 5 (Combat)`);
+      return;
+    }
+    if (this.activeMasteryLevel < required) {
+      this.showToast(`ต้องการ Mastery ${required}`);
+      return;
+    }
+    this.cancelSkillAim();
+    this.skillPointerId = event.pointerId;
+    this.aimingSkillSlot = slot;
+    this.aimingUltimate = ultimate;
+    this.skillDragActive = false;
+    this.skillDragX = 0;
+    this.skillDragZ = -1;
+    this.skillGestureOrigin = { x: event.clientX, y: event.clientY };
+    this.skillAimPreview = { slot, screenX: 0, screenZ: -1, dragged: false };
+  }
+
+  private cancelSkillAim(): void {
+    this.skillPointerId = null;
+    this.aimingSkillSlot = 0;
+    this.aimingUltimate = false;
+    this.skillDragActive = false;
+    this.skillAimPreview = null;
+    this.skillCancelBtn?.classList.remove('tc-visible');
+    for (const button of this.skillButtons) button.classList.remove('tc-aiming');
+  }
+
+  private finishSkillAim(): void {
+    if (this.aimingSkillSlot <= 0) return;
+    const command: SkillAimCommand = {
+      slot: this.aimingSkillSlot,
+      ...(this.skillDragActive ? { screenX: this.skillDragX, screenZ: this.skillDragZ } : {}),
+    };
+    if (this.aimingUltimate) this.ultimateAimQueue = command;
+    else this.skillAimQueue = command;
+    this.cancelSkillAim();
+  }
+
   // ---------- จอยสติ๊ก ----------
 
   private joyStart(e: PointerEvent): void {
@@ -443,7 +547,29 @@ export class TouchControls {
   }
 
   private pointerMove(e: PointerEvent): void {
-    if (e.pointerId === this.joyPointerId) {
+    if (e.pointerId === this.skillPointerId) {
+      // skillDragX/Z are normalized; keep a local origin on the first move instead of
+      // using the button center so the gesture feels like a virtual aim stick.
+      const origin = this.skillGestureOrigin;
+      const rawX = e.clientX - origin.x;
+      const rawZ = e.clientY - origin.y;
+      const length = Math.hypot(rawX, rawZ);
+      if (length >= 10) {
+        this.skillDragActive = true;
+        this.skillDragX = rawX / length;
+        this.skillDragZ = rawZ / length;
+        this.skillAimPreview = {
+          slot: this.aimingSkillSlot,
+          screenX: this.skillDragX,
+          screenZ: this.skillDragZ,
+          dragged: true,
+        };
+        this.skillCancelBtn.classList.add('tc-visible');
+        this.skillCancelBtn.style.left = `${Math.max(8, Math.min(window.innerWidth - 56, e.clientX - 24))}px`;
+        this.skillCancelBtn.style.top = `${Math.max(8, Math.min(window.innerHeight - 42, e.clientY - 52))}px`;
+        this.skillButtons[this.aimingSkillSlot === 4 ? 3 : this.aimingSkillSlot - 1]?.classList.add('tc-aiming');
+      }
+    } else if (e.pointerId === this.joyPointerId) {
       const maxR = 43;
       let dx = e.clientX - this.joyCenter.x;
       let dy = e.clientY - this.joyCenter.y;
@@ -466,7 +592,10 @@ export class TouchControls {
   }
 
   private pointerEnd(e: PointerEvent): void {
-    if (e.pointerId === this.joyPointerId) {
+    if (e.pointerId === this.skillPointerId) {
+      if (e.type === 'pointercancel') this.cancelSkillAim();
+      else this.finishSkillAim();
+    } else if (e.pointerId === this.joyPointerId) {
       const lockAutoRun = this.autoRunReleaseTarget && this.moveZ < -0.72;
       this.joyPointerId = null;
       this.joystickActive = false;
@@ -612,6 +741,12 @@ export class TouchControls {
       .tc-skill.tc-skill-ready { opacity: .95; border-color: rgba(140,235,190,.85);
                    background: rgba(14,66,48,.6); }
       .tc-skill.tc-skill-locked { opacity:.55; font-size:14px; filter:saturate(.45); }
+      .tc-skill.tc-aiming { opacity: 1; border-color: #ffe27a;
+                   box-shadow: 0 0 18px rgba(255,210,100,.9); transform: scale(1.08); }
+      .tc-skill-cancel { position: fixed; left: 50%; top: 50%; width: 48px; height: 28px;
+                   border-radius: 14px; display: none; font-size: 11px; z-index: 3;
+                   background: rgba(120,30,25,.9); border-color: rgba(255,180,150,.95); }
+      .tc-skill-cancel.tc-visible { display: flex; }
       .tc-ult    { right: 148px; bottom: 18px;  width: 50px; height: 50px; font-size: 19px;
                    border-color: rgba(200,120,255,.85); background: rgba(70,25,110,.55);
                    opacity: .65; }
@@ -622,6 +757,10 @@ export class TouchControls {
       /* จุดวงกลมด้านขวากลางจอสำหรับสลับอาวุธ ไม่ชนปุ่มโจมตี */
       .tc-weapon { right: 16px; top: 52%; transform: translateY(-50%); width: 42px; height: 42px; font-size: 17px;
                    opacity: .9; border-color: rgba(255,215,140,.8); }
+      .tc-zoom { right: 68px; width: 34px; height: 34px; font-size: 20px; z-index: 2;
+                 background: rgba(10,25,45,.72); border-color: rgba(170,220,255,.75); }
+      .tc-zoom-in { top: calc(52% - 52px); }
+      .tc-zoom-out { top: calc(52% + 18px); }
       /* ช่องลัดใช้ยา — ซ้ายของกลุ่มปุ่มโจมตี */
       .tc-potion  { width: 40px; height: 40px; font-size: 17px; opacity: .9;
                     border-color: rgba(120,235,150,.8); background: rgba(14,52,30,.55); }

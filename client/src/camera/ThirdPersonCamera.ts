@@ -6,6 +6,7 @@ const MIN_PITCH = -0.2; // เงยต่ำสุด
 const MAX_PITCH = 1.35; // ก้มสูงสุด (มองลงจากด้านบน)
 const MIN_DIST = 3;
 const MAX_DIST = 14;
+const TOUCH_ZOOM_STEP = 1.5;
 
 /**
  * กล้อง Third Person: ตามหลังผู้เล่น หมุนด้วยเมาส์ ซูมด้วยล้อเมาส์
@@ -20,6 +21,7 @@ export class ThirdPersonCamera {
   private initialized = false;
   private playerDistance = 7;
   private targetHeight = 1.5;
+  private boatMode = false;
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -28,6 +30,7 @@ export class ThirdPersonCamera {
   ) {}
 
   setBoatMode(enabled: boolean): void {
+    this.boatMode = enabled;
     if (enabled) {
       this.playerDistance = this.distance;
       this.distance = 11;
@@ -50,6 +53,16 @@ export class ThirdPersonCamera {
 
     const wheel = this.input.consumeWheelDelta();
     this.distance = THREE.MathUtils.clamp(this.distance + wheel * 0.01, MIN_DIST, MAX_DIST);
+    if (wheel !== 0 && this.boatMode) this.playerDistance = this.distance;
+    const zoom = this.input.consumeZoom();
+    if (zoom !== 0) {
+      this.distance = THREE.MathUtils.clamp(
+        this.distance - zoom * TOUCH_ZOOM_STEP,
+        MIN_DIST,
+        MAX_DIST,
+      );
+      if (this.boatMode) this.playerDistance = this.distance;
+    }
 
     // จุดที่กล้องมอง: ระดับหน้าอกของตัวละคร
     const target = this.getTarget().clone();

@@ -1,4 +1,4 @@
-import type { TouchControls } from '../ui/TouchControls';
+import type { SkillAimCommand, SkillAimPreview, TouchControls } from '../ui/TouchControls';
 
 export type ControlMode = 'player' | 'boat';
 
@@ -26,6 +26,7 @@ export class Input {
   private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา (เฉพาะโหมดเรือ)
   private skillQueue = 0; // 1-3 = สกิลที่กด, 0 = ไม่มี
   private ultimateQueue = 0;
+  private zoomQueue = 0;
   private weaponSwitchQueue = 0;
   private potionQueue = 0; // 1-2 = ช่องลัดยาที่กด, 0 = ไม่มี
   private mode: ControlMode = 'player';
@@ -95,6 +96,7 @@ export class Input {
     this.anchorQueue = 0;
     this.dashQueue = 0;
     this.cannonQueue = 0;
+    this.zoomQueue = 0;
     this.touch?.setMode(mode);
   }
 
@@ -142,11 +144,20 @@ export class Input {
 
   /** อ่านสกิลที่กดหนึ่งครั้ง คืน 1-3 หรือ 0 ถ้าไม่มี */
   consumeSkill(): number {
-    const fromTouch = this.touch?.consumeSkill() ?? 0;
-    if (fromTouch > 0) return fromTouch;
+    const command = this.consumeSkillAim();
+    return command?.slot ?? 0;
+  }
+
+  consumeSkillAim(): SkillAimCommand | null {
+    const fromTouch = this.touch?.consumeSkillAim() ?? null;
+    if (fromTouch) return fromTouch;
     const n = this.skillQueue;
     this.skillQueue = 0;
-    return n;
+    return n > 0 ? { slot: n } : null;
+  }
+
+  getSkillAimPreview(): SkillAimPreview | null {
+    return this.touch?.getSkillAimPreview() ?? null;
   }
 
   /** อ่านช่องลัดใช้ยาที่กดหนึ่งครั้ง คืน 1-2 หรือ 0 (Z/X บน PC / ปุ่มยาบนมือถือ) */
@@ -160,12 +171,17 @@ export class Input {
 
   /** อ่านคำสั่งไม้ตายหนึ่งครั้ง (Digit4/KeyG บน PC / ปุ่มไม้ตายบนมือถือ) */
   consumeUltimate(): boolean {
-    if (this.touch?.consumeUltimate()) return true;
+    return this.consumeUltimateAim() !== null;
+  }
+
+  consumeUltimateAim(): SkillAimCommand | null {
+    const fromTouch = this.touch?.consumeUltimateAim() ?? null;
+    if (fromTouch) return fromTouch;
     if (this.ultimateQueue > 0) {
       this.ultimateQueue = 0;
-      return true;
+      return { slot: 4 };
     }
-    return false;
+    return null;
   }
 
   /** อ่านคำสั่งสลับอาวุธหนึ่งครั้ง */
@@ -229,6 +245,14 @@ export class Input {
       return true;
     }
     return false;
+  }
+
+  consumeZoom(): number {
+    const fromTouch = this.touch?.consumeZoom() ?? 0;
+    if (fromTouch !== 0) return fromTouch;
+    const value = this.zoomQueue;
+    this.zoomQueue = 0;
+    return value;
   }
 
   /** ให้ TouchControls ป้อนการหมุนกล้องจากการลากนิ้ว */
