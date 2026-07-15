@@ -565,8 +565,6 @@ export class TouchControls {
           dragged: true,
         };
         this.skillCancelBtn.classList.add('tc-visible');
-        this.skillCancelBtn.style.left = `${Math.max(8, Math.min(window.innerWidth - 56, e.clientX - 24))}px`;
-        this.skillCancelBtn.style.top = `${Math.max(8, Math.min(window.innerHeight - 42, e.clientY - 52))}px`;
         this.skillButtons[this.aimingSkillSlot === 4 ? 3 : this.aimingSkillSlot - 1]?.classList.add('tc-aiming');
       }
     } else if (e.pointerId === this.joyPointerId) {
@@ -743,7 +741,7 @@ export class TouchControls {
       .tc-skill.tc-skill-locked { opacity:.55; font-size:14px; filter:saturate(.45); }
       .tc-skill.tc-aiming { opacity: 1; border-color: #ffe27a;
                    box-shadow: 0 0 18px rgba(255,210,100,.9); transform: scale(1.08); }
-      .tc-skill-cancel { position: fixed; left: 50%; top: 50%; width: 48px; height: 28px;
+      .tc-skill-cancel { position: fixed; right: 88px; bottom: 220px; width: 48px; height: 28px;
                    border-radius: 14px; display: none; font-size: 11px; z-index: 3;
                    background: rgba(120,30,25,.9); border-color: rgba(255,180,150,.95); }
       .tc-skill-cancel.tc-visible { display: flex; }
@@ -757,10 +755,12 @@ export class TouchControls {
       /* จุดวงกลมด้านขวากลางจอสำหรับสลับอาวุธ ไม่ชนปุ่มโจมตี */
       .tc-weapon { right: 16px; top: 52%; transform: translateY(-50%); width: 42px; height: 42px; font-size: 17px;
                    opacity: .9; border-color: rgba(255,215,140,.8); }
-      .tc-zoom { right: 68px; width: 34px; height: 34px; font-size: 20px; z-index: 2;
-                 background: rgba(10,25,45,.72); border-color: rgba(170,220,255,.75); }
-      .tc-zoom-in { top: calc(52% - 52px); }
-      .tc-zoom-out { top: calc(52% + 18px); }
+      .tc-zoom { left: 8px; right: auto; width: 24px; height: 24px; font-size: 14px; opacity: .3;
+                 border-width: 1px; z-index: 2; background: rgba(10,25,45,.4);
+                 border-color: rgba(170,220,255,.45); box-shadow: none; }
+      .tc-zoom-in { top: auto; bottom: 42px; }
+      .tc-zoom-out { top: auto; bottom: 10px; }
+      .tc-zoom:active { opacity: .72; }
       /* ช่องลัดใช้ยา — ซ้ายของกลุ่มปุ่มโจมตี */
       .tc-potion  { width: 40px; height: 40px; font-size: 17px; opacity: .9;
                     border-color: rgba(120,235,150,.8); background: rgba(14,52,30,.55); }
