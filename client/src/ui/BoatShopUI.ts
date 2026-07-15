@@ -2,7 +2,7 @@ import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { Boat } from '../boat/Boat';
 import type { BoatProgress } from '../boat/BoatProgress';
 
-export type BoatShopAction = 'purchase' | 'select' | 'summon' | 'store' | 'repair';
+export type BoatShopAction = 'purchase' | 'select' | 'summon' | 'store' | 'repair' | 'upgrade-hull' | 'upgrade-cannon' | 'upgrade-sail';
 
 export class BoatShopUI {
   private readonly root: HTMLDivElement;
@@ -96,7 +96,8 @@ export class BoatShopUI {
         <div class="boat-card-body"><h3>${definition.name}</h3><p>${definition.description}</p>
           <div class="boat-stats"><span>เร็ว ${definition.maxSpeed}</span><span>HP ${definition.maxHp}</span>
             <span>${owned ? '✓ เป็นเจ้าของ' : price}</span></div></div>
-        <button type="button" data-action="${action}" data-boat-id="${definition.id}">${label}</button>`;
+        <button type="button" data-action="${action}" data-boat-id="${definition.id}">${label}</button>
+        ${owned ? `<div class="boat-upgrades"><button data-action="upgrade-hull" data-boat-id="${definition.id}">🛡️ เกราะ ${this.progress.upgradeLevel(definition.id, 'hull')}</button><button data-action="upgrade-cannon" data-boat-id="${definition.id}">💣 ปืน ${this.progress.upgradeLevel(definition.id, 'cannon')}</button><button data-action="upgrade-sail" data-boat-id="${definition.id}">⛵ ใบ ${this.progress.upgradeLevel(definition.id, 'sail')}</button></div>` : ''}`;
       this.cards.appendChild(card);
     }
     const repair = this.root.querySelector<HTMLButtonElement>('button[data-action="repair"]')!;
@@ -131,6 +132,8 @@ export class BoatShopUI {
       .boat-stats span { padding:3px 7px; border-radius:10px; background:rgba(106,177,190,.17); font-size:10px; }
       .boat-card>button { grid-column:1/-1; border:0; border-radius:14px; padding:8px; cursor:pointer;
         color:#17252a; background:#ffda7a; font-weight:800; touch-action:manipulation; }
+      .boat-upgrades { grid-column:1/-1; display:flex; gap:5px; flex-wrap:wrap; }
+      .boat-upgrades button { border:1px solid rgba(153,216,227,.35); border-radius:10px; padding:5px 7px; color:#dceff0; background:rgba(4,21,29,.65); font-size:10px; cursor:pointer; }
       .boat-shop-status { min-height:18px; margin:10px 2px 0; color:#8ff0cd; font-size:12px; }
       .boat-shop-status.danger { color:#ff927c; }
       .boat-shop-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }

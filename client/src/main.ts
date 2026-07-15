@@ -349,6 +349,7 @@ async function main(): Promise<void> {
     itemInventory.loadout,
     () => itemInventory.save(),
     progression,
+    navalCombat,
   );
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',
@@ -416,7 +417,6 @@ async function main(): Promise<void> {
     () => playerCombat.attackCooldownFraction,
   );
   touchControls?.bindCannonCooldown(() => navalCombat.playerFireCooldownFraction);
-  navalCombat.onCannonArmed = (side) => touchControls?.setCannonArmed(side);
 
   // ตกทะเล → กลับ Safe Zone ของหมู่บ้าน ไม่วนเกิดซ้ำในตำแหน่งอันตราย
   controller.onDrown = () => {

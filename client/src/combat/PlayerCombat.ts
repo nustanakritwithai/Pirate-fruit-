@@ -3,6 +3,7 @@ import type { Input } from '../engine/Input';
 import type { CharacterController } from '../player/CharacterController';
 import type { MonsterManager, IncomingAttack } from '../monster/MonsterManager';
 import type { Effects, EnergyProjectileVisual } from '../effects/Effects';
+import type { NavalCombat } from '../boat/NavalCombat';
 import type { TouchControls } from '../ui/TouchControls';
 import type { Monster } from '../monster/Monster';
 import {
@@ -224,6 +225,7 @@ export class PlayerCombat {
     private loadout: SkillLoadout,
     private onLoadoutChanged?: () => void,
     private progression?: CombatProgressionAdapter,
+    private navalCombat?: Pick<NavalCombat, 'damageNearestEnemyShipFromSkill'>,
   ) {
     this.set = resolveActiveSet(this.loadout);
 
@@ -746,7 +748,8 @@ export class PlayerCombat {
         this.teleportStrike(skill, position, dirX, dirZ, scaledDamage, source);
         break;
       case 'aoe':
-        this.effects.spawnShockwave(position, skill.radius);
+        this.effects.spawnShockwave(position, skill.radius, skill.color, 'earth-bending');
+        this.navalCombat?.damageNearestEnemyShipFromSkill(position, skill.radius, scaledDamage);
         if (scaledDamage > 0) {
           this.damageZone(
             position.x,
@@ -880,7 +883,7 @@ export class PlayerCombat {
       color: skill.color,
       source,
     });
-    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), 2, skill.color);
+    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), 2, skill.color, 'magic-rock');
   }
 
   /** teleport — วาร์ปไปหลังศัตรูใกล้สุดในกรวยหน้าแล้วฟัน (ไม่เจอเป้า → พุ่งสั้น) */
@@ -1053,7 +1056,7 @@ export class PlayerCombat {
         source: ch.source,
         onHit: ch.skill.dot ? (m) => this.applyDot(m, ch.skill.dot!, ch.source) : undefined,
       });
-      this.effects.spawnSlash(position, heading, ch.color, isLast ? 1.5 : 0.9);
+      this.effects.spawnSlash(position, heading, ch.color, isLast ? 1.5 : 0.9, 'fire-hands');
     } else {
       // beam — sample หลายจุดตามแนวเส้นหน้าตัว
       const segs = 5;
@@ -1089,7 +1092,8 @@ export class PlayerCombat {
   ): void {
     const x = position.x + dirX * skill.range * 0.65;
     const z = position.z + dirZ * skill.range * 0.65;
-    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), skill.radius * 0.55, 0xffd27a);
+    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), skill.radius * 0.55, skill.color, 'earth-bending');
+    this.navalCombat?.damageNearestEnemyShipFromSkill(new THREE.Vector3(x, position.y, z), skill.radius, scaledDamage);
     this.pendingZones.push({
       timer: 0.32,
       x,
@@ -1199,6 +1203,7 @@ export class PlayerCombat {
     source: CombatRewardSource,
     dot?: DotSpec,
   ): void {
+    this.navalCombat?.damageNearestEnemyShipFromSkill(new THREE.Vector3(x, this.controller.position.y, z), radius, damage);
     for (const monster of this.monsters.monstersNear(x, z, radius)) {
       this.monsters.applyHit(monster, damage, x, z, knockback, source);
       if (dot) this.applyDot(monster, dot, source);

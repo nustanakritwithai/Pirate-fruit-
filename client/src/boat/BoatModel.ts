@@ -6,6 +6,7 @@ import { createMobileMaterial } from '../art/MobilePBRMaterials';
 
 export interface BoatModelResult {
   root: THREE.Group;
+  visualRoot: THREE.Group;
   hull: THREE.Mesh;
   wakeLeft: THREE.Mesh;
   wakeRight: THREE.Mesh;
@@ -33,6 +34,8 @@ export function createBoatModel(
 ): BoatModelResult {
   const root = new THREE.Group();
   root.name = `boat:${definition.id}`;
+  const visualRoot = new THREE.Group();
+  visualRoot.name = 'boat:procedural-fallback';
   const wood = createMobileMaterial('wood', {
     map: textures.planksColor,
     normalMap: textures.planksNormal,
@@ -193,5 +196,9 @@ export function createBoatModel(
     mesh.frustumCulled = true;
   });
 
-  return { root, hull, wakeLeft, wakeRight, sail };
+  const proceduralChildren = root.children.filter((child) => child !== wakeLeft && child !== wakeRight);
+  root.remove(...proceduralChildren);
+  visualRoot.add(...proceduralChildren);
+  root.add(visualRoot, wakeLeft, wakeRight);
+  return { root, visualRoot, hull, wakeLeft, wakeRight, sail };
 }

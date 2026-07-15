@@ -261,22 +261,21 @@ export class BoatManager {
     }
 
     // ---------- เลี้ยวแบบมีความเฉื่อยเชิงมุม (หางเสือหนืด) ----------
-    // เรือใบจริงต้องมี "ทางเรือ" (way) ก่อนถึงจะบังคับหัวได้ — จอดนิ่งแทบเลี้ยวไม่เข้า
-    const turnFactor = THREE.MathUtils.clamp(Math.abs(boat.speed) / 4, 0.08, 1);
+    const turnFactor = THREE.MathUtils.clamp(Math.abs(boat.speed) / 3, 0.12, 1);
     const reverseDirection = boat.speed < 0 ? -1 : 1;
     // โยกขวา (steering > 0) = เลี้ยวขวา — heading เพิ่มขึ้นหมุนหัวเรือไปทางซ้าย จึงต้องลบ
     const targetTurn = steering * boat.definition.turnSpeed * turnFactor * reverseDirection;
-    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, targetTurn, 3.2, dt);
+    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, targetTurn, 5, dt);
     boat.heading -= boat.turnVelocity * dt;
-    // เลี้ยวแรงเสียความเร็ว (แรงต้านน้ำตอนกินหางเสือ)
-    boat.speed *= 1 - Math.min(0.35, Math.abs(boat.turnVelocity) * 0.3) * dt;
+    // เลี้ยวแรงเสียความเร็วเล็กน้อย (แรงต้านน้ำ)
+    boat.speed *= 1 - Math.min(0.3, Math.abs(boat.turnVelocity) * 0.22) * dt;
   }
 
   private updateIdle(boat: Boat, dt: number): void {
     const damping = boat.anchor ? boat.definition.brakePower : boat.definition.drag * 1.8;
     boat.speed = THREE.MathUtils.damp(boat.speed, 0, damping, dt);
     // หางเสือคลายตัวตามความเฉื่อย — ปล่อยพวงมาลัยแล้วเรือยังเบนต่อเล็กน้อย
-    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, 0, 2, dt);
+    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, 0, 3, dt);
     boat.heading -= boat.turnVelocity * dt;
     if (findDockAt(boat.group.position.x, boat.group.position.z) && Math.abs(boat.speed) < 0.25) {
       boat.state = 'docked';
@@ -474,6 +473,12 @@ export class BoatManager {
       if (!this.active) return;
       this.active.hp = this.active.definition.maxHp;
       this.shop.setStatus('ซ่อมเรือเต็ม HP แล้ว');
+      return;
+    }
+    if ((action === 'upgrade-hull' || action === 'upgrade-cannon' || action === 'upgrade-sail') && boatId) {
+      const kind = action.replace('upgrade-', '') as 'hull' | 'cannon' | 'sail';
+      const result = this.progress.upgrade(boatId, kind);
+      this.shop.setStatus(result.message, !result.ok);
     }
   }
 
@@ -495,7 +500,8 @@ export class BoatManager {
     }
     const dock = getDock(this.activeDockId) ?? getDock('starter-harbor')!;
     const spawn = dock.boatSpawn;
-    const boat = new Boat(definition, this.textures, this.graphics);
+    const runtimeDefinition = this.progress.getRuntimeDefinition(definition.id) ?? definition;
+    const boat = new Boat(runtimeDefinition, this.textures, this.graphics);
     boat.heading = spawn.heading;
     boat.anchor = true;
     boat.state = 'docked';

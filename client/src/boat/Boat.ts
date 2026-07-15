@@ -3,6 +3,7 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { WorldTextures } from '../world/textures';
 import type { BoatDefinition } from './BoatData';
 import { createBoatModel } from './BoatModel';
+import { upgradeBoatVisualWhenReady } from './BoatAssetLibrary';
 
 export type BoatState = 'spawned' | 'piloted' | 'docked' | 'destroyed';
 
@@ -34,6 +35,7 @@ export class Boat {
   ) {
     const model = createBoatModel(definition, textures, graphics);
     this.group = model.root;
+    upgradeBoatVisualWhenReady(this.group, model.visualRoot, definition, graphics);
     this.hull = model.hull;
     this.wakeLeft = model.wakeLeft;
     this.wakeRight = model.wakeRight;

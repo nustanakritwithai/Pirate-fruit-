@@ -7,12 +7,14 @@ export interface BoatProgressData {
   coins: number;
   ownedBoatIds: string[];
   selectedBoatId: string | null;
+  upgrades: Record<string, { hull: number; cannon: number; sail: number }>;
 }
 
 const DEFAULT_PROGRESS: BoatProgressData = {
   coins: 500,
   ownedBoatIds: [],
   selectedBoatId: null,
+  upgrades: {},
 };
 
 /** เงินและเรือที่เป็นเจ้าของ แยกจากตำแหน่ง autosave เพื่อขยายเป็น inventory ภายหลังได้ */
@@ -33,6 +35,42 @@ export class BoatProgress {
 
   owns(id: string): boolean {
     return this.data.ownedBoatIds.includes(id);
+  }
+
+  upgradeLevel(id: string, kind: 'hull' | 'cannon' | 'sail'): number {
+    return this.data.upgrades[id]?.[kind] ?? 0;
+  }
+
+  upgrade(id: string, kind: 'hull' | 'cannon' | 'sail'): { ok: boolean; message: string } {
+    const definition = getBoatDefinition(id);
+    if (!definition || !this.owns(id)) return { ok: false, message: 'ต้องเป็นเจ้าของเรือลำนี้ก่อน' };
+    const level = this.upgradeLevel(id, kind);
+    const costs = definition.upgradeCosts?.[kind] ?? [];
+    const price = costs[level];
+    if (price === undefined) return { ok: false, message: `${kind === 'hull' ? 'เกราะเรือ' : kind === 'cannon' ? 'ปืนใหญ่' : 'ใบเรือ'} เต็มระดับแล้ว` };
+    if (this.coins < price) return { ok: false, message: `ต้องการอีก ${price - this.coins} เหรียญ` };
+    if (this.wallet ? !this.wallet.spendCoins(price, `boat-upgrade:${id}:${kind}`) : false) return { ok: false, message: 'เหรียญไม่พอ' };
+    if (!this.wallet) this.data.coins -= price;
+    const current = this.data.upgrades[id] ?? { hull: 0, cannon: 0, sail: 0 };
+    current[kind] = level + 1;
+    this.data.upgrades[id] = current;
+    this.save();
+    return { ok: true, message: `อัปเกรด ${kind === 'hull' ? 'เกราะเรือ' : kind === 'cannon' ? 'ปืนใหญ่' : 'ใบเรือ'} ระดับ ${level + 1} สำเร็จ` };
+  }
+
+  getRuntimeDefinition(id: string) {
+    const base = getBoatDefinition(id);
+    if (!base) return undefined;
+    const hull = this.upgradeLevel(id, 'hull');
+    const cannon = this.upgradeLevel(id, 'cannon');
+    const sail = this.upgradeLevel(id, 'sail');
+    return {
+      ...base,
+      maxHp: Math.round(base.maxHp * (1 + hull * 0.16)),
+      cannonsPerSide: (base.cannonsPerSide ?? 0) + cannon,
+      maxSpeed: base.maxSpeed * (1 + sail * 0.055),
+      acceleration: base.acceleration * (1 + sail * 0.045),
+    };
   }
 
   purchase(id: string): { ok: boolean; message: string } {
@@ -85,9 +123,10 @@ export class BoatProgress {
           : DEFAULT_PROGRESS.coins,
         ownedBoatIds: owned,
         selectedBoatId: selected,
+        upgrades: parsed.upgrades && typeof parsed.upgrades === 'object' ? parsed.upgrades as BoatProgressData['upgrades'] : {},
       };
     } catch {
-      return { ...DEFAULT_PROGRESS, ownedBoatIds: [] };
+      return { ...DEFAULT_PROGRESS, ownedBoatIds: [], upgrades: {} };
     }
   }
 
