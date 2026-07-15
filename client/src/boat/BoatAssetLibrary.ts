@@ -67,7 +67,6 @@ export function upgradeBoatVisualWhenReady(
     const scale = target / horizontal;
     asset.scale.setScalar(scale);
     asset.position.set(0, -bounds.min.y * scale + 0.03, 0);
-    asset.rotation.y = Math.PI;
     fallback.visible = false;
     root.add(asset);
   }).catch(() => undefined);

@@ -21,7 +21,7 @@ import { worldHeightAt } from '../island/IslandRegistry';
 import type { BoatDefinition } from './BoatData';
 import type { BoatManager } from './BoatManager';
 import { createBoatModel } from './BoatModel';
-import { DECK_TOP_LOCAL_Y, deckBoundsFor, deckHeightAt } from './DeckSpace';
+import { deckBoundsFor, deckHeightAt } from './DeckSpace';
 import {
   aimCannonball,
   CANNONBALL_LIFETIME,
@@ -37,6 +37,8 @@ import {
   type EnemyShipDefinition,
   type ShipAIState,
 } from './NavalData';
+
+const PLAYER_FIRE_RANGE = 34;
 
 interface NavalRewardSink {
   addCoins(amount: number, source?: string): void;
@@ -110,6 +112,7 @@ function toModelDefinition(defn: EnemyShipDefinition): BoatDefinition {
     color: defn.color,
     cannonsPerSide: 2,
     modelId: 'small-ship',
+    deckTopLocalY: 1.08,
   };
 }
 
@@ -123,6 +126,11 @@ export class NavalCombat {
   private boarding: BoardingState | null = null;
   private elapsed = 0;
   private playerFireCooldown = 0;
+  private armedSide: 0 | 1 | -1 = 0;
+  private readonly aimArc: THREE.Group;
+  private readonly aimFill: THREE.MeshBasicMaterial;
+  private readonly aimRim: THREE.MeshBasicMaterial;
+  onCannonArmed?: (side: 0 | 1 | 2) => void;
 
   constructor(
     private scene: THREE.Scene,
@@ -141,6 +149,21 @@ export class NavalCombat {
     for (const spawn of PIRATE_SPAWNS) {
       this.ships.push(this.spawnShip(PIRATE_CUTTER, spawn, textures, graphics));
     }
+
+    const makeArc = (inner: number, outer: number, material: THREE.MeshBasicMaterial) => {
+      const geometry = new THREE.RingGeometry(inner, outer, 42, 1, -0.95, 1.9);
+      geometry.rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = 2;
+      return mesh;
+    };
+    this.aimFill = new THREE.MeshBasicMaterial({ color: 0xffb35c, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthWrite: false });
+    this.aimRim = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+    this.aimArc = new THREE.Group();
+    this.aimArc.add(makeArc(2.4, PLAYER_FIRE_RANGE - 0.8, this.aimFill));
+    this.aimArc.add(makeArc(PLAYER_FIRE_RANGE - 0.8, PLAYER_FIRE_RANGE, this.aimRim));
+    this.aimArc.visible = false;
+    scene.add(this.aimArc);
   }
 
   /** เรือศัตรูที่ยังลอยลำ (ให้ debug/เทสต์) */
@@ -307,13 +330,13 @@ export class NavalCombat {
     ship.group.updateMatrixWorld();
 
     // พื้นดาดฟ้าเรือศัตรูเดินได้ (เรือหยุดนิ่ง — ไม่ต้อง carry)
-    const bounds = deckBoundsFor(ship.defn);
+    const bounds = deckBoundsFor({ ...ship.defn, deckTopLocalY: 1.08 });
     const provider: DynamicGroundProvider = (x, z) =>
       ship.boarded ? deckHeightAt(ship.group.matrixWorld, bounds, ship.group.position.y, x, z) : null;
     this.collision.addDynamicGround(provider);
 
     // กระโดดขึ้นดาดฟ้าท้ายเรือ
-    this.tempVector.set(0, DECK_TOP_LOCAL_Y + 0.05, -ship.defn.length * 0.2);
+    this.tempVector.set(0, bounds.deckTopLocalY + 0.05, -ship.defn.length * 0.2);
     ship.group.localToWorld(this.tempVector);
     this.controller.teleport(this.tempVector.x, this.tempVector.y, this.tempVector.z);
     this.controller.heading = ship.heading;
@@ -325,7 +348,7 @@ export class NavalCombat {
       { typeId: 'pirate-captain', localX: 0, localZ: 1.4 },
     ];
     const entries = crewSpots.map((spot) => {
-      this.tempVector.set(spot.localX, DECK_TOP_LOCAL_Y, spot.localZ);
+      this.tempVector.set(spot.localX, bounds.deckTopLocalY, spot.localZ);
       ship.group.localToWorld(this.tempVector);
       return { typeId: spot.typeId, x: this.tempVector.x, z: this.tempVector.z };
     });
@@ -519,40 +542,64 @@ export class NavalCombat {
     return this.playerFireCooldown / PLAYER_FIRE_COOLDOWN;
   }
 
+  get armedCannonSide(): 0 | 1 | 2 {
+    return this.armedSide === 0 ? 0 : this.armedSide === 1 ? 1 : 2;
+  }
+
+  get playerBallPositions(): { x: number; y: number; z: number }[] {
+    return this.balls.filter((b) => b.fromPlayer).map((b) => ({ x: b.x, y: b.y, z: b.z }));
+  }
+
+  private disarmCannons(): void {
+    if (this.armedSide === 0) return;
+    this.armedSide = 0;
+    this.aimArc.visible = false;
+    this.onCannonArmed?.(0);
+  }
+
+  private updateAimArc(): void {
+    const boat = this.boats.activeBoat;
+    if (this.armedSide === 0 || !boat) return;
+    this.aimArc.position.set(boat.group.position.x, boat.group.position.y + 0.42, boat.group.position.z);
+    this.aimArc.rotation.y = boat.heading + (this.armedSide === 1 ? 0 : Math.PI);
+    const cooling = this.playerFireCooldown > 0;
+    this.aimFill.opacity = cooling ? 0.1 : 0.22 + Math.sin(this.elapsed * 5) * 0.06;
+    this.aimRim.opacity = cooling ? 0.25 : 0.55 + Math.sin(this.elapsed * 5) * 0.15;
+  }
+
   private updatePlayerFire(playerOnBoat: boolean): void {
     const boat = this.boats.activeBoat;
-    if (!playerOnBoat || !boat || this.boats.riderState !== 'helm') return;
-    // ปุ่มยิงซ้าย/ขวา (มือถือ/คีย์ 1-2) = เลือกกราบเอง, คลิกซ้าย = เล็งเป้าใกล้สุดอัตโนมัติ
+    if (!playerOnBoat || !boat || this.boats.riderState !== 'helm') {
+      this.disarmCannons();
+      return;
+    }
+    this.updateAimArc();
     const sideCommand = this.input.consumeCannon();
     const autoCommand = this.input.consumeAttack();
     if (sideCommand === 0 && !autoCommand) return;
-    if (this.playerFireCooldown > 0) return;
-    this.playerFireCooldown = PLAYER_FIRE_COOLDOWN;
-
     const bx = boat.group.position.x;
     const bz = boat.group.position.z;
-    const rightX = Math.cos(boat.heading);
-    const rightZ = -Math.sin(boat.heading);
-
-    // เป้า = เรือศัตรูใกล้สุดในระยะ (ถ้าสั่งกราบเอง เล็งเฉพาะเป้าฝั่งนั้น)
-    let side = sideCommand === 1 ? -1 : 1;
-    let target: EnemyShip | null = null;
-    let best = 34;
-    for (const ship of this.ships) {
-      if (!ship.alive) continue;
-      const toTargetX = ship.group.position.x - bx;
-      const toTargetZ = ship.group.position.z - bz;
-      const d = Math.hypot(toTargetX, toTargetZ);
-      if (d >= best) continue;
-      if (sideCommand !== 0 && (toTargetX * rightX + toTargetZ * rightZ) * side < 0) continue;
-      best = d;
-      target = ship;
+    const leftX = Math.cos(boat.heading);
+    const leftZ = -Math.sin(boat.heading);
+    let desired: 1 | -1;
+    if (sideCommand !== 0) desired = sideCommand === 1 ? 1 : -1;
+    else if (this.armedSide !== 0) desired = this.armedSide;
+    else {
+      const nearest = this.nearestShipTo(bx, bz, 0, leftX, leftZ);
+      desired = nearest && (nearest.group.position.x - bx) * leftX + (nearest.group.position.z - bz) * leftZ >= 0 ? 1 : -1;
     }
-    if (sideCommand === 0 && target) {
-      const toTargetX = target.group.position.x - bx;
-      const toTargetZ = target.group.position.z - bz;
-      side = toTargetX * rightX + toTargetZ * rightZ >= 0 ? 1 : -1;
+    if (this.armedSide !== desired) {
+      this.armedSide = desired;
+      this.aimArc.visible = true;
+      this.updateAimArc();
+      this.onCannonArmed?.(desired === 1 ? 1 : 2);
+      this.notify?.(desired === 1 ? '💣 เปิดกราบซ้าย — กดซ้ำเพื่อยิง' : '💣 เปิดกราบขวา — กดซ้ำเพื่อยิง');
+      return;
     }
+    if (this.playerFireCooldown > 0) return;
+    this.playerFireCooldown = PLAYER_FIRE_COOLDOWN;
+    const side = this.armedSide;
+    const target = this.nearestShipTo(bx, bz, side, leftX, leftZ);
 
     const count = Math.max(1, boat.definition.cannonsPerSide ?? 1);
     for (let i = 0; i < count; i++) {
@@ -575,13 +622,29 @@ export class NavalCombat {
           from.x,
           from.y,
           from.z,
-          from.x + side * rightX * 18,
-          from.z + side * rightZ * 18,
+          from.x + side * leftX * 18,
+          from.z + side * leftZ * 18,
         );
       }
       this.spawnBall(from.clone(), velocity, true, PLAYER_CANNON_DAMAGE);
     }
     if (!target) this.notify?.('💣 ยิงปืนใหญ่! (ไม่มีเป้าในระยะ)');
+  }
+
+  private nearestShipTo(bx: number, bz: number, side: 0 | 1 | -1, leftX: number, leftZ: number): EnemyShip | null {
+    let target: EnemyShip | null = null;
+    let best = PLAYER_FIRE_RANGE;
+    for (const ship of this.ships) {
+      if (!ship.alive) continue;
+      const toX = ship.group.position.x - bx;
+      const toZ = ship.group.position.z - bz;
+      const distance = Math.hypot(toX, toZ);
+      if (distance >= best) continue;
+      if (side !== 0 && (toX * leftX + toZ * leftZ) * side < 0) continue;
+      best = distance;
+      target = ship;
+    }
+    return target;
   }
 
   private spawnBall(

@@ -402,7 +402,7 @@ export class TouchControls {
     this.cooldownRings.set(this.cannonRightBtn, getter);
   }
 
-  /** ไฮไลต์ปุ่มกาบที่เปิดเล็งอยู่: 0 = ปิด, 1 = ซ้าย, 2 = ขวา */
+  /** ไฮไลต์กราบที่เปิดเล็งอยู่: 0 = ปิด, 1 = ซ้าย, 2 = ขวา */
   setCannonArmed(side: 0 | 1 | 2): void {
     this.cannonLeftBtn.classList.toggle('tc-armed', side === 1);
     this.cannonRightBtn.classList.toggle('tc-armed', side === 2);

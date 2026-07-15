@@ -19,6 +19,7 @@ export interface BoatDefinition {
   cannonsPerSide?: number;
   /** โมเดลเรือจาก asset library */
   modelId?: 'boat' | 'small-ship' | 'sail-ship' | 'ship' | 'viking-boat' | 'sail-boat';
+  deckTopLocalY?: number;
   upgradeCosts?: { hull: readonly number[]; cannon: readonly number[]; sail: readonly number[] };
 }
 
@@ -46,6 +47,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     color: 0x704226,
     cannonsPerSide: 1,
     modelId: 'boat',
+    deckTopLocalY: 0.88,
     upgradeCosts: { hull: [250, 500, 900], cannon: [300, 650], sail: [220, 450] },
   },
   {
@@ -67,6 +69,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     color: 0x8b3929,
     cannonsPerSide: 2,
     modelId: 'sail-boat',
+    deckTopLocalY: 0.92,
     upgradeCosts: { hull: [400, 800, 1400], cannon: [450, 900, 1600], sail: [350, 700] },
   },
   {
@@ -88,6 +91,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     color: 0x9a5b32,
     cannonsPerSide: 3,
     modelId: 'sail-ship',
+    deckTopLocalY: 1.18,
     upgradeCosts: { hull: [900, 1600, 2600], cannon: [800, 1500, 2600], sail: [700, 1300] },
   },
   {
@@ -109,6 +113,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     color: 0x4b3024,
     cannonsPerSide: 5,
     modelId: 'ship',
+    deckTopLocalY: 1.35,
     upgradeCosts: { hull: [1800, 3200, 5200], cannon: [1600, 3000, 4800], sail: [1200, 2400] },
   },
   {
@@ -130,6 +135,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     color: 0x6e3b26,
     cannonsPerSide: 3,
     modelId: 'viking-boat',
+    deckTopLocalY: 1.08,
     upgradeCosts: { hull: [1100, 1900, 3200], cannon: [900, 1700, 2800], sail: [750, 1400] },
   },
 ];

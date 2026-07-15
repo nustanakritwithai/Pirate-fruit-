@@ -13,7 +13,7 @@ import type { WorldTextures } from '../world/textures';
 import { Boat } from './Boat';
 import { getBoatDefinition, MAX_SAIL_LEVEL, SAIL_GEAR_RATIO } from './BoatData';
 import { BoatProgress } from './BoatProgress';
-import { DECK_TOP_LOCAL_Y, carryRider, deckBoundsFor, deckHeightAt, withinDeck, worldToDeckLocal } from './DeckSpace';
+import { carryRider, deckBoundsFor, deckHeightAt, withinDeck, worldToDeckLocal } from './DeckSpace';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
 
@@ -347,7 +347,8 @@ export class BoatManager {
 
   /** วางผู้เล่นบนดาดฟ้า (หลังพวงมาลัยเล็กน้อย) */
   private placeRiderOnDeck(boat: Boat): void {
-    this.tempPosition.set(0, DECK_TOP_LOCAL_Y + 0.04, -boat.definition.length * 0.05);
+    const bounds = deckBoundsFor(boat.definition);
+    this.tempPosition.set(0, bounds.deckTopLocalY + 0.04, -boat.definition.length * 0.05);
     boat.group.localToWorld(this.tempPosition);
     this.controller.teleport(this.tempPosition.x, this.tempPosition.y, this.tempPosition.z);
     this.controller.heading = boat.heading;

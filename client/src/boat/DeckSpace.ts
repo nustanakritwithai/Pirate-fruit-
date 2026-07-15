@@ -15,12 +15,14 @@ const DECK_MARGIN = 1.08;
 export interface DeckBounds {
   halfWidth: number;
   halfLength: number;
+  deckTopLocalY: number;
 }
 
-export function deckBoundsFor(definition: Pick<BoatDefinition, 'width' | 'length'>): DeckBounds {
+export function deckBoundsFor(definition: Pick<BoatDefinition, 'width' | 'length' | 'deckTopLocalY'>): DeckBounds {
   return {
     halfWidth: definition.width * 0.41 * DECK_MARGIN,
     halfLength: definition.length * 0.31 * DECK_MARGIN,
+    deckTopLocalY: definition.deckTopLocalY ?? DECK_TOP_LOCAL_Y,
   };
 }
 
@@ -57,7 +59,7 @@ export function deckHeightAt(
 ): number | null {
   const local = worldToDeckLocal(boatMatrixWorld, x, boatY, z, tempPoint);
   if (!withinDeck(bounds, local.x, local.z)) return null;
-  local.y = DECK_TOP_LOCAL_Y;
+  local.y = bounds.deckTopLocalY;
   local.applyMatrix4(boatMatrixWorld);
   return local.y;
 }
