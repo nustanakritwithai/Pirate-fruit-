@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { instantiateSpellFxAsset, preloadSpellFxAssets } from '../art/SpellFxAssetLibrary';
 
 interface ActiveEffect {
   root: THREE.Object3D;
@@ -25,6 +26,8 @@ export interface EnergyProjectileVisual {
   readonly aura: THREE.Mesh;
   readonly rings: readonly THREE.Mesh[];
   readonly materials: readonly THREE.MeshBasicMaterial[];
+  readonly assetRoot?: THREE.Object3D;
+  readonly assetMaterials?: readonly THREE.Material[];
   elapsed: number;
   trailTimer: number;
 }
@@ -80,7 +83,9 @@ export class Effects {
   private readonly muzzleCoreGeo = new THREE.SphereGeometry(0.12, 8, 6);
   private readonly muzzleRingGeo = new THREE.TorusGeometry(0.14, 0.025, 5, 12);
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(private scene: THREE.Scene) {
+    preloadSpellFxAssets();
+  }
 
   /** คลื่นโค้งหน้าตัวละคร สำหรับหมัด/ท่าพุ่งที่ไม่มีใบดาบ */
   spawnSlash(position: THREE.Vector3, heading: number, color = 0x9fdcff, scale = 1): void {
@@ -259,6 +264,15 @@ export class Effects {
     root.quaternion.setFromUnitVectors(Z_AXIS, normalizedDirection);
     root.scale.setScalar(scale);
     root.add(aura, core, ringA, ringB);
+    const asset = instantiateSpellFxAsset('fireball', color);
+    if (asset) {
+      asset.root.scale.setScalar(0.72 * scale);
+      root.add(asset.root);
+      core.visible = false;
+      aura.visible = false;
+      ringA.visible = false;
+      ringB.visible = false;
+    }
     this.scene.add(root);
     return {
       root,
@@ -269,6 +283,8 @@ export class Effects {
       aura,
       rings: [ringA, ringB],
       materials: [coreMaterial, auraMaterial, ringMaterialA, ringMaterialB],
+      assetRoot: asset?.root,
+      assetMaterials: asset?.materials,
       elapsed: 0,
       trailTimer: 0,
     };
@@ -282,6 +298,15 @@ export class Effects {
     visual.core.rotation.z -= dt * 8.6;
     visual.rings[0].rotation.z += dt * 8.5;
     visual.rings[1].rotation.z -= dt * 6.2;
+    if (visual.assetRoot) {
+      visual.assetRoot.rotation.y += dt * 4.2;
+      visual.assetRoot.rotation.x += dt * 2.4;
+      visual.assetRoot.scale.setScalar(visual.scale * (0.68 + Math.sin(visual.elapsed * 12) * 0.06));
+      visual.assetMaterials?.forEach((material) => {
+        const alphaMaterial = material as THREE.Material & { opacity?: number };
+        if ('opacity' in alphaMaterial) alphaMaterial.opacity = Math.max(0, lifeFraction);
+      });
+    }
     const pulse = 1 + Math.sin(visual.elapsed * 20) * 0.1;
     visual.core.scale.setScalar(pulse);
     visual.aura.scale.setScalar(1.05 + Math.sin(visual.elapsed * 15 + 0.8) * 0.13);
@@ -307,6 +332,7 @@ export class Effects {
   destroyEnergyProjectile(visual: EnergyProjectileVisual, burstScale = 0.8): void {
     this.scene.remove(visual.root);
     for (const material of visual.materials) material.dispose();
+    visual.assetMaterials?.forEach((material) => material.dispose());
     this.spawnEnergyImpact(visual.root.position, visual.color, visual.scale * burstScale);
   }
 
@@ -326,13 +352,24 @@ export class Effects {
     root.position.copy(position);
     root.quaternion.setFromUnitVectors(Z_AXIS, direction.clone().normalize());
     root.add(ring, core);
+    const asset = instantiateSpellFxAsset('lightning-hands', color);
+    if (asset) {
+      asset.root.scale.setScalar(0.75 * scale);
+      root.add(asset.root);
+      ring.visible = false;
+      core.visible = false;
+    }
     this.scene.add(root);
-    this.track(root, 0.24, [material, coreMaterial], [], (progress, remaining) => {
+    this.track(root, 0.24, [material, coreMaterial, ...(asset?.materials ?? [])], [], (progress, remaining) => {
       ring.rotation.z += 0.18;
       ring.scale.setScalar(scale * (0.45 + easeOutCubic(progress) * 1.35));
       core.scale.setScalar(scale * Math.max(0.05, remaining * 0.8));
       material.opacity = remaining * 0.9;
       coreMaterial.opacity = remaining * remaining * 0.85;
+      if (asset) {
+        asset.root.rotation.y += 0.16;
+        asset.root.scale.setScalar(scale * (0.68 + progress * 0.5));
+      }
     });
   }
 
@@ -568,8 +605,16 @@ export class Effects {
     root.name = 'effect:energy-impact';
     root.position.copy(position);
     root.add(core, ringA, ringB);
+    const asset = instantiateSpellFxAsset('magic-rock', color);
+    if (asset) {
+      asset.root.scale.setScalar(0.8 * scale);
+      root.add(asset.root);
+      core.visible = false;
+      ringA.visible = false;
+      ringB.visible = false;
+    }
     this.scene.add(root);
-    this.track(root, 0.34, [coreMaterial, ringMaterial], [], (progress, remaining) => {
+    this.track(root, 0.34, [coreMaterial, ringMaterial, ...(asset?.materials ?? [])], [], (progress, remaining) => {
       const expanded = scale * (0.35 + easeOutCubic(progress) * 1.8);
       core.scale.setScalar(expanded);
       ringA.scale.setScalar(expanded * 1.15);
@@ -578,6 +623,11 @@ export class Effects {
       ringB.rotation.x -= 0.1;
       coreMaterial.opacity = remaining * remaining * 0.9;
       ringMaterial.opacity = remaining * 0.82;
+      if (asset) {
+        asset.root.rotation.y += 0.12;
+        asset.root.rotation.z += 0.08;
+        asset.root.scale.setScalar(scale * (0.72 + progress * 1.1));
+      }
     });
   }
 }
