@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { TradeManager } from '../TradeManager';
+import { essentialReserveStock } from '../living/LivingTradeConfig';
 
 const memory = new Map<string, string>();
 
@@ -61,5 +62,18 @@ describe('TradeManager', () => {
     trade.setBoat('swift-sloop');
     expect(trade.hold.maxSlots).toBe(12);
     expect(trade.hold.maxWeight).toBe(180);
+  });
+
+  it('does not let normal purchases consume the city subsistence reserve', () => {
+    const trade = new TradeManager(makeWallet());
+    const fish = trade.living.getCommodity('leaf-island', 'fresh-fish')!;
+    const reserve = essentialReserveStock('fresh-fish', fish.targetStock);
+    fish.stock = reserve + 2;
+
+    const blocked = trade.buy('starter-island', 'fresh-fish', 3);
+
+    expect(blocked.ok).toBe(false);
+    expect(fish.stock).toBe(reserve + 2);
+    expect(blocked.message).toContain('คลังยังชีพ');
   });
 });

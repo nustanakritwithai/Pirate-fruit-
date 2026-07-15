@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   canProduceRecipe,
+  consumeGoods,
   getFoodSecurity,
   getToolEfficiency,
   getWealth,
@@ -215,6 +216,60 @@ describe('Phase T4A — Production chains', () => {
     mine.commodities['herbal-medicine']!.stock = 0;
     runProduction(mine, []);
     expect(mine.commodities['herbal-medicine']!.stock).toBeGreaterThan(0);
+  });
+
+  it('19. consumes fresh and dried fish as one substitutable food basket', () => {
+    const leaf = leafCell(sim);
+    const fresh = leaf.commodities['fresh-fish']!;
+    const dried = leaf.commodities['dried-fish']!;
+    fresh.stock = 100;
+    dried.stock = 100;
+    const beforeCalories = fresh.stock + dried.stock * 1.2;
+
+    consumeGoods(leaf);
+
+    const caloriesUsed = beforeCalories - (fresh.stock + dried.stock * 1.2);
+    const oldDoubleConsumption = (fresh.consumption + dried.consumption)
+      * (0.8 + leaf.population / 2000);
+    expect(caloriesUsed).toBeGreaterThan(0);
+    expect(caloriesUsed).toBeLessThan(oldDoubleConsumption);
+  });
+
+  it('20. does not passively consume industrial and event goods', () => {
+    const yard = yardCell(sim);
+    yard.commodities.rope!.stock = 25;
+    yard.commodities.sailcloth!.stock = 25;
+    yard.commodities['repair-kit']!.stock = 25;
+
+    consumeGoods(yard);
+
+    expect(yard.commodities.rope!.stock).toBe(25);
+    expect(yard.commodities.sailcloth!.stock).toBe(25);
+    expect(yard.commodities['repair-kit']!.stock).toBe(25);
+  });
+
+  it('21. gives every shipyard recipe a production turn before repeating a recipe', () => {
+    const yard = yardCell(sim);
+    yard.commodities.hardwood!.stock = 500;
+    yard.commodities['iron-ingot']!.stock = 500;
+    yard.commodities.rope!.stock = 500;
+    yard.commodities.tools!.stock = 0;
+    yard.commodities['repair-kit']!.stock = 0;
+    yard.commodities['trade-crate']!.stock = 0;
+    yard.commodities.sailcloth!.stock = 0;
+    for (const factory of sim.factories.filter((agent) => agent.cellId === yard.id)) {
+      factory.status = 'operating';
+      factory.outputScale = 1;
+      factory.retoolingTicks = 0;
+      factory.activeRecipeId = factory.recipeId;
+    }
+
+    runProduction(yard, [], [...sim.factories]);
+
+    expect(yard.commodities.tools!.stock).toBeGreaterThan(0);
+    expect(yard.commodities['repair-kit']!.stock).toBeGreaterThan(0);
+    expect(yard.commodities['trade-crate']!.stock).toBeGreaterThan(0);
+    expect(yard.commodities.sailcloth!.stock).toBeGreaterThan(0);
   });
 });
 

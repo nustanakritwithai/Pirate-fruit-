@@ -12,7 +12,7 @@ import {
 import { canProduceRecipeScaled, runProduction } from '../EconomyRules';
 import { createFreshWorld } from '../LivingTradePersistence';
 import { LivingTradeSimulator } from '../LivingTradeSimulator';
-import { recipeForOutput } from '../ProductionRecipes';
+import { LIVING_COMMODITY_META, recipeForOutput } from '../ProductionRecipes';
 import { updateAdaptiveEconomy, ensureFactoryAgents } from '../AdaptiveEconomy';
 import type { EconomyCellState, FactoryAgentState } from '../types';
 
@@ -131,6 +131,7 @@ describe('Phase E1 — Adaptive Factory', () => {
     const sim = new LivingTradeSimulator(true);
     const cell = yard(sim);
     const factory = sailFactory(sim);
+    forceUnprofitable(cell, 'sailcloth');
     debugForcePause(factory, cell);
     factory.profitableTicks = 10;
     factory.adaptationCooldown = 0;
@@ -267,14 +268,43 @@ describe('Phase E1 — Adaptive Factory', () => {
     expect(agent.outputScale).toBe(1);
   });
 
-  it('20. long simulation stays stable (1000 ticks)', () => {
+  it('20. city procurement reopens a primary production line when stock is low', () => {
+    const sim = new LivingTradeSimulator(true);
+    const cell = yard(sim);
+    const factory = sailFactory(sim);
+    const output = cell.commodities.sailcloth!;
+    output.stock = 0;
+    output.currentPrice = 1;
+    output.memory.averagePrice = 1;
+    for (const inputId of Object.keys(recipeForOutput('sailcloth')!.inputs)) {
+      const input = cell.commodities[inputId as keyof typeof cell.commodities];
+      if (!input) continue;
+      input.stock = input.targetStock * 2;
+      input.currentPrice = input.basePrice * 3;
+      input.memory.averagePrice = input.basePrice * 3;
+    }
+
+    const score = scoreFactory(factory, cell, recipeForOutput('sailcloth')!);
+    expect(score.reasons).toContain('คำสั่งซื้อฟื้นฟูการผลิต');
+    expect(score.finalScore).toBeGreaterThan(ADAPTIVE_ECONOMY.reopenThreshold);
+  });
+
+  it('21. long simulation keeps every supply chain alive (1000 ticks)', () => {
     const sim = new LivingTradeSimulator(true);
     for (let i = 0; i < 1000; i++) sim.tick();
     for (const cell of sim.state.cells) {
-      for (const item of Object.values(cell.commodities)) {
+      for (const [commodityId, item] of Object.entries(cell.commodities)) {
         if (!item) continue;
         expect(Number.isFinite(item.stock)).toBe(true);
-        expect(item.stock).toBeGreaterThanOrEqual(0);
+        expect(item.stock).toBeGreaterThan(0);
+        expect(item.marketState).not.toBe('collapsed');
+        const model = LIVING_COMMODITY_META[
+          commodityId as keyof typeof LIVING_COMMODITY_META
+        ].consumptionModel;
+        // ของหายาก/ของหรูขาดได้เพื่อสร้างโอกาสทำกำไร แต่เสบียงและสายโรงงานต้องไม่วิกฤต
+        if (model !== 'trade-good' && model !== 'luxury') {
+          expect(item.marketState).not.toBe('crisis');
+        }
       }
       expect(Number.isFinite(cell.unemployment)).toBe(true);
       expect(cell.unemployment).toBeGreaterThanOrEqual(0);

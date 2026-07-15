@@ -17,6 +17,7 @@ import {
   CELL_LABELS,
   ECONOMY_CONFIG,
   LIVING_COMMODITY_IDS,
+  essentialReserveStock,
   isLivingCommodity,
   resolveTradeCell,
 } from './LivingTradeConfig';
@@ -148,6 +149,15 @@ export class LivingTradeSimulator {
     if (!isLivingCommodity(commodityId)) return null;
     const cellId = resolveTradeCell(gameIslandId, commodityId);
     return this.getCommodity(cellId, commodityId)?.stock ?? null;
+  }
+
+  /** สต็อกที่ร้านขายได้จริงหลังหักคลังยังชีพของประชาชน */
+  getTradableStock(gameIslandId: IslandId, commodityId: string): number | null {
+    if (!isLivingCommodity(commodityId)) return null;
+    const cellId = resolveTradeCell(gameIslandId, commodityId);
+    const item = this.getCommodity(cellId, commodityId);
+    if (!item) return null;
+    return Math.max(0, item.stock - essentialReserveStock(commodityId, item.targetStock));
   }
 
   setContractWallet(wallet: ContractWallet | null): void {

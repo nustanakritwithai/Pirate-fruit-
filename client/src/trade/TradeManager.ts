@@ -107,9 +107,12 @@ export class TradeManager {
     const qty = Math.max(1, Math.floor(quantity));
 
     if (action === 'buy') {
-      const stock = this.living.getStock(islandId, commodityId);
+      const stock = this.living.getTradableStock(islandId, commodityId);
       if (stock != null && stock < qty) {
-        return this.emit({ ok: false, message: `สต็อกเหลือแค่ ${Math.floor(stock)}` });
+        return this.emit({
+          ok: false,
+          message: `ขายได้อีก ${Math.floor(stock)} หน่วย (ส่วนที่เหลือเป็นคลังยังชีพของเมือง)`,
+        });
       }
       const unitPrice = this.resolveBuyPrice(islandId, commodityId, qty);
       if (unitPrice == null) {

@@ -9,6 +9,7 @@ import {
   recipesForCell,
 } from './ProductionRecipes';
 import { genomeProductionBonus } from './GenomeGameplayBias';
+import { essentialReserveStock } from './LivingTradeConfig';
 import type {
   CommodityState,
   EconomyCellId,
@@ -127,7 +128,10 @@ function getInputShortagePenalty(
   for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
     const input = cell.commodities[inputId];
     if (!input || amount <= 0) continue;
-    const reserve = COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0;
+    const reserve = Math.max(
+      COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0,
+      essentialReserveStock(inputId, input.targetStock),
+    );
     const need = amount * scale;
     if (input.stock - need < reserve) {
       penalty += ADAPTIVE_ECONOMY.shortagePenaltyPerInput;
@@ -183,7 +187,7 @@ export function scoreFactory(
   const output = cell.commodities[recipe.id];
 
   const sellPrice = output ? getExpectedPrice(output) : recipe.id ? 0 : 0;
-  const expectedRevenue = sellPrice * recipe.outputAmount * effectiveScale;
+  const marketRevenue = sellPrice * recipe.outputAmount * effectiveScale;
 
   const inputCost = Object.entries(recipe.inputs).reduce((total, [commodityId, amount]) => {
     const item = cell.commodities[commodityId as LivingCommodityId];
@@ -194,6 +198,20 @@ export function scoreFactory(
   const laborCost =
     meta.requiredWorkers * cell.wageLevel * effectiveScale;
   const maintenanceCost = meta.baseMaintenanceCost * effectiveScale;
+
+  // สินค้าขั้นกลางหลายชนิดมีราคาขายปลีกต่ำกว่าต้นทุนสูตรดั้งเดิม ทำให้
+  // adaptive factory ปิดทุกแห่งพร้อมกันและ supply chain เริ่มใหม่ไม่ได้
+  // เมืองจึงรับซื้อชั่วคราวเฉพาะตอนสต็อกต่ำกว่า 85% ของเป้าหมาย
+  // เมื่อคลังฟื้น โรงงานกลับไปตัดสินใจจากราคาตลาดตามเดิม
+  const operatingCost = inputCost + laborCost + maintenanceCost;
+  const outputRatio = output ? stockRatio(output) : 1;
+  // เงินฟื้นฟูใช้กับสายการผลิตหลักของโรงงานเท่านั้น ไม่ใช้เป็นช่องโหว่ให้
+  // โรงงานสลับสูตรไปไล่เงินอุดหนุนของสินค้าทุกชนิด
+  const recoveryProcurementRevenue = recipe.id === factory.recipeId && outputRatio < 0.85
+    ? operatingCost * 1.08
+    : 0;
+  const expectedRevenue = Math.max(marketRevenue, recoveryProcurementRevenue);
+  if (expectedRevenue > marketRevenue) reasons.push('คำสั่งซื้อฟื้นฟูการผลิต');
 
   const shortagePenalty = getInputShortagePenalty(cell, recipe, effectiveScale, reasons);
   const oversupplyPenalty = getOutputOversupplyPenalty(cell, recipe.id, reasons);

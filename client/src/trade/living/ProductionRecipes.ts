@@ -9,6 +9,15 @@ export type LivingBadge =
   | 'luxury'
   | 'perishable';
 
+/** รูปแบบการลดสต็อก — ป้องกันประชากรกินวัตถุดิบโรงงานทุกชนิดทุก tick */
+export type ConsumptionModel =
+  | 'food'
+  | 'household'
+  | 'industrial'
+  | 'luxury'
+  | 'event'
+  | 'trade-good';
+
 export interface ProductionRecipe {
   id: LivingCommodityId;
   outputAmount: number;
@@ -30,25 +39,78 @@ export const COMMODITY_RESERVE: Partial<Record<LivingCommodityId, number>> = {
 
 export const LIVING_COMMODITY_META: Record<
   LivingCommodityId,
-  { label: string; badge: LivingBadge; reserveStock?: number }
+  {
+    label: string;
+    badge: LivingBadge;
+    reserveStock?: number;
+    consumptionModel: ConsumptionModel;
+    /** สัดส่วน consumption เดิมที่หักเป็นกิจวัตร (0 = ใช้ผ่านสูตร/เหตุการณ์เท่านั้น) */
+    routineUseMultiplier?: number;
+  }
 > = {
-  'fresh-fish': { label: 'ปลาสด', badge: 'perishable' },
-  'dried-fish': { label: 'ปลาแห้ง', badge: 'food' },
-  hardwood: { label: 'ไม้เนื้อแข็ง', badge: 'raw', reserveStock: 10 },
-  'iron-ore': { label: 'แร่เหล็ก', badge: 'raw', reserveStock: 8 },
-  'iron-ingot': { label: 'แท่งเหล็ก', badge: 'processed' },
-  tools: { label: 'เครื่องมือช่าง', badge: 'tool' },
-  'sun-silk': { label: 'ผ้าไหม', badge: 'raw', reserveStock: 6 },
-  rope: { label: 'เชือกเดินเรือ', badge: 'ship-supply' },
-  'luxury-cloth': { label: 'ผ้าหรู', badge: 'luxury' },
-  'healing-herb': { label: 'สมุนไพร', badge: 'raw', reserveStock: 5 },
-  'herbal-medicine': { label: 'ยาสมุนไพร', badge: 'processed' },
-  sailcloth: { label: 'ชิ้นส่วนเรือ', badge: 'ship-supply' },
-  'repair-kit': { label: 'ชุดซ่อมเรือ', badge: 'ship-supply' },
-  'trade-crate': { label: 'หีบสินค้า', badge: 'ship-supply' },
-  'frost-crystal': { label: 'ผลึกเหมันต์', badge: 'raw', reserveStock: 8 },
-  'storm-core': { label: 'แกนพายุ', badge: 'raw', reserveStock: 6 },
-  'volcanic-ore': { label: 'แร่อัคคี', badge: 'raw', reserveStock: 8 },
+  'fresh-fish': { label: 'ปลาสด', badge: 'perishable', consumptionModel: 'food' },
+  'dried-fish': { label: 'ปลาแห้ง', badge: 'food', consumptionModel: 'food' },
+  hardwood: {
+    label: 'ไม้เนื้อแข็ง', badge: 'raw', reserveStock: 10,
+    consumptionModel: 'household', routineUseMultiplier: 1,
+  },
+  'iron-ore': {
+    label: 'แร่เหล็ก', badge: 'raw', reserveStock: 8,
+    consumptionModel: 'industrial', routineUseMultiplier: 0,
+  },
+  'iron-ingot': {
+    label: 'แท่งเหล็ก', badge: 'processed',
+    consumptionModel: 'household', routineUseMultiplier: 1,
+  },
+  tools: {
+    label: 'เครื่องมือช่าง', badge: 'tool',
+    // เครื่องมือเสื่อมช้า ไม่ควรถูกประชากรกินหมดเหมือนของใช้รายวัน
+    consumptionModel: 'household', routineUseMultiplier: 0.05,
+  },
+  'sun-silk': {
+    label: 'ผ้าไหม', badge: 'raw', reserveStock: 6,
+    consumptionModel: 'industrial', routineUseMultiplier: 0,
+  },
+  rope: {
+    label: 'เชือกเดินเรือ', badge: 'ship-supply',
+    consumptionModel: 'industrial', routineUseMultiplier: 0,
+  },
+  'luxury-cloth': {
+    label: 'ผ้าหรู', badge: 'luxury',
+    consumptionModel: 'luxury', routineUseMultiplier: 0.2,
+  },
+  'healing-herb': {
+    label: 'สมุนไพร', badge: 'raw', reserveStock: 5,
+    consumptionModel: 'industrial', routineUseMultiplier: 0,
+  },
+  'herbal-medicine': {
+    label: 'ยาสมุนไพร', badge: 'processed',
+    consumptionModel: 'household', routineUseMultiplier: 0.35,
+  },
+  sailcloth: {
+    label: 'ชิ้นส่วนเรือ', badge: 'ship-supply',
+    consumptionModel: 'event', routineUseMultiplier: 0,
+  },
+  'repair-kit': {
+    label: 'ชุดซ่อมเรือ', badge: 'ship-supply',
+    consumptionModel: 'event', routineUseMultiplier: 0,
+  },
+  'trade-crate': {
+    label: 'หีบสินค้า', badge: 'ship-supply',
+    consumptionModel: 'event', routineUseMultiplier: 0,
+  },
+  'frost-crystal': {
+    label: 'ผลึกเหมันต์', badge: 'raw', reserveStock: 8,
+    consumptionModel: 'trade-good', routineUseMultiplier: 0.3,
+  },
+  'storm-core': {
+    label: 'แกนพายุ', badge: 'raw', reserveStock: 6,
+    consumptionModel: 'trade-good', routineUseMultiplier: 0.3,
+  },
+  'volcanic-ore': {
+    label: 'แร่อัคคี', badge: 'raw', reserveStock: 8,
+    consumptionModel: 'trade-good', routineUseMultiplier: 0.3,
+  },
 };
 
 export const PRODUCTION_RECIPES: readonly ProductionRecipe[] = [

@@ -31,8 +31,9 @@ export function getFoodSecurity(cell: EconomyCellState): number {
   const dried = cell.commodities['dried-fish'];
   if (!fish && !dried) return 50;
   const fishRatio = fish ? stockRatio(fish) : 0;
-  const driedRatio = dried ? stockRatio(dried) * 0.95 : 0;
-  return Math.min(100, Math.max(fishRatio, driedRatio) * 100);
+  const driedRatio = dried ? stockRatio(dried) * 1.1 : 0;
+  // ปลาสดและปลาแห้งเป็นอาหารทดแทนกัน ไม่บังคับให้ประชากรกินทั้งสองชนิดพร้อมกัน
+  return Math.min(100, (fishRatio + driedRatio) * 100);
 }
 
 /** ความมั่งคั่ง 0–100 */
@@ -85,11 +86,13 @@ export function produceGoods(cell: EconomyCellState): void {
 
   const toolEff = getToolEfficiency(cell);
 
-  for (const item of Object.values(cell.commodities)) {
+  for (const [id, item] of Object.entries(cell.commodities) as [LivingCommodityId, CommodityState][]) {
     if (!item || item.baseProduction <= 0) continue;
     const ratio = stockRatio(item);
     if (ratio > 2) {
-      item.production = item.baseProduction * 0.2;
+      // คลังเต็มแล้วหยุดเก็บเกี่ยวชั่วคราว ป้องกันวัตถุดิบเฉพาะเกาะโตไม่สิ้นสุด
+      // จนแย่งงานเรือขนส่งจากวัตถุดิบโรงงานที่ขาดจริง
+      item.production = 0;
     } else if (ratio > 1.4) {
       item.production = item.baseProduction * 0.55;
     } else if (ratio < 0.6) {
@@ -100,22 +103,105 @@ export function produceGoods(cell: EconomyCellState): void {
     // เพิ่มกำลังผลิตตามจำนวนหน่วยจริงแบบพอดี ไม่เช่นนั้นการเพิ่มโรงงานจะดึง
     // วัตถุดิบมากกว่าที่เกาะผลิตได้และทำให้ supply chain ล่มทั้งระบบ
     const unitMultiplier = 1 + Math.min(0.6, Math.max(0, (cell.productionUnits ?? 1) - 1) * 0.1);
-    let output = item.production * cell.workforce * toolEff * unitMultiplier;
+    const isFood = LIVING_COMMODITY_META[id].consumptionModel === 'food';
+    // ประมงและการถนอมอาหารมีแรงงานยังชีพประจำ แม้เศรษฐกิจเมืองกำลังวิกฤต
+    const effectiveWorkforce = isFood ? Math.max(0.75, cell.workforce) : cell.workforce;
+    const effectiveTools = isFood ? Math.max(0.9, toolEff) : toolEff;
+    const emergencyBoost = isFood && foodSec < 40 ? 1.35 : 1;
+    const output = item.production
+      * effectiveWorkforce
+      * effectiveTools
+      * unitMultiplier
+      * emergencyBoost;
     item.stock += output;
   }
 }
 
-/** ขั้น 2: บริโภค — ปรับตาม unemployment */
+function consumeFoodBasket(
+  cell: EconomyCellState,
+  populationMultiplier: number,
+  demandMultiplier: number,
+): void {
+  const fresh = cell.commodities['fresh-fish'];
+  const dried = cell.commodities['dried-fish'];
+  if (!fresh && !dried) return;
+
+  const baseNeed = Math.max(fresh?.consumption ?? 0, dried?.consumption ?? 0);
+  const security = getFoodSecurity(cell);
+  const rationing = security < 20 ? 0.55 : security < 40 ? 0.7 : security < 80 ? 0.9 : 1;
+  const totalNeed = baseNeed * populationMultiplier * demandMultiplier * rationing;
+
+  // กินปลาสดก่อนเพื่อลดของเน่า แต่เก็บปลาแห้งไว้เป็นอาหารสำรองและใช้ทดแทนได้
+  const plannedFreshCalories = totalNeed * 0.65;
+  const freshFirst = fresh ? Math.min(fresh.stock, plannedFreshCalories) : 0;
+  if (fresh) fresh.stock -= freshFirst;
+  let caloriesRemaining = totalNeed - freshFirst;
+
+  const driedNutrition = 1.2;
+  const driedUsed = dried
+    ? Math.min(dried.stock, caloriesRemaining / driedNutrition)
+    : 0;
+  if (dried) dried.stock -= driedUsed;
+  caloriesRemaining -= driedUsed * driedNutrition;
+
+  if (fresh && caloriesRemaining > 0) {
+    fresh.stock -= Math.min(fresh.stock, caloriesRemaining);
+  }
+}
+
+/** ขั้น 2: บริโภค — Food Basket + การใช้ตามชนิดสินค้า */
 export function consumeGoods(cell: EconomyCellState): void {
   const laborPool = Math.max(1, cell.population * 0.32);
   const unemployedRate = Math.min(1, cell.unemployment / laborPool);
   const demandMult = 1 - unemployedRate * 0.15;
+  const populationMult = 0.8 + cell.population / 2000;
 
-  for (const item of Object.values(cell.commodities)) {
+  consumeFoodBasket(cell, populationMult, demandMult);
+
+  for (const [id, item] of Object.entries(cell.commodities) as [LivingCommodityId, CommodityState][]) {
     if (!item) continue;
-    const use = item.consumption * (0.8 + cell.population / 2000) * demandMult;
+    const meta = LIVING_COMMODITY_META[id];
+    if (meta.consumptionModel === 'food'
+      || meta.consumptionModel === 'industrial'
+      || meta.consumptionModel === 'event') continue;
+
+    let routineMultiplier = meta.routineUseMultiplier ?? 1;
+    if (meta.consumptionModel === 'luxury') {
+      routineMultiplier *= Math.max(0.15, getWealth(cell) / 100);
+    }
+    const use = item.consumption * populationMult * demandMult * routineMultiplier;
     item.stock = Math.max(0, item.stock - use);
   }
+}
+
+function interleaveFactoryAgents(agents: FactoryAgentState[]): FactoryAgentState[] {
+  const groups = new Map<LivingCommodityId, FactoryAgentState[]>();
+  for (const agent of agents) {
+    const group = groups.get(agent.activeRecipeId) ?? [];
+    group.push(agent);
+    groups.set(agent.activeRecipeId, group);
+  }
+  const recipeIds = [...groups.keys()].sort((a, b) =>
+    (recipeForOutput(a)?.priority ?? 99) - (recipeForOutput(b)?.priority ?? 99));
+  const result: FactoryAgentState[] = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const recipeId of recipeIds) {
+      const next = groups.get(recipeId)?.shift();
+      if (!next) continue;
+      result.push(next);
+      added = true;
+    }
+  }
+  return result;
+}
+
+function factoryCraftCapacity(cell: EconomyCellState): number {
+  return Math.min(
+    8,
+    Math.max(ECONOMY_CONFIG.maxCraftPerTick, Math.ceil(cell.productionUnits * 0.75)),
+  );
 }
 
 /** ขั้น 3: แปรรูปตามสูตร — ควบคุมโดย FactoryAgent */
@@ -129,18 +215,19 @@ export function runProduction(
     return;
   }
 
-  const cellAgents = factories
-    .filter((f) => f.cellId === cell.id && f.status !== 'paused' && f.outputScale > 0 && f.retoolingTicks <= 0)
-    .sort((a, b) => {
-      const pa = recipeForOutput(a.activeRecipeId)?.priority ?? 99;
-      const pb = recipeForOutput(b.activeRecipeId)?.priority ?? 99;
-      return pa - pb;
-    });
+  const cellAgents = interleaveFactoryAgents(
+    factories.filter((f) =>
+      f.cellId === cell.id
+      && f.status !== 'paused'
+      && f.outputScale > 0
+      && f.retoolingTicks <= 0),
+  );
 
   let craftedThisTick = 0;
+  const craftCapacity = factoryCraftCapacity(cell);
 
   for (const agent of cellAgents) {
-    if (craftedThisTick >= ECONOMY_CONFIG.maxCraftPerTick) break;
+    if (craftedThisTick >= craftCapacity) break;
     const recipe = recipeForOutput(agent.activeRecipeId);
     if (!recipe) continue;
     if (!canProduceRecipeScaled(cell, recipe, agent.outputScale)) continue;
@@ -526,12 +613,44 @@ export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogE
   };
   const candidates: SupplyCandidate[] = [];
 
+  const isStrategicSupply = (commodityId: LivingCommodityId): boolean => {
+    const model = LIVING_COMMODITY_META[commodityId].consumptionModel;
+    return model === 'industrial'
+      || model === 'event'
+      || commodityId === 'tools'
+      || commodityId === 'herbal-medicine';
+  };
+
+  const refillRatioFor = (commodityId: LivingCommodityId): number => {
+    if (isEssentialCommodity(commodityId)) return 0.8;
+    if (isStrategicSupply(commodityId)) return 0.6;
+    // ของหรูและวัตถุดิบพิเศษยังใช้ระบบพ่อค้าแสวงกำไรเป็นหลัก
+    // เรือเสบียงรัฐเติมเพียงกันตลาดเป็นศูนย์ จึงไม่แย่งช่องของโรงงาน
+    const model = LIVING_COMMODITY_META[commodityId].consumptionModel;
+    return model === 'trade-good' ? 0.25 : 0.4;
+  };
+
+  const sourceFloorRatioFor = (commodityId: LivingCommodityId): number => {
+    if (isEssentialCommodity(commodityId)) return 0.8;
+    if (isStrategicSupply(commodityId)) return 0.7;
+    return 1.05;
+  };
+
+  const priorityTierFor = (
+    commodityId: LivingCommodityId,
+    stockRatioNow: number,
+  ): number => {
+    if (isEssentialCommodity(commodityId) && stockRatioNow < 0.45) return 5;
+    if (isEssentialCommodity(commodityId)) return 4;
+    if (isStrategicSupply(commodityId)) return 3;
+    return 1;
+  };
+
   // รวบรวมทั้งโลกก่อนแล้วค่อยเรียงความเร่งด่วน ป้องกันเกาะต้นลิสต์กินโควตาเรือหมด
   for (const destination of world.cells) {
     for (const [commodityId, destinationItem] of Object.entries(destination.commodities) as [LivingCommodityId, CommodityState][]) {
       if (!destinationItem) continue;
-      const essential = isEssentialCommodity(commodityId);
-      const refillRatio = essential ? 0.8 : 0.55;
+      const refillRatio = refillRatioFor(commodityId);
       const stockRatioNow = destinationItem.stock / Math.max(1, destinationItem.targetStock);
       if (stockRatioNow >= refillRatio) continue;
 
@@ -544,9 +663,9 @@ export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogE
       const sourceItem = source?.commodities[commodityId];
       if (!source || !sourceItem) continue;
 
-      // เสบียงจำเป็นยอมให้คลังกลางแบ่งของลงมาถึง 80% เพื่อช่วยเมืองวิกฤต
-      // สินค้าทั่วไปต้องเหลือเกินเป้าหมายก่อนจึงจะส่งแบบอุดหนุน
-      const sourceFloorRatio = essential ? 0.8 : 1.05;
+      // เสบียงจำเป็นเก็บคลังเมืองต้นทาง 80%; วัตถุดิบยุทธศาสตร์เก็บ 70%
+      // เพื่อให้โรงงานปลายทางเริ่มเดินได้โดยไม่ดูดคลังผู้ผลิตจนหมด
+      const sourceFloorRatio = sourceFloorRatioFor(commodityId);
       const exportable = Math.floor(sourceItem.stock - sourceItem.targetStock * sourceFloorRatio);
       if (exportable < 1) continue;
       const route = world.routes.find((candidate) =>
@@ -561,7 +680,7 @@ export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogE
         commodityId,
         travelTicks: Math.max(1, route.travelTicks),
         exportable,
-        priority: (essential ? 1_000 : 0)
+        priority: priorityTierFor(commodityId, stockRatioNow) * 100_000
           + Math.max(0, 1 - stockRatioNow) * 100
           + destinationItem.memory.shortageTicks * 2,
       });
@@ -580,7 +699,7 @@ export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogE
       commodityId,
       travelTicks,
     } = candidate;
-    const sourceFloorRatio = isEssentialCommodity(commodityId) ? 0.8 : 1.05;
+    const sourceFloorRatio = sourceFloorRatioFor(commodityId);
     const availableNow = Math.floor(
       sourceItem.stock - sourceItem.targetStock * sourceFloorRatio,
     );

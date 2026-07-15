@@ -1,5 +1,6 @@
-import type { EconomyWorldState } from './types';
+import type { EconomyCellId, EconomyWorldState, LivingCommodityId } from './types';
 import {
+  cellForCommodity,
   createInitialWorld,
   ECONOMY_CONFIG,
   ensureCommodityCoverage,
@@ -21,11 +22,35 @@ import { trimEconomyWorldState } from './LivingEconomyBounds';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
 const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
-const ECONOMY_BALANCE_VERSION = 2;
+const ECONOMY_BALANCE_VERSION = 3;
+
+const INDUSTRIAL_RECOVERY_RATIO: Partial<Record<LivingCommodityId, number>> = {
+  'iron-ore': 0.9,
+  tools: 0.7,
+  'sun-silk': 0.9,
+  rope: 0.75,
+  'luxury-cloth': 0.5,
+  'healing-herb': 0.9,
+  'herbal-medicine': 0.65,
+  sailcloth: 0.65,
+  'repair-kit': 0.6,
+  'trade-crate': 0.6,
+};
 
 interface SavedEconomy {
   version: number;
   world: EconomyWorldState;
+}
+
+function industrialRecoveryStock(
+  cellId: EconomyCellId,
+  commodityId: LivingCommodityId,
+  targetStock: number,
+): number {
+  const producerRatio = INDUSTRIAL_RECOVERY_RATIO[commodityId];
+  if (!producerRatio) return 0;
+  const ratio = cellForCommodity(commodityId) === cellId ? producerRatio : 0.18;
+  return targetStock * ratio;
 }
 
 function ensurePlayerEconomyState(world: EconomyWorldState): void {
@@ -53,16 +78,24 @@ function recoverCollapsedEconomy(world: EconomyWorldState): void {
   for (const cell of world.cells) {
     for (const [commodityId, item] of Object.entries(cell.commodities)) {
       if (!item) continue;
-      const id = commodityId as import('./types').LivingCommodityId;
+      const id = commodityId as LivingCommodityId;
       const legacyRecovery = previousBalanceVersion < 1
         ? item.targetStock * (item.baseProduction > 0 ? 1.35 : 0.25)
         : 0;
       const essentialRecovery = isEssentialCommodity(id)
         ? essentialRecoveryStock(id, item.targetStock)
         : 0;
-      item.stock = Math.max(item.stock, Math.ceil(legacyRecovery), Math.ceil(essentialRecovery));
+      const industrialRecovery = previousBalanceVersion < 3
+        ? industrialRecoveryStock(cell.id, id, item.targetStock)
+        : 0;
+      item.stock = Math.max(
+        item.stock,
+        Math.ceil(legacyRecovery),
+        Math.ceil(essentialRecovery),
+        Math.ceil(industrialRecovery),
+      );
       item.production = item.baseProduction;
-      if (legacyRecovery > 0 || essentialRecovery > 0) {
+      if (legacyRecovery > 0 || essentialRecovery > 0 || industrialRecovery > 0) {
         item.marketState = 'balanced';
         item.trend = 'stable';
       }

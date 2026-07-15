@@ -6,7 +6,7 @@ import {
   essentialRecoveryStock,
   LIVING_COMMODITY_IDS,
 } from '../LivingTradeConfig';
-import { moveCargo, scheduleImportConvoys } from '../EconomyRules';
+import { getFoodSecurity, moveCargo, scheduleImportConvoys } from '../EconomyRules';
 import { TradeManager } from '../../TradeManager';
 import { LivingTradeSimulator } from '../LivingTradeSimulator';
 
@@ -133,7 +133,7 @@ describe('Worldwide island economy', () => {
     const cloth = recovered.cells.find((cell) => cell.id === 'cloth-island')!;
     expect(cloth.commodities['sun-silk']!.stock).toBeGreaterThan(0);
     expect(cloth.commodities['sun-silk']!.baseProduction).toBeGreaterThan(0);
-    expect(recovered.economyBalanceVersion).toBe(2);
+    expect(recovered.economyBalanceVersion).toBe(3);
     expect(recovered.npcCooldown).toBe(0);
   });
 
@@ -149,7 +149,7 @@ describe('Worldwide island economy', () => {
     localStorage.setItem('pirate-fruit:economy-v1', JSON.stringify({ version: 8, world }));
 
     const recovered = loadEconomyState()!;
-    expect(recovered.economyBalanceVersion).toBe(2);
+    expect(recovered.economyBalanceVersion).toBe(3);
     for (const cell of recovered.cells) {
       for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
         const item = cell.commodities[commodityId]!;
@@ -160,6 +160,40 @@ describe('Worldwide island economy', () => {
       }
     }
   });
+
+  it('upgrades balance-v2 saves and restarts collapsed industrial chains', () => {
+    const world = createFreshWorld();
+    world.economyBalanceVersion = 2;
+    const chainGoods = [
+      'iron-ore', 'tools', 'sun-silk', 'rope', 'luxury-cloth',
+      'healing-herb', 'herbal-medicine', 'sailcloth', 'repair-kit', 'trade-crate',
+    ] as const;
+    for (const cell of world.cells) {
+      for (const commodityId of chainGoods) cell.commodities[commodityId]!.stock = 0;
+    }
+    localStorage.setItem('pirate-fruit:economy-v1', JSON.stringify({ version: 8, world }));
+
+    const recovered = loadEconomyState()!;
+    expect(recovered.economyBalanceVersion).toBe(3);
+    for (const cell of recovered.cells) {
+      for (const commodityId of chainGoods) {
+        expect(cell.commodities[commodityId]!.stock).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('recovers a city-wide food shock within 20 live ticks', () => {
+    const sim = new LivingTradeSimulator(true);
+    sim.tickMany(40);
+    const sky = sim.getCell('sky-island')!;
+    sky.commodities['fresh-fish']!.stock = 0;
+    sky.commodities['dried-fish']!.stock = 0;
+
+    sim.tickMany(20);
+
+    expect(getFoodSecurity(sky)).toBeGreaterThanOrEqual(80);
+    expect(sky.workforce).toBeGreaterThan(0.6);
+  }, 60_000);
 
   it('keeps every city supplied with basics through a live 120-tick simulation', () => {
     const sim = new LivingTradeSimulator(true);
