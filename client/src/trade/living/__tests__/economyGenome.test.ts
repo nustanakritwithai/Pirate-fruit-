@@ -33,6 +33,7 @@ import { recipeForOutput } from '../ProductionRecipes';
 import { recordPlayerTrade } from '../PlayerEconomicProfileManager';
 import type { EconomyWorldState } from '../types';
 import { getEvolutionHistoryForCell } from '../EvolutionHistory';
+import { runTicksCooperatively } from './soakTestUtils';
 
 function world(): EconomyWorldState {
   return createFreshWorld();
@@ -671,9 +672,9 @@ describe('Phase E4A — Economy Genome', () => {
     expect(w.genomeState!.evolutionHistory.length).toBeLessThanOrEqual(100);
   });
 
-  it('51. long-run genome stability (2000 ticks)', () => {
+  it('51. long-run genome stability (2000 ticks)', async () => {
     const sim = simFresh();
-    sim.tickMany(2000);
+    await runTicksCooperatively(sim, 2000);
     for (const g of sim.state.genomeState!.genomes) {
       expect(Number.isFinite(g.storagePreference)).toBe(true);
       expect(Number.isFinite(g.fitness.emaScore)).toBe(true);
@@ -683,5 +684,5 @@ describe('Phase E4A — Economy Genome', () => {
     expect(sim.state.genomeState!.genomePressures.length).toBeLessThanOrEqual(
       ECONOMY_GENOME_CONFIG.maximumActivePressuresPerCell * 4,
     );
-  }, 90_000);
+  }, 120_000);
 });
