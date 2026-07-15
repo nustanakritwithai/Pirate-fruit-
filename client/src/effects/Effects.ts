@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { instantiateSpellFxAsset, preloadSpellFxAssets } from '../art/SpellFxAssetLibrary';
+import {
+  instantiateSpellFxAsset,
+  preloadSpellFxAssets,
+  type SpellFxAssetId,
+} from '../art/SpellFxAssetLibrary';
 
 interface ActiveEffect {
   root: THREE.Object3D;
@@ -52,6 +56,16 @@ function additiveMaterial(color: THREE.ColorRepresentation, opacity: number): TH
 function easeOutCubic(value: number): number {
   const inverse = 1 - THREE.MathUtils.clamp(value, 0, 1);
   return 1 - inverse * inverse * inverse;
+}
+
+function selectSpellFxAsset(color: number, phase: 'projectile' | 'launch' | 'impact'): SpellFxAssetId {
+  const hsl = new THREE.Color(color).getHSL({ h: 0, s: 0, l: 0 });
+  if (hsl.h < 0.06 || hsl.h > 0.94) return phase === 'impact' ? 'fire-grenade' : 'fireball';
+  if (hsl.h < 0.16) return phase === 'impact' ? 'earth-bending' : 'magic-rock';
+  if (hsl.h < 0.28) return phase === 'impact' ? 'smoke' : 'fire-grenade';
+  if (hsl.h < 0.48) return phase === 'impact' ? 'earth-bending' : 'smoke';
+  if (hsl.h < 0.64) return phase === 'impact' ? 'ice-block' : 'water-element';
+  return phase === 'launch' ? 'lightning-hands' : 'fireball';
 }
 
 /**
@@ -264,7 +278,7 @@ export class Effects {
     root.quaternion.setFromUnitVectors(Z_AXIS, normalizedDirection);
     root.scale.setScalar(scale);
     root.add(aura, core, ringA, ringB);
-    const asset = instantiateSpellFxAsset('fireball', color);
+    const asset = instantiateSpellFxAsset(selectSpellFxAsset(color, 'projectile'), color);
     if (asset) {
       asset.root.scale.setScalar(0.72 * scale);
       root.add(asset.root);
@@ -352,7 +366,7 @@ export class Effects {
     root.position.copy(position);
     root.quaternion.setFromUnitVectors(Z_AXIS, direction.clone().normalize());
     root.add(ring, core);
-    const asset = instantiateSpellFxAsset('lightning-hands', color);
+    const asset = instantiateSpellFxAsset(selectSpellFxAsset(color, 'launch'), color);
     if (asset) {
       asset.root.scale.setScalar(0.75 * scale);
       root.add(asset.root);
@@ -605,7 +619,7 @@ export class Effects {
     root.name = 'effect:energy-impact';
     root.position.copy(position);
     root.add(core, ringA, ringB);
-    const asset = instantiateSpellFxAsset('magic-rock', color);
+    const asset = instantiateSpellFxAsset(selectSpellFxAsset(color, 'impact'), color);
     if (asset) {
       asset.root.scale.setScalar(0.8 * scale);
       root.add(asset.root);

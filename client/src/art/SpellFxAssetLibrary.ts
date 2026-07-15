@@ -2,12 +2,25 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-export type SpellFxAssetId = 'fireball' | 'lightning-hands' | 'magic-rock';
+export type SpellFxAssetId =
+  | 'fireball'
+  | 'lightning-hands'
+  | 'magic-rock'
+  | 'earth-bending'
+  | 'water-element'
+  | 'ice-block'
+  | 'fire-grenade'
+  | 'smoke';
 
 export const SPELL_FX_ASSET_FILES: Record<SpellFxAssetId, string> = {
   fireball: 'quaternius-spell-fx/fireball.glb',
   'lightning-hands': 'quaternius-spell-fx/lightning-hands.glb',
   'magic-rock': 'quaternius-spell-fx/magic-rock.glb',
+  'earth-bending': 'quaternius-spell-fx/earth-bending.glb',
+  'water-element': 'quaternius-spell-fx/water-element.glb',
+  'ice-block': 'quaternius-spell-fx/ice-block.glb',
+  'fire-grenade': 'quaternius-spell-fx/fire-grenade.glb',
+  smoke: 'quaternius-spell-fx/smoke.glb',
 };
 
 const IDS = Object.keys(SPELL_FX_ASSET_FILES) as SpellFxAssetId[];
