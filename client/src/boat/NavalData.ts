@@ -7,6 +7,7 @@ import { WATER_LEVEL } from '../ocean/Ocean';
 export interface EnemyShipDefinition {
   id: string;
   name: string;
+  tier: EnemyShipTier;
   level: number;
   maxHp: number;
   cruiseSpeed: number;
@@ -26,11 +27,42 @@ export interface EnemyShipDefinition {
   color: number;
   length: number;
   width: number;
+  cannonsPerSide: number;
+  modelId: EnemyShipModelId;
+  deckTopLocalY: number;
 }
+
+export type EnemyShipTier = 'skiff' | 'cutter' | 'brig' | 'galleon';
+export type EnemyShipModelId = 'boat' | 'small-ship' | 'sail-ship' | 'ship';
+
+export const PIRATE_SKIFF: EnemyShipDefinition = {
+  id: 'pirate-skiff',
+  name: 'เรือโจรฝึกหัด',
+  tier: 'skiff',
+  level: 4,
+  maxHp: 120,
+  cruiseSpeed: 3.8,
+  chaseSpeed: 7.8,
+  turnSpeed: 1.15,
+  aggroRange: 48,
+  fireRange: 22,
+  fireCooldown: 4.8,
+  cannonDamage: 8,
+  hitRadius: 2.7,
+  patrolRadius: 22,
+  reward: { coins: 70, exp: 45 },
+  color: 0x6a4932,
+  length: 5.2,
+  width: 2.1,
+  cannonsPerSide: 1,
+  modelId: 'boat',
+  deckTopLocalY: 0.88,
+};
 
 export const PIRATE_CUTTER: EnemyShipDefinition = {
   id: 'pirate-cutter',
   name: 'เรือโจรสลัดหนวดดำ',
+  tier: 'cutter',
   level: 8,
   maxHp: 220,
   cruiseSpeed: 3.2,
@@ -46,13 +78,84 @@ export const PIRATE_CUTTER: EnemyShipDefinition = {
   color: 0x3b3b46,
   length: 6.4,
   width: 2.4,
+  cannonsPerSide: 2,
+  modelId: 'small-ship',
+  deckTopLocalY: 1.08,
 };
 
-/** จุดลอยลำของเรือโจรสลัดรอบเกาะเริ่มต้น (ทะเลเปิด ห่างชายฝั่ง) */
-export const PIRATE_SPAWNS: { x: number; z: number }[] = [
-  { x: 120, z: -140 },
-  { x: -160, z: 110 },
-  { x: 40, z: 190 },
+export const PIRATE_BRIG: EnemyShipDefinition = {
+  id: 'pirate-brig',
+  name: 'เรือโจรโจมตีหนัก',
+  tier: 'brig',
+  level: 25,
+  maxHp: 520,
+  cruiseSpeed: 2.9,
+  chaseSpeed: 6.4,
+  turnSpeed: 0.65,
+  aggroRange: 70,
+  fireRange: 38,
+  fireCooldown: 4.3,
+  cannonDamage: 23,
+  hitRadius: 4.8,
+  patrolRadius: 42,
+  reward: { coins: 360, exp: 260 },
+  color: 0x6d4250,
+  length: 10.5,
+  width: 4.1,
+  cannonsPerSide: 3,
+  modelId: 'sail-ship',
+  deckTopLocalY: 1.18,
+};
+
+export const PIRATE_GALLEON: EnemyShipDefinition = {
+  id: 'pirate-galleon',
+  name: 'เรือรบโจรสลัดชั้นยอด',
+  tier: 'galleon',
+  level: 50,
+  maxHp: 950,
+  cruiseSpeed: 2.5,
+  chaseSpeed: 5.5,
+  turnSpeed: 0.48,
+  aggroRange: 85,
+  fireRange: 48,
+  fireCooldown: 5,
+  cannonDamage: 36,
+  hitRadius: 6.5,
+  patrolRadius: 52,
+  reward: { coins: 900, exp: 700 },
+  color: 0x3f3240,
+  length: 15,
+  width: 5.8,
+  cannonsPerSide: 5,
+  modelId: 'ship',
+  deckTopLocalY: 1.35,
+};
+
+export const PIRATE_SHIP_TIERS: readonly EnemyShipDefinition[] = [
+  PIRATE_SKIFF,
+  PIRATE_CUTTER,
+  PIRATE_BRIG,
+  PIRATE_GALLEON,
+];
+
+export interface PirateSpawnPoint {
+  x: number;
+  z: number;
+  tier: EnemyShipTier;
+}
+
+/** จุดลอยลำในทะเลเปิด — เรือระดับสูงอยู่ไกลเกาะและต้องออกเรือสำรวจจึงจะเจอ */
+export const PIRATE_SPAWNS: readonly PirateSpawnPoint[] = [
+  { x: 120, z: -140, tier: 'skiff' },
+  { x: -160, z: 110, tier: 'skiff' },
+  { x: 300, z: -220, tier: 'skiff' },
+  { x: 40, z: 190, tier: 'cutter' },
+  { x: -320, z: -100, tier: 'cutter' },
+  { x: 280, z: 340, tier: 'cutter' },
+  { x: 350, z: 180, tier: 'brig' },
+  { x: -380, z: 260, tier: 'brig' },
+  { x: 520, z: 40, tier: 'galleon' },
+  { x: -520, z: -300, tier: 'galleon' },
 ];
 
 /** ตายแล้วเกิดใหม่ใน (วินาที) */
@@ -69,8 +172,6 @@ export const CANNONBALL_LIFETIME = 6;
 export const PLAYER_CANNON_DAMAGE = 42;
 /** คูลดาวน์ยิงชุด (broadside) ของผู้เล่น */
 export const PLAYER_FIRE_COOLDOWN = 2.4;
-/** ระยะเล็ง/ยิงปืนใหญ่ของผู้เล่น (รัศมีวงเล็งตอนเปิดกาบ) */
-export const PLAYER_FIRE_RANGE = 34;
 
 export interface CannonballState {
   x: number;

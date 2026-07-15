@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Input } from '../engine/Input';
 import type { CollisionSystem } from '../world/Collision';
-import { WATER_LEVEL } from '../world/World';
+import { SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 
 const WALK_SPEED = 4;
 const SPRINT_SPEED = 8;
@@ -29,7 +29,7 @@ const WATER_DEPTH_FOR_SWIM = 0.3; // พื้นทะเลต่ำกว่�
 const SWIM_LEVEL = WATER_LEVEL - 0.35; // ระดับที่ตัวละครลอย (จมประมาณครึ่งตัว)
 const SWIM_SPEED = 3.4;
 const SWIM_RISE = 3.5; // กด Space เพื่อดันตัวขึ้น (ปีนขึ้นฝั่ง/เรือ)
-const WORLD_BOUND = 430; // ว่ายไกลเกินขอบโลกจึงพากลับฝั่ง
+const WORLD_BOUND = SEA_BOUNDARY - 20; // ว่ายไกลเกินขอบทะเลจึงพากลับฝั่ง
 
 export interface MoveState {
   /** ความเร็วแนวราบปัจจุบัน (m/s) ใช้เลือก animation */

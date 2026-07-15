@@ -1,4 +1,5 @@
 import { BOAT_DEFINITIONS } from '../boat/BoatData';
+import type { BoatUpgradeKind } from '../boat/BoatData';
 import type { Boat } from '../boat/Boat';
 import type { BoatProgress } from '../boat/BoatProgress';
 
@@ -79,6 +80,7 @@ export class BoatShopUI {
     for (const definition of BOAT_DEFINITIONS) {
       const owned = this.progress.owns(definition.id);
       const selected = this.progress.selectedBoatId === definition.id;
+      const runtime = this.progress.getRuntimeDefinition(definition.id) ?? definition;
       const card = document.createElement('div');
       card.className = `boat-card${selected ? ' selected' : ''}`;
       const price = definition.price === 0 ? 'ฟรี' : `${definition.price} เหรียญ`;
@@ -91,13 +93,19 @@ export class BoatShopUI {
         action = 'summon';
         label = active?.definition.id === definition.id ? 'เรียกใหม่ที่ท่า' : 'เรียกเรือ';
       }
+      const upgradeButton = (kind: BoatUpgradeKind, icon: string, label: string): string => {
+        const level = this.progress.upgradeLevel(definition.id, kind);
+        const cost = this.progress.upgradeCost(definition.id, kind);
+        const detail = cost === null ? 'เต็ม' : `Lv.${level}→${level + 1} · ${cost}🪙`;
+        return `<button type="button" data-action="upgrade-${kind}" data-boat-id="${definition.id}"${cost === null ? ' disabled' : ''}>${icon} ${label} ${detail}</button>`;
+      };
       card.innerHTML = `
         <div class="boat-card-icon">${definition.hasSail ? '⛵' : '🛶'}</div>
         <div class="boat-card-body"><h3>${definition.name}</h3><p>${definition.description}</p>
-          <div class="boat-stats"><span>เร็ว ${definition.maxSpeed}</span><span>HP ${definition.maxHp}</span>
+          <div class="boat-stats"><span>เร็ว ${runtime.maxSpeed.toFixed(1)}</span><span>HP ${runtime.maxHp}</span><span>ปืน ${runtime.cannonsPerSide ?? 0}/กราบ</span>
             <span>${owned ? '✓ เป็นเจ้าของ' : price}</span></div></div>
         <button type="button" data-action="${action}" data-boat-id="${definition.id}">${label}</button>
-        ${owned ? `<div class="boat-upgrades"><button data-action="upgrade-hull" data-boat-id="${definition.id}">🛡️ เกราะ ${this.progress.upgradeLevel(definition.id, 'hull')}</button><button data-action="upgrade-cannon" data-boat-id="${definition.id}">💣 ปืน ${this.progress.upgradeLevel(definition.id, 'cannon')}</button><button data-action="upgrade-sail" data-boat-id="${definition.id}">⛵ ใบ ${this.progress.upgradeLevel(definition.id, 'sail')}</button></div>` : ''}`;
+        ${owned ? `<div class="boat-upgrade-title">อัปเกรดเรือ · เรียกเรือใหม่เพื่อใช้ค่าสถานะ</div><div class="boat-upgrades">${upgradeButton('hull', '🛡️', 'เกราะ')}${upgradeButton('cannon', '💣', 'ปืน')}${upgradeButton('sail', '⛵', 'ใบ')}</div>` : ''}`;
       this.cards.appendChild(card);
     }
     const repair = this.root.querySelector<HTMLButtonElement>('button[data-action="repair"]')!;
@@ -132,8 +140,10 @@ export class BoatShopUI {
       .boat-stats span { padding:3px 7px; border-radius:10px; background:rgba(106,177,190,.17); font-size:10px; }
       .boat-card>button { grid-column:1/-1; border:0; border-radius:14px; padding:8px; cursor:pointer;
         color:#17252a; background:#ffda7a; font-weight:800; touch-action:manipulation; }
+      .boat-upgrade-title { grid-column:1/-1; color:#a9d9c8; font-size:9px; margin-top:2px; }
       .boat-upgrades { grid-column:1/-1; display:flex; gap:5px; flex-wrap:wrap; }
       .boat-upgrades button { border:1px solid rgba(153,216,227,.35); border-radius:10px; padding:5px 7px; color:#dceff0; background:rgba(4,21,29,.65); font-size:10px; cursor:pointer; }
+      .boat-upgrades button small { color:#ffdf8a; }
       .boat-shop-status { min-height:18px; margin:10px 2px 0; color:#8ff0cd; font-size:12px; }
       .boat-shop-status.danger { color:#ff927c; }
       .boat-shop-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }

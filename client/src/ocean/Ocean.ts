@@ -3,6 +3,9 @@ import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { ISLANDS } from '../island/IslandRegistry';
 
 export const WATER_LEVEL = 0;
+/** ขนาดทะเลที่เดินเรือได้จริง — เผื่อพื้นที่สำหรับ sea event และเรือระดับสูง */
+export const OCEAN_SIZE = 1600;
+export const SEA_BOUNDARY = OCEAN_SIZE * 0.44;
 
 /** สูตรคลื่น CPU สำหรับระบบเรือใน Phase 3 ให้ตรงกับคลื่นภาพโดยประมาณ */
 export function getWaveHeight(x: number, z: number, time: number): number {
@@ -72,7 +75,7 @@ export class Ocean {
           );
     };
 
-    const geometry = new THREE.PlaneGeometry(900, 900, graphics.waterSegments, graphics.waterSegments);
+    const geometry = new THREE.PlaneGeometry(OCEAN_SIZE, OCEAN_SIZE, graphics.waterSegments, graphics.waterSegments);
     geometry.rotateX(-Math.PI / 2);
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.y = WATER_LEVEL;

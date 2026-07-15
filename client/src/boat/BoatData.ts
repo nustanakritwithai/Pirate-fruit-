@@ -1,3 +1,11 @@
+export type BoatUpgradeKind = 'hull' | 'cannon' | 'sail';
+
+export interface BoatUpgradeCosts {
+  hull: readonly number[];
+  cannon: readonly number[];
+  sail: readonly number[];
+}
+
 export interface BoatDefinition {
   id: string;
   name: string;
@@ -20,7 +28,7 @@ export interface BoatDefinition {
   /** โมเดลเรือจาก asset library */
   modelId?: 'boat' | 'small-ship' | 'sail-ship' | 'ship' | 'viking-boat' | 'sail-boat';
   deckTopLocalY?: number;
-  upgradeCosts?: { hull: readonly number[]; cannon: readonly number[]; sail: readonly number[] };
+  upgradeCosts?: BoatUpgradeCosts;
 }
 
 /** เกียร์ใบเรือ 4 ระดับ (0 = เก็บใบ … 3 = เต็มใบ) → สัดส่วนของ maxSpeed */

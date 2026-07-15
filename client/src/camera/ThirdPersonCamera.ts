@@ -5,8 +5,9 @@ const MOUSE_SENSITIVITY = 0.0028;
 const MIN_PITCH = -0.2; // เงยต่ำสุด
 const MAX_PITCH = 1.35; // ก้มสูงสุด (มองลงจากด้านบน)
 const MIN_DIST = 3;
-const MAX_DIST = 14;
+const MAX_DIST = 20;
 const TOUCH_ZOOM_STEP = 1.5;
+const BOAT_CAMERA_DISTANCE = 15;
 
 /**
  * กล้อง Third Person: ตามหลังผู้เล่น หมุนด้วยเมาส์ ซูมด้วยล้อเมาส์
@@ -33,8 +34,8 @@ export class ThirdPersonCamera {
     this.boatMode = enabled;
     if (enabled) {
       this.playerDistance = this.distance;
-      this.distance = 11;
-      this.targetHeight = 1.15;
+      this.distance = BOAT_CAMERA_DISTANCE;
+      this.targetHeight = 1.35;
       this.pitch = Math.max(this.pitch, 0.25);
     } else {
       this.distance = THREE.MathUtils.clamp(this.playerDistance, MIN_DIST, MAX_DIST);

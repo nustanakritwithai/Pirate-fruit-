@@ -4,7 +4,12 @@ import {
   CANNONBALL_LIFETIME,
   CANNONBALL_SPEED,
   decideShipState,
+  PIRATE_BRIG,
   PIRATE_CUTTER,
+  PIRATE_GALLEON,
+  PIRATE_SKIFF,
+  PIRATE_SHIP_TIERS,
+  PIRATE_SPAWNS,
   steerToward,
   stepCannonball,
   type CannonballState,
@@ -70,5 +75,22 @@ describe('NavalData — AI เรือโจรสลัด', () => {
     // ข้ามรอยต่อ -π/π ต้องเลือกทางสั้น
     const wrapped = steerToward(Math.PI * 0.95, -Math.PI * 0.95, 1, 0.1);
     expect(wrapped).toBeGreaterThan(Math.PI * 0.95); // หมุนต่อไปทาง +
+  });
+});
+
+describe('NavalData — เรือศัตรูหลายระดับ', () => {
+  it('มีระดับง่ายไปยากและไม่เปลี่ยนค่าความถึกของ cutter เดิม', () => {
+    expect(PIRATE_SHIP_TIERS.map((ship) => ship.tier)).toEqual(['skiff', 'cutter', 'brig', 'galleon']);
+    expect(PIRATE_SKIFF.maxHp).toBeLessThan(PIRATE_CUTTER.maxHp);
+    expect(PIRATE_CUTTER.maxHp).toBeLessThan(PIRATE_BRIG.maxHp);
+    expect(PIRATE_BRIG.maxHp).toBeLessThan(PIRATE_GALLEON.maxHp);
+    expect(PIRATE_CUTTER.maxHp).toBe(220);
+  });
+
+  it('กระจายจุดเกิดหลายระดับในทะเลเปิด', () => {
+    expect(PIRATE_SPAWNS.length).toBeGreaterThanOrEqual(8);
+    expect(new Set(PIRATE_SPAWNS.map((spawn) => spawn.tier))).toEqual(
+      new Set(['skiff', 'cutter', 'brig', 'galleon']),
+    );
   });
 });

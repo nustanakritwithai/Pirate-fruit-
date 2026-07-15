@@ -1,4 +1,4 @@
-import { getBoatDefinition } from './BoatData';
+import { getBoatDefinition, type BoatUpgradeKind } from './BoatData';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 
 const STORAGE_KEY = 'pirate-fruit:boats-v1';
@@ -37,11 +37,17 @@ export class BoatProgress {
     return this.data.ownedBoatIds.includes(id);
   }
 
-  upgradeLevel(id: string, kind: 'hull' | 'cannon' | 'sail'): number {
+  upgradeLevel(id: string, kind: BoatUpgradeKind): number {
     return this.data.upgrades[id]?.[kind] ?? 0;
   }
 
-  upgrade(id: string, kind: 'hull' | 'cannon' | 'sail'): { ok: boolean; message: string } {
+  upgradeCost(id: string, kind: BoatUpgradeKind): number | null {
+    const definition = getBoatDefinition(id);
+    if (!definition) return null;
+    return definition.upgradeCosts?.[kind]?.[this.upgradeLevel(id, kind)] ?? null;
+  }
+
+  upgrade(id: string, kind: BoatUpgradeKind): { ok: boolean; message: string } {
     const definition = getBoatDefinition(id);
     if (!definition || !this.owns(id)) return { ok: false, message: 'ต้องเป็นเจ้าของเรือลำนี้ก่อน' };
     const level = this.upgradeLevel(id, kind);

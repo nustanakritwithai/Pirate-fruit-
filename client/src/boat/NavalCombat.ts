@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import type { Effects } from '../effects/Effects';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { Input } from '../engine/Input';
-import { getWaveHeight, WATER_LEVEL } from '../ocean/Ocean';
+import { getWaveHeight, SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 import type { WorldTextures } from '../world/textures';
 import type { CollisionSystem, DynamicGroundProvider } from '../world/Collision';
 import type { CharacterController } from '../player/CharacterController';
@@ -18,6 +18,7 @@ import type { MonsterManager } from '../monster/MonsterManager';
 import type { ItemInventory } from '../shop/ItemInventory';
 import { InteractionPrompt } from '../ui/InteractionPrompt';
 import { worldHeightAt } from '../island/IslandRegistry';
+import { upgradeBoatVisualWhenReady } from './BoatAssetLibrary';
 import type { BoatDefinition } from './BoatData';
 import type { BoatManager } from './BoatManager';
 import { createBoatModel } from './BoatModel';
@@ -27,6 +28,7 @@ import {
   CANNONBALL_LIFETIME,
   decideShipState,
   PIRATE_CUTTER,
+  PIRATE_SHIP_TIERS,
   PIRATE_SPAWNS,
   PLAYER_CANNON_DAMAGE,
   PLAYER_FIRE_COOLDOWN,
@@ -46,6 +48,7 @@ interface NavalRewardSink {
 }
 
 interface EnemyShip {
+  instanceId: string;
   defn: EnemyShipDefinition;
   group: THREE.Group;
   hull: THREE.Mesh;
@@ -110,9 +113,9 @@ function toModelDefinition(defn: EnemyShipDefinition): BoatDefinition {
     width: defn.width,
     hasSail: true,
     color: defn.color,
-    cannonsPerSide: 2,
-    modelId: 'small-ship',
-    deckTopLocalY: 1.08,
+    cannonsPerSide: defn.cannonsPerSide,
+    modelId: defn.modelId,
+    deckTopLocalY: defn.deckTopLocalY,
   };
 }
 
@@ -130,6 +133,7 @@ export class NavalCombat {
   private readonly aimArc: THREE.Group;
   private readonly aimFill: THREE.MeshBasicMaterial;
   private readonly aimRim: THREE.MeshBasicMaterial;
+  private nextShipInstanceId = 1;
   onCannonArmed?: (side: 0 | 1 | 2) => void;
 
   constructor(
@@ -146,8 +150,10 @@ export class NavalCombat {
     graphics: GraphicsProfile,
     private notify?: (message: string) => void,
   ) {
+    const definitions = new Map(PIRATE_SHIP_TIERS.map((definition) => [definition.tier, definition]));
     for (const spawn of PIRATE_SPAWNS) {
-      this.ships.push(this.spawnShip(PIRATE_CUTTER, spawn, textures, graphics));
+      const definition = definitions.get(spawn.tier) ?? PIRATE_CUTTER;
+      this.ships.push(this.spawnShip(definition, spawn, textures, graphics));
     }
 
     const makeArc = (inner: number, outer: number, material: THREE.MeshBasicMaterial) => {
@@ -189,14 +195,14 @@ export class NavalCombat {
     let target: EnemyShip | null = null;
     let best = Number.POSITIVE_INFINITY;
     for (const ship of this.ships) {
-      if (!ship.alive || ship.boarded || hitShips?.has(ship.defn.id)) continue;
+      if (!ship.alive || ship.boarded || hitShips?.has(ship.instanceId)) continue;
       const distance = Math.hypot(ship.group.position.x - position.x, ship.group.position.z - position.z);
       if (distance > radius + ship.defn.hitRadius || distance >= best) continue;
       best = distance;
       target = ship;
     }
     if (!target) return false;
-    hitShips?.add(target.defn.id);
+    hitShips?.add(target.instanceId);
     const appliedDamage = Math.max(1, damage * 0.65);
     target.hp = Math.max(0, target.hp - appliedDamage);
     this.drawBar(target);
@@ -218,7 +224,9 @@ export class NavalCombat {
     textures: WorldTextures,
     graphics: GraphicsProfile,
   ): EnemyShip {
-    const model = createBoatModel(toModelDefinition(defn), textures, graphics);
+    const modelDefinition = toModelDefinition(defn);
+    const model = createBoatModel(modelDefinition, textures, graphics);
+    upgradeBoatVisualWhenReady(model.root, model.visualRoot, modelDefinition, graphics);
     model.root.position.set(spawn.x, WATER_LEVEL + 0.2, spawn.z);
     if (model.sail) model.sail.scale.y = 0.8;
 
@@ -230,11 +238,12 @@ export class NavalCombat {
     const bar = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: barTexture, transparent: true, depthWrite: false }),
     );
-    bar.scale.set(4.4, 0.99, 1);
-    bar.position.y = 6.1;
+    bar.scale.set(Math.max(3.8, defn.length * 0.48), 0.99, 1);
+    bar.position.y = Math.max(3.8, defn.length * 0.43);
     model.root.add(bar);
 
     const ship: EnemyShip = {
+      instanceId: `${defn.id}-${this.nextShipInstanceId++}`,
       defn,
       group: model.root,
       hull: model.hull,
@@ -339,7 +348,7 @@ export class NavalCombat {
     ship.group.updateMatrixWorld();
 
     // พื้นดาดฟ้าเรือศัตรูเดินได้ (เรือหยุดนิ่ง — ไม่ต้อง carry)
-    const bounds = deckBoundsFor({ ...ship.defn, deckTopLocalY: 1.08 });
+    const bounds = deckBoundsFor({ ...ship.defn, deckTopLocalY: ship.defn.deckTopLocalY });
     const provider: DynamicGroundProvider = (x, z) =>
       ship.boarded ? deckHeightAt(ship.group.matrixWorld, bounds, ship.group.position.y, x, z) : null;
     this.collision.addDynamicGround(provider);
@@ -505,7 +514,7 @@ export class NavalCombat {
       targetSpeed = Math.min(targetSpeed, ship.defn.cruiseSpeed * 0.7);
     }
     // กันหลุดขอบโลก
-    if (Math.hypot(sx, sz) > 360) targetHeading = Math.atan2(-sx, -sz);
+    if (Math.hypot(sx, sz) > SEA_BOUNDARY - 45) targetHeading = Math.atan2(-sx, -sz);
 
     ship.heading = steerToward(ship.heading, targetHeading, ship.defn.turnSpeed, dt);
     ship.speed = THREE.MathUtils.damp(ship.speed, targetSpeed, 2, dt);
@@ -540,10 +549,15 @@ export class NavalCombat {
   // ------------------------------------------------------------------
 
   private fireCannonball(ship: EnemyShip, targetX: number, targetZ: number): void {
-    const from = this.tempVector.set(0, 0.9, 0);
-    ship.group.localToWorld(from);
-    const velocity = aimCannonball(from.x, from.y, from.z, targetX, targetZ);
-    this.spawnBall(from, velocity, false, ship.defn.cannonDamage);
+    const count = Math.max(1, Math.min(5, ship.defn.cannonsPerSide));
+    for (let i = 0; i < count; i++) {
+      const lateral = count === 1 ? 0 : (i - (count - 1) / 2) * Math.min(1.25, ship.defn.width * 0.3);
+      const from = new THREE.Vector3(lateral, 0.9, 0);
+      ship.group.localToWorld(from);
+      const spread = count === 1 ? 0 : (Math.random() - 0.5) * 1.4;
+      const velocity = aimCannonball(from.x, from.y, from.z, targetX + spread, targetZ + spread);
+      this.spawnBall(from, velocity, false, ship.defn.cannonDamage);
+    }
   }
 
   /** สัดส่วนคูลดาวน์ปืนใหญ่ที่เหลือ 0..1 (ให้วงแหวนปุ่มยิงบนมือถือ) */

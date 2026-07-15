@@ -16,7 +16,7 @@ import {
   worldHeightAt,
 } from '../island/IslandRegistry';
 import type { IslandDefinition, IslandId } from '../island/IslandTypes';
-import { Ocean, WATER_LEVEL } from '../ocean/Ocean';
+import { Ocean, SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 import { CloudLayer } from './CloudLayer';
 import { DayNightCycle } from './DayNightCycle';
 
@@ -84,7 +84,7 @@ export class World {
     }
     scene.add(sky);
 
-    const fog = new THREE.Fog(0xcadfeb, 110, 420);
+    const fog = new THREE.Fog(0xcadfeb, 110, SEA_BOUNDARY + 90);
     scene.fog = fog;
 
     // ---------- แสงอาทิตย์ (เงา) ----------

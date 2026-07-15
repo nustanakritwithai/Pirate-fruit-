@@ -3,7 +3,7 @@ import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import type { Effects } from '../effects/Effects';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { Input } from '../engine/Input';
-import { getWaveHeight, WATER_LEVEL } from '../ocean/Ocean';
+import { getWaveHeight, SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 import type { CharacterController } from '../player/CharacterController';
 import { BoatHUD } from '../ui/BoatHUD';
 import { BoatShopUI, type BoatShopAction } from '../ui/BoatShopUI';
@@ -438,7 +438,7 @@ export class BoatManager {
         break;
       }
     }
-    if (!hit && Math.hypot(boat.group.position.x, boat.group.position.z) < 390) return;
+    if (!hit && Math.hypot(boat.group.position.x, boat.group.position.z) < SEA_BOUNDARY) return;
     if (!hit) this.collisionPoint.copy(boat.group.position).setY(WATER_LEVEL);
 
     boat.group.position.x = previousX;
@@ -520,7 +520,10 @@ export class BoatManager {
     if ((action === 'upgrade-hull' || action === 'upgrade-cannon' || action === 'upgrade-sail') && boatId) {
       const kind = action.replace('upgrade-', '') as 'hull' | 'cannon' | 'sail';
       const result = this.progress.upgrade(boatId, kind);
-      this.shop.setStatus(result.message, !result.ok);
+      this.shop.setStatus(
+        result.ok ? `${result.message} — เรียกเรือใหม่เพื่อใช้ค่าอัปเกรด` : result.message,
+        !result.ok,
+      );
     }
   }
 
