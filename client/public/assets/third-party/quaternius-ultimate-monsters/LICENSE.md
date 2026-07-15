@@ -17,6 +17,20 @@ Included runtime models:
 | `yeti.glb` | Yeti |
 | `hywirl.glb` | Hywirl |
 | `demon.glb` | Demon |
+| `alien.glb` | Alien |
+| `alpaking.glb` | Alpaking |
+| `armabee.glb` | Armabee |
+| `armabee-evolved.glb` | Armabee Evolved |
+| `blue-demon.glb` | Blue Demon |
+| `cactoro.glb` | Cactoro |
+| `dragon.glb` | Dragon |
+| `ghost.glb` | Ghost |
+| `ghost-skull.glb` | Ghost Skull |
+| `glub.glb` | Glub |
+| `mushroom-king.glb` | Mushroom King |
+| `ninja.glb` | Ninja |
+| `orc-enemy.glb` | Orc Enemy |
+| `tribal.glb` | Tribal |
 
 The assets may be used, copied, modified, and distributed, including commercially, under CC0.
 Attribution is not required by the license; this notice is retained for asset provenance.

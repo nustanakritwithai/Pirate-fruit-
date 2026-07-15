@@ -17,11 +17,23 @@ describe('Quaternius character asset mappings', () => {
 
   it('uses biome creature families for all island monster groups', () => {
     expect(pirateAssetForMonster(MONSTER_TYPES.crab)?.id).toBe('spider');
-    expect(pirateAssetForMonster(MONSTER_TYPES['ruin-guardian'])?.id).toBe('goleling');
+    expect(pirateAssetForMonster(MONSTER_TYPES['ruin-guardian'])?.id).toBe('mushroom-king');
     expect(pirateAssetForMonster(MONSTER_TYPES['sun-guardian-boss'])?.id).toBe('goleling-evolved');
     expect(pirateAssetForMonster(MONSTER_TYPES['frost-king-boss'])?.id).toBe('yeti');
     expect(pirateAssetForMonster(MONSTER_TYPES['tempest-lord-boss'])?.id).toBe('hywirl');
     expect(pirateAssetForMonster(MONSTER_TYPES['magma-titan-boss'])?.id).toBe('demon');
+  });
+
+  it('selects deterministic visual variants for repeated camp spawns', () => {
+    const variants = new Set([
+      pirateAssetForMonster(MONSTER_TYPES['jungle-bandit'], 0)?.id,
+      pirateAssetForMonster(MONSTER_TYPES['jungle-bandit'], 1)?.id,
+      pirateAssetForMonster(MONSTER_TYPES['jungle-bandit'], 2)?.id,
+    ]);
+
+    expect(variants.size).toBe(3);
+    const seeded = pirateAssetForMonster(MONSTER_TYPES['jungle-bandit'], 1)?.id;
+    expect(seeded).toBe(pirateAssetForMonster(MONSTER_TYPES['jungle-bandit'], 1)?.id);
   });
 
   it('maps every current NPC while preserving a shared animated rig palette', () => {

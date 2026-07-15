@@ -155,7 +155,9 @@ export class Monster {
   ) {
     this.group = new THREE.Group();
     this.group.name = `monster:${type.id}`;
-    const assetSelection = pirateAssetForMonster(type);
+    // ตำแหน่งเกิดเป็น seed คงที่ ทำให้มอนในค่ายเดียวกันสลับ silhouette ได้
+    // แต่ respawn จุดเดิมแล้วไม่เปลี่ยนตัวแบบแบบสุ่ม
+    const assetSelection = pirateAssetForMonster(type, x * 997.3 + z * 619.1);
     const external = assetSelection
       ? instantiatePirateAsset(assetSelection.id, assetSelection)
       : null;

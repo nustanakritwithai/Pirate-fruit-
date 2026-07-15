@@ -19,7 +19,21 @@ export type PirateAssetId =
   | 'goleling-evolved'
   | 'yeti'
   | 'hywirl'
-  | 'demon';
+  | 'demon'
+  | 'alien'
+  | 'alpaking'
+  | 'armabee'
+  | 'armabee-evolved'
+  | 'blue-demon'
+  | 'cactoro'
+  | 'dragon'
+  | 'ghost'
+  | 'ghost-skull'
+  | 'glub'
+  | 'mushroom-king'
+  | 'ninja'
+  | 'orc-enemy'
+  | 'tribal';
 
 const ASSET_FILES: Record<PirateAssetId, string> = {
   henry: 'quaternius-pirate-kit/henry.glb',
@@ -34,6 +48,20 @@ const ASSET_FILES: Record<PirateAssetId, string> = {
   yeti: 'quaternius-ultimate-monsters/yeti.glb',
   hywirl: 'quaternius-ultimate-monsters/hywirl.glb',
   demon: 'quaternius-ultimate-monsters/demon.glb',
+  alien: 'quaternius-ultimate-monsters/alien.glb',
+  alpaking: 'quaternius-ultimate-monsters/alpaking.glb',
+  armabee: 'quaternius-ultimate-monsters/armabee.glb',
+  'armabee-evolved': 'quaternius-ultimate-monsters/armabee-evolved.glb',
+  'blue-demon': 'quaternius-ultimate-monsters/blue-demon.glb',
+  cactoro: 'quaternius-ultimate-monsters/cactoro.glb',
+  dragon: 'quaternius-ultimate-monsters/dragon.glb',
+  ghost: 'quaternius-ultimate-monsters/ghost.glb',
+  'ghost-skull': 'quaternius-ultimate-monsters/ghost-skull.glb',
+  glub: 'quaternius-ultimate-monsters/glub.glb',
+  'mushroom-king': 'quaternius-ultimate-monsters/mushroom-king.glb',
+  ninja: 'quaternius-ultimate-monsters/ninja.glb',
+  'orc-enemy': 'quaternius-ultimate-monsters/orc-enemy.glb',
+  tribal: 'quaternius-ultimate-monsters/tribal.glb',
 };
 
 const GAMEPLAY_ASSETS = Object.keys(ASSET_FILES) as PirateAssetId[];
@@ -185,54 +213,150 @@ export interface MonsterAssetSelection extends PirateAssetInstanceOptions {
   baseHeight: number;
 }
 
+interface MonsterAssetPreset {
+  id: PirateAssetId;
+  baseHeight: number;
+  tintStrength: number;
+}
+
+/**
+ * ใช้หลาย silhouette ที่เข้ากับ biome เดียวกัน เพื่อไม่ให้มอนสเตอร์ในค่ายเดียว
+ * กลายเป็น clone กันทั้งหมด โดยเลือกแบบ deterministic จากตำแหน่งเกิด
+ * (respawn แล้วจึงยังได้ตัวเดิม ไม่กระพริบเปลี่ยนตัวระหว่างเกม)
+ */
+const MONSTER_ASSET_VARIANTS: Record<string, readonly MonsterAssetPreset[]> = {
+  'pirate-deckhand': [
+    { id: 'mako', baseHeight: 2.05, tintStrength: 0.12 },
+    { id: 'sharky', baseHeight: 2.05, tintStrength: 0.14 },
+    { id: 'skeleton', baseHeight: 2.05, tintStrength: 0.16 },
+  ],
+  'pirate-captain': [{ id: 'pirate-captain', baseHeight: 2.05, tintStrength: 0.1 }],
+  crab: [
+    { id: 'spider', baseHeight: 1.2, tintStrength: 0.28 },
+    { id: 'glub', baseHeight: 1.45, tintStrength: 0.25 },
+    { id: 'armabee', baseHeight: 1.35, tintStrength: 0.25 },
+  ],
+  grunt: [
+    { id: 'henry', baseHeight: 2.05, tintStrength: 0.12 },
+    { id: 'mako', baseHeight: 2.05, tintStrength: 0.12 },
+    { id: 'sharky', baseHeight: 2.05, tintStrength: 0.14 },
+  ],
+  boss: [
+    { id: 'sharky', baseHeight: 2.05, tintStrength: 0.12 },
+    { id: 'pirate-captain', baseHeight: 2.05, tintStrength: 0.1 },
+    { id: 'orc-enemy', baseHeight: 2.4, tintStrength: 0.16 },
+  ],
+  'jungle-bandit': [
+    { id: 'tribal', baseHeight: 2.2, tintStrength: 0.14 },
+    { id: 'orc-enemy', baseHeight: 2.2, tintStrength: 0.14 },
+    { id: 'sharky', baseHeight: 2.05, tintStrength: 0.14 },
+  ],
+  'ruin-guardian': [
+    { id: 'mushroom-king', baseHeight: 2.35, tintStrength: 0.28 },
+    { id: 'goleling', baseHeight: 2.05, tintStrength: 0.28 },
+  ],
+  'venom-ape-boss': [
+    { id: 'alpaking', baseHeight: 2.25, tintStrength: 0.28 },
+    { id: 'yeti', baseHeight: 2.15, tintStrength: 0.28 },
+  ],
+  'dune-scorpion': [
+    { id: 'cactoro', baseHeight: 1.35, tintStrength: 0.28 },
+    { id: 'spider', baseHeight: 1.2, tintStrength: 0.28 },
+  ],
+  'desert-raider': [
+    { id: 'ninja', baseHeight: 2.05, tintStrength: 0.14 },
+    { id: 'mako', baseHeight: 2.05, tintStrength: 0.12 },
+    { id: 'tribal', baseHeight: 2.2, tintStrength: 0.14 },
+  ],
+  'sand-golem': [
+    { id: 'goleling', baseHeight: 2.05, tintStrength: 0.28 },
+    { id: 'mushroom-king', baseHeight: 2.2, tintStrength: 0.28 },
+  ],
+  'sun-guardian-boss': [
+    { id: 'goleling-evolved', baseHeight: 2.15, tintStrength: 0.28 },
+    { id: 'blue-demon', baseHeight: 2.4, tintStrength: 0.24 },
+  ],
+  'frost-crawler': [
+    { id: 'glub', baseHeight: 1.45, tintStrength: 0.28 },
+    { id: 'spider', baseHeight: 1.2, tintStrength: 0.28 },
+    { id: 'armabee', baseHeight: 1.35, tintStrength: 0.25 },
+  ],
+  'frost-raider': [
+    { id: 'orc-enemy', baseHeight: 2.2, tintStrength: 0.14 },
+    { id: 'sharky', baseHeight: 2.05, tintStrength: 0.14 },
+    { id: 'alien', baseHeight: 2.35, tintStrength: 0.18 },
+  ],
+  'crystal-golem': [
+    { id: 'alien', baseHeight: 2.35, tintStrength: 0.25 },
+    { id: 'blue-demon', baseHeight: 2.35, tintStrength: 0.25 },
+    { id: 'goleling', baseHeight: 2.05, tintStrength: 0.28 },
+  ],
+  'frost-king-boss': [
+    { id: 'yeti', baseHeight: 2.15, tintStrength: 0.28 },
+    { id: 'alpaking', baseHeight: 2.25, tintStrength: 0.28 },
+    { id: 'blue-demon', baseHeight: 2.45, tintStrength: 0.22 },
+  ],
+  'cloud-crab': [
+    { id: 'armabee', baseHeight: 1.35, tintStrength: 0.28 },
+    { id: 'spider', baseHeight: 1.2, tintStrength: 0.28 },
+    { id: 'glub', baseHeight: 1.45, tintStrength: 0.25 },
+  ],
+  'sky-raider': [
+    { id: 'alien', baseHeight: 2.35, tintStrength: 0.18 },
+    { id: 'tribal', baseHeight: 2.2, tintStrength: 0.14 },
+    { id: 'ninja', baseHeight: 2.05, tintStrength: 0.14 },
+  ],
+  'storm-golem': [
+    { id: 'hywirl', baseHeight: 2.15, tintStrength: 0.28 },
+    { id: 'dragon', baseHeight: 2.35, tintStrength: 0.22 },
+    { id: 'armabee-evolved', baseHeight: 2.25, tintStrength: 0.24 },
+  ],
+  'tempest-lord-boss': [
+    { id: 'hywirl', baseHeight: 2.15, tintStrength: 0.28 },
+    { id: 'armabee-evolved', baseHeight: 2.25, tintStrength: 0.24 },
+    { id: 'dragon', baseHeight: 2.45, tintStrength: 0.22 },
+  ],
+  'lava-crawler': [
+    { id: 'ghost', baseHeight: 1.45, tintStrength: 0.24 },
+    { id: 'ghost-skull', baseHeight: 1.45, tintStrength: 0.24 },
+    { id: 'spider', baseHeight: 1.2, tintStrength: 0.28 },
+  ],
+  'ash-cultist': [
+    { id: 'ghost-skull', baseHeight: 2.1, tintStrength: 0.22 },
+    { id: 'skeleton', baseHeight: 2.05, tintStrength: 0.18 },
+    { id: 'ghost', baseHeight: 2.1, tintStrength: 0.22 },
+  ],
+  'obsidian-golem': [
+    { id: 'blue-demon', baseHeight: 2.35, tintStrength: 0.22 },
+    { id: 'demon', baseHeight: 2.2, tintStrength: 0.28 },
+    { id: 'goleling', baseHeight: 2.05, tintStrength: 0.28 },
+  ],
+  'magma-titan-boss': [
+    { id: 'demon', baseHeight: 2.2, tintStrength: 0.28 },
+    { id: 'dragon', baseHeight: 2.45, tintStrength: 0.22 },
+    { id: 'blue-demon', baseHeight: 2.45, tintStrength: 0.22 },
+  ],
+};
+
+function variantIndex(seed: number, variantCount: number): number {
+  if (variantCount <= 1 || !Number.isFinite(seed)) return 0;
+  return Math.abs(Math.trunc(seed * 1000)) % variantCount;
+}
+
 /** เลือก asset ตามชนิดศัตรูโดยไม่เปลี่ยน MonsterData/AI/Combat */
 export function pirateAssetForMonster(
   type: Pick<MonsterType, 'id' | 'kind' | 'color'>,
+  variantSeed = 0,
 ): MonsterAssetSelection | null {
-  const biomeTint = { tint: type.color, tintStrength: 0.28 } as const;
-  if (type.id === 'boss' || type.id === 'pirate-captain') {
-    return { id: 'pirate-captain', baseHeight: 2.05, tint: type.color, tintStrength: 0.1 };
-  }
-  if (type.id === 'ash-cultist') {
-    return { id: 'skeleton', baseHeight: 2.05, tint: type.color, tintStrength: 0.18 };
-  }
-  if (type.id === 'jungle-bandit' || type.id === 'frost-raider' || type.id === 'sky-raider') {
-    return { id: 'sharky', baseHeight: 2.05, tint: type.color, tintStrength: 0.14 };
-  }
-  if (
-    type.id === 'grunt' ||
-    type.id === 'pirate-deckhand' ||
-    type.id === 'desert-raider'
-  ) {
-    return { id: 'mako', baseHeight: 2.05, tint: type.color, tintStrength: 0.12 };
-  }
-  if (
-    type.id === 'crab' ||
-    type.id === 'dune-scorpion' ||
-    type.id === 'frost-crawler' ||
-    type.id === 'cloud-crab' ||
-    type.id === 'lava-crawler'
-  ) return { id: 'spider', baseHeight: 1.2, ...biomeTint };
-  if (
-    type.id === 'ruin-guardian' ||
-    type.id === 'sand-golem' ||
-    type.id === 'crystal-golem' ||
-    type.id === 'storm-golem' ||
-    type.id === 'obsidian-golem'
-  ) return { id: 'goleling', baseHeight: 2.05, ...biomeTint };
-  if (type.id === 'sun-guardian-boss') {
-    return { id: 'goleling-evolved', baseHeight: 2.15, ...biomeTint };
-  }
-  if (type.id === 'venom-ape-boss' || type.id === 'frost-king-boss') {
-    return { id: 'yeti', baseHeight: 2.15, ...biomeTint };
-  }
-  if (type.id === 'tempest-lord-boss') {
-    return { id: 'hywirl', baseHeight: 2.15, ...biomeTint };
-  }
-  if (type.id === 'magma-titan-boss') {
-    return { id: 'demon', baseHeight: 2.2, ...biomeTint };
-  }
-  return null;
+  const variants = MONSTER_ASSET_VARIANTS[type.id];
+  if (!variants?.length) return null;
+  const preset = variants[variantIndex(variantSeed, variants.length)];
+  return {
+    id: preset.id,
+    baseHeight: preset.baseHeight,
+    tint: type.color,
+    tintStrength: preset.tintStrength,
+  };
 }
 
 const ANNE_NPCS = new Set([
