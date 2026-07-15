@@ -6,6 +6,7 @@ import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
 import { AZURE_FROST_CENTER, AZURE_FROST_RADIUS } from './IslandRegistry';
 import { AZURE_FROST_POI_LIST, AZURE_FROST_POIS } from '../world/WorldPOI';
+import { addPirateBuildingAsset } from '../art/PirateBuildingAssetLibrary';
 
 export interface AzureFrostIslandResult { root: THREE.Group }
 
@@ -45,7 +46,8 @@ export function buildAzureFrostIsland(
   collision.addPlatform({ minX: 52.5, maxX: 84.5, minZ: 187.65, maxZ: 192.35, y: 0.54 });
 
   // หมู่บ้านนักล่า
-  const addCabin = (x: number, z: number, rotation: number): void => {
+  const addCabin = (x: number, z: number, rotation: number, asset: 'house-alt' | 'barracks'): void => {
+    if (addPirateBuildingAsset(root, collision, graphics, asset, x, z, rotation, 4.7, 3)) return;
     const y = collision.heightAt(x, z); const group = new THREE.Group(); group.position.set(x, y, z); group.rotation.y = rotation;
     const body = new THREE.Mesh(new THREE.BoxGeometry(5, 2.8, 4.2), wood); body.position.y = 1.45;
     const roof = new THREE.Mesh(new THREE.ConeGeometry(4.1, 2.05, 4), roofMat); roof.position.y = 3.45; roof.rotation.y = Math.PI / 4;
@@ -54,7 +56,7 @@ export function buildAzureFrostIsland(
     shadow(body, graphics); shadow(roof, graphics); shadow(cap, graphics); group.add(body, roof, cap, door); root.add(group);
     collision.addCollider({ x, z, radius: 3, minY: y - 1, maxY: y + 4.6 });
   };
-  addCabin(55, 211, 0.2); addCabin(68, 209, -0.35); addCabin(69, 199, -1.25);
+  addCabin(55, 211, 0.2, 'house-alt'); addCabin(68, 209, -0.35, 'barracks'); addCabin(69, 199, -1.25, 'house-alt');
   const village = AZURE_FROST_POIS.hunterVillage; const villageY = collision.heightAt(village.x, village.z);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.075, 6, 48), new THREE.MeshBasicMaterial({ color: 0x8ae8df, transparent: true, opacity: 0.62 }));
   ring.rotation.x = Math.PI / 2; ring.position.set(village.x, villageY + 0.08, village.z); root.add(ring);

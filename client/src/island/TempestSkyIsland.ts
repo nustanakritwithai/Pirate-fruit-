@@ -6,6 +6,7 @@ import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
 import { TEMPEST_SKY_CENTER, TEMPEST_SKY_RADIUS } from './IslandRegistry';
 import { TEMPEST_SKY_POI_LIST, TEMPEST_SKY_POIS } from '../world/WorldPOI';
+import { addPirateBuildingAsset } from '../art/PirateBuildingAssetLibrary';
 
 export interface TempestSkyIslandResult { root: THREE.Group }
 
@@ -46,7 +47,8 @@ export function buildTempestSkyIsland(
   collision.addPlatform({ minX: -103.5, maxX: -70.5, minZ: 207.65, maxZ: 212.35, y: 0.54 });
 
   // หมู่บ้านหน้าผา
-  const addHouse = (x: number, z: number, rotation: number): void => {
+  const addHouse = (x: number, z: number, rotation: number, asset: 'house' | 'gazebo'): void => {
+    if (addPirateBuildingAsset(root, collision, graphics, asset, x, z, rotation, asset === 'gazebo' ? 3.2 : 4.4, asset === 'gazebo' ? 1.7 : 2.8)) return;
     const y = collision.heightAt(x, z); const group = new THREE.Group(); group.position.set(x, y, z); group.rotation.y = rotation;
     const body = new THREE.Mesh(new THREE.BoxGeometry(4.8, 3, 4), paleStone); body.position.y = 1.55;
     const roof = new THREE.Mesh(new THREE.ConeGeometry(3.9, 2.1, 4), blueRoof); roof.position.y = 3.75; roof.rotation.y = Math.PI / 4;
@@ -54,7 +56,7 @@ export function buildTempestSkyIsland(
     shadow(body, graphics); shadow(roof, graphics); group.add(body, roof, door); root.add(group);
     collision.addCollider({ x, z, radius: 2.8, minY: y - 1, maxY: y + 5 });
   };
-  addHouse(-96, 220, 0.15); addHouse(-88, 214, -0.85); addHouse(-91, 201, -2.2);
+  addHouse(-96, 220, 0.15, 'house'); addHouse(-88, 214, -0.85, 'gazebo'); addHouse(-91, 201, -2.2, 'house');
   const village = TEMPEST_SKY_POIS.cliffVillage; const villageY = collision.heightAt(village.x, village.z);
   const safeRing = new THREE.Mesh(new THREE.TorusGeometry(4.7, 0.075, 6, 48), new THREE.MeshBasicMaterial({ color: 0x8ce5dd, transparent: true, opacity: 0.62 }));
   safeRing.rotation.x = Math.PI / 2; safeRing.position.set(village.x, villageY + 0.08, village.z); root.add(safeRing);

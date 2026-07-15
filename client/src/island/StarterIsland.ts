@@ -4,6 +4,10 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { WORLD_POIS } from '../world/WorldPOI';
 import {
+  addPirateBuildingAsset,
+  type PirateBuildingAssetId,
+} from '../art/PirateBuildingAssetLibrary';
+import {
   createGlassMaterial,
   createMobileMaterial,
   tiledTexture,
@@ -88,11 +92,16 @@ function makeHut(
   z: number,
   rotation: number,
   scale = 1,
+  assetId: PirateBuildingAssetId = 'house',
 ): void {
   const y = ctx.collision.heightAt(x, z);
   const group = new THREE.Group();
   group.position.set(x, y, z);
   group.rotation.y = rotation;
+
+  if (addPirateBuildingAsset(ctx.scene, ctx.collision, ctx.graphics, assetId, x, z, rotation, 4.6 * scale, 3 * scale)) {
+    return;
+  }
 
   const foundation = new THREE.Mesh(
     new THREE.CylinderGeometry(3.15 * scale, 3.35 * scale, 0.55, 8),
@@ -149,10 +158,10 @@ function makeHut(
 }
 
 function buildVillage(ctx: BuildContext): void {
-  makeHut(ctx, -11, 12, 1.05, 0.95);
-  makeHut(ctx, 11.5, 14, -0.75, 1.05);
-  makeHut(ctx, -13, -1, 1.75, 0.86);
-  makeHut(ctx, 13.5, 1.5, -1.65, 0.9);
+  makeHut(ctx, -11, 12, 1.05, 0.95, 'house-alt');
+  makeHut(ctx, 11.5, 14, -0.75, 1.05, 'inn');
+  makeHut(ctx, -13, -1, 1.75, 0.86, 'blacksmith');
+  makeHut(ctx, 13.5, 1.5, -1.65, 0.9, 'house');
 
   const center = WORLD_POIS.village;
   const centerY = ctx.collision.heightAt(center.x, center.z) + 0.08;

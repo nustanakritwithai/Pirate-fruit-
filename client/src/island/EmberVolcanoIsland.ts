@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addPirateBuildingAsset } from '../art/PirateBuildingAssetLibrary';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
@@ -97,7 +98,8 @@ export function buildEmberVolcanoIsland(
   collision.addPlatform({ minX: -214.35, maxX: -209.65, minZ: 104.5, maxZ: 139.5, y: 0.54 });
 
   // หมู่บ้านช่างตีเหล็ก — อาคารเตี้ยและหลังคาดินเผาทนเถ้าร้อน
-  const addForgeHouse = (x: number, z: number, rotation: number): void => {
+  const addForgeHouse = (x: number, z: number, rotation: number, asset: 'blacksmith' | 'house'): void => {
+    if (addPirateBuildingAsset(root, collision, graphics, asset, x, z, rotation, 4.6, 2.8)) return;
     const y = collision.heightAt(x, z);
     const group = new THREE.Group();
     group.position.set(x, y, z);
@@ -115,9 +117,9 @@ export function buildEmberVolcanoIsland(
     root.add(group);
     collision.addCollider({ x, z, radius: 2.8, minY: y - 1, maxY: y + 5 });
   };
-  addForgeHouse(-221, 96, 0.18);
-  addForgeHouse(-211, 94, -0.8);
-  addForgeHouse(-225, 107, 2.35);
+  addForgeHouse(-221, 96, 0.18, 'blacksmith');
+  addForgeHouse(-211, 94, -0.8, 'house');
+  addForgeHouse(-225, 107, 2.35, 'blacksmith');
 
   const village = EMBER_VOLCANO_POIS.forgeVillage;
   const villageY = collision.heightAt(village.x, village.z);
