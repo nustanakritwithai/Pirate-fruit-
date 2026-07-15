@@ -270,7 +270,7 @@ export function buildEmberVolcanoIsland(
   root.add(coreLight);
 
   // สะเก็ดไฟรอบปล่อง ใช้ instancing แทน particle update ทุกเฟรม
-  const sparkCount = graphics.tier === 'low' ? 10 : graphics.tier === 'medium' ? 18 : 26;
+  const sparkCount = graphics.tier === 'low' ? 8 : graphics.tier === 'medium' ? 12 : 18;
   const sparks = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 6, 4), ember, sparkCount);
   for (let i = 0; i < sparkCount; i++) {
     const a = i * 2.39996;
@@ -290,7 +290,7 @@ export function buildEmberVolcanoIsland(
 
   // ต้นไม้ไหม้และเสาหินกระจายแบบ instancing
   const random = mulberry32(20260718);
-  const target = graphics.tier === 'low' ? 20 : graphics.tier === 'medium' ? 32 : 44;
+  const target = graphics.tier === 'low' ? 13 : graphics.tier === 'medium' ? 22 : 30;
   const spots: { x: number; y: number; z: number; scale: number; lean: number }[] = [];
   for (let attempt = 0; attempt < target * 45 && spots.length < target; attempt++) {
     const a = random() * Math.PI * 2;

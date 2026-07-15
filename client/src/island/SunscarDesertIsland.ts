@@ -232,7 +232,7 @@ function buildOasis(
   water.receiveShadow = false;
   root.add(water);
 
-  const palmCount = graphics.tier === 'low' ? 5 : 8;
+  const palmCount = graphics.tier === 'low' ? 3 : graphics.tier === 'medium' ? 5 : 6;
   const trunks = new THREE.InstancedMesh(
     new THREE.CylinderGeometry(0.18, 0.3, 1, 7),
     materials.darkWood,
@@ -341,7 +341,7 @@ function buildDesertProps(
   graphics: GraphicsProfile,
 ): void {
   const random = mulberry32(20260715);
-  const target = graphics.tier === 'low' ? 22 : graphics.tier === 'medium' ? 34 : 46;
+  const target = graphics.tier === 'low' ? 15 : graphics.tier === 'medium' ? 24 : 32;
   const spots: { x: number; y: number; z: number; scale: number; rotation: number }[] = [];
   for (let attempt = 0; attempt < target * 40 && spots.length < target; attempt++) {
     const angle = random() * Math.PI * 2;

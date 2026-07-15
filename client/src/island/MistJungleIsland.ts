@@ -287,7 +287,7 @@ function buildJungleVegetation(
   graphics: GraphicsProfile,
 ): void {
   const random = mulberry32(20260714);
-  const treeTarget = graphics.tier === 'low' ? 30 : graphics.tier === 'medium' ? 42 : 54;
+  const treeTarget = graphics.tier === 'low' ? 18 : graphics.tier === 'medium' ? 28 : 38;
   const spots: { x: number; y: number; z: number; scale: number; rotation: number }[] = [];
   for (let attempt = 0; attempt < treeTarget * 45 && spots.length < treeTarget; attempt++) {
     const angle = random() * Math.PI * 2;
@@ -301,7 +301,7 @@ function buildJungleVegetation(
   }
 
   const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.38, 1, 7, 2);
-  const crownGeometry = new THREE.IcosahedronGeometry(1.25, graphics.tier === 'high' ? 2 : 1);
+  const crownGeometry = new THREE.IcosahedronGeometry(1.25, 1);
   const trunks = new THREE.InstancedMesh(trunkGeometry, materials.bark, spots.length);
   const crowns = new THREE.InstancedMesh(crownGeometry, materials.foliage, spots.length * 2);
   const dummy = new THREE.Object3D();
@@ -337,7 +337,7 @@ function buildJungleVegetation(
   crowns.receiveShadow = graphics.shadows;
   root.add(trunks, crowns);
 
-  const shrubTarget = graphics.tier === 'low' ? 34 : graphics.tier === 'medium' ? 58 : 82;
+  const shrubTarget = graphics.tier === 'low' ? 22 : graphics.tier === 'medium' ? 38 : 54;
   const shrubGeometry = new THREE.IcosahedronGeometry(0.62, 1);
   const shrubs = new THREE.InstancedMesh(shrubGeometry, materials.foliageDark, shrubTarget);
   let created = 0;

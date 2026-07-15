@@ -95,7 +95,7 @@ export function buildTempestSkyIsland(
   arena.rotation.x = Math.PI / 2; arena.position.set(-151, collision.heightAt(-151, 236) + 0.1, 236); root.add(arena);
 
   // ต้นไม้ลู่ลมแบบ instancing
-  const random = mulberry32(20260717); const target = graphics.tier === 'low' ? 22 : graphics.tier === 'medium' ? 34 : 46;
+  const random = mulberry32(20260717); const target = graphics.tier === 'low' ? 14 : graphics.tier === 'medium' ? 23 : 32;
   const spots: { x: number; y: number; z: number; scale: number; lean: number }[] = [];
   for (let attempt = 0; attempt < target * 40 && spots.length < target; attempt++) { const a = random() * Math.PI * 2; const d = Math.sqrt(random()) * TEMPEST_SKY_RADIUS * 0.82; const x = TEMPEST_SKY_CENTER.x + Math.cos(a) * d; const z = TEMPEST_SKY_CENTER.z + Math.sin(a) * d; const y = collision.heightAt(x, z); if (y < 0.3 || TEMPEST_SKY_POI_LIST.some((poi) => Math.hypot(x - poi.x, z - poi.z) < poi.safeRadius) || spots.some((spot) => Math.hypot(spot.x - x, spot.z - z) < 3.5)) continue; spots.push({ x, y, z, scale: 0.72 + random() * 0.58, lean: 0.06 + random() * 0.1 }); }
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.28, 1, 7), darkWood, spots.length);

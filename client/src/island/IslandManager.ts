@@ -1,22 +1,30 @@
+import type { Object3D } from 'three';
 import type { CharacterController } from '../player/CharacterController';
 import type { SpawnManager } from '../world/SpawnManager';
 import { ISLANDS, findIslandAt, worldHeightAt } from './IslandRegistry';
 import type { IslandId } from './IslandTypes';
 
 const DETAIL_VISIBLE_DISTANCE = 155;
+const DETAIL_REVEAL_BATCH = 2;
 
 /** ตรวจการขึ้นฝั่ง, เปลี่ยน checkpoint และเปิด/ปิดรายละเอียดเกาะไกลเพื่อลด draw call มือถือ */
 export class IslandManager {
   private activeIslandId: IslandId;
   private bannerTimer = 0;
   private readonly banner: HTMLDivElement;
+  private readonly detailProgress = new Map<IslandId, number>();
 
   constructor(
     private controller: CharacterController,
     private spawns: SpawnManager,
-    private detailRoots: ReadonlyMap<IslandId, { visible: boolean }>,
+    private detailRoots: ReadonlyMap<IslandId, Object3D>,
   ) {
     this.activeIslandId = spawns.islandId;
+    for (const [islandId, root] of detailRoots) {
+      root.visible = false;
+      root.children.forEach((child) => { child.visible = false; });
+      this.detailProgress.set(islandId, 0);
+    }
     this.banner = document.createElement('div');
     this.banner.className = 'island-arrival-banner';
     this.banner.style.cssText =
@@ -36,8 +44,21 @@ export class IslandManager {
     for (const island of ISLANDS) {
       const root = this.detailRoots.get(island.id);
       if (!root) continue;
-      root.visible = Math.hypot(position.x - island.center.x, position.z - island.center.z)
+      const nearIsland = Math.hypot(position.x - island.center.x, position.z - island.center.z)
         <= DETAIL_VISIBLE_DISTANCE;
+      if (!nearIsland) {
+        root.visible = false;
+        continue;
+      }
+
+      // เปิดรายละเอียดครั้งละไม่กี่กลุ่ม เพื่อกระจาย shader/geometry upload ออกจากเฟรมแรก
+      root.visible = true;
+      const revealed = this.detailProgress.get(island.id) ?? 0;
+      const next = Math.min(root.children.length, revealed + DETAIL_REVEAL_BATCH);
+      for (let childIndex = revealed; childIndex < next; childIndex++) {
+        root.children[childIndex].visible = true;
+      }
+      this.detailProgress.set(island.id, next);
     }
 
     const island = findIslandAt(position.x, position.z, 7);

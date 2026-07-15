@@ -140,7 +140,7 @@ function addPalms(
     normalStrength: 0.18,
   });
   const trunkGeometry = new THREE.CylinderGeometry(0.18, 0.3, 1, 7, 2);
-  const frondGeometry = new THREE.PlaneGeometry(0.9, 3.05, 1, 3);
+  const frondGeometry = new THREE.PlaneGeometry(0.9, 3.05, 1, graphics.tier === 'high' ? 2 : 1);
   frondGeometry.translate(0, 1.52, 0);
   const trunks = new THREE.InstancedMesh(trunkGeometry, bark, spots.length);
   const leaves = new THREE.InstancedMesh(
@@ -286,7 +286,7 @@ function addGroundCover(
     roughness: 0.86,
     normalStrength: 0.32,
   });
-  const shrubGeometry = new THREE.IcosahedronGeometry(0.72, graphics.tier === 'high' ? 2 : 1);
+  const shrubGeometry = new THREE.IcosahedronGeometry(0.72, 1);
   const shrubs = new THREE.InstancedMesh(shrubGeometry, shrubMaterial, shrubSpots.length);
   shrubSpots.forEach((spot, index) => {
     dummy.position.set(spot.x, spot.y + 0.46 * spot.scale, spot.z);
