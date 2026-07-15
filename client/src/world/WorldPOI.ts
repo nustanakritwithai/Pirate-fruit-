@@ -1,4 +1,5 @@
 import type { IslandId } from '../island/IslandTypes';
+import { layoutPoint } from '../island/IslandRegistry';
 
 export interface WorldPOI {
   id: string;
@@ -61,8 +62,18 @@ export const WORLD_POIS = {
 
 export const WORLD_POI_LIST: WorldPOI[] = Object.values(WORLD_POIS);
 
+function layoutPOIRecord<T extends Record<string, WorldPOI>>(record: T): T {
+  const result = { ...record } as T;
+  for (const key of Object.keys(record) as Array<keyof T>) {
+    const poi = record[key];
+    const point = layoutPoint(poi.islandId, poi.x, poi.z);
+    result[key] = { ...poi, ...point } as T[typeof key];
+  }
+  return result;
+}
+
 /** จุดสำคัญของเกาะที่สอง ใช้กับมินิแมพ การกระจายฉาก และจุดหมายภารกิจ */
-export const MIST_JUNGLE_POIS = {
+export const LEGACY_MIST_JUNGLE_POIS = {
   expeditionCamp: {
     id: 'mist-jungle-camp',
     islandId: 'mist-jungle',
@@ -119,10 +130,12 @@ export const MIST_JUNGLE_POIS = {
   },
 } as const satisfies Record<string, WorldPOI>;
 
+export const MIST_JUNGLE_POIS = layoutPOIRecord(LEGACY_MIST_JUNGLE_POIS);
 export const MIST_JUNGLE_POI_LIST: WorldPOI[] = Object.values(MIST_JUNGLE_POIS);
+export const LEGACY_MIST_JUNGLE_POI_LIST: WorldPOI[] = Object.values(LEGACY_MIST_JUNGLE_POIS);
 
 /** จุดสำคัญของเกาะที่สาม: เมืองคาราวาน โอเอซิส เหมือง และพีระมิด */
-export const SUNSCAR_DESERT_POIS = {
+export const LEGACY_SUNSCAR_DESERT_POIS = {
   caravanCity: {
     id: 'sunscar-caravan-city',
     islandId: 'sunscar-desert',
@@ -179,10 +192,12 @@ export const SUNSCAR_DESERT_POIS = {
   },
 } as const satisfies Record<string, WorldPOI>;
 
+export const SUNSCAR_DESERT_POIS = layoutPOIRecord(LEGACY_SUNSCAR_DESERT_POIS);
 export const SUNSCAR_DESERT_POI_LIST: WorldPOI[] = Object.values(SUNSCAR_DESERT_POIS);
+export const LEGACY_SUNSCAR_DESERT_POI_LIST: WorldPOI[] = Object.values(LEGACY_SUNSCAR_DESERT_POIS);
 
 /** จุดสำคัญของเกาะที่สี่: หมู่บ้าน ทะเลสาบน้ำแข็ง เหมืองคริสตัล และป้อมราชัน */
-export const AZURE_FROST_POIS = {
+export const LEGACY_AZURE_FROST_POIS = {
   hunterVillage: { id: 'azure-frost-village', islandId: 'azure-frost', name: 'หมู่บ้านนักล่าเหมันต์', icon: '◆', x: 59, z: 201, safeRadius: 12 },
   harbor: { id: 'azure-frost-harbor', islandId: 'azure-frost', name: 'ท่าเรือเหมันต์คราม', icon: '⚓', x: 66, z: 190, safeRadius: 8 },
   frozenLake: { id: 'azure-frozen-lake', islandId: 'azure-frost', name: 'ทะเลสาบกระจกเยือกแข็ง', icon: '●', x: 29, z: 195, safeRadius: 9 },
@@ -191,10 +206,12 @@ export const AZURE_FROST_POIS = {
   frostCitadel: { id: 'azure-frost-citadel', islandId: 'azure-frost', name: 'ป้อมราชันน้ำแข็ง', icon: '▲', x: 20, z: 249, safeRadius: 11 },
 } as const satisfies Record<string, WorldPOI>;
 
+export const AZURE_FROST_POIS = layoutPOIRecord(LEGACY_AZURE_FROST_POIS);
 export const AZURE_FROST_POI_LIST: WorldPOI[] = Object.values(AZURE_FROST_POIS);
+export const LEGACY_AZURE_FROST_POI_LIST: WorldPOI[] = Object.values(LEGACY_AZURE_FROST_POIS);
 
 /** จุดสำคัญของเกาะที่ห้า: นครหน้าผา สวนเมฆ โรงตีพายุ และวิหารยอดเกาะ */
-export const TEMPEST_SKY_POIS = {
+export const LEGACY_TEMPEST_SKY_POIS = {
   cliffVillage: { id: 'tempest-cliff-village', islandId: 'tempest-sky', name: 'หมู่บ้านหน้าผานภา', icon: '◆', x: -96, z: 210, safeRadius: 12 },
   harbor: { id: 'tempest-sky-harbor', islandId: 'tempest-sky', name: 'ท่าเรือนภาวายุ', icon: '⚓', x: -99, z: 210, safeRadius: 8 },
   cloudGarden: { id: 'tempest-cloud-garden', islandId: 'tempest-sky', name: 'สวนเมฆลอย', icon: '●', x: -124, z: 190, safeRadius: 9 },
@@ -203,10 +220,12 @@ export const TEMPEST_SKY_POIS = {
   skyTemple: { id: 'tempest-sky-temple', islandId: 'tempest-sky', name: 'วิหารเจ้าแห่งพายุ', icon: '▲', x: -153, z: 241, safeRadius: 11 },
 } as const satisfies Record<string, WorldPOI>;
 
+export const TEMPEST_SKY_POIS = layoutPOIRecord(LEGACY_TEMPEST_SKY_POIS);
 export const TEMPEST_SKY_POI_LIST: WorldPOI[] = Object.values(TEMPEST_SKY_POIS);
+export const LEGACY_TEMPEST_SKY_POI_LIST: WorldPOI[] = Object.values(LEGACY_TEMPEST_SKY_POIS);
 
 /** จุดสำคัญของเกาะที่หก: หมู่บ้านโรงตี ลานลาวา เหมืองออบซิเดียน และปล่องไททัน */
-export const EMBER_VOLCANO_POIS = {
+export const LEGACY_EMBER_VOLCANO_POIS = {
   forgeVillage: { id: 'ember-forge-village', islandId: 'ember-volcano', name: 'หมู่บ้านช่างตีอัคคี', icon: '◆', x: -218, z: 100, safeRadius: 12 },
   harbor: { id: 'ember-volcano-harbor', islandId: 'ember-volcano', name: 'ท่าเรือภูผาอัคคี', icon: '⚓', x: -212, z: 112, safeRadius: 8 },
   lavaFields: { id: 'ember-lava-fields', islandId: 'ember-volcano', name: 'ทุ่งลาวาเดือด', icon: '●', x: -255, z: 98, safeRadius: 9 },
@@ -215,7 +234,9 @@ export const EMBER_VOLCANO_POIS = {
   titanCaldera: { id: 'ember-titan-caldera', islandId: 'ember-volcano', name: 'ปล่องไททันแมกมา', icon: '▲', x: -235, z: 70, safeRadius: 11 },
 } as const satisfies Record<string, WorldPOI>;
 
+export const EMBER_VOLCANO_POIS = layoutPOIRecord(LEGACY_EMBER_VOLCANO_POIS);
 export const EMBER_VOLCANO_POI_LIST: WorldPOI[] = Object.values(EMBER_VOLCANO_POIS);
+export const LEGACY_EMBER_VOLCANO_POI_LIST: WorldPOI[] = Object.values(LEGACY_EMBER_VOLCANO_POIS);
 export const ALL_WORLD_POI_LIST: WorldPOI[] = [
   ...WORLD_POI_LIST,
   ...MIST_JUNGLE_POI_LIST,

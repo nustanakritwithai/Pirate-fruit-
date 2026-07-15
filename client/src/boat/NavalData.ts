@@ -146,16 +146,26 @@ export interface PirateSpawnPoint {
 
 /** จุดลอยลำในทะเลเปิด — เรือระดับสูงอยู่ไกลเกาะและต้องออกเรือสำรวจจึงจะเจอ */
 export const PIRATE_SPAWNS: readonly PirateSpawnPoint[] = [
-  { x: 120, z: -140, tier: 'skiff' },
-  { x: -160, z: 110, tier: 'skiff' },
-  { x: 300, z: -220, tier: 'skiff' },
-  { x: 40, z: 190, tier: 'cutter' },
-  { x: -320, z: -100, tier: 'cutter' },
-  { x: 280, z: 340, tier: 'cutter' },
-  { x: 350, z: 180, tier: 'brig' },
-  { x: -380, z: 260, tier: 'brig' },
-  { x: 520, z: 40, tier: 'galleon' },
-  { x: -520, z: -300, tier: 'galleon' },
+  // รอบเกาะเริ่มต้น — ลำเล็ก เหมาะสำหรับเริ่มเรียนรู้ naval combat
+  { x: 100, z: -110, tier: 'skiff' },
+  { x: -100, z: 70, tier: 'skiff' },
+  { x: 90, z: 120, tier: 'skiff' },
+  { x: -120, z: -120, tier: 'skiff' },
+  // ช่องทะเลช่วงกลางระหว่างเกาะ Lv.15-50
+  { x: 250, z: -210, tier: 'cutter' },
+  { x: 300, z: -90, tier: 'cutter' },
+  { x: 210, z: 50, tier: 'cutter' },
+  { x: 310, z: 130, tier: 'cutter' },
+  // เส้นทางไปเกาะท้าย — เรือโจมตีหนักเริ่มยิง broadside หลายกระบอก
+  { x: 330, z: -190, tier: 'brig' },
+  { x: 430, z: 80, tier: 'brig' },
+  { x: 400, z: 230, tier: 'brig' },
+  { x: 340, z: 360, tier: 'brig' },
+  // ทะเลชั้นสูงรอบเกาะ Lv.71-110
+  { x: 620, z: 80, tier: 'galleon' },
+  { x: 570, z: 300, tier: 'galleon' },
+  { x: 430, z: 500, tier: 'galleon' },
+  { x: 110, z: 580, tier: 'galleon' },
 ];
 
 /** ตายแล้วเกิดใหม่ใน (วินาที) */

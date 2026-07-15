@@ -301,6 +301,11 @@ export class PlayerCombat {
     return this.set.kind;
   }
 
+  /** มีผลไม้ติดตัวหรือไม่ — ใช้กับกฎน้ำ ไม่ขึ้นกับชุดสกิลที่กำลัง active */
+  get hasDevilFruit(): boolean {
+    return Boolean(this.loadout.snapshot.equippedFruitId);
+  }
+
   /** ไอเทมที่ติดตั้งแยกต่อชิ้น (อาวุธ + ผลไม้) — สำหรับโชว์ mastery ต่อชิ้นพร้อมกัน */
   get masteryItems(): ActiveLoadoutItem[] {
     const { weapon, fruit } = resolveEquippedItems(this.loadout);

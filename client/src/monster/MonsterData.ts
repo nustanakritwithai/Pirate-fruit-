@@ -1,5 +1,6 @@
 import type { EnemyRewardDefinition } from '../progression/ProgressionTypes';
 import type { IslandId } from '../island/IslandTypes';
+import { layoutPoint } from '../island/IslandRegistry';
 
 /** ชนิดของมอนสเตอร์และแคมป์ที่เกิดบนเกาะ (Phase 4) */
 
@@ -286,7 +287,7 @@ export interface MonsterCamp {
 }
 
 /** แคมป์มอนสเตอร์วางบนพื้นดินฝั่งตะวันออกของเกาะ นอกเขตปลอดภัยหมู่บ้าน */
-export const MONSTER_CAMPS: MonsterCamp[] = [
+const LEGACY_MONSTER_CAMPS: readonly MonsterCamp[] = [
   { id: 'east-forest', islandId: 'starter-island', name: 'ชายป่าตะวันออก', typeId: 'crab', x: 22, z: -4, radius: 5, count: 3, recommendedLevel: 2 },
   { id: 'outpost', islandId: 'starter-island', name: 'ด่านหน้า', typeId: 'crab', x: 16, z: -10, radius: 4, count: 2, recommendedLevel: 2 },
   { id: 'stone-hill', islandId: 'starter-island', name: 'เนินหิน', typeId: 'grunt', x: 24, z: 8, radius: 5, count: 3, recommendedLevel: 4 },
@@ -312,6 +313,11 @@ export const MONSTER_CAMPS: MonsterCamp[] = [
   { id: 'ember-obsidian-mine', islandId: 'ember-volcano', name: 'เหมืองออบซิเดียน', typeId: 'obsidian-golem', x: -214, z: 56, radius: 5.5, count: 4, recommendedLevel: 102 },
 ];
 
+export const MONSTER_CAMPS: MonsterCamp[] = LEGACY_MONSTER_CAMPS.map((camp) => ({
+  ...camp,
+  ...layoutPoint(camp.islandId, camp.x, camp.z),
+}));
+
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
 export const BOSS_SPAWN = { typeId: 'boss', x: 24, z: 4 };
 
@@ -322,7 +328,7 @@ export interface BossSpawn {
   z: number;
 }
 
-export const BOSS_SPAWNS: readonly BossSpawn[] = [
+const LEGACY_BOSS_SPAWNS: readonly BossSpawn[] = [
   { islandId: 'starter-island', ...BOSS_SPAWN },
   { islandId: 'mist-jungle', typeId: 'venom-ape-boss', x: 190, z: -18 },
   { islandId: 'sunscar-desert', typeId: 'sun-guardian-boss', x: 170, z: 152 },
@@ -330,3 +336,8 @@ export const BOSS_SPAWNS: readonly BossSpawn[] = [
   { islandId: 'tempest-sky', typeId: 'tempest-lord-boss', x: -151, z: 236 },
   { islandId: 'ember-volcano', typeId: 'magma-titan-boss', x: -235, z: 70 },
 ];
+
+export const BOSS_SPAWNS: readonly BossSpawn[] = LEGACY_BOSS_SPAWNS.map((spawn) => ({
+  ...spawn,
+  ...layoutPoint(spawn.islandId, spawn.x, spawn.z),
+}));

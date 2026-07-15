@@ -13,6 +13,7 @@ import {
   createMobileMaterial,
   tiledTexture,
 } from '../art/MobilePBRMaterials';
+import { createIslandBuildCollision } from './IslandLayout';
 
 export interface StarterIslandResult {
   nightMaterial: THREE.MeshStandardMaterial;
@@ -20,7 +21,7 @@ export interface StarterIslandResult {
 }
 
 interface BuildContext {
-  scene: THREE.Scene;
+  scene: THREE.Object3D;
   collision: CollisionSystem;
   textures: WorldTextures;
   graphics: GraphicsProfile;
@@ -327,10 +328,13 @@ function buildHillShrine(ctx: BuildContext): void {
 /** สร้างสถานที่หลักของเกาะเริ่มต้นโดยใช้ geometry และ material ร่วมกัน */
 export function buildStarterIsland(
   scene: THREE.Scene,
-  collision: CollisionSystem,
+  baseCollision: CollisionSystem,
   textures: WorldTextures,
   graphics: GraphicsProfile,
 ): StarterIslandResult {
+  const root = new THREE.Group();
+  root.name = 'PF_ISLAND_STARTER_DETAILS';
+  const collision = createIslandBuildCollision(baseCollision, 'starter-island');
   const nightMaterial = createMobileMaterial('shell', {
     color: 0xffc66e,
     emissive: 0xff9d36,
@@ -340,7 +344,7 @@ export function buildStarterIsland(
   const nightLights: THREE.PointLight[] = [];
   const materials = createBuildingMaterials(textures);
   const ctx: BuildContext = {
-    scene,
+    scene: root,
     collision,
     textures,
     graphics,
@@ -353,5 +357,6 @@ export function buildStarterIsland(
   buildTrainingBeach(ctx);
   buildFruitGrove(ctx);
   buildHillShrine(ctx);
+  scene.add(root);
   return { nightMaterial, nightLights };
 }

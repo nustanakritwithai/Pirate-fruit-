@@ -4,9 +4,10 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
-import { AZURE_FROST_CENTER, AZURE_FROST_RADIUS } from './IslandRegistry';
-import { AZURE_FROST_POI_LIST, AZURE_FROST_POIS } from '../world/WorldPOI';
+import { AZURE_FROST_LEGACY_CENTER as AZURE_FROST_CENTER, AZURE_FROST_RADIUS, layoutOffset } from './IslandRegistry';
+import { LEGACY_AZURE_FROST_POI_LIST as AZURE_FROST_POI_LIST, LEGACY_AZURE_FROST_POIS as AZURE_FROST_POIS } from '../world/WorldPOI';
 import { addPirateBuildingAsset, upgradePirateBuildingAssetWhenReady } from '../art/PirateBuildingAssetLibrary';
+import { createIslandBuildCollision } from './IslandLayout';
 
 export interface AzureFrostIslandResult { root: THREE.Group }
 
@@ -18,7 +19,7 @@ function shadow(mesh: THREE.Mesh | THREE.InstancedMesh, graphics: GraphicsProfil
 
 export function buildAzureFrostIsland(
   scene: THREE.Scene,
-  collision: CollisionSystem,
+  baseCollision: CollisionSystem,
   textures: WorldTextures,
   graphics: GraphicsProfile,
   nightMaterial: THREE.MeshStandardMaterial,
@@ -26,6 +27,9 @@ export function buildAzureFrostIsland(
 ): AzureFrostIslandResult {
   const root = new THREE.Group();
   root.name = 'PF_ISLAND_AZURE_FROST_DETAILS';
+  const offset = layoutOffset('azure-frost');
+  root.position.set(offset.x, 0, offset.z);
+  const collision = createIslandBuildCollision(baseCollision, 'azure-frost');
   const snow = createMobileMaterial('plaster', { color: 0xe5f1f4, map: tiledTexture(textures.sandColor, 1.8, 1.8), normalMap: tiledTexture(textures.sandNormal, 1.8, 1.8), roughness: 0.84, normalStrength: 0.38 });
   const ice = createMobileMaterial('shell', { color: 0x75c4d8, emissive: 0x0b3b53, emissiveIntensity: 0.13, roughness: 0.18, transparent: true, opacity: 0.78 });
   const stone = createMobileMaterial('stone', { color: 0x6f8490, map: tiledTexture(textures.rockColor, 1.9, 1.9), normalMap: tiledTexture(textures.rockNormal, 1.9, 1.9), roughness: 0.88 });

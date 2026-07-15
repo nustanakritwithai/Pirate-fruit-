@@ -262,6 +262,7 @@ async function main(): Promise<void> {
     () => {
       playerCombat?.refreshLoadout();
       hotkeyManager?.refresh();
+      controller.setDevilFruitUser(playerCombat?.hasDevilFruit ?? false);
     },
     (open) => {
       if (open) controlsBeforeInv = controller.inputEnabled;
@@ -352,6 +353,7 @@ async function main(): Promise<void> {
     navalCombat,
     () => camera.yaw,
   );
+  controller.setDevilFruitUser(playerCombat.hasDevilFruit);
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',
     category: playerCombat?.activeItem.category ?? 'style',

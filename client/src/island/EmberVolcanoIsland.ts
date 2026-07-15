@@ -5,8 +5,9 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
-import { EMBER_VOLCANO_CENTER, EMBER_VOLCANO_RADIUS } from './IslandRegistry';
-import { EMBER_VOLCANO_POI_LIST, EMBER_VOLCANO_POIS } from '../world/WorldPOI';
+import { EMBER_VOLCANO_LEGACY_CENTER as EMBER_VOLCANO_CENTER, EMBER_VOLCANO_RADIUS, layoutOffset } from './IslandRegistry';
+import { LEGACY_EMBER_VOLCANO_POI_LIST as EMBER_VOLCANO_POI_LIST, LEGACY_EMBER_VOLCANO_POIS as EMBER_VOLCANO_POIS } from '../world/WorldPOI';
+import { createIslandBuildCollision } from './IslandLayout';
 
 export interface EmberVolcanoIslandResult { root: THREE.Group }
 
@@ -19,7 +20,7 @@ function shadow(mesh: THREE.Mesh | THREE.InstancedMesh, graphics: GraphicsProfil
 /** Mobile PBR island 6 — shared materials, instancing and low-poly silhouettes for mobile. */
 export function buildEmberVolcanoIsland(
   scene: THREE.Scene,
-  collision: CollisionSystem,
+  baseCollision: CollisionSystem,
   textures: WorldTextures,
   graphics: GraphicsProfile,
   nightMaterial: THREE.MeshStandardMaterial,
@@ -27,6 +28,9 @@ export function buildEmberVolcanoIsland(
 ): EmberVolcanoIslandResult {
   const root = new THREE.Group();
   root.name = 'PF_ISLAND_EMBER_VOLCANO_DETAILS';
+  const offset = layoutOffset('ember-volcano');
+  root.position.set(offset.x, 0, offset.z);
+  const collision = createIslandBuildCollision(baseCollision, 'ember-volcano');
 
   const basalt = createMobileMaterial('stone', {
     color: 0x443b39,

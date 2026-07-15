@@ -4,8 +4,9 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
-import { MIST_JUNGLE_CENTER, MIST_JUNGLE_RADIUS } from './IslandRegistry';
-import { MIST_JUNGLE_POI_LIST, MIST_JUNGLE_POIS } from '../world/WorldPOI';
+import { MIST_JUNGLE_LEGACY_CENTER as MIST_JUNGLE_CENTER, MIST_JUNGLE_RADIUS, layoutOffset } from './IslandRegistry';
+import { LEGACY_MIST_JUNGLE_POI_LIST as MIST_JUNGLE_POI_LIST, LEGACY_MIST_JUNGLE_POIS as MIST_JUNGLE_POIS } from '../world/WorldPOI';
+import { createIslandBuildCollision } from './IslandLayout';
 
 export interface MistJungleIslandResult {
   root: THREE.Group;
@@ -364,7 +365,7 @@ function buildJungleVegetation(
 /** สร้างเกาะที่สองด้วย geometry/material shared และ instancing สำหรับมือถือ */
 export function buildMistJungleIsland(
   scene: THREE.Scene,
-  collision: CollisionSystem,
+  baseCollision: CollisionSystem,
   textures: WorldTextures,
   graphics: GraphicsProfile,
   nightMaterial: THREE.MeshStandardMaterial,
@@ -372,6 +373,9 @@ export function buildMistJungleIsland(
 ): MistJungleIslandResult {
   const root = new THREE.Group();
   root.name = 'PF_ISLAND_MIST_JUNGLE_DETAILS';
+  const offset = layoutOffset('mist-jungle');
+  root.position.set(offset.x, 0, offset.z);
+  const collision = createIslandBuildCollision(baseCollision, 'mist-jungle');
   const materials = createMaterials(textures);
   buildDock(root, collision, materials, graphics);
   buildExpeditionCamp(root, collision, materials, graphics, nightMaterial, nightLights);

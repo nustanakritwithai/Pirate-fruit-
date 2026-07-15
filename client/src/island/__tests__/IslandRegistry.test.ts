@@ -40,22 +40,33 @@ describe('multi-island registry', () => {
 
   it('leaves navigable sea between all island routes', () => {
     expect(worldHeightAt(88, -30)).toBe(SEA_FLOOR_HEIGHT);
-    expect(worldHeightAt(98, -40)).toBe(SEA_FLOOR_HEIGHT);
-    expect(worldHeightAt(170, 43)).toBe(SEA_FLOOR_HEIGHT);
-    expect(worldHeightAt(110, 168)).toBe(SEA_FLOOR_HEIGHT);
-    expect(worldHeightAt(-45, 210)).toBe(SEA_FLOOR_HEIGHT);
-    expect(worldHeightAt(-180, 140)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(115, -105)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(270, -120)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(420, 20)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(470, 220)).toBe(SEA_FLOOR_HEIGHT);
+    expect(worldHeightAt(320, 460)).toBe(SEA_FLOOR_HEIGHT);
+  });
+
+  it('เรียงเกาะจากง่ายไปยากและเว้นระยะทะเลพอสำหรับเรือ', () => {
+    const levels = ISLANDS.map((island) => island.recommendedLevel[0]);
+    expect(levels).toEqual([1, 15, 31, 51, 71, 91]);
+    for (let i = 1; i < ISLANDS.length; i++) {
+      const previous = ISLANDS[i - 1];
+      const current = ISLANDS[i];
+      expect(Math.hypot(current.center.x - previous.center.x, current.center.z - previous.center.z))
+        .toBeGreaterThan(previous.radius + current.radius + 35);
+    }
   });
 
   it('places every checkpoint on dry land', () => {
     for (const island of ISLANDS) {
       expect(worldHeightAt(island.spawn.x, island.spawn.z)).toBeGreaterThan(0.25);
     }
-    expect(mistJungleHeightAt(170, -40)).toBeGreaterThan(2.5);
-    expect(sunscarDesertHeightAt(170, 125)).toBeGreaterThan(2.5);
-    expect(azureFrostHeightAt(35, 210)).toBeGreaterThan(2.5);
-    expect(tempestSkyHeightAt(-125, 210)).toBeGreaterThan(3);
-    expect(emberVolcanoHeightAt(-235, 70)).toBeGreaterThan(4);
+    expect(mistJungleHeightAt(170, -120)).toBeGreaterThan(2.5);
+    expect(sunscarDesertHeightAt(360, -40)).toBeGreaterThan(2.5);
+    expect(azureFrostHeightAt(500, 110)).toBeGreaterThan(2.5);
+    expect(tempestSkyHeightAt(430, 330)).toBeGreaterThan(3);
+    expect(emberVolcanoHeightAt(220, 470)).toBeGreaterThan(4);
   });
 
   it('resolves each dock zone and keeps boat spawns in water', () => {

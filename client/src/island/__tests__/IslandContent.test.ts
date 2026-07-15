@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTER_CAMPS, MONSTER_TYPES, BOSS_SPAWNS } from '../../monster/MonsterData';
 import { QUEST_DEFINITIONS } from '../../quest/QuestDefinitions';
-import { worldHeightAt } from '../IslandRegistry';
+import { findDockAt, worldHeightAt } from '../IslandRegistry';
 import { AZURE_FROST_POI_LIST, EMBER_VOLCANO_POI_LIST, MIST_JUNGLE_POI_LIST, SUNSCAR_DESERT_POI_LIST, TEMPEST_SKY_POI_LIST } from '../../world/WorldPOI';
-import { AZURE_FROST_NPCS, EMBER_VOLCANO_NPCS, MIST_JUNGLE_NPCS, SUNSCAR_DESERT_NPCS, TEMPEST_SKY_NPCS } from '../../npc/NPCData';
+import { ALL_NPCS } from '../../npc/NPCData';
 
 describe('multi-island content', () => {
   it('places gameplay camps, bosses and NPCs on land', () => {
@@ -15,8 +15,9 @@ describe('multi-island content', () => {
       expect(MONSTER_TYPES[spawn.typeId], spawn.typeId).toBeDefined();
       expect(worldHeightAt(spawn.x, spawn.z), spawn.typeId).toBeGreaterThan(0.2);
     }
-    for (const npc of [...MIST_JUNGLE_NPCS, ...SUNSCAR_DESERT_NPCS, ...AZURE_FROST_NPCS, ...TEMPEST_SKY_NPCS, ...EMBER_VOLCANO_NPCS]) {
-      expect(worldHeightAt(npc.x, npc.z), npc.id).toBeGreaterThan(0.2);
+    for (const npc of ALL_NPCS) {
+      const onDock = findDockAt(npc.x, npc.z) !== undefined;
+      if (!onDock) expect(worldHeightAt(npc.x, npc.z), npc.id).toBeGreaterThan(0.2);
     }
   });
 

@@ -29,6 +29,10 @@ const WATER_DEPTH_FOR_SWIM = 0.3; // พื้นทะเลต่ำกว่�
 const SWIM_LEVEL = WATER_LEVEL - 0.35; // ระดับที่ตัวละครลอย (จมประมาณครึ่งตัว)
 const SWIM_SPEED = 3.4;
 const SWIM_RISE = 3.5; // กด Space เพื่อดันตัวขึ้น (ปีนขึ้นฝั่ง/เรือ)
+const WATER_ENERGY_DRAIN = 18; // ตกน้ำแล้วพลังลดต่อวินาที ต้องรีบกลับขึ้นเรือ
+const DEVIL_FRUIT_ENERGY_DRAIN = 48; // ผู้กินผลปีศาจจมเร็วกว่าและว่ายไม่ได้
+const WATER_HP_DRAIN = 26; // เมื่อพลังหมดจึงเริ่มเสีย HP จนตาย
+const DEVIL_FRUIT_HP_DRAIN = 42;
 const WORLD_BOUND = SEA_BOUNDARY - 20; // ว่ายไกลเกินขอบทะเลจึงพากลับฝั่ง
 
 export interface MoveState {
@@ -73,8 +77,10 @@ export class CharacterController {
   private movementLock = 1;
   private controlsEnabled = true;
   private mounted = false;
+  private devilFruitUser = false;
+  private drownCallbackFired = false;
 
-  /** เรียกเมื่อผู้เล่นจมน้ำ/ตกขอบโลก เพื่อให้ระบบภายนอกพากลับจุดเซฟ */
+  /** เรียกเมื่อผู้เล่นเสียชีวิตจากน้ำ เพื่อให้ระบบภายนอกพากลับจุดเซฟ */
   onDrown: (() => void) | null = null;
 
   constructor(
@@ -144,6 +150,16 @@ export class CharacterController {
     this.position.set(x, y, z);
     this.verticalVelocity = 0;
     this.dashTimer = 0;
+    this.drownCallbackFired = false;
+  }
+
+  /** ผลไม้ปีศาจเป็นสถานะติดตัว จึงห้ามว่ายแม้กำลังสลับไปใช้ชุดอาวุธ */
+  setDevilFruitUser(value: boolean): void {
+    this.devilFruitUser = value;
+  }
+
+  get isDevilFruitUser(): boolean {
+    return this.devilFruitUser;
   }
 
   setControlsEnabled(enabled: boolean): void {
@@ -185,6 +201,7 @@ export class CharacterController {
   setMounted(mounted: boolean): void {
     this.mounted = mounted;
     this.verticalVelocity = 0;
+    this.drownCallbackFired = false;
     this.state = { speed: 0, onGround: true, sprinting: false, dashing: false, swimming: false };
   }
 
@@ -232,7 +249,7 @@ export class CharacterController {
     if (sprinting) {
       this.energy = Math.max(0, this.energy - ENERGY_DRAIN * dt);
       if (this.energy === 0) this.exhausted = true;
-    } else {
+    } else if (!inWater) {
       this.energy = Math.min(this.energyMax, this.energy + ENERGY_REGEN * dt);
     }
 
@@ -283,7 +300,7 @@ export class CharacterController {
     const overWater = ground < WATER_LEVEL - WATER_DEPTH_FOR_SWIM;
     let swimming = false;
 
-    if (overWater && this.position.y <= SWIM_LEVEL + 0.5 && !dashing) {
+    if (overWater && this.position.y <= SWIM_LEVEL + 0.5 && !dashing && !this.devilFruitUser) {
       // ---------- ว่ายน้ำ / ลอยตัวที่ผิวน้ำ ----------
       swimming = true;
       this.onGround = false;
@@ -314,12 +331,30 @@ export class CharacterController {
       }
     }
 
+    // ---------- ภัยน้ำทะเล ----------
+    // คนทั่วไปยังว่ายได้ แต่ Energy จะค่อยๆ หมด; ผู้กินผลปีศาจจมลงพื้นทะเลและหมดแรงเร็วกว่า
+    if (overWater && !this.mounted) {
+      const energyDrain = this.devilFruitUser ? DEVIL_FRUIT_ENERGY_DRAIN : WATER_ENERGY_DRAIN;
+      const hpDrain = this.devilFruitUser ? DEVIL_FRUIT_HP_DRAIN : WATER_HP_DRAIN;
+      this.energy = Math.max(0, this.energy - energyDrain * dt);
+      if (this.energy <= 0) this.hp = Math.max(0, this.hp - hpDrain * dt);
+      if (this.hp <= 0 && !this.drownCallbackFired) {
+        this.drownCallbackFired = true;
+        this.onDrown?.();
+      }
+    } else if (!overWater) {
+      this.drownCallbackFired = false;
+    }
+
     // ---------- ชนสิ่งกีดขวาง ----------
     this.collision.resolveObstacles(this.position);
 
     // ---------- กันว่ายหลุดขอบโลก ----------
-    if (Math.hypot(this.position.x, this.position.z) > WORLD_BOUND) {
-      this.onDrown?.();
+    const distanceFromOrigin = Math.hypot(this.position.x, this.position.z);
+    if (distanceFromOrigin > WORLD_BOUND) {
+      const safeScale = (WORLD_BOUND - 1) / distanceFromOrigin;
+      this.position.x *= safeScale;
+      this.position.z *= safeScale;
     }
 
     this.state = { speed, onGround: this.onGround, sprinting, dashing, swimming };

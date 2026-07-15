@@ -1,5 +1,6 @@
 import { WORLD_POIS } from '../world/WorldPOI';
 import type { IslandId } from '../island/IslandTypes';
+import { layoutPoint } from '../island/IslandRegistry';
 
 export interface NPCDefinition {
   id: string;
@@ -302,7 +303,7 @@ export const EMBER_VOLCANO_NPCS: NPCDefinition[] = [
   { id: 'ember-scholar-ada', islandId: 'ember-volcano', name: 'อาดา', role: 'นักธรณีเพลิง', x: -250, z: 91, color: 0x9b603c, dialogue: ['รอยแยกลาวาทั้งหมดไหลจากหัวใจของไททัน หากแสงในปล่องสว่างขึ้น แสดงว่ามันกำลังจะตื่น', 'โกเลมออบซิเดียนคือเปลือกภูเขาไฟที่มีชีวิต ส่วนสาวกลัทธิต้องการควบคุมพลังนั้น'] },
 ];
 
-export const ALL_NPCS: NPCDefinition[] = [
+const LEGACY_ALL_NPCS: readonly NPCDefinition[] = [
   ...STARTER_NPCS,
   ...MIST_JUNGLE_NPCS,
   ...SUNSCAR_DESERT_NPCS,
@@ -310,3 +311,8 @@ export const ALL_NPCS: NPCDefinition[] = [
   ...TEMPEST_SKY_NPCS,
   ...EMBER_VOLCANO_NPCS,
 ];
+
+export const ALL_NPCS: NPCDefinition[] = LEGACY_ALL_NPCS.map((npc) => ({
+  ...npc,
+  ...layoutPoint(npc.islandId, npc.x, npc.z),
+}));

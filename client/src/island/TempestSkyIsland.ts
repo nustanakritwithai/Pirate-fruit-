@@ -4,9 +4,10 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
-import { TEMPEST_SKY_CENTER, TEMPEST_SKY_RADIUS } from './IslandRegistry';
-import { TEMPEST_SKY_POI_LIST, TEMPEST_SKY_POIS } from '../world/WorldPOI';
+import { TEMPEST_SKY_LEGACY_CENTER as TEMPEST_SKY_CENTER, TEMPEST_SKY_RADIUS, layoutOffset } from './IslandRegistry';
+import { LEGACY_TEMPEST_SKY_POI_LIST as TEMPEST_SKY_POI_LIST, LEGACY_TEMPEST_SKY_POIS as TEMPEST_SKY_POIS } from '../world/WorldPOI';
 import { addPirateBuildingAsset, upgradePirateBuildingAssetWhenReady } from '../art/PirateBuildingAssetLibrary';
+import { createIslandBuildCollision } from './IslandLayout';
 
 export interface TempestSkyIslandResult { root: THREE.Group }
 
@@ -19,7 +20,7 @@ function shadow(mesh: THREE.Mesh | THREE.InstancedMesh, graphics: GraphicsProfil
 /** Mobile PBR island 5 — shared materials + instancing keep the mobile draw-call budget stable. */
 export function buildTempestSkyIsland(
   scene: THREE.Scene,
-  collision: CollisionSystem,
+  baseCollision: CollisionSystem,
   textures: WorldTextures,
   graphics: GraphicsProfile,
   nightMaterial: THREE.MeshStandardMaterial,
@@ -27,6 +28,9 @@ export function buildTempestSkyIsland(
 ): TempestSkyIslandResult {
   const root = new THREE.Group();
   root.name = 'PF_ISLAND_TEMPEST_SKY_DETAILS';
+  const offset = layoutOffset('tempest-sky');
+  root.position.set(offset.x, 0, offset.z);
+  const collision = createIslandBuildCollision(baseCollision, 'tempest-sky');
   const alabaster = createMobileMaterial('stone', { color: 0xc6d5d8, map: tiledTexture(textures.rockColor, 2, 2), normalMap: tiledTexture(textures.rockNormal, 2, 2), roughness: 0.78 });
   const paleStone = createMobileMaterial('plaster', { color: 0xd9e2df, roughness: 0.82 });
   const wood = createMobileMaterial('wood', { color: 0x7c6249, map: tiledTexture(textures.planksColor, 1.3, 1.5), normalMap: tiledTexture(textures.planksNormal, 1.3, 1.5), roughness: 0.82 });

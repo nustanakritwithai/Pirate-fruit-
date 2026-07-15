@@ -1,7 +1,8 @@
 import type { TradeVendorDefinition } from '../types';
+import { layoutPoint } from '../../island/IslandRegistry';
 
 /** NPC ผู้ค้า — ผูกกับตลาด Living Trade */
-export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
+const LEGACY_TRADE_VENDORS: readonly TradeVendorDefinition[] = [
   {
     id: 'vendor-starter-pao',
     islandId: 'starter-island',
@@ -69,3 +70,8 @@ export const TRADE_VENDORS: readonly TradeVendorDefinition[] = [
     dialogueOpen: 'ลงสินค้าจากเรือ — ราคาเปลี่ยนทุก 5 วินาที',
   },
 ] as const;
+
+export const TRADE_VENDORS: readonly TradeVendorDefinition[] = LEGACY_TRADE_VENDORS.map((vendor) => ({
+  ...vendor,
+  ...layoutPoint(vendor.islandId, vendor.x, vendor.z),
+}));

@@ -4,8 +4,9 @@ import type { CollisionSystem } from '../world/Collision';
 import type { WorldTextures } from '../world/textures';
 import { createMobileMaterial, tiledTexture } from '../art/MobilePBRMaterials';
 import { mulberry32 } from '../world/props';
-import { SUNSCAR_DESERT_CENTER, SUNSCAR_DESERT_RADIUS } from './IslandRegistry';
-import { SUNSCAR_DESERT_POI_LIST, SUNSCAR_DESERT_POIS } from '../world/WorldPOI';
+import { SUNSCAR_DESERT_LEGACY_CENTER as SUNSCAR_DESERT_CENTER, SUNSCAR_DESERT_RADIUS, layoutOffset } from './IslandRegistry';
+import { LEGACY_SUNSCAR_DESERT_POI_LIST as SUNSCAR_DESERT_POI_LIST, LEGACY_SUNSCAR_DESERT_POIS as SUNSCAR_DESERT_POIS } from '../world/WorldPOI';
+import { createIslandBuildCollision } from './IslandLayout';
 
 export interface SunscarDesertIslandResult {
   root: THREE.Group;
@@ -394,7 +395,7 @@ function buildDesertProps(
 /** สร้างเกาะทะเลทรายด้วย material shared + instancing เพื่อคุม draw call บนมือถือ */
 export function buildSunscarDesertIsland(
   scene: THREE.Scene,
-  collision: CollisionSystem,
+  baseCollision: CollisionSystem,
   textures: WorldTextures,
   graphics: GraphicsProfile,
   nightMaterial: THREE.MeshStandardMaterial,
@@ -402,6 +403,9 @@ export function buildSunscarDesertIsland(
 ): SunscarDesertIslandResult {
   const root = new THREE.Group();
   root.name = 'PF_ISLAND_SUNSCAR_DESERT_DETAILS';
+  const offset = layoutOffset('sunscar-desert');
+  root.position.set(offset.x, 0, offset.z);
+  const collision = createIslandBuildCollision(baseCollision, 'sunscar-desert');
   const materials = createMaterials(textures);
   buildDock(root, collision, materials, graphics);
   buildCaravanCity(root, collision, materials, graphics, nightMaterial, nightLights);

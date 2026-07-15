@@ -161,6 +161,14 @@ export class World {
       starterIsland.nightMaterial,
       starterIsland.nightLights,
     );
+
+    const nightSkyUrl = `${import.meta.env.BASE_URL}assets/third-party/ambientcg-night-sky/night-sky-1k.jpg`;
+    new THREE.TextureLoader().load(
+      nightSkyUrl,
+      (texture) => this.dayNight.setNightBackground(texture),
+      undefined,
+      (error) => console.warn('[World] ใช้ fallback night sky เพราะโหลด asset ไม่สำเร็จ', error),
+    );
   }
 
   get timeOfDay(): number {
