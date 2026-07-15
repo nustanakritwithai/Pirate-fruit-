@@ -123,6 +123,32 @@ function cloneInstanceMaterials(
   return owned;
 }
 
+/**
+ * SkeletonUtils.clone() rebinds cloned SkinnedMesh instances and, with some
+ * GLB exports, rebuilds bindMatrixInverse from the identity bind matrix. The
+ * source asset still has the correct inverse armature transform, so preserve
+ * both matrices before measuring/scaling the instance.
+ */
+function restoreSkinnedBindMatrices(source: THREE.Object3D, clone: THREE.Object3D): void {
+  const sourceMeshes: THREE.SkinnedMesh[] = [];
+  const clonedMeshes: THREE.SkinnedMesh[] = [];
+  source.traverse((object) => {
+    const mesh = object as THREE.SkinnedMesh;
+    if (mesh.isSkinnedMesh) sourceMeshes.push(mesh);
+  });
+  clone.traverse((object) => {
+    const mesh = object as THREE.SkinnedMesh;
+    if (mesh.isSkinnedMesh) clonedMeshes.push(mesh);
+  });
+
+  clonedMeshes.forEach((mesh, index) => {
+    const sourceMesh = sourceMeshes[index];
+    if (!sourceMesh) return;
+    mesh.bindMatrix.copy(sourceMesh.bindMatrix);
+    mesh.bindMatrixInverse.copy(sourceMesh.bindMatrixInverse);
+  });
+}
+
 /** clone skeleton อย่างถูกต้อง เพื่อให้มอนสเตอร์หลายตัวเล่น animation แยกกันได้ */
 export function instantiatePirateAsset(
   id: PirateAssetId,
@@ -131,6 +157,7 @@ export function instantiatePirateAsset(
   const source = loaded.get(id);
   if (!source) return null;
   const root = SkeletonUtils.clone(source.scene) as THREE.Group;
+  restoreSkinnedBindMatrices(source.scene, root);
   root.name = `quaternius:${id}`;
   const materials = cloneInstanceMaterials(root, options);
   const box = new THREE.Box3().setFromObject(root);
