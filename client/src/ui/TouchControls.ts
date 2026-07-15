@@ -402,6 +402,12 @@ export class TouchControls {
     this.cooldownRings.set(this.cannonRightBtn, getter);
   }
 
+  /** ไฮไลต์ปุ่มกาบที่เปิดเล็งอยู่: 0 = ปิด, 1 = ซ้าย, 2 = ขวา */
+  setCannonArmed(side: 0 | 1 | 2): void {
+    this.cannonLeftBtn.classList.toggle('tc-armed', side === 1);
+    this.cannonRightBtn.classList.toggle('tc-armed', side === 2);
+  }
+
   /** เรียกทุกเฟรมจาก game loop เพื่ออัปเดตวงแหวนคูลดาวน์ */
   update(): void {
     for (const [btn, getter] of this.cooldownRings) {
@@ -593,6 +599,8 @@ export class TouchControls {
                    border-color: rgba(255,150,80,.85); background: rgba(120,45,15,.6); }
       .tc-cannon-right { right: 14px;  bottom: 18px; }
       .tc-cannon-left  { right: 156px; bottom: 18px; }
+      .tc-cannon.tc-armed { background: rgba(255,140,50,.72); border-color: #ffd9a0;
+                   box-shadow: 0 0 16px rgba(255,170,80,.85); }
       .tc-dash   { right: 92px; bottom: 24px;  width: 48px; height: 48px; font-size: 21px;
                    border-color: rgba(120,220,255,.8); }
       .tc-dash.tc-boat-boost { border-color:rgba(255,220,95,.9); background:rgba(100,72,12,.62); }

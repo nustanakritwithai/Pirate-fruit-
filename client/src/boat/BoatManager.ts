@@ -261,21 +261,22 @@ export class BoatManager {
     }
 
     // ---------- เลี้ยวแบบมีความเฉื่อยเชิงมุม (หางเสือหนืด) ----------
-    const turnFactor = THREE.MathUtils.clamp(Math.abs(boat.speed) / 3, 0.12, 1);
+    // เรือใบจริงต้องมี "ทางเรือ" (way) ก่อนถึงจะบังคับหัวได้ — จอดนิ่งแทบเลี้ยวไม่เข้า
+    const turnFactor = THREE.MathUtils.clamp(Math.abs(boat.speed) / 4, 0.08, 1);
     const reverseDirection = boat.speed < 0 ? -1 : 1;
     // โยกขวา (steering > 0) = เลี้ยวขวา — heading เพิ่มขึ้นหมุนหัวเรือไปทางซ้าย จึงต้องลบ
     const targetTurn = steering * boat.definition.turnSpeed * turnFactor * reverseDirection;
-    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, targetTurn, 5, dt);
+    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, targetTurn, 3.2, dt);
     boat.heading -= boat.turnVelocity * dt;
-    // เลี้ยวแรงเสียความเร็วเล็กน้อย (แรงต้านน้ำ)
-    boat.speed *= 1 - Math.min(0.3, Math.abs(boat.turnVelocity) * 0.22) * dt;
+    // เลี้ยวแรงเสียความเร็ว (แรงต้านน้ำตอนกินหางเสือ)
+    boat.speed *= 1 - Math.min(0.35, Math.abs(boat.turnVelocity) * 0.3) * dt;
   }
 
   private updateIdle(boat: Boat, dt: number): void {
     const damping = boat.anchor ? boat.definition.brakePower : boat.definition.drag * 1.8;
     boat.speed = THREE.MathUtils.damp(boat.speed, 0, damping, dt);
     // หางเสือคลายตัวตามความเฉื่อย — ปล่อยพวงมาลัยแล้วเรือยังเบนต่อเล็กน้อย
-    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, 0, 3, dt);
+    boat.turnVelocity = THREE.MathUtils.damp(boat.turnVelocity, 0, 2, dt);
     boat.heading -= boat.turnVelocity * dt;
     if (findDockAt(boat.group.position.x, boat.group.position.z) && Math.abs(boat.speed) < 0.25) {
       boat.state = 'docked';

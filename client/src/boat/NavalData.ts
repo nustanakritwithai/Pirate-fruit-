@@ -69,6 +69,8 @@ export const CANNONBALL_LIFETIME = 6;
 export const PLAYER_CANNON_DAMAGE = 42;
 /** คูลดาวน์ยิงชุด (broadside) ของผู้เล่น */
 export const PLAYER_FIRE_COOLDOWN = 2.4;
+/** ระยะเล็ง/ยิงปืนใหญ่ของผู้เล่น (รัศมีวงเล็งตอนเปิดกาบ) */
+export const PLAYER_FIRE_RANGE = 34;
 
 export interface CannonballState {
   x: number;

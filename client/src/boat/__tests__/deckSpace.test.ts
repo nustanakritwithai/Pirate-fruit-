@@ -92,11 +92,11 @@ describe('DeckSpace — carryRider (moving platform)', () => {
 });
 
 describe('เกียร์ใบเรือ + Collision dynamic ground', () => {
-  it('อัตราเกียร์ 0→3 ไล่ระดับถูกต้อง (0, 35%, 70%, 100%)', () => {
-    expect(SAIL_GEAR_RATIO).toEqual([0, 0.35, 0.7, 1]);
+  it('อัตราเกียร์ 0→3 ไล่ระดับถูกต้อง (0, 30%, 60%, 100%)', () => {
+    expect(SAIL_GEAR_RATIO).toEqual([0, 0.3, 0.6, 1]);
     expect(MAX_SAIL_LEVEL).toBe(3);
     const sloop = getBoatDefinition('swift-sloop')!;
-    expect(sloop.maxSpeed * SAIL_GEAR_RATIO[2]).toBeCloseTo(9.8, 3);
+    expect(sloop.maxSpeed * SAIL_GEAR_RATIO[2]).toBeCloseTo(7.2, 3);
   });
 
   it('dynamic ground provider ถูกรวมใน heightAt และถอนออกได้', () => {
