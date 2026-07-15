@@ -5,10 +5,17 @@
 
 import type { IslandId } from '../../island/IslandTypes';
 
-/** เซลล์เศรษฐกิจ (แยกจากเกาะในเกม — 4 เซลล์บน 3 เกาะจริง) */
-export type EconomyCellId = 'leaf-island' | 'mine-island' | 'cloth-island' | 'shipyard-island';
+/** เซลล์เศรษฐกิจ — ทุกเกาะที่ผู้เล่นเดินทางไปถึงมีแหล่งผลิตและสต็อกของตัวเอง */
+export type EconomyCellId =
+  | 'leaf-island'
+  | 'mine-island'
+  | 'cloth-island'
+  | 'shipyard-island'
+  | 'frost-island'
+  | 'sky-island'
+  | 'volcano-island';
 
-export type EconomyRole = 'forest' | 'mine' | 'cloth' | 'shipyard';
+export type EconomyRole = 'forest' | 'mine' | 'cloth' | 'shipyard' | 'frost' | 'sky' | 'volcano';
 
 /** สินค้าในระบบ living (map กับ TRADE_COMMODITIES) */
 export type LivingCommodityId =
@@ -25,7 +32,10 @@ export type LivingCommodityId =
   | 'herbal-medicine'
   | 'sailcloth'
   | 'repair-kit'
-  | 'trade-crate';
+  | 'trade-crate'
+  | 'frost-crystal'
+  | 'storm-core'
+  | 'volcanic-ore';
 
 export type MarketState = 'surplus' | 'balanced' | 'shortage' | 'crisis' | 'collapsed';
 

@@ -46,6 +46,9 @@ export const LIVING_COMMODITY_META: Record<
   sailcloth: { label: 'ชิ้นส่วนเรือ', badge: 'ship-supply' },
   'repair-kit': { label: 'ชุดซ่อมเรือ', badge: 'ship-supply' },
   'trade-crate': { label: 'หีบสินค้า', badge: 'ship-supply' },
+  'frost-crystal': { label: 'ผลึกเหมันต์', badge: 'raw', reserveStock: 8 },
+  'storm-core': { label: 'แกนพายุ', badge: 'raw', reserveStock: 6 },
+  'volcanic-ore': { label: 'แร่อัคคี', badge: 'raw', reserveStock: 8 },
 };
 
 export const PRODUCTION_RECIPES: readonly ProductionRecipe[] = [

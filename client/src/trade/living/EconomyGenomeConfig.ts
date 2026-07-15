@@ -1,6 +1,6 @@
 /** Phase E4A — Evolutionary Economy genome balance */
 export const ECONOMY_GENOME_CONFIG = {
-  saveVersion: 7,
+  saveVersion: 8,
 
   fitnessEvaluationIntervalTicks: 5,
   genomeDriftIntervalTicks: 5,

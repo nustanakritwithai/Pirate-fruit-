@@ -58,20 +58,24 @@ export class TradeManager {
 
   /** ราคาซื้อ — living หรือ static */
   resolveBuyPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
-    const livingPrice = this.living.getBuyPrice(islandId, commodityId, quantity);
-    if (livingPrice != null) return livingPrice;
-    const commodity = getCommodity(commodityId);
     const found = findMarketEntryOnIsland(islandId, commodityId);
+    const livingPrice = this.living.getBuyPrice(islandId, commodityId, quantity);
+    if (livingPrice != null) {
+      return Math.max(1, Math.round(livingPrice * marketRoleMultiplier(found?.entry.role, 'buy')));
+    }
+    const commodity = getCommodity(commodityId);
     if (!commodity || !found) return null;
     return buyPrice(commodity, found.entry);
   }
 
   /** ราคาขาย — living หรือ static */
   resolveSellPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
-    const livingPrice = this.living.getSellPrice(islandId, commodityId, quantity);
-    if (livingPrice != null) return livingPrice;
-    const commodity = getCommodity(commodityId);
     const found = findMarketEntryOnIsland(islandId, commodityId);
+    const livingPrice = this.living.getSellPrice(islandId, commodityId, quantity);
+    if (livingPrice != null) {
+      return Math.max(1, Math.round(livingPrice * marketRoleMultiplier(found?.entry.role, 'sell')));
+    }
+    const commodity = getCommodity(commodityId);
     if (!commodity || !found) return null;
     return sellPrice(commodity, found.entry);
   }
@@ -262,4 +266,13 @@ export class TradeManager {
     const o = s as CargoSlot;
     return typeof o.commodityId === 'string' && typeof o.quantity === 'number' && o.quantity > 0;
   }
+}
+
+function marketRoleMultiplier(
+  role: 'export' | 'import' | 'neutral' | undefined,
+  action: 'buy' | 'sell',
+): number {
+  if (role === 'export') return action === 'buy' ? 0.9 : 0.9;
+  if (role === 'import') return action === 'buy' ? 1.2 : 1.12;
+  return 1;
 }

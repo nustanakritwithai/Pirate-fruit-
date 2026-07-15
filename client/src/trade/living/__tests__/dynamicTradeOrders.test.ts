@@ -122,12 +122,14 @@ describe('Phase E2 — Dynamic Trade Orders', () => {
     setShortage(world, 'shipyard-island', 'rope', 0.5);
     setSurplus(world, 'cloth-island', 'rope');
     generateTradeOrders(world, []);
-    const mild = world.orders.find((o) => o.commodityId === 'rope')!.urgency;
+    const mild = world.orders.find((o) =>
+      o.commodityId === 'rope' && o.destinationIslandId === 'shipyard-island')!.urgency;
     world.orders = [];
     world.orderGenCooldowns['shipyard-island'] = 0;
     setShortage(world, 'shipyard-island', 'rope', 0.1);
     generateTradeOrders(world, []);
-    const crisis = world.orders.find((o) => o.commodityId === 'rope')!.urgency;
+    const crisis = world.orders.find((o) =>
+      o.commodityId === 'rope' && o.destinationIslandId === 'shipyard-island')!.urgency;
     expect(crisis).toBeGreaterThan(mild);
   });
 

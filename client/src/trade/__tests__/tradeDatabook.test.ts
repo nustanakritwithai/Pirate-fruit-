@@ -21,8 +21,11 @@ describe('Trade databook', () => {
   });
 
   it('defines living markets per island role', () => {
-    expect(ISLAND_MARKETS).toHaveLength(4);
+    expect(ISLAND_MARKETS).toHaveLength(7);
     expect(getMarketForIsland('mist-jungle')?.id).toBe('mist-jungle-market');
+    expect(getMarketForIsland('azure-frost')?.id).toBe('azure-frost-market');
+    expect(getMarketForIsland('tempest-sky')?.id).toBe('tempest-sky-market');
+    expect(getMarketForIsland('ember-volcano')?.id).toBe('ember-volcano-market');
     expect(findMarketEntryOnIsland('starter-island', 'sailcloth')?.market.id)
       .toBe('starter-shipyard-market');
   });
@@ -40,7 +43,7 @@ describe('Trade databook', () => {
 
   it('assigns vendors to each island', () => {
     expect(listVendorsOnIsland('starter-island').length).toBeGreaterThanOrEqual(2);
-    expect(TRADE_VENDORS.length).toBe(6);
+    expect(TRADE_VENDORS.length).toBe(12);
     expect(TRADE_VENDORS.some((v) => v.id === 'vendor-starter-shipyard')).toBe(true);
   });
 

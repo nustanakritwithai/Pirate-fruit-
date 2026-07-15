@@ -1,7 +1,7 @@
 import type { IslandId } from '../island/IslandTypes';
 import type { TradeManager } from '../trade/TradeManager';
 import { TRADE_COMMODITIES } from '../trade/databook/commodities';
-import { getMarketForIsland } from '../trade/TradeRegistry';
+import { getMarketForIsland, listMarketEntriesForMarket } from '../trade/TradeRegistry';
 import { isLivingCommodity, resolveTradeCell, CELL_LABELS } from '../trade/living/LivingTradeConfig';
 import { LIVING_COMMODITY_META, recipeForOutput } from '../trade/living/ProductionRecipes';
 import { priceTrend } from '../trade/living/LivingTradeFormulas';
@@ -384,7 +384,7 @@ export class EconomyPanel {
     const arb = this.trade.living.bestArbitrageFrom(this.islandId);
     const hold = this.trade.hold;
 
-    const marketRows = (market?.entries ?? []).map((entry) => {
+    const marketRows = (market ? listMarketEntriesForMarket(market.id) : []).map((entry) => {
       const commodity = TRADE_COMMODITIES.find((c) => c.id === entry.commodityId);
       if (!commodity || !isLivingCommodity(commodity.id)) return '';
       const item = this.trade.living.getCommodityAtGameIsland(this.islandId, commodity.id);
@@ -436,6 +436,13 @@ export class EconomyPanel {
       `<div class="ep-log ep-pri-${e.priority}">${e.icon} ${e.fullMessage}</div>`,
     ).join('');
 
+    const cargoManifest = hold.slots.length
+      ? hold.slots.map((slot) => {
+        const commodity = TRADE_COMMODITIES.find((item) => item.id === slot.commodityId);
+        return `<span class="ep-cargo-item">${commodity?.icon ?? '📦'} ${commodity?.nameTh ?? slot.commodityId} ×${Math.floor(slot.quantity)}</span>`;
+      }).join('')
+      : '<span class="ep-cargo-empty">เรือยังไม่มีสินค้า</span>';
+
     const openOrders = this.trade.living.state.orders.filter(
       (o) => o.status === 'open' || o.status === 'assigned' || o.status === 'in-transit',
     );
@@ -456,6 +463,7 @@ export class EconomyPanel {
         <span>📦 Cargo ${hold.slots.reduce((s, x) => s + x.quantity, 0)} ชิ้น</span>
         ${factoryStatus ? `<span class="ep-warn">🏭 ${factoryStatus}</span>` : ''}
       </div>
+      <div class="ep-cargo-manifest"><b>สินค้าบนเรือ:</b> ${cargoManifest}</div>
       ${arbHtml}
       ${factoryRows ? `<div class="ep-section-title">โรงงาน</div><div class="ep-factory-list">${factoryRows}</div>` : ''}
       <div class="ep-section-title">คำสั่งขนส่ง (Trade Orders)</div>
@@ -528,6 +536,9 @@ export class EconomyPanel {
       .economy-panel-head h2{margin:0;flex:1;font-size:16px;color:#ffe9a8}
       .economy-panel-close{background:0;border:0;color:#fff;font-size:24px;cursor:pointer;line-height:1}
       .ep-summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;color:#cfe6ea;font-size:11px}
+      .ep-cargo-manifest{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 9px;border-radius:8px;background:rgba(120,210,180,.08);color:#c8e8ff;font-size:10px}
+      .ep-cargo-item{padding:2px 5px;border-radius:5px;background:rgba(255,255,255,.07)}
+      .ep-cargo-empty{color:#8ca9a7}
       .ep-warn{color:#ffb86c}
       .ep-arb{margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(255,220,120,.08);
         color:#d8f2ea;line-height:1.45}

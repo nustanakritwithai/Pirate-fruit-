@@ -66,6 +66,15 @@ const CELL_PRODUCTION_BIAS: Record<EconomyCellId, Partial<Record<LivingCommodity
     sailcloth: 0.62,
     'repair-kit': 0.55,
   },
+  'frost-island': {
+    'frost-crystal': 0.68,
+  },
+  'sky-island': {
+    'storm-core': 0.68,
+  },
+  'volcano-island': {
+    'volcanic-ore': 0.68,
+  },
 };
 
 export function createGenomeForCell(cellId: EconomyCellId): EconomyGenome {

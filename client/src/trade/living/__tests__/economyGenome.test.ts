@@ -623,7 +623,7 @@ describe('Phase E4A — Economy Genome', () => {
     expect(loaded.genomeState?.genomePressures.length).toBeGreaterThan(0);
   });
 
-  it('48. migration v6 → v7 does not reset economy', () => {
+  it('48. migration v6 → v8 adds the global trade network without resetting economy', () => {
     if (typeof localStorage === 'undefined') return;
     const w = createFreshWorld();
     w.tick = 42;
@@ -637,7 +637,7 @@ describe('Phase E4A — Economy Genome', () => {
     const loaded = loadEconomyState()!;
     expect(loaded.tick).toBe(42);
     expect(loaded.factories.length).toBe(factoryCount);
-    expect(loaded.genomeState?.genomes.length).toBe(4);
+    expect(loaded.genomeState?.genomes.length).toBe(7);
     expect(loaded.orders.length).toBe(orderCount);
   });
 
@@ -648,7 +648,7 @@ describe('Phase E4A — Economy Genome', () => {
     (g.productionBias as Record<string, number>)['future-commodity' as keyof typeof g.productionBias] = 0.7;
     saveEconomyState(w);
     const loaded = loadEconomyState();
-    expect(loaded?.genomeState?.genomes.length).toBe(4);
+    expect(loaded?.genomeState?.genomes.length).toBe(7);
   });
 
   it('50. evolution history is bounded', () => {

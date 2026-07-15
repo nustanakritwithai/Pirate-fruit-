@@ -5,6 +5,7 @@ import {
   produceGoods,
   resolveSpoilage,
   runProduction,
+  scheduleImportConvoys,
   spreadDemand,
   updateDemand,
   updatePrices,
@@ -13,6 +14,7 @@ import {
 } from './EconomyRules';
 import {
   CELL_TO_GAME_ISLAND,
+  CELL_LABELS,
   ECONOMY_CONFIG,
   LIVING_COMMODITY_IDS,
   isLivingCommodity,
@@ -72,13 +74,6 @@ import type {
   LivingCommodityId,
   TradeNewsItem,
 } from './types';
-
-const CELL_LABELS: Record<EconomyCellId, string> = {
-  'leaf-island': 'เกาะใบไม้',
-  'mine-island': 'เกาะเหมือง',
-  'cloth-island': 'เกาะทอผ้า',
-  'shipyard-island': 'เกาะอู่เรือ',
-};
 
 /** Economic Cellular Automata — หัวใจคือสินค้าและเศรษฐกิจเท่านั้น */
 export class LivingTradeSimulator {
@@ -295,6 +290,7 @@ export class LivingTradeSimulator {
     updatePlayerEconomy(this.world, this.tickLog, this.contractWallet ?? undefined);
     this.runDynamicTrade();
     moveCargo(this.world, this.tickLog);
+    scheduleImportConvoys(this.world, this.tickLog);
     updateEconomyGenome(this.world);
 
     for (const entry of this.tickLog) entry.tick = this.world.tick;

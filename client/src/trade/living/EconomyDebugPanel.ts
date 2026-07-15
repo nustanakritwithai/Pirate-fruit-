@@ -90,6 +90,9 @@ export class EconomyDebugPanel {
             <option value="mine-island">Mine</option>
             <option value="cloth-island">Cloth</option>
             <option value="shipyard-island">Shipyard</option>
+            <option value="frost-island">Frost</option>
+            <option value="sky-island">Sky</option>
+            <option value="volcano-island">Volcano</option>
           </select></label>
         </div>
         <div class="eco-genome-grid"></div>

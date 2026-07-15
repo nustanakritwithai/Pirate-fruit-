@@ -197,7 +197,10 @@ function departAssignedOrders(
     if (!origin) continue;
 
     const capacity = origin.transportCapacity * world.npcCargoCapacityMultiplier;
-    const shipsFromOrigin = world.ships.filter((s) => s.originCellId === origin.id).length;
+    // เรือเสบียงประจำทางไม่ควรแย่งช่องเรือพ่อค้าตามออเดอร์กำไร
+    const shipsFromOrigin = world.ships.filter(
+      (s) => s.originCellId === origin.id && Boolean(s.orderId),
+    ).length;
     if (shipsFromOrigin >= capacity) continue;
 
     const item = origin.commodities[order.commodityId];

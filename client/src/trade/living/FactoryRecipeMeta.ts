@@ -22,6 +22,9 @@ export const FACTORY_RECIPE_META: Record<LivingCommodityId, FactoryRecipeMeta> =
   sailcloth: { requiredWorkers: 8, baseMaintenanceCost: 12 },
   'repair-kit': { requiredWorkers: 5, baseMaintenanceCost: 7 },
   'trade-crate': { requiredWorkers: 2, baseMaintenanceCost: 3 },
+  'frost-crystal': { requiredWorkers: 0, baseMaintenanceCost: 0 },
+  'storm-core': { requiredWorkers: 0, baseMaintenanceCost: 0 },
+  'volcanic-ore': { requiredWorkers: 0, baseMaintenanceCost: 0 },
 };
 
 export function recipeMeta(id: LivingCommodityId): FactoryRecipeMeta {

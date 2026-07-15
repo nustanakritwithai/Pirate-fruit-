@@ -82,12 +82,18 @@ describe('LivingTradeSimulator — Economic CA', () => {
     sim = new LivingTradeSimulator(true);
   });
 
-  it('initializes 4 economy cells with living commodities', () => {
-    expect(sim.state.cells).toHaveLength(4);
+  it('initializes all island economy cells with living commodities', () => {
+    expect(sim.state.cells).toHaveLength(7);
     const leaf = sim.getCell('leaf-island')!;
     for (const id of ['fresh-fish', 'hardwood', 'dried-fish'] as const) {
       expect(leaf.commodities[id]!.stock).toBeGreaterThan(0);
     }
+    for (const island of ['azure-frost', 'tempest-sky', 'ember-volcano'] as const) {
+      expect(sim.getIsland(island)).toBeDefined();
+    }
+    expect(sim.getCommodityAtGameIsland('azure-frost', 'storm-core')!.stock).toBeGreaterThan(0);
+    expect(sim.getCommodityAtGameIsland('tempest-sky', 'fresh-fish')!.stock).toBeGreaterThan(0);
+    expect(sim.getCommodityAtGameIsland('ember-volcano', 'frost-crystal')!.stock).toBeGreaterThan(0);
   });
 
   it('1. shortage raises price', () => {

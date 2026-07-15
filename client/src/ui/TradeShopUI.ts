@@ -5,6 +5,7 @@ import {
   getIslandMarket,
   getMarketForIsland,
   getTradeVendor,
+  listMarketEntriesForMarket,
   cargoSlotsUsed,
   cargoTotalWeight,
 } from '../trade/TradeRegistry';
@@ -27,6 +28,9 @@ const MARKET_CELL: Record<string, EconomyCellId> = {
   'starter-shipyard-market': 'shipyard-island',
   'mist-jungle-market': 'mine-island',
   'sunscar-desert-market': 'cloth-island',
+  'azure-frost-market': 'frost-island',
+  'tempest-sky-market': 'sky-island',
+  'ember-volcano-market': 'volcano-island',
 };
 
 const BADGE_LABELS: Record<LivingBadge, string> = {
@@ -158,8 +162,15 @@ export class TradeShopUI {
     const hold = this.trade.hold;
     const weight = cargoTotalWeight(hold.slots, TRADE_COMMODITIES);
     const slots = cargoSlotsUsed(hold.slots);
-    this.cargoInfo.innerHTML =
-      `📦 Cargo: <b>${slots}/${hold.maxSlots}</b> ช่อง · น้ำหนัก <b>${weight}/${hold.maxWeight}</b>`;
+    const cargoManifest = hold.slots.length
+      ? hold.slots.map((slot) => {
+        const cargoCommodity = TRADE_COMMODITIES.find((commodity) => commodity.id === slot.commodityId);
+        return `<span class="trade-cargo-item">${cargoCommodity?.icon ?? '📦'} ${cargoCommodity?.nameTh ?? slot.commodityId} <b>x${Math.floor(slot.quantity)}</b></span>`;
+      }).join('')
+      : '<span class="trade-cargo-empty">ยังไม่มีสินค้าในเรือ</span>';
+    this.cargoInfo.innerHTML = `
+      <div>📦 Cargo: <b>${slots}/${hold.maxSlots}</b> ช่อง · น้ำหนัก <b>${weight}/${hold.maxWeight}</b></div>
+      <div class="trade-cargo-manifest"><span class="trade-cargo-label">ของบนเรือ:</span>${cargoManifest}</div>`;
 
     const activeNews = filterActiveNews(this.trade.living.news).slice(0, 2);
     this.news.innerHTML = activeNews.length
@@ -175,7 +186,7 @@ export class TradeShopUI {
       ? `<div class="trade-factory-warn">🏭 สถานะโรงงาน: ${factoryStatus}</div>`
       : '';
 
-    const rows = market.entries.map((entry) => {
+    const rows = listMarketEntriesForMarket(market.id).map((entry) => {
       const commodity = TRADE_COMMODITIES.find((c) => c.id === entry.commodityId);
       if (!commodity) return '';
       const inCargo = hold.slots.find((s) => s.commodityId === commodity.id)?.quantity ?? 0;
@@ -262,6 +273,10 @@ export class TradeShopUI {
       .trade-shop-wallet{margin-left:auto;white-space:nowrap;color:#ffd76a;font-size:14px}
       .trade-shop-close{background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1}
       .trade-cargo-info{margin-bottom:6px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.06);font-size:11px}
+      .trade-cargo-manifest{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;color:#c8e8ff;font-size:10px}
+      .trade-cargo-label{color:#9ec5bc;margin-right:2px}
+      .trade-cargo-item{padding:2px 5px;border-radius:5px;background:rgba(120,210,180,.10)}
+      .trade-cargo-empty{color:#8ca9a7;font-size:10px}
       .trade-news{margin-bottom:8px;font-size:10px;color:#b8ddd4}
       .trade-news-item{padding:4px 8px;margin-bottom:3px;border-radius:6px;background:rgba(255,220,120,.08)}
       .trade-factory-warn{margin-bottom:8px;padding:6px 10px;border-radius:8px;background:rgba(255,160,90,.12);

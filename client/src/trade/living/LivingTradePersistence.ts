@@ -1,5 +1,5 @@
 import type { EconomyWorldState } from './types';
-import { createInitialWorld, ECONOMY_CONFIG } from './LivingTradeConfig';
+import { createInitialWorld, ECONOMY_CONFIG, ensureCommodityCoverage } from './LivingTradeConfig';
 import { ECONOMY_GENOME_CONFIG } from './EconomyGenomeConfig';
 import { ensureGenomeState, migrateGenomeFromSave } from './EconomyGenomeInitializer';
 import { migrateAllRoutes } from './TradeRouteUtils';
@@ -32,7 +32,47 @@ function ensurePlayerEconomyState(world: EconomyWorldState): void {
   if (pe.trackedContractId === undefined) pe.trackedContractId = null;
 }
 
+/** เติมเซลล์/สินค้า/เส้นทางของเกาะที่เพิ่มภายหลัง โดยรักษาสต็อกและประวัติเซฟเดิม */
+function mergeCurrentTradeNetwork(world: EconomyWorldState): void {
+  const seed = createInitialWorld();
+  const existingById = new Map(world.cells.map((cell) => [cell.id, cell]));
+
+  for (const seedCell of seed.cells) {
+    const existing = existingById.get(seedCell.id);
+    if (!existing) {
+      world.cells.push(seedCell);
+      existingById.set(seedCell.id, seedCell);
+      continue;
+    }
+    existing.gameIslandId ??= seedCell.gameIslandId;
+    existing.role ??= seedCell.role;
+    existing.nameTh ||= seedCell.nameTh;
+    existing.commodities = { ...seedCell.commodities, ...existing.commodities };
+  }
+  ensureCommodityCoverage(world.cells);
+
+  // เชื่อมเครือข่ายเป็น full mesh เพื่อให้เรือ supply ไปถึงเกาะปลายทางได้เสมอ
+  const allIds = world.cells.map((cell) => cell.id);
+  for (const cell of world.cells) {
+    cell.neighbors = allIds.filter((id) => id !== cell.id);
+  }
+
+  const routeKeys = new Set(
+    (world.routes ?? []).map((route) => `${route.sourceCellId}:${route.targetCellId}`),
+  );
+  for (const route of seed.routes) {
+    const key = `${route.sourceCellId}:${route.targetCellId}`;
+    if (!routeKeys.has(key)) {
+      world.routes.push(route);
+      routeKeys.add(key);
+    }
+  }
+}
+
 function migrateWorld(world: EconomyWorldState, fromVersion: number): EconomyWorldState {
+  world.routes ??= [];
+  world.ships ??= [];
+  mergeCurrentTradeNetwork(world);
   for (const cell of world.cells) {
     cell.availableWorkforce ??= 0;
     cell.unemployment ??= Math.floor(cell.population * 0.08);
@@ -69,7 +109,8 @@ export function loadEconomyState(): EconomyWorldState | null {
       && saved.version !== 3
       && saved.version !== 4
       && saved.version !== 5
-      && saved.version !== 6) return null;
+      && saved.version !== 6
+      && saved.version !== 7) return null;
     const world = migrateWorld(saved.world, saved.version);
     world.npcCargoCapacityMultiplier ??= 1;
     world.spoilageReduction ??= 0;

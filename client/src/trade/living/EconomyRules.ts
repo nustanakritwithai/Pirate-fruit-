@@ -9,7 +9,7 @@ import type {
   MarketState,
   PriceTrend,
 } from './types';
-import { ECONOMY_CONFIG } from './LivingTradeConfig';
+import { cellForCommodity, ECONOMY_CONFIG } from './LivingTradeConfig';
 import { calculatePrice, stockRatio } from './LivingTradeFormulas';
 import {
   COMMODITY_RESERVE,
@@ -477,6 +477,74 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
         message: `เรือสินค้านำ${LIVING_COMMODITY_META[id].label} ${delivered} หน่วยถึง${dest.nameTh}`,
         cellId: dest.id,
         commodityId: id,
+      });
+    }
+  }
+}
+
+/**
+ * เติมเส้นทางเสบียงขั้นต่ำให้ตลาดที่นำเข้าเหลือน้อย
+ *
+ * DynamicTradeEconomy ยังทำงานตามออเดอร์กำไรได้เหมือนเดิม แต่สินค้าที่มี
+ * แหล่งผลิตเฉพาะเกาะจะต้องมีเรือประจำทางด้วย ไม่เช่นนั้นเกาะใหม่จะเห็นสต็อก
+ * นำเข้าเป็นศูนย์ตลอดเวลาแม้จะมีผู้ผลิตอยู่จริง
+ */
+export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogEntry[]): void {
+  let scheduled = 0;
+  const activeImports = new Set(
+    world.ships.flatMap((ship) => Object.keys(ship.cargo).map((commodityId) =>
+      `${ship.destinationCellId}:${commodityId}`)),
+  );
+
+  for (const destination of world.cells) {
+    if (scheduled >= ECONOMY_CONFIG.maxSupplyConvoysPerTick) break;
+
+    for (const [commodityId, destinationItem] of Object.entries(destination.commodities) as [LivingCommodityId, CommodityState][]) {
+      if (scheduled >= ECONOMY_CONFIG.maxSupplyConvoysPerTick) break;
+      if (!destinationItem || destinationItem.baseProduction > 0) continue;
+      if (destinationItem.stock >= destinationItem.targetStock * 0.55) continue;
+
+      const key = `${destination.id}:${commodityId}`;
+      if (activeImports.has(key)) continue;
+
+      const sourceId = cellForCommodity(commodityId);
+      if (sourceId === destination.id) continue;
+      const source = world.cells.find((cell) => cell.id === sourceId);
+      const sourceItem = source?.commodities[commodityId];
+      if (!source || !sourceItem) continue;
+
+      const exportable = Math.floor(sourceItem.stock - sourceItem.targetStock * 1.05);
+      if (exportable < 1) continue;
+      const route = world.routes.find((candidate) =>
+        candidate.sourceCellId === source.id && candidate.targetCellId === destination.id);
+      if (!route) continue;
+
+      const amount = Math.min(
+        ECONOMY_CONFIG.npcCargoMax,
+        exportable,
+        Math.max(1, Math.floor(destinationItem.targetStock * 0.18)),
+      );
+      if (amount < 1) continue;
+
+      sourceItem.stock -= amount;
+      sourceItem.exportDemand += amount * 0.2;
+      updatePrices(source);
+      world.ships.push({
+        id: `supply-${world.tick}-${source.id}-${destination.id}-${commodityId}`,
+        originCellId: source.id,
+        destinationCellId: destination.id,
+        cargo: { [commodityId]: amount },
+        travelTimeRemaining: Math.max(1, route.travelTicks),
+        plannedTravelTicks: Math.max(1, route.travelTicks),
+        departTick: world.tick,
+      });
+      activeImports.add(key);
+      scheduled += 1;
+      log.push({
+        tick: world.tick,
+        message: `เรือเสบียงนำ${LIVING_COMMODITY_META[commodityId].label} ${amount} หน่วยออกจาก${source.nameTh} → ${destination.nameTh}`,
+        cellId: destination.id,
+        commodityId,
       });
     }
   }
