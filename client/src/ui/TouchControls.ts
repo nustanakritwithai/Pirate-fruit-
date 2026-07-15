@@ -55,6 +55,7 @@ export class TouchControls {
   }
 
   private dashQueue = 0;
+  private jumpQueue = 0;
   private attackQueue = 0;
   private anchorQueue = 0;
   private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา
@@ -166,6 +167,7 @@ export class TouchControls {
         this.anchorQueue = 1;
       } else {
         this.jumpHeldRaw = true;
+        this.jumpQueue = 1;
         this.jumpMinHoldUntil = performance.now() + 150;
       }
     });
@@ -255,6 +257,7 @@ export class TouchControls {
     this.blockHeldRaw = false;
     this.blockBtn.classList.remove('tc-on');
     this.anchorQueue = 0;
+    this.jumpQueue = 0;
     this.dashQueue = 0;
     this.cannonQueue = 0;
     this.skillTapQueue = 0;
@@ -288,6 +291,15 @@ export class TouchControls {
     const n = this.potionTapQueue;
     this.potionTapQueue = 0;
     return n;
+  }
+
+  /** อ่านการแตะปุ่มกระโดดหนึ่งครั้ง รองรับ double jump แม้ปล่อยนิ้วเร็ว */
+  consumeJump(): boolean {
+    if (this.jumpQueue > 0) {
+      this.jumpQueue = 0;
+      return true;
+    }
+    return false;
   }
 
   /** ตั้งไอคอน+จำนวนของช่องลัดยา (เรียกโดย HotkeyManager) — undefined = ช่องว่าง */

@@ -9,6 +9,7 @@ function waterInput(): Input {
     sprint: false,
     jump: false,
     consumeDash: () => false,
+    consumeJump: () => false,
   } as unknown as Input;
 }
 
@@ -58,5 +59,39 @@ describe('CharacterController — ภัยน้ำทะเล', () => {
     expect(controller.isDevilFruitUser).toBe(true);
     expect(controller.moveState.swimming).toBe(false);
     expect(controller.energy).toBeLessThan(controller.energyMax);
+  });
+});
+
+describe('CharacterController — double jump', () => {
+  it('กระโดดครั้งที่สองกลางอากาศได้ แต่ครั้งที่สามไม่ได้', () => {
+    let queuedJumps = 0;
+    const input = {
+      ...waterInput(),
+      consumeJump: () => {
+        if (queuedJumps <= 0) return false;
+        queuedJumps -= 1;
+        return true;
+      },
+    } as unknown as Input;
+    const controller = new CharacterController(
+      input,
+      new CollisionSystem(() => 0),
+      () => 0,
+    );
+
+    controller.teleport(0, 0, 0);
+    controller.update(0.016); // sync สถานะให้ยืนบนพื้นก่อน
+
+    queuedJumps = 1;
+    controller.update(0.016); // กระโดดครั้งที่หนึ่ง
+    controller.update(0.1);   // ลอยอยู่กลางอากาศ
+    queuedJumps = 1;
+    controller.update(0.016); // กระโดดครั้งที่สอง
+    const secondJumpSpeed = controller.verticalSpeed;
+
+    queuedJumps = 1;
+    controller.update(0.016); // ครั้งที่สามควรถูกปฏิเสธ
+    expect(controller.verticalSpeed).toBeLessThan(secondJumpSpeed);
+    expect(controller.verticalSpeed).toBeGreaterThan(0);
   });
 });

@@ -20,6 +20,7 @@ export class Input {
 
   /** นับจำนวนครั้งที่สั่ง dash/โจมตี (edge trigger) รอให้ logic มาเก็บไป */
   private dashQueue = 0;
+  private jumpQueue = 0;
   private attackQueue = 0;
   private interactQueue = 0;
   private anchorQueue = 0;
@@ -41,7 +42,10 @@ export class Input {
       }
       if (e.code === 'KeyQ' && !e.repeat) this.dashQueue++;
       if (e.code === 'KeyE' && !e.repeat) this.interactQueue++;
-      if (e.code === 'Space' && !e.repeat) this.anchorQueue++;
+      if (e.code === 'Space' && !e.repeat) {
+        if (this.mode === 'boat') this.anchorQueue++;
+        else this.jumpQueue++;
+      }
       if (e.code === 'KeyR' && !e.repeat) this.weaponSwitchQueue++;
       if (!e.repeat && (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3')) {
         // โหมดเรือ: 1/2 = ยิงปืนใหญ่กราบซ้าย/ขวา แทนสกิล
@@ -94,6 +98,7 @@ export class Input {
   setMode(mode: ControlMode): void {
     this.mode = mode;
     this.anchorQueue = 0;
+    this.jumpQueue = 0;
     this.dashQueue = 0;
     this.cannonQueue = 0;
     this.zoomQueue = 0;
@@ -131,6 +136,17 @@ export class Input {
 
   get jump(): boolean {
     return this.isDown('Space') || (this.touch?.jumpHeld ?? false);
+  }
+
+  /** อ่านการกดกระโดดแบบ edge trigger เพื่อแยกกระโดดครั้งที่ 1/2 จากการกดค้าง */
+  consumeJump(): boolean {
+    const fromTouch = this.touch?.consumeJump() ?? false;
+    if (fromTouch) return true;
+    if (this.jumpQueue > 0) {
+      this.jumpQueue = 0;
+      return true;
+    }
+    return false;
   }
 
   get sprint(): boolean {

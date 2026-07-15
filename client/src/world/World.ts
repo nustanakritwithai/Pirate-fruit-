@@ -58,7 +58,9 @@ export class World {
 
     // ---------- ท้องฟ้า (บรรยากาศจริง) ----------
     const sky = new Sky();
-    sky.scale.setScalar(450);
+    // แผนที่ถูกขยายออกจาก origin แล้ว Sky เดิม 450 หน่วยจะครอบไม่ถึงเกาะท้ายๆ
+    // และเปิดช่องให้ background เริ่มต้นสีดำโผล่เข้ามาในบางมุมกล้อง
+    sky.scale.setScalar(Math.max(900, SEA_BOUNDARY * 4));
     const skyU = sky.material.uniforms;
     skyU.turbidity.value = 6;
     skyU.rayleigh.value = 2.2;

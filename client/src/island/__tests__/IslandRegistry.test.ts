@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DOCKS,
   ISLANDS,
+  SPAWN_POINTS,
   SEA_FLOOR_HEIGHT,
   findDockAt,
+  getSpawnPoint,
   getIsland,
   azureFrostHeightAt,
   tempestSkyHeightAt,
@@ -30,6 +32,12 @@ describe('multi-island registry', () => {
     expect(new Set(ISLANDS.map((island) => island.id)).size).toBe(ISLANDS.length);
     expect(new Set(ISLANDS.map((island) => island.spawn.id)).size).toBe(ISLANDS.length);
     expect(new Set(DOCKS.map((dock) => dock.id)).size).toBe(DOCKS.length);
+    expect(SPAWN_POINTS).toHaveLength(ISLANDS.length);
+    expect(new Set(SPAWN_POINTS.map((spawn) => spawn.id)).size).toBe(SPAWN_POINTS.length);
+    for (const spawn of SPAWN_POINTS) {
+      expect(getSpawnPoint(spawn.id)?.islandId).toBe(spawn.islandId);
+      expect(spawn.safeRadius).toBeGreaterThan(0);
+    }
   });
 
   it('keeps the starter terrain formula exactly compatible with old saves', () => {

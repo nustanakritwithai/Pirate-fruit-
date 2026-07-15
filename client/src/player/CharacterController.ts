@@ -6,6 +6,7 @@ import { SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 const WALK_SPEED = 4;
 const SPRINT_SPEED = 8;
 const JUMP_SPEED = 8.5;
+const MAX_JUMPS = 2;
 const GRAVITY = 25;
 
 const ENERGY_MAX = 100;
@@ -64,6 +65,7 @@ export class CharacterController {
 
   private verticalVelocity = 0;
   private onGround = false;
+  private jumpCount = 0;
   private exhausted = false;
   private state: MoveState = { speed: 0, onGround: true, sprinting: false, dashing: false, swimming: false };
 
@@ -149,6 +151,7 @@ export class CharacterController {
   teleport(x: number, y: number, z: number): void {
     this.position.set(x, y, z);
     this.verticalVelocity = 0;
+    this.jumpCount = 0;
     this.dashTimer = 0;
     this.drownCallbackFired = false;
   }
@@ -201,6 +204,7 @@ export class CharacterController {
   setMounted(mounted: boolean): void {
     this.mounted = mounted;
     this.verticalVelocity = 0;
+    this.jumpCount = 0;
     this.drownCallbackFired = false;
     this.state = { speed: 0, onGround: true, sprinting: false, dashing: false, swimming: false };
   }
@@ -299,6 +303,7 @@ export class CharacterController {
     const ground = this.collision.heightAt(this.position.x, this.position.z);
     const overWater = ground < WATER_LEVEL - WATER_DEPTH_FOR_SWIM;
     let swimming = false;
+    const jumpPressed = acceptInput && this.input.consumeJump();
 
     if (overWater && this.position.y <= SWIM_LEVEL + 0.5 && !dashing && !this.devilFruitUser) {
       // ---------- ว่ายน้ำ / ลอยตัวที่ผิวน้ำ ----------
@@ -315,9 +320,11 @@ export class CharacterController {
       }
     } else {
       // ---------- แรงโน้มถ่วง + กระโดด + ชนพื้น (บนบก) ----------
-      if (acceptInput && this.onGround && this.input.jump) {
+      const wasOnGround = this.onGround;
+      if (jumpPressed && (wasOnGround || (this.jumpCount > 0 && this.jumpCount < MAX_JUMPS))) {
         this.verticalVelocity = JUMP_SPEED;
         this.onGround = false;
+        this.jumpCount = wasOnGround ? 1 : Math.min(MAX_JUMPS, this.jumpCount + 1);
       }
       this.verticalVelocity -= GRAVITY * dt;
       this.position.y += this.verticalVelocity * dt;
@@ -326,6 +333,7 @@ export class CharacterController {
         this.position.y = ground;
         this.verticalVelocity = 0;
         this.onGround = true;
+        this.jumpCount = 0;
       } else if (this.position.y - ground > 0.05) {
         this.onGround = false;
       }

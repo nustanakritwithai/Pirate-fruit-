@@ -1,7 +1,7 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { CollisionSystem } from './Collision';
-import { ISLANDS, findIslandAt, getIsland, inferIslandId } from '../island/IslandRegistry';
-import type { IslandId } from '../island/IslandTypes';
+import { ISLANDS, findIslandAt, getIsland, getSpawnPoint, inferIslandId } from '../island/IslandRegistry';
+import type { IslandId, SpawnPointDefinition } from '../island/IslandTypes';
 
 export interface SpawnLocation {
   id: string;
@@ -21,15 +21,7 @@ export class SpawnManager {
     private controller: CharacterController,
     private collision: CollisionSystem,
   ) {
-    const { spawn } = getIsland('starter-island');
-    const { x, z, id } = spawn;
-    this.defaultSpawn = {
-      id,
-      x,
-      y: collision.heightAt(x, z) + 0.02,
-      z,
-      heading: spawn.heading,
-    };
+    this.defaultSpawn = this.toLocation(getIsland('starter-island').spawn);
     this.checkpointSpawn = this.defaultSpawn;
   }
 
@@ -50,6 +42,11 @@ export class SpawnManager {
 
   /** โหลด checkpoint จาก Save v3; Save v1-v2 จะอนุมานเกาะจากตำแหน่งเดิม */
   restoreCheckpoint(value: { x: number; z: number; spawnId?: string; islandId?: IslandId }): void {
+    const savedSpawn = value.spawnId ? getSpawnPoint(value.spawnId) : undefined;
+    if (savedSpawn && (!value.islandId || savedSpawn.islandId === value.islandId)) {
+      this.activateSpawnPoint(savedSpawn.id);
+      return;
+    }
     const islandId = value.islandId ?? inferIslandId(value.x, value.z);
     const island = ISLANDS.find((candidate) => candidate.id === islandId)
       ?? ISLANDS.find((candidate) => candidate.spawn.id === value.spawnId);
@@ -59,9 +56,20 @@ export class SpawnManager {
   /** เมื่อขึ้นฝั่งและค้นพบเกาะ จุดเกิดใหม่จะย้ายมาที่ Safe Zone ของเกาะนั้น */
   activateIsland(islandId: IslandId): void {
     const island = getIsland(islandId);
-    const spawn = island.spawn;
-    this.checkpointIslandId = islandId;
-    this.checkpointSpawn = {
+    this.activateSpawnPoint(island.spawn.id);
+  }
+
+  /** ตั้ง checkpoint โดยตรงจาก registry เหมาะกับท่าเรือ/ภารกิจ/ระบบยึดเกาะในอนาคต */
+  activateSpawnPoint(spawnId: string): boolean {
+    const spawn = getSpawnPoint(spawnId);
+    if (!spawn) return false;
+    this.checkpointIslandId = spawn.islandId;
+    this.checkpointSpawn = this.toLocation(spawn);
+    return true;
+  }
+
+  private toLocation(spawn: SpawnPointDefinition): SpawnLocation {
+    return {
       id: spawn.id,
       x: spawn.x,
       y: this.collision.heightAt(spawn.x, spawn.z) + 0.02,

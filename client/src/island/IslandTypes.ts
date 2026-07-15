@@ -16,6 +16,12 @@ export interface IslandSpawn extends IslandPoint {
   heading: number;
 }
 
+/** จุดเกิดที่กำหนดได้แยกจากข้อมูลเกาะ เพื่อให้ respawn/checkpoint ใช้ registry เดียวกัน */
+export interface SpawnPointDefinition extends IslandSpawn {
+  islandId: IslandId;
+  safeRadius: number;
+}
+
 export interface DockZone {
   minX: number;
   maxX: number;
@@ -47,7 +53,7 @@ export interface IslandDefinition {
   center: IslandPoint;
   radius: number;
   recommendedLevel: readonly [number, number];
-  spawn: IslandSpawn;
+  spawn: SpawnPointDefinition;
   dockIds: readonly string[];
   heightAt(x: number, z: number): number;
 }

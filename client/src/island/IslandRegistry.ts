@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DockDefinition, IslandDefinition, IslandId, IslandPoint } from './IslandTypes';
+import type { DockDefinition, IslandDefinition, IslandId, IslandPoint, SpawnPointDefinition } from './IslandTypes';
 
 export const SEA_FLOOR_HEIGHT = -0.9;
 export const STARTER_ISLAND_RADIUS = 60;
@@ -40,6 +40,27 @@ export function layoutOffset(islandId: IslandId): IslandPoint {
 export function layoutPoint(islandId: IslandId, x: number, z: number): IslandPoint {
   const offset = ISLAND_LAYOUT_OFFSETS[islandId];
   return { x: x + offset.x, z: z + offset.z };
+}
+
+/** จุดเกิดผู้เล่นทั้งหมดของโลก — แก้พิกัด/heading/safe radius ได้จากตารางเดียว */
+export const SPAWN_POINTS: readonly SpawnPointDefinition[] = [
+  { id: 'starter-village', islandId: 'starter-island', x: 0, z: 8, heading: Math.PI, safeRadius: 18 },
+  { id: 'mist-jungle-camp', islandId: 'mist-jungle', ...layoutPoint('mist-jungle', 153, -40), heading: Math.PI / 2, safeRadius: 15 },
+  { id: 'sunscar-caravan-city', islandId: 'sunscar-desert', ...layoutPoint('sunscar-desert', 170, 100), heading: 0, safeRadius: 15 },
+  { id: 'azure-frost-village', islandId: 'azure-frost', ...layoutPoint('azure-frost', 59, 201), heading: -Math.PI / 2, safeRadius: 15 },
+  { id: 'tempest-cliff-village', islandId: 'tempest-sky', ...layoutPoint('tempest-sky', -96, 210), heading: Math.PI / 2, safeRadius: 15 },
+  { id: 'ember-forge-village', islandId: 'ember-volcano', ...layoutPoint('ember-volcano', -218, 102), heading: Math.PI, safeRadius: 15 },
+] as const;
+
+const SPAWN_POINT_BY_ID = new Map(SPAWN_POINTS.map((spawn) => [spawn.id, spawn]));
+const SPAWN_POINT_BY_ISLAND = new Map(SPAWN_POINTS.map((spawn) => [spawn.islandId, spawn]));
+
+export function getSpawnPoint(spawnId: string): SpawnPointDefinition | undefined {
+  return SPAWN_POINT_BY_ID.get(spawnId);
+}
+
+export function getSpawnPointForIsland(islandId: IslandId): SpawnPointDefinition {
+  return SPAWN_POINT_BY_ISLAND.get(islandId)!;
 }
 
 /** สูตรพื้นเกาะเดิม ห้ามเปลี่ยน เพื่อให้เซฟและ collider ของ Phase 1-8 ตรงตำแหน่งเดิม */
@@ -214,7 +235,7 @@ export const ISLANDS: readonly IslandDefinition[] = [
     center: { x: 0, z: 0 },
     radius: STARTER_ISLAND_RADIUS,
     recommendedLevel: [1, 14],
-    spawn: { id: 'starter-village', x: 0, z: 8, heading: Math.PI },
+    spawn: getSpawnPointForIsland('starter-island'),
     dockIds: ['starter-harbor'],
     heightAt: starterHeightAt,
   },
@@ -225,7 +246,7 @@ export const ISLANDS: readonly IslandDefinition[] = [
     center: MIST_JUNGLE_CENTER,
     radius: MIST_JUNGLE_RADIUS,
     recommendedLevel: [15, 30],
-    spawn: { id: 'mist-jungle-camp', ...layoutPoint('mist-jungle', 153, -40), heading: Math.PI / 2 },
+    spawn: getSpawnPointForIsland('mist-jungle'),
     dockIds: ['mist-jungle-harbor'],
     heightAt: mistJungleHeightAt,
   },
@@ -236,7 +257,7 @@ export const ISLANDS: readonly IslandDefinition[] = [
     center: SUNSCAR_DESERT_CENTER,
     radius: SUNSCAR_DESERT_RADIUS,
     recommendedLevel: [31, 50],
-    spawn: { id: 'sunscar-caravan-city', ...layoutPoint('sunscar-desert', 170, 100), heading: 0 },
+    spawn: getSpawnPointForIsland('sunscar-desert'),
     dockIds: ['sunscar-desert-harbor'],
     heightAt: sunscarDesertHeightAt,
   },
@@ -247,7 +268,7 @@ export const ISLANDS: readonly IslandDefinition[] = [
     center: AZURE_FROST_CENTER,
     radius: AZURE_FROST_RADIUS,
     recommendedLevel: [51, 70],
-    spawn: { id: 'azure-frost-village', ...layoutPoint('azure-frost', 59, 201), heading: -Math.PI / 2 },
+    spawn: getSpawnPointForIsland('azure-frost'),
     dockIds: ['azure-frost-harbor'],
     heightAt: azureFrostHeightAt,
   },
@@ -258,7 +279,7 @@ export const ISLANDS: readonly IslandDefinition[] = [
     center: TEMPEST_SKY_CENTER,
     radius: TEMPEST_SKY_RADIUS,
     recommendedLevel: [71, 90],
-    spawn: { id: 'tempest-cliff-village', ...layoutPoint('tempest-sky', -96, 210), heading: Math.PI / 2 },
+    spawn: getSpawnPointForIsland('tempest-sky'),
     dockIds: ['tempest-sky-harbor'],
     heightAt: tempestSkyHeightAt,
   },
@@ -269,7 +290,7 @@ export const ISLANDS: readonly IslandDefinition[] = [
     center: EMBER_VOLCANO_CENTER,
     radius: EMBER_VOLCANO_RADIUS,
     recommendedLevel: [91, 110],
-    spawn: { id: 'ember-forge-village', ...layoutPoint('ember-volcano', -218, 102), heading: Math.PI },
+    spawn: getSpawnPointForIsland('ember-volcano'),
     dockIds: ['ember-volcano-harbor'],
     heightAt: emberVolcanoHeightAt,
   },

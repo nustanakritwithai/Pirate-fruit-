@@ -56,6 +56,8 @@ export class DayNightCycle {
   private readonly daySun = new THREE.Color(0xfff1dc);
   private readonly duskSun = new THREE.Color(0xff9d62);
   private readonly nightSun = new THREE.Color(0x7792bf);
+  /** พื้นหลังสำรองกลางวัน ป้องกันพื้นที่นอก Sky mesh กลายเป็นดำเมื่ออยู่เกาะปลายแผนที่ */
+  private readonly dayBackground = new THREE.Color(0x9fcde8);
   private focusX = 0;
   private focusZ = 0;
   private nightBackground: THREE.Texture | null = makeFallbackNightTexture();
@@ -145,7 +147,9 @@ export class DayNightCycle {
 
     const night = 1 - daylight;
     const showNightBackground = night > 0.52 && this.nightBackground !== null;
-    this.scene.background = showNightBackground ? this.nightBackground : null;
+    // ให้มี background ทั้งกลางวันและกลางคืนเสมอ: Sky ยังวาดทับในเวลากลางวัน
+    // ส่วนสีฟ้านี้เป็น safety net สำหรับมุมที่ Sky mesh ครอบไม่ถึงเท่านั้น
+    this.scene.background = showNightBackground ? this.nightBackground : this.dayBackground;
     this.sky.visible = !showNightBackground;
     this.nightMaterial.emissiveIntensity = 0.1 + night * 2.6;
     for (const light of this.nightLights) light.intensity = night * 2.2;
