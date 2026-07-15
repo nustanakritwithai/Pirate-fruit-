@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFreshWorld, loadEconomyState } from '../LivingTradePersistence';
-import { ensureCommodityCoverage, LIVING_COMMODITY_IDS } from '../LivingTradeConfig';
+import {
+  ensureCommodityCoverage,
+  ESSENTIAL_COMMODITY_IDS,
+  essentialRecoveryStock,
+  LIVING_COMMODITY_IDS,
+} from '../LivingTradeConfig';
 import { moveCargo, scheduleImportConvoys } from '../EconomyRules';
 import { TradeManager } from '../../TradeManager';
 import { LivingTradeSimulator } from '../LivingTradeSimulator';
@@ -44,6 +49,19 @@ describe('Worldwide island economy', () => {
     expect(world.cells.every((cell) => cell.transportCapacity >= 2)).toBe(true);
   });
 
+  it('gives every city local production and a healthy opening stock of essentials', () => {
+    const world = createFreshWorld();
+    for (const cell of world.cells) {
+      for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+        const item = cell.commodities[commodityId]!;
+        expect(item.baseProduction).toBeGreaterThan(0);
+        expect(item.stock).toBeGreaterThanOrEqual(
+          essentialRecoveryStock(commodityId, item.targetStock),
+        );
+      }
+    }
+  });
+
   it('dispatches and delivers an import convoy when a market is empty', () => {
     const world = createFreshWorld();
     ensureCommodityCoverage(world.cells);
@@ -67,6 +85,40 @@ describe('Worldwide island economy', () => {
     expect(log.some((entry) => entry.message.includes('ถึงเกาะเหมันต์คราม'))).toBe(true);
   });
 
+  it('prioritizes essential supply convoys before non-essential imports', () => {
+    const world = createFreshWorld();
+    for (const cell of world.cells) {
+      for (const item of Object.values(cell.commodities)) {
+        if (item) item.stock = item.targetStock;
+      }
+    }
+    for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+      const source = world.cells.find((cell) =>
+        cell.commodities[commodityId]?.baseProduction
+        && cell.id === ({
+          'fresh-fish': 'leaf-island',
+          'dried-fish': 'leaf-island',
+          hardwood: 'leaf-island',
+          'iron-ingot': 'mine-island',
+        } as const)[commodityId])!;
+      source.commodities[commodityId]!.stock = source.commodities[commodityId]!.targetStock * 4;
+    }
+    for (const cell of world.cells.filter((candidate) => candidate.id !== 'leaf-island')) {
+      for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+        if (commodityId === 'iron-ingot' && cell.id === 'mine-island') continue;
+        cell.commodities[commodityId]!.stock = 0;
+      }
+      cell.commodities['luxury-cloth']!.stock = 0;
+    }
+
+    scheduleImportConvoys(world, []);
+
+    expect(world.ships).toHaveLength(8);
+    expect(world.ships.every((ship) =>
+      Object.keys(ship.cargo).some((id) =>
+        (ESSENTIAL_COMMODITY_IDS as readonly string[]).includes(id)))).toBe(true);
+  });
+
   it('recovers collapsed legacy saves and makes silk visible again', () => {
     const world = createFreshWorld();
     for (const cell of world.cells) {
@@ -81,9 +133,46 @@ describe('Worldwide island economy', () => {
     const cloth = recovered.cells.find((cell) => cell.id === 'cloth-island')!;
     expect(cloth.commodities['sun-silk']!.stock).toBeGreaterThan(0);
     expect(cloth.commodities['sun-silk']!.baseProduction).toBeGreaterThan(0);
-    expect(recovered.economyBalanceVersion).toBe(1);
+    expect(recovered.economyBalanceVersion).toBe(2);
     expect(recovered.npcCooldown).toBe(0);
   });
+
+  it('upgrades balance-v1 saves and restores essential city reserves', () => {
+    const world = createFreshWorld();
+    world.economyBalanceVersion = 1;
+    for (const cell of world.cells) {
+      for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+        cell.commodities[commodityId]!.stock = 0;
+        cell.commodities[commodityId]!.baseProduction = 0;
+      }
+    }
+    localStorage.setItem('pirate-fruit:economy-v1', JSON.stringify({ version: 8, world }));
+
+    const recovered = loadEconomyState()!;
+    expect(recovered.economyBalanceVersion).toBe(2);
+    for (const cell of recovered.cells) {
+      for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+        const item = cell.commodities[commodityId]!;
+        expect(item.baseProduction).toBeGreaterThan(0);
+        expect(item.stock).toBeGreaterThanOrEqual(
+          essentialRecoveryStock(commodityId, item.targetStock),
+        );
+      }
+    }
+  });
+
+  it('keeps every city supplied with basics through a live 120-tick simulation', () => {
+    const sim = new LivingTradeSimulator(true);
+    sim.tickMany(120);
+
+    for (const cell of sim.state.cells) {
+      const fresh = cell.commodities['fresh-fish']!;
+      const dried = cell.commodities['dried-fish']!;
+      expect(fresh.stock + dried.stock).toBeGreaterThan(0);
+      expect(cell.commodities.hardwood!.stock).toBeGreaterThan(0);
+      expect(cell.commodities['iron-ingot']!.stock).toBeGreaterThan(0);
+    }
+  }, 60_000);
 
   it('starts transport jobs after recovering a collapsed save', () => {
     const world = createFreshWorld();

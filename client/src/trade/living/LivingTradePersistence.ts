@@ -1,5 +1,12 @@
 import type { EconomyWorldState } from './types';
-import { createInitialWorld, ECONOMY_CONFIG, ensureCommodityCoverage } from './LivingTradeConfig';
+import {
+  createInitialWorld,
+  ECONOMY_CONFIG,
+  ensureCommodityCoverage,
+  ensureEssentialLocalProduction,
+  essentialRecoveryStock,
+  isEssentialCommodity,
+} from './LivingTradeConfig';
 import { ECONOMY_GENOME_CONFIG } from './EconomyGenomeConfig';
 import { ensureGenomeState, migrateGenomeFromSave } from './EconomyGenomeInitializer';
 import { migrateAllRoutes } from './TradeRouteUtils';
@@ -14,7 +21,7 @@ import { trimEconomyWorldState } from './LivingEconomyBounds';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
 const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
-const ECONOMY_BALANCE_VERSION = 1;
+const ECONOMY_BALANCE_VERSION = 2;
 
 interface SavedEconomy {
   version: number;
@@ -35,7 +42,8 @@ function ensurePlayerEconomyState(world: EconomyWorldState): void {
 
 /** กู้ save เดิมที่โรงงานหลายหน่วยทำให้วัตถุดิบและอาหารลดลงจนระบบขนส่งหยุดทั้งเครือข่าย */
 function recoverCollapsedEconomy(world: EconomyWorldState): void {
-  if ((world.economyBalanceVersion ?? 0) >= ECONOMY_BALANCE_VERSION) return;
+  const previousBalanceVersion = world.economyBalanceVersion ?? 0;
+  if (previousBalanceVersion >= ECONOMY_BALANCE_VERSION) return;
 
   world.ships ??= [];
   world.orders ??= [];
@@ -43,26 +51,36 @@ function recoverCollapsedEconomy(world: EconomyWorldState): void {
   world.traders ??= [];
 
   for (const cell of world.cells) {
-    for (const item of Object.values(cell.commodities)) {
+    for (const [commodityId, item] of Object.entries(cell.commodities)) {
       if (!item) continue;
-      const recoveryRatio = item.baseProduction > 0 ? 1.35 : 0.25;
-      item.stock = Math.max(item.stock, Math.ceil(item.targetStock * recoveryRatio));
+      const id = commodityId as import('./types').LivingCommodityId;
+      const legacyRecovery = previousBalanceVersion < 1
+        ? item.targetStock * (item.baseProduction > 0 ? 1.35 : 0.25)
+        : 0;
+      const essentialRecovery = isEssentialCommodity(id)
+        ? essentialRecoveryStock(id, item.targetStock)
+        : 0;
+      item.stock = Math.max(item.stock, Math.ceil(legacyRecovery), Math.ceil(essentialRecovery));
       item.production = item.baseProduction;
-      item.marketState = 'balanced';
-      item.trend = 'stable';
+      if (legacyRecovery > 0 || essentialRecovery > 0) {
+        item.marketState = 'balanced';
+        item.trend = 'stable';
+      }
     }
   }
 
-  // ปลดงานค้างที่ไม่มีเรือแล้ว เพื่อให้กองเรือเริ่มรับคำสั่งใหม่ทันที
-  const inTransitOrderIds = new Set(
-    world.ships.map((ship) => ship.orderId).filter((id): id is string => Boolean(id)),
-  );
-  world.orders = world.orders.filter((order) =>
-    order.status === 'in-transit' && inTransitOrderIds.has(order.id));
-  world.reservations = world.reservations.filter((reservation) =>
-    inTransitOrderIds.has(reservation.orderId));
-  for (const trader of world.traders) trader.activeOrderId = undefined;
-  world.orderGenCooldowns = {};
+  if (previousBalanceVersion < 1) {
+    // ปลดงานค้างที่ไม่มีเรือแล้ว เพื่อให้กองเรือเริ่มรับคำสั่งใหม่ทันที
+    const inTransitOrderIds = new Set(
+      world.ships.map((ship) => ship.orderId).filter((id): id is string => Boolean(id)),
+    );
+    world.orders = world.orders.filter((order) =>
+      order.status === 'in-transit' && inTransitOrderIds.has(order.id));
+    world.reservations = world.reservations.filter((reservation) =>
+      inTransitOrderIds.has(reservation.orderId));
+    for (const trader of world.traders) trader.activeOrderId = undefined;
+    world.orderGenCooldowns = {};
+  }
   world.npcCooldown = 0;
   world.economyBalanceVersion = ECONOMY_BALANCE_VERSION;
 }
@@ -87,6 +105,7 @@ function mergeCurrentTradeNetwork(world: EconomyWorldState): void {
     existing.commodities = { ...seedCell.commodities, ...existing.commodities };
   }
   ensureCommodityCoverage(world.cells);
+  ensureEssentialLocalProduction(world.cells);
   recoverCollapsedEconomy(world);
 
   // เชื่อมเครือข่ายเป็น full mesh เพื่อให้เรือ supply ไปถึงเกาะปลายทางได้เสมอ

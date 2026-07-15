@@ -6,14 +6,19 @@ import type {
 } from './types';
 import { COMMODITY_RESERVE, LIVING_COMMODITY_META } from './ProductionRecipes';
 import { DYNAMIC_TRADE } from './DynamicTradeConfig';
+import { essentialReserveStock } from './LivingTradeConfig';
 
 export function getReserveStock(
   _cellId: EconomyCellId,
   commodityId: LivingCommodityId,
+  targetStock = 0,
 ): number {
-  return COMMODITY_RESERVE[commodityId]
-    ?? LIVING_COMMODITY_META[commodityId].reserveStock
-    ?? 0;
+  return Math.max(
+    COMMODITY_RESERVE[commodityId]
+      ?? LIVING_COMMODITY_META[commodityId].reserveStock
+      ?? 0,
+    essentialReserveStock(commodityId, targetStock),
+  );
 }
 
 export function getReservedAmount(
@@ -34,7 +39,7 @@ export function getExportableStock(
   const cell = world.cells.find((c) => c.id === cellId);
   const item = cell?.commodities[commodityId];
   if (!item) return 0;
-  const reserve = getReserveStock(cellId, commodityId);
+  const reserve = getReserveStock(cellId, commodityId, item.targetStock);
   const committed = getReservedAmount(world, cellId, commodityId);
   return Math.max(0, item.stock - reserve - committed);
 }

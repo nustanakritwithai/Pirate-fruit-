@@ -122,7 +122,7 @@ function findBestSource(
     const item = cell.commodities[commodityId];
     if (!item) continue;
 
-    const reserve = getReserveStock(cell.id, commodityId);
+    const reserve = getReserveStock(cell.id, commodityId, item.targetStock);
     const surplusThreshold = item.targetStock * DYNAMIC_TRADE.exportSurplusThreshold + reserve;
     if (item.stock <= surplusThreshold) continue;
 

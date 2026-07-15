@@ -87,6 +87,64 @@ export const LIVING_BASE_PRICES: Record<LivingCommodityId, number> = {
   'volcanic-ore': 300,
 };
 
+/**
+ * สินค้าพื้นฐานที่ทุกเมืองต้องมีแหล่งผลิตท้องถิ่นระดับยังชีพ
+ *
+ * แหล่งผลิตหลักยังผลิตได้มากกว่าและเป็นผู้ส่งออก ส่วนเกาะอื่นผลิตเพียงพอ
+ * สำหรับประชากร จึงยังต้องนำเข้าเพื่อเติมคลัง/รองรับผู้เล่นและโรงงาน
+ */
+export const ESSENTIAL_COMMODITY_IDS = [
+  'fresh-fish',
+  'dried-fish',
+  'hardwood',
+  'iron-ingot',
+] as const satisfies readonly LivingCommodityId[];
+
+const LOCAL_ESSENTIAL_SUPPLY_RATIO: Record<(typeof ESSENTIAL_COMMODITY_IDS)[number], number> = {
+  'fresh-fish': 1.05,
+  'dried-fish': 0.75,
+  hardwood: 1.05,
+  'iron-ingot': 1.05,
+};
+
+const ESSENTIAL_RESERVE_RATIO: Record<(typeof ESSENTIAL_COMMODITY_IDS)[number], number> = {
+  'fresh-fish': 0.45,
+  'dried-fish': 0.4,
+  hardwood: 0.35,
+  'iron-ingot': 0.3,
+};
+
+const ESSENTIAL_RECOVERY_RATIO: Record<(typeof ESSENTIAL_COMMODITY_IDS)[number], number> = {
+  'fresh-fish': 0.9,
+  'dried-fish': 0.8,
+  hardwood: 0.75,
+  'iron-ingot': 0.65,
+};
+
+export function isEssentialCommodity(
+  commodityId: LivingCommodityId,
+): commodityId is (typeof ESSENTIAL_COMMODITY_IDS)[number] {
+  return (ESSENTIAL_COMMODITY_IDS as readonly LivingCommodityId[]).includes(commodityId);
+}
+
+/** สต็อกที่โรงงานและเรือพาณิชย์ห้ามดึงออกจากเมือง */
+export function essentialReserveStock(
+  commodityId: LivingCommodityId,
+  targetStock: number,
+): number {
+  if (!isEssentialCommodity(commodityId)) return 0;
+  return targetStock * ESSENTIAL_RESERVE_RATIO[commodityId];
+}
+
+/** สต็อกขั้นต่ำที่ใช้กู้ save เก่าเมื่ออัปเกรดสมดุลเศรษฐกิจ */
+export function essentialRecoveryStock(
+  commodityId: LivingCommodityId,
+  targetStock: number,
+): number {
+  if (!isEssentialCommodity(commodityId)) return 0;
+  return targetStock * ESSENTIAL_RECOVERY_RATIO[commodityId];
+}
+
 function goods(
   basePrice: number,
   stock: number,
@@ -148,6 +206,50 @@ function cell(
     commodities,
     neighbors,
   };
+}
+
+/**
+ * เพิ่มประมง/โรงเลื่อย/โรงถลุงชุมชนให้ทุกเกาะ โดยคำนวณจากประชากรจริง
+ * ไม่ใช้เลขผลิตเท่ากันทุกเมือง และไม่ทำให้เกาะนำเข้ากลายเป็นผู้ส่งออกรายใหญ่
+ */
+export function ensureEssentialLocalProduction(cells: EconomyCellState[]): void {
+  for (const current of cells) {
+    const unitMultiplier = 1
+      + Math.min(0.6, Math.max(0, (current.productionUnits ?? 1) - 1) * 0.1);
+    const populationDemandMultiplier = 0.8 + current.population / 2000;
+
+    for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+      const item = current.commodities[commodityId];
+      if (!item) continue;
+
+      const supplyRatio = cellForCommodity(commodityId) === current.id
+        ? 1.65
+        : LOCAL_ESSENTIAL_SUPPLY_RATIO[commodityId];
+      // เผื่อประสิทธิภาพเครื่องมือ/แรงงานลดลงเล็กน้อย เพื่อไม่ให้สมดุลพังทันที
+      const minimumBaseProduction = (
+        item.consumption
+        * populationDemandMultiplier
+        * supplyRatio
+      ) / Math.max(0.8, unitMultiplier * 0.8);
+      const roundedMinimum = Math.ceil(minimumBaseProduction * 10) / 10;
+
+      item.baseProduction = Math.max(item.baseProduction, roundedMinimum);
+      item.production = Math.max(item.production, item.baseProduction);
+    }
+  }
+}
+
+function seedEssentialStocks(cells: EconomyCellState[]): void {
+  for (const current of cells) {
+    for (const commodityId of ESSENTIAL_COMMODITY_IDS) {
+      const item = current.commodities[commodityId];
+      if (!item) continue;
+      item.stock = Math.max(
+        item.stock,
+        Math.ceil(essentialRecoveryStock(commodityId, item.targetStock)),
+      );
+    }
+  }
 }
 
 /** เกาะใบไม้ — ผลิตอาหาร+ไม้ แปรรูปปลาแห้ง+หีบ */
@@ -376,6 +478,8 @@ export function createInitialWorld(): {
     volcanoCell(),
   ];
   ensureCommodityCoverage(cells);
+  ensureEssentialLocalProduction(cells);
+  seedEssentialStocks(cells);
   // เรือพาณิชย์ต้องมีเส้นทางไปถึงทุกเกาะ ไม่ผูกไว้แค่เพื่อนบ้านชุดเก่า
   // เพื่อให้สินค้านำเข้าไม่ค้างที่ 0 เมื่อเพิ่มเกาะใหม่หรือโหลดเซฟเดิม
   const allCellIds = cells.map((current) => current.id);

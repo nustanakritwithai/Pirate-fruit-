@@ -9,7 +9,12 @@ import type {
   MarketState,
   PriceTrend,
 } from './types';
-import { cellForCommodity, ECONOMY_CONFIG } from './LivingTradeConfig';
+import {
+  cellForCommodity,
+  ECONOMY_CONFIG,
+  essentialReserveStock,
+  isEssentialCommodity,
+} from './LivingTradeConfig';
 import { calculatePrice, stockRatio } from './LivingTradeFormulas';
 import {
   COMMODITY_RESERVE,
@@ -60,7 +65,10 @@ export function canProduceRecipe(cell: EconomyCellState, recipe: ProductionRecip
   for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
     const input = cell.commodities[inputId];
     if (!input || amount <= 0) return false;
-    const reserve = COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0;
+    const reserve = Math.max(
+      COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0,
+      essentialReserveStock(inputId, input.targetStock),
+    );
     if (input.stock - amount < reserve) return false;
   }
   return true;
@@ -80,8 +88,10 @@ export function produceGoods(cell: EconomyCellState): void {
   for (const item of Object.values(cell.commodities)) {
     if (!item || item.baseProduction <= 0) continue;
     const ratio = stockRatio(item);
-    if (ratio > 1.4) {
-      item.production = item.baseProduction * 0.85;
+    if (ratio > 2) {
+      item.production = item.baseProduction * 0.2;
+    } else if (ratio > 1.4) {
+      item.production = item.baseProduction * 0.55;
     } else if (ratio < 0.6) {
       item.production = item.baseProduction * 1.08;
     } else {
@@ -175,7 +185,10 @@ export function canProduceRecipeScaled(
   for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
     const input = cell.commodities[inputId];
     if (!input || amount <= 0) return false;
-    const reserve = COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0;
+    const reserve = Math.max(
+      COMMODITY_RESERVE[inputId] ?? LIVING_COMMODITY_META[inputId].reserveStock ?? 0,
+      essentialReserveStock(inputId, input.targetStock),
+    );
     if (input.stock - amount * scale < reserve) return false;
   }
   return scale > 0;
@@ -217,7 +230,10 @@ function findMissingInput(cell: EconomyCellState, outputId: LivingCommodityId): 
   if (!recipe) return null;
   for (const [inputId, amount] of Object.entries(recipe.inputs) as [LivingCommodityId, number][]) {
     const input = cell.commodities[inputId];
-    const reserve = COMMODITY_RESERVE[inputId] ?? 0;
+    const reserve = Math.max(
+      COMMODITY_RESERVE[inputId] ?? 0,
+      input ? essentialReserveStock(inputId, input.targetStock) : 0,
+    );
     if (!input || input.stock - amount < reserve) {
       return LIVING_COMMODITY_META[inputId].label;
     }
@@ -493,19 +509,31 @@ export function moveCargo(world: EconomyWorldState, log: EconomyLogEntry[]): voi
  * นำเข้าเป็นศูนย์ตลอดเวลาแม้จะมีผู้ผลิตอยู่จริง
  */
 export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogEntry[]): void {
-  let scheduled = 0;
   const activeImports = new Set(
     world.ships.flatMap((ship) => Object.keys(ship.cargo).map((commodityId) =>
       `${ship.destinationCellId}:${commodityId}`)),
   );
 
-  for (const destination of world.cells) {
-    if (scheduled >= ECONOMY_CONFIG.maxSupplyConvoysPerTick) break;
+  type SupplyCandidate = {
+    destination: EconomyCellState;
+    destinationItem: CommodityState;
+    source: EconomyCellState;
+    sourceItem: CommodityState;
+    commodityId: LivingCommodityId;
+    travelTicks: number;
+    exportable: number;
+    priority: number;
+  };
+  const candidates: SupplyCandidate[] = [];
 
+  // รวบรวมทั้งโลกก่อนแล้วค่อยเรียงความเร่งด่วน ป้องกันเกาะต้นลิสต์กินโควตาเรือหมด
+  for (const destination of world.cells) {
     for (const [commodityId, destinationItem] of Object.entries(destination.commodities) as [LivingCommodityId, CommodityState][]) {
-      if (scheduled >= ECONOMY_CONFIG.maxSupplyConvoysPerTick) break;
-      if (!destinationItem || destinationItem.baseProduction > 0) continue;
-      if (destinationItem.stock >= destinationItem.targetStock * 0.55) continue;
+      if (!destinationItem) continue;
+      const essential = isEssentialCommodity(commodityId);
+      const refillRatio = essential ? 0.8 : 0.55;
+      const stockRatioNow = destinationItem.stock / Math.max(1, destinationItem.targetStock);
+      if (stockRatioNow >= refillRatio) continue;
 
       const key = `${destination.id}:${commodityId}`;
       if (activeImports.has(key)) continue;
@@ -516,40 +544,74 @@ export function scheduleImportConvoys(world: EconomyWorldState, log: EconomyLogE
       const sourceItem = source?.commodities[commodityId];
       if (!source || !sourceItem) continue;
 
-      const exportable = Math.floor(sourceItem.stock - sourceItem.targetStock * 1.05);
+      // เสบียงจำเป็นยอมให้คลังกลางแบ่งของลงมาถึง 80% เพื่อช่วยเมืองวิกฤต
+      // สินค้าทั่วไปต้องเหลือเกินเป้าหมายก่อนจึงจะส่งแบบอุดหนุน
+      const sourceFloorRatio = essential ? 0.8 : 1.05;
+      const exportable = Math.floor(sourceItem.stock - sourceItem.targetStock * sourceFloorRatio);
       if (exportable < 1) continue;
       const route = world.routes.find((candidate) =>
         candidate.sourceCellId === source.id && candidate.targetCellId === destination.id);
       if (!route) continue;
 
-      const amount = Math.min(
-        ECONOMY_CONFIG.npcCargoMax,
-        exportable,
-        Math.max(1, Math.floor(destinationItem.targetStock * 0.18)),
-      );
-      if (amount < 1) continue;
-
-      sourceItem.stock -= amount;
-      sourceItem.exportDemand += amount * 0.2;
-      updatePrices(source);
-      world.ships.push({
-        id: `supply-${world.tick}-${source.id}-${destination.id}-${commodityId}`,
-        originCellId: source.id,
-        destinationCellId: destination.id,
-        cargo: { [commodityId]: amount },
-        travelTimeRemaining: Math.max(1, route.travelTicks),
-        plannedTravelTicks: Math.max(1, route.travelTicks),
-        departTick: world.tick,
-      });
-      activeImports.add(key);
-      scheduled += 1;
-      log.push({
-        tick: world.tick,
-        message: `เรือเสบียงนำ${LIVING_COMMODITY_META[commodityId].label} ${amount} หน่วยออกจาก${source.nameTh} → ${destination.nameTh}`,
-        cellId: destination.id,
+      candidates.push({
+        destination,
+        destinationItem,
+        source,
+        sourceItem,
         commodityId,
+        travelTicks: Math.max(1, route.travelTicks),
+        exportable,
+        priority: (essential ? 1_000 : 0)
+          + Math.max(0, 1 - stockRatioNow) * 100
+          + destinationItem.memory.shortageTicks * 2,
       });
     }
+  }
+
+  candidates.sort((a, b) => b.priority - a.priority);
+  let scheduled = 0;
+  for (const candidate of candidates) {
+    if (scheduled >= ECONOMY_CONFIG.maxSupplyConvoysPerTick) break;
+    const {
+      destination,
+      destinationItem,
+      source,
+      sourceItem,
+      commodityId,
+      travelTicks,
+    } = candidate;
+    const sourceFloorRatio = isEssentialCommodity(commodityId) ? 0.8 : 1.05;
+    const availableNow = Math.floor(
+      sourceItem.stock - sourceItem.targetStock * sourceFloorRatio,
+    );
+    const amount = Math.min(
+      ECONOMY_CONFIG.npcCargoMax,
+      candidate.exportable,
+      availableNow,
+      Math.max(1, Math.floor(destinationItem.targetStock * 0.18)),
+    );
+    if (amount < 1) continue;
+
+    sourceItem.stock -= amount;
+    sourceItem.exportDemand += amount * 0.2;
+    updatePrices(source);
+    world.ships.push({
+      id: `supply-${world.tick}-${source.id}-${destination.id}-${commodityId}`,
+      originCellId: source.id,
+      destinationCellId: destination.id,
+      cargo: { [commodityId]: amount },
+      travelTimeRemaining: travelTicks,
+      plannedTravelTicks: travelTicks,
+      departTick: world.tick,
+    });
+    activeImports.add(`${destination.id}:${commodityId}`);
+    scheduled += 1;
+    log.push({
+      tick: world.tick,
+      message: `เรือเสบียงนำ${LIVING_COMMODITY_META[commodityId].label} ${amount} หน่วยออกจาก${source.nameTh} → ${destination.nameTh}`,
+      cellId: destination.id,
+      commodityId,
+    });
   }
 }
 

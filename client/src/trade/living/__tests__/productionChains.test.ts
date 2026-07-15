@@ -74,13 +74,13 @@ describe('Phase T4A — Production chains', () => {
     mine.commodities['iron-ore']!.stock = 0;
     mine.commodities['healing-herb']!.stock = 0;
     mine.commodities['herbal-medicine']!.stock = mine.commodities['herbal-medicine']!.targetStock * 2;
-    mine.commodities['iron-ingot']!.stock = 10;
-    mine.commodities.hardwood!.stock = 20;
+    mine.commodities['iron-ingot']!.stock = 30;
+    mine.commodities.hardwood!.stock = 30;
     mine.commodities.tools!.stock = 0;
     runProduction(mine, []);
     expect(mine.commodities.tools!.stock).toBeGreaterThan(0);
-    expect(mine.commodities['iron-ingot']!.stock).toBeLessThan(10);
-    expect(mine.commodities.hardwood!.stock).toBeLessThan(20);
+    expect(mine.commodities['iron-ingot']!.stock).toBeLessThan(30);
+    expect(mine.commodities.hardwood!.stock).toBeLessThan(30);
   });
 
   it('5. rope uses sun silk correctly', () => {
@@ -98,8 +98,8 @@ describe('Phase T4A — Production chains', () => {
     expect(recipe.inputs['iron-ore']).toBeUndefined();
     expect(recipe.inputs['iron-ingot']).toBe(2);
     expect(recipe.inputs.rope).toBe(2);
-    yard.commodities.hardwood!.stock = 30;
-    yard.commodities['iron-ingot']!.stock = 10;
+    yard.commodities.hardwood!.stock = 40;
+    yard.commodities['iron-ingot']!.stock = 30;
     yard.commodities.rope!.stock = 10;
     yard.commodities.tools!.stock = yard.commodities.tools!.targetStock * 2;
     yard.commodities['repair-kit']!.stock = yard.commodities['repair-kit']!.targetStock * 2;
