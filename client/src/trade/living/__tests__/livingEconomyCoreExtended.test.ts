@@ -4,9 +4,10 @@ import { LIVING_ECONOMY_BOUNDS } from '../LivingEconomyBounds';
 import { ECONOMY_GENOME_CONFIG } from '../EconomyGenomeConfig';
 import { saveEconomyState, loadEconomyState } from '../LivingTradePersistence';
 import { PLAYER_REPUTATION_CONFIG } from '../PlayerReputationConfig';
+import { yieldToTestRunner } from './soakTestUtils';
 
 describe('Living Economy Core v1.0 — extended 20k soak', () => {
-  it('20,000 ticks remain stable with bounded collections', () => {
+  it('20,000 ticks remain stable with bounded collections', async () => {
     const sim = new LivingTradeSimulator(true);
     let identityShifts = 0;
     const shiftByCell = new Map<string, number>();
@@ -27,6 +28,7 @@ describe('Living Economy Core v1.0 — extended 20k soak', () => {
       }
 
       sim.tick();
+      await yieldToTestRunner(i);
     }
 
     const world = sim.state;
