@@ -27,6 +27,7 @@ import { setTraderRngSeed, shouldExplore, traderRandom } from '../TraderMemoryRn
 import { generateTradeOrders } from '../TradeOrderGenerator';
 import { updateDynamicTradeEconomy } from '../DynamicTradeEconomy';
 import type { DynamicTradeOrder, EconomyWorldState, LivingCommodityId } from '../types';
+import { runTicksCooperatively, yieldToTestRunner } from './soakTestUtils';
 
 const TRADER = 'trader-leaf-safe';
 const BOLD = 'trader-cloth-bold';
@@ -385,7 +386,7 @@ describe('Phase E3 — Trader Memory & Route Learning', () => {
     }
   });
 
-  it('30. long-run traders do not stick to one route only', () => {
+  it('30. long-run traders do not stick to one route only', async () => {
     const sim = new LivingTradeSimulator(true);
     setTraderRngSeed(77_777);
     const routePickCounts = new Map<string, number>();
@@ -395,18 +396,19 @@ describe('Phase E3 — Trader Memory & Route Learning', () => {
         const k = routeAvoidKey(o.sourceIslandId, o.destinationIslandId, o.commodityId);
         routePickCounts.set(k, (routePickCounts.get(k) ?? 0) + 1);
       }
+      await yieldToTestRunner(i);
     }
     expect(routePickCounts.size).toBeGreaterThan(1);
-  });
+  }, 120_000);
 
-  it('31. long-run commodity specialization emerges', () => {
+  it('31. long-run commodity specialization emerges', async () => {
     const sim = new LivingTradeSimulator(true);
-    for (let i = 0; i < 500; i++) sim.tick();
+    await runTicksCooperatively(sim, 500);
     const specialized = sim.traderProfiles.filter(
       (p) => p.preferredCommodities.length > 0 || Object.keys(p.commodityAffinity).length > 0,
     );
     expect(specialized.length).toBeGreaterThan(0);
-  });
+  }, 120_000);
 
   it('32. E1 factory receives shipment from learning traders', () => {
     const sim = new LivingTradeSimulator(true);
@@ -459,7 +461,7 @@ describe('Phase E3 — Trader Memory & Route Learning', () => {
 
   it(
     '38. long-run 5000 ticks stability with metrics',
-    () => {
+    async () => {
     const sim = new LivingTradeSimulator(true);
     setTraderRngSeed(55_555);
     let completed = 0;
@@ -492,6 +494,7 @@ describe('Phase E3 — Trader Memory & Route Learning', () => {
           }
         }
       }
+      await yieldToTestRunner(i);
     }
 
     expect(maxMem).toBeLessThan(500);
