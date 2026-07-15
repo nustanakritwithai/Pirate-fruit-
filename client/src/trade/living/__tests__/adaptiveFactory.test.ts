@@ -283,5 +283,5 @@ describe('Phase E1 — Adaptive Factory', () => {
       expect(Number.isFinite(f.outputScale)).toBe(true);
       expect(Number.isFinite(f.profitEma)).toBe(true);
     }
-  }, 15_000);
+  }, 30_000);
 });

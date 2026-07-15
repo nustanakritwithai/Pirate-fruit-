@@ -87,7 +87,9 @@ export function produceGoods(cell: EconomyCellState): void {
     } else {
       item.production = item.baseProduction;
     }
-    const unitMultiplier = 1 + Math.min(0.35, Math.max(0, (cell.productionUnits ?? 1) - 1) * 0.05);
+    // เพิ่มกำลังผลิตตามจำนวนหน่วยจริงแบบพอดี ไม่เช่นนั้นการเพิ่มโรงงานจะดึง
+    // วัตถุดิบมากกว่าที่เกาะผลิตได้และทำให้ supply chain ล่มทั้งระบบ
+    const unitMultiplier = 1 + Math.min(0.6, Math.max(0, (cell.productionUnits ?? 1) - 1) * 0.1);
     let output = item.production * cell.workforce * toolEff * unitMultiplier;
     item.stock += output;
   }

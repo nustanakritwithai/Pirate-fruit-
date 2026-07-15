@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createFreshWorld } from '../LivingTradePersistence';
+import { createFreshWorld, loadEconomyState } from '../LivingTradePersistence';
 import { ensureCommodityCoverage, LIVING_COMMODITY_IDS } from '../LivingTradeConfig';
 import { moveCargo, scheduleImportConvoys } from '../EconomyRules';
 import { TradeManager } from '../../TradeManager';
@@ -65,6 +65,41 @@ describe('Worldwide island economy', () => {
     moveCargo(world, log);
     expect(frost.commodities['fresh-fish']!.stock).toBeGreaterThan(0);
     expect(log.some((entry) => entry.message.includes('ถึงเกาะเหมันต์คราม'))).toBe(true);
+  });
+
+  it('recovers collapsed legacy saves and makes silk visible again', () => {
+    const world = createFreshWorld();
+    for (const cell of world.cells) {
+      for (const item of Object.values(cell.commodities)) {
+        if (item) item.stock = 0;
+      }
+    }
+    world.economyBalanceVersion = undefined;
+    localStorage.setItem('pirate-fruit:economy-v1', JSON.stringify({ version: 8, world }));
+
+    const recovered = loadEconomyState()!;
+    const cloth = recovered.cells.find((cell) => cell.id === 'cloth-island')!;
+    expect(cloth.commodities['sun-silk']!.stock).toBeGreaterThan(0);
+    expect(cloth.commodities['sun-silk']!.baseProduction).toBeGreaterThan(0);
+    expect(recovered.economyBalanceVersion).toBe(1);
+    expect(recovered.npcCooldown).toBe(0);
+  });
+
+  it('starts transport jobs after recovering a collapsed save', () => {
+    const world = createFreshWorld();
+    for (const cell of world.cells) {
+      for (const item of Object.values(cell.commodities)) {
+        if (item) item.stock = 0;
+      }
+    }
+    world.economyBalanceVersion = undefined;
+    localStorage.setItem('pirate-fruit:economy-v1', JSON.stringify({ version: 8, world }));
+
+    const sim = new LivingTradeSimulator();
+    sim.tick();
+    expect(sim.state.orders.length).toBeGreaterThan(0);
+    expect(sim.state.traders.some((trader) => trader.activeOrderId)).toBe(true);
+    expect(sim.state.ships.length).toBeGreaterThan(0);
   });
 
   it('lets the ship cargo buy and sell imported goods on advanced islands', () => {

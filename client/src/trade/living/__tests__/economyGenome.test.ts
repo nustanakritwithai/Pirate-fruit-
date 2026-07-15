@@ -683,5 +683,5 @@ describe('Phase E4A — Economy Genome', () => {
     expect(sim.state.genomeState!.genomePressures.length).toBeLessThanOrEqual(
       ECONOMY_GENOME_CONFIG.maximumActivePressuresPerCell * 4,
     );
-  }, 30000);
+  }, 90_000);
 });

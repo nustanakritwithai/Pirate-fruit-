@@ -14,6 +14,7 @@ import { trimEconomyWorldState } from './LivingEconomyBounds';
 
 const STORAGE_KEY = 'pirate-fruit:economy-v1';
 const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
+const ECONOMY_BALANCE_VERSION = 1;
 
 interface SavedEconomy {
   version: number;
@@ -30,6 +31,40 @@ function ensurePlayerEconomyState(world: EconomyWorldState): void {
   pe.tradeHistory ??= [];
   pe.worldRecords ??= createDefaultPlayerEconomy().worldRecords;
   if (pe.trackedContractId === undefined) pe.trackedContractId = null;
+}
+
+/** กู้ save เดิมที่โรงงานหลายหน่วยทำให้วัตถุดิบและอาหารลดลงจนระบบขนส่งหยุดทั้งเครือข่าย */
+function recoverCollapsedEconomy(world: EconomyWorldState): void {
+  if ((world.economyBalanceVersion ?? 0) >= ECONOMY_BALANCE_VERSION) return;
+
+  world.ships ??= [];
+  world.orders ??= [];
+  world.reservations ??= [];
+  world.traders ??= [];
+
+  for (const cell of world.cells) {
+    for (const item of Object.values(cell.commodities)) {
+      if (!item) continue;
+      const recoveryRatio = item.baseProduction > 0 ? 1.35 : 0.25;
+      item.stock = Math.max(item.stock, Math.ceil(item.targetStock * recoveryRatio));
+      item.production = item.baseProduction;
+      item.marketState = 'balanced';
+      item.trend = 'stable';
+    }
+  }
+
+  // ปลดงานค้างที่ไม่มีเรือแล้ว เพื่อให้กองเรือเริ่มรับคำสั่งใหม่ทันที
+  const inTransitOrderIds = new Set(
+    world.ships.map((ship) => ship.orderId).filter((id): id is string => Boolean(id)),
+  );
+  world.orders = world.orders.filter((order) =>
+    order.status === 'in-transit' && inTransitOrderIds.has(order.id));
+  world.reservations = world.reservations.filter((reservation) =>
+    inTransitOrderIds.has(reservation.orderId));
+  for (const trader of world.traders) trader.activeOrderId = undefined;
+  world.orderGenCooldowns = {};
+  world.npcCooldown = 0;
+  world.economyBalanceVersion = ECONOMY_BALANCE_VERSION;
 }
 
 /** เติมเซลล์/สินค้า/เส้นทางของเกาะที่เพิ่มภายหลัง โดยรักษาสต็อกและประวัติเซฟเดิม */
@@ -52,6 +87,7 @@ function mergeCurrentTradeNetwork(world: EconomyWorldState): void {
     existing.commodities = { ...seedCell.commodities, ...existing.commodities };
   }
   ensureCommodityCoverage(world.cells);
+  recoverCollapsedEconomy(world);
 
   // เชื่อมเครือข่ายเป็น full mesh เพื่อให้เรือ supply ไปถึงเกาะปลายทางได้เสมอ
   const allIds = world.cells.map((cell) => cell.id);
@@ -140,6 +176,7 @@ export function createFreshWorld(): EconomyWorldState {
   const { cells, routes } = createInitialWorld();
   const world: EconomyWorldState = {
     tick: 0,
+    economyBalanceVersion: ECONOMY_BALANCE_VERSION,
     cells,
     routes: migrateAllRoutes(routes),
     ships: [],

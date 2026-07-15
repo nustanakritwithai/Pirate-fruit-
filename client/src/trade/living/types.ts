@@ -282,6 +282,8 @@ export interface TradeNewsItem {
 
 export interface EconomyWorldState {
   tick: number;
+  /** เวอร์ชันการกู้สมดุลสต็อกสำหรับ save เก่าที่สินค้าถูกดูดจนเป็นศูนย์ */
+  economyBalanceVersion?: number;
   cells: EconomyCellState[];
   routes: TradeRouteState[];
   ships: CargoShip[];

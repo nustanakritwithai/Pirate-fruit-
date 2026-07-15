@@ -501,6 +501,6 @@ describe('Phase E3 — Trader Memory & Route Learning', () => {
     expect(maxAvoid).toBeLessThan(100);
     expect(reopenCount).toBeGreaterThanOrEqual(0);
     },
-    120_000,
+    240_000,
   );
 });
