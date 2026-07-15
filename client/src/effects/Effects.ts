@@ -102,7 +102,7 @@ export class Effects {
   }
 
   /** คลื่นโค้งหน้าตัวละคร สำหรับหมัด/ท่าพุ่งที่ไม่มีใบดาบ */
-  spawnSlash(position: THREE.Vector3, heading: number, color = 0x9fdcff, scale = 1): void {
+  spawnSlash(position: THREE.Vector3, heading: number, color = 0x9fdcff, scale = 1, assetId?: SpellFxAssetId): void {
     const material = additiveMaterial(color, 0.9);
     const mesh = new THREE.Mesh(this.slashGeo, material);
     mesh.name = 'effect:slash';
@@ -112,11 +112,24 @@ export class Effects {
     mesh.position.z += Math.cos(heading) * 0.9;
     mesh.rotation.set(-Math.PI / 2, 0, 0);
     mesh.rotateZ(getForwardArcRotation(heading));
-    this.scene.add(mesh);
-    this.track(mesh, 0.22, [material], [], (progress, remaining) => {
+    const root = new THREE.Group();
+    root.name = 'effect:slash';
+    root.add(mesh);
+    const asset = instantiateSpellFxAsset(assetId ?? selectSpellFxAsset(color, 'launch'), color);
+    if (asset) {
+      asset.root.scale.setScalar(scale * 0.8);
+      asset.root.position.y = 1.05;
+      root.add(asset.root);
+    }
+    this.scene.add(root);
+    this.track(root, 0.22, [material, ...(asset?.materials ?? [])], [], (progress, remaining) => {
       material.opacity = remaining * 0.9;
       const animatedScale = scale * (0.7 + progress * 0.8);
       mesh.scale.setScalar(animatedScale);
+      if (asset) {
+        asset.root.rotation.y += 0.2;
+        asset.root.scale.setScalar(scale * (0.7 + progress * 0.7));
+      }
     });
   }
 
@@ -388,18 +401,31 @@ export class Effects {
   }
 
   /** วงคลื่นกระแทกขยายรอบจุด (สกิลวงจันทร์ ฯลฯ) */
-  spawnShockwave(position: THREE.Vector3, radius: number, color = 0xbfe8ff): void {
+  spawnShockwave(position: THREE.Vector3, radius: number, color = 0xbfe8ff, assetId?: SpellFxAssetId): void {
     const material = additiveMaterial(color, 0.85);
     const geometry = new THREE.RingGeometry(radius * 0.35, radius * 0.5, 40);
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'effect:shockwave';
+    mesh.name = 'effect:shockwave-ring';
     mesh.position.copy(position);
     mesh.position.y += 0.25;
     mesh.rotation.x = -Math.PI / 2;
-    this.scene.add(mesh);
-    this.track(mesh, 0.4, [material], [geometry], (progress, remaining) => {
+    const root = new THREE.Group();
+    root.name = 'effect:shockwave';
+    root.add(mesh);
+    const asset = instantiateSpellFxAsset(assetId ?? selectSpellFxAsset(color, 'impact'), color);
+    if (asset) {
+      asset.root.scale.setScalar(Math.max(0.5, radius * 0.22));
+      asset.root.position.y = 0.6;
+      root.add(asset.root);
+    }
+    this.scene.add(root);
+    this.track(root, 0.4, [material, ...(asset?.materials ?? [])], [geometry], (progress, remaining) => {
       material.opacity = remaining * 0.85;
       mesh.scale.setScalar(0.7 + progress * 0.9);
+      if (asset) {
+        asset.root.rotation.y += 0.16;
+        asset.root.scale.setScalar(Math.max(0.5, radius * (0.18 + progress * 0.28)));
+      }
     });
   }
 

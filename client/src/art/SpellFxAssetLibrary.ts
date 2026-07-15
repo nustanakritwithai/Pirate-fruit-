@@ -10,7 +10,8 @@ export type SpellFxAssetId =
   | 'water-element'
   | 'ice-block'
   | 'fire-grenade'
-  | 'smoke';
+  | 'smoke'
+  | 'fire-hands';
 
 export const SPELL_FX_ASSET_FILES: Record<SpellFxAssetId, string> = {
   fireball: 'quaternius-spell-fx/fireball.glb',
@@ -21,6 +22,7 @@ export const SPELL_FX_ASSET_FILES: Record<SpellFxAssetId, string> = {
   'ice-block': 'quaternius-spell-fx/ice-block.glb',
   'fire-grenade': 'quaternius-spell-fx/fire-grenade.glb',
   smoke: 'quaternius-spell-fx/smoke.glb',
+  'fire-hands': 'quaternius-spell-fx/fire-hands.glb',
 };
 
 const IDS = Object.keys(SPELL_FX_ASSET_FILES) as SpellFxAssetId[];
