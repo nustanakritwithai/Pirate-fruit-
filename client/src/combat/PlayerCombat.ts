@@ -49,6 +49,8 @@ interface WaveProjectile {
   life: number;
   radius: number;
   hit: Set<Monster>;
+  /** กันกระสุนเวทลูกเดิมทำดาเมจเรือลำเดิมซ้ำทุกเฟรม */
+  hitShips: Set<string>;
   damage: number;
   knockback: number;
   source: CombatRewardSource;
@@ -67,6 +69,7 @@ interface ActiveSummon {
   life: number;
   fireAcc: number;
   fireInterval: number;
+  radius: number;
   damage: number;
   acquireRange: number;
   color: number;
@@ -829,7 +832,6 @@ export class PlayerCombat {
         break;
       case 'aoe':
         this.effects.spawnShockwave(position, skill.radius, skill.color, 'earth-bending');
-        this.navalCombat?.damageNearestEnemyShipFromSkill(position, skill.radius, scaledDamage);
         if (scaledDamage > 0) {
           this.damageZone(
             position.x,
@@ -879,6 +881,7 @@ export class PlayerCombat {
         life: WAVE_LIFETIME,
         radius: skill.radius,
         hit: new Set(),
+        hitShips: new Set(),
         damage: perShot,
         knockback,
         source,
@@ -920,6 +923,7 @@ export class PlayerCombat {
         life: WAVE_LIFETIME,
         radius: skill.radius,
         hit: new Set(),
+        hitShips: new Set(),
         damage: perShot,
         knockback,
         source,
@@ -958,6 +962,7 @@ export class PlayerCombat {
       life: skill.isUltimate ? 9 : 6.5,
       fireAcc: 0,
       fireInterval: skill.isUltimate ? 0.7 : 0.95,
+      radius: skill.radius,
       damage: scaledDamage / 4, // ต่อการยิงหนึ่งครั้ง (ยิงหลายครั้งตลอดอายุ)
       acquireRange: (skill.radius > 0 ? skill.radius : 4) + 9,
       color: skill.color,
@@ -979,6 +984,15 @@ export class PlayerCombat {
     if (!target) {
       // ไม่เจอเป้า → พุ่งสั้นไปข้างหน้าเหมือน dash
       this.controller.startDash(dirX, dirZ, Math.max(6, skill.range) / LUNGE_DURATION, LUNGE_DURATION);
+      this.navalCombat?.damageNearestEnemyShipFromSkill(
+        new THREE.Vector3(
+          position.x + dirX * skill.range * 0.65,
+          position.y,
+          position.z + dirZ * skill.range * 0.65,
+        ),
+        Math.max(0.8, skill.radius),
+        scaledDamage,
+      );
       this.effects.spawnSlash(position, Math.atan2(dirX, dirZ), skill.color, 1.3);
       return;
     }
@@ -998,6 +1012,11 @@ export class PlayerCombat {
     this.controller.teleport(behindX, this.controller.position.y, behindZ);
     this.controller.heading = Math.atan2(tp.x - behindX, tp.z - behindZ);
     this.monsters.applyHit(target, scaledDamage, behindX, behindZ, this.ccKnockback(skill.cc, 5), source);
+    this.navalCombat?.damageNearestEnemyShipFromSkill(
+      this.controller.position,
+      Math.max(0.8, skill.radius),
+      scaledDamage,
+    );
     if (skill.dot) this.applyDot(target, skill.dot, source);
     this.effects.spawnSlash(this.controller.position, this.controller.heading, skill.color, skill.isUltimate ? 1.8 : 1.4);
     const impact = tp.clone();
@@ -1064,6 +1083,11 @@ export class PlayerCombat {
           impact.y += 1;
           this.effects.spawnEnergyImpact(impact, s.color, 0.6);
         }
+        this.navalCombat?.damageNearestEnemyShipFromSkill(
+          new THREE.Vector3(s.x, s.y, s.z),
+          Math.max(0.8, s.radius),
+          s.damage,
+        );
       }
       if (s.life <= 0) {
         this.effects.destroyEnergyProjectile(s.visual);
@@ -1136,15 +1160,31 @@ export class PlayerCombat {
         source: ch.source,
         onHit: ch.skill.dot ? (m) => this.applyDot(m, ch.skill.dot!, ch.source) : undefined,
       });
+      this.navalCombat?.damageNearestEnemyShipFromSkill(
+        new THREE.Vector3(
+          position.x + ch.dirX * ch.skill.range * 0.55,
+          position.y,
+          position.z + ch.dirZ * ch.skill.range * 0.55,
+        ),
+        Math.max(0.8, ch.skill.radius),
+        ch.perTickDamage,
+      );
       this.effects.spawnSlash(position, heading, ch.color, isLast ? 1.5 : 0.9, 'fire-hands');
     } else {
       // beam — sample หลายจุดตามแนวเส้นหน้าตัว
       const segs = 5;
       const damaged = new Set<Monster>();
+      const damagedShips = new Set<string>();
       for (let s = 1; s <= segs; s++) {
         const d = (ch.skill.range * s) / segs;
         const px = position.x + ch.dirX * d;
         const pz = position.z + ch.dirZ * d;
+        this.navalCombat?.damageNearestEnemyShipFromSkill(
+          new THREE.Vector3(px, position.y, pz),
+          Math.max(0.8, ch.skill.radius),
+          ch.perTickDamage,
+          damagedShips,
+        );
         for (const m of this.monsters.monstersNear(px, pz, ch.skill.radius)) {
           if (damaged.has(m)) continue;
           damaged.add(m);
@@ -1173,7 +1213,6 @@ export class PlayerCombat {
     const x = position.x + dirX * skill.range * 0.65;
     const z = position.z + dirZ * skill.range * 0.65;
     this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), skill.radius * 0.55, skill.color, 'earth-bending');
-    this.navalCombat?.damageNearestEnemyShipFromSkill(new THREE.Vector3(x, position.y, z), skill.radius, scaledDamage);
     this.pendingZones.push({
       timer: 0.32,
       x,
@@ -1256,12 +1295,19 @@ export class PlayerCombat {
     this.controller.startDash(dirX, dirZ, skill.range / LUNGE_DURATION, LUNGE_DURATION);
     const samplePoint = new THREE.Vector3();
     const damaged = new Set<Monster>();
+    const damagedShips = new Set<string>();
     const knockback = this.ccKnockback(skill.cc, 6);
     for (let step = 0; scaledDamage > 0 && step <= 3; step++) {
       samplePoint.set(
         position.x + (dirX * skill.range * step) / 3,
         position.y,
         position.z + (dirZ * skill.range * step) / 3,
+      );
+      this.navalCombat?.damageNearestEnemyShipFromSkill(
+        samplePoint,
+        Math.max(0.8, skill.radius),
+        scaledDamage,
+        damagedShips,
       );
       for (const monster of this.monsters.monstersNear(samplePoint.x, samplePoint.z, skill.radius)) {
         if (damaged.has(monster)) continue;
@@ -1352,6 +1398,14 @@ export class PlayerCombat {
       wave.visual.root.position.x += wave.dirX * WAVE_SPEED * dt;
       wave.visual.root.position.z += wave.dirZ * WAVE_SPEED * dt;
       this.effects.updateEnergyProjectile(wave.visual, dt, wave.life / WAVE_LIFETIME);
+
+      // สกิลยิงออกจากดาดฟ้าโดนเรือได้เช่นเดียวกับโดนมอนสเตอร์
+      this.navalCombat?.damageNearestEnemyShipFromSkill(
+        wave.visual.root.position,
+        Math.max(0.8, wave.radius),
+        wave.damage,
+        wave.hitShips,
+      );
 
       for (const monster of this.monsters.monstersNear(
         wave.visual.root.position.x,

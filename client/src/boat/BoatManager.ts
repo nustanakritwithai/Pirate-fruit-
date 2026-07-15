@@ -114,6 +114,7 @@ export class BoatManager {
     this.hud.update(this.active, dt);
     const boat = this.active;
     if (!boat) {
+      this.removeDeckProvider();
       this.prompt.hide();
       return;
     }
@@ -134,6 +135,9 @@ export class BoatManager {
       }
       return;
     }
+    // ลงทะเบียนดาดฟ้าตั้งแต่เรือถูกเรียก เพื่อให้กระโดดจากน้ำขึ้นเรือได้
+    // โดยไม่ต้องกดปุ่มขึ้นเรือซ้ำก่อน
+    this.ensureDeckProvider(boat);
 
     const previousX = boat.group.position.x;
     const previousZ = boat.group.position.z;
@@ -141,7 +145,6 @@ export class BoatManager {
       this.updatePiloted(boat, dt);
     } else {
       this.updateIdle(boat, dt);
-      if (this.rider === 'off') this.updateBoardPrompt(boat);
     }
 
     boat.group.position.x += Math.sin(boat.heading) * boat.speed * dt;
@@ -153,6 +156,7 @@ export class BoatManager {
     boat.group.updateMatrixWorld();
 
     if (this.rider === 'deck') this.updateDeckRider(boat);
+    if (this.rider === 'off') this.updateBoardPrompt(boat);
     if (boat.state === 'piloted') this.syncRider(boat);
 
     // เก็บ transform ท้ายเฟรมไว้คำนวณ carry เฟรมถัดไป
@@ -195,11 +199,26 @@ export class BoatManager {
 
   private setRiderOff(): void {
     this.rider = 'off';
-    if (this.deckProvider) {
-      this.collision.removeDynamicGround(this.deckProvider);
-      this.deckProvider = null;
-    }
     this.prompt.hide();
+  }
+
+  /** พื้นดาดฟ้าต้องมีอยู่ตลอดอายุเรือ เพื่อรับผู้เล่นที่กระโดดจากน้ำขึ้นมา */
+  private ensureDeckProvider(boat: Boat): void {
+    if (this.deckProvider) return;
+    const bounds = deckBoundsFor(boat.definition);
+    const provider: DynamicGroundProvider = (x, z) => {
+      const active = this.active;
+      if (!active || active !== boat || active.state === 'destroyed') return null;
+      return deckHeightAt(active.group.matrixWorld, bounds, active.group.position.y, x, z);
+    };
+    this.deckProvider = provider;
+    this.collision.addDynamicGround(provider);
+  }
+
+  private removeDeckProvider(): void {
+    if (!this.deckProvider) return;
+    this.collision.removeDynamicGround(this.deckProvider);
+    this.deckProvider = null;
   }
 
   private updatePiloted(boat: Boat, dt: number): void {
@@ -285,8 +304,14 @@ export class BoatManager {
   }
 
   private updateBoardPrompt(boat: Boat): void {
+    if (this.shop.isOpen) {
+      this.prompt.hide();
+      return;
+    }
+    // เมื่อลงบนผิวดาดฟ้าจริงจากการกระโดด ให้ขึ้นเรือทันที ไม่ต้องกด E
+    if (this.tryAutoBoard(boat)) return;
     const distance = this.controller.position.distanceTo(boat.group.position);
-    if (distance > BOARD_RANGE || this.shop.isOpen) {
+    if (distance > BOARD_RANGE) {
       this.prompt.hide();
       return;
     }
@@ -294,22 +319,36 @@ export class BoatManager {
     if (this.input.consumeInteract() || this.prompt.consumeRequested()) this.boardDeck(boat);
   }
 
+  private tryAutoBoard(boat: Boat): boolean {
+    const position = this.controller.position;
+    const bounds = deckBoundsFor(boat.definition);
+    const deckY = deckHeightAt(
+      boat.group.matrixWorld,
+      bounds,
+      boat.group.position.y,
+      position.x,
+      position.z,
+    );
+    if (deckY === null) return false;
+
+    const landedOnDeck =
+      position.y >= deckY - 0.12 &&
+      position.y <= deckY + 0.3 &&
+      (this.controller.moveState.onGround || this.controller.verticalSpeed <= 0);
+    if (!landedOnDeck) return false;
+
+    this.boardDeck(boat, true);
+    return true;
+  }
+
   /** ขึ้นเรือ = ยืนบนดาดฟ้า เดินได้อิสระ (ยังไม่บังคับเรือ) */
-  private boardDeck(boat: Boat): void {
+  private boardDeck(boat: Boat, preservePosition = false): void {
     boat.group.updateMatrixWorld();
-    this.placeRiderOnDeck(boat);
+    this.ensureDeckProvider(boat);
+    if (!preservePosition) this.placeRiderOnDeck(boat);
     this.rider = 'deck';
     this.prevMatrix.copy(boat.group.matrixWorld);
     this.prevHeading = boat.heading;
-    if (!this.deckProvider) {
-      const bounds = deckBoundsFor(boat.definition);
-      this.deckProvider = (x, z) => {
-        const active = this.active;
-        if (!active || active.state === 'destroyed') return null;
-        return deckHeightAt(active.group.matrixWorld, bounds, active.group.position.y, x, z);
-      };
-      this.collision.addDynamicGround(this.deckProvider);
-    }
     this.prompt.hide();
     this.hud.notify('ขึ้นเรือแล้ว — เดินไปที่พวงมาลัย ☸ แล้วกด E เพื่อบังคับเรือ');
   }
@@ -439,6 +478,7 @@ export class BoatManager {
     }
     // ผู้เล่นที่ยืนบนดาดฟ้า → เรือหายใต้เท้า ตกน้ำตามธรรมชาติ
     this.setRiderOff();
+    this.removeDeckProvider();
     this.hud.notify(`เรือแตก! เรียกใหม่ได้ใน ${RESPAWN_COOLDOWN} วินาที`, true);
   }
 
@@ -464,6 +504,7 @@ export class BoatManager {
         this.shop.setStatus('ลงจากเรือก่อนเก็บ', true);
         return;
       }
+      this.removeDeckProvider();
       this.scene.remove(this.active.group);
       this.active.dispose();
       this.active = null;
@@ -496,6 +537,7 @@ export class BoatManager {
     }
     if (this.active) {
       this.setRiderOff();
+      this.removeDeckProvider();
       this.scene.remove(this.active.group);
       this.active.dispose();
     }
@@ -513,6 +555,8 @@ export class BoatManager {
     );
     this.scene.add(boat.group);
     this.active = boat;
+    boat.group.updateMatrixWorld();
+    this.ensureDeckProvider(boat);
     this.shop.setStatus(`เรียก ${definition.name} ที่${dock.name}แล้ว`);
     this.effects.spawnBoatImpact(boat.group.position);
   }

@@ -178,27 +178,36 @@ export class NavalCombat {
       }));
   }
 
-  /** Skill จากดาดฟ้าเรือผู้เล่นสามารถระเบิดเรือศัตรูได้ */
-  damageNearestEnemyShipFromSkill(position: THREE.Vector3, radius: number, damage: number): boolean {
+  /** สกิลจากดาดฟ้าเรือผู้เล่นโจมตีเรือศัตรูได้ โดยใช้รัศมีชนของเรือร่วมด้วย */
+  damageNearestEnemyShipFromSkill(
+    position: THREE.Vector3,
+    radius: number,
+    damage: number,
+    hitShips?: Set<string>,
+  ): boolean {
     if (this.boats.riderState !== 'deck') return false;
     let target: EnemyShip | null = null;
-    let best = radius + 5;
+    let best = Number.POSITIVE_INFINITY;
     for (const ship of this.ships) {
-      if (!ship.alive || ship.boarded) continue;
+      if (!ship.alive || ship.boarded || hitShips?.has(ship.defn.id)) continue;
       const distance = Math.hypot(ship.group.position.x - position.x, ship.group.position.z - position.z);
-      if (distance < best) { best = distance; target = ship; }
+      if (distance > radius + ship.defn.hitRadius || distance >= best) continue;
+      best = distance;
+      target = ship;
     }
     if (!target) return false;
-    target.hp = Math.max(0, target.hp - Math.max(1, damage * 0.65));
+    hitShips?.add(target.defn.id);
+    const appliedDamage = Math.max(1, damage * 0.65);
+    target.hp = Math.max(0, target.hp - appliedDamage);
     this.drawBar(target);
     this.effects.spawnBoatImpact(target.group.position, target.hp <= 0);
-    this.notify?.(`💥 Skill กระแทกเรือ ${target.defn.name} -${Math.round(damage * 0.65)}`);
+    this.notify?.(`💥 Skill กระแทกเรือ ${target.defn.name} -${Math.round(appliedDamage)}`);
     if (target.hp <= 0) {
       target.alive = false;
       target.sinkTimer = 2.4;
       target.speed = 0;
-      this.rewards.addCoins(120, 'naval:skill-sink');
-      this.rewards.addPlayerExp(90, 'naval:skill-sink');
+      this.rewards.addCoins(target.defn.reward.coins, 'naval:skill-sink');
+      this.rewards.addPlayerExp(target.defn.reward.exp, 'naval:skill-sink');
     }
     return true;
   }
