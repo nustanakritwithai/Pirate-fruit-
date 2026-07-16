@@ -13,11 +13,14 @@ import { RuntimeMetrics } from './observability/runtimeMetrics.js';
 import type { DatabaseProbe } from './persistence/database.js';
 import { registerSessionRoutes } from './auth/sessionRoutes.js';
 import type { SessionService } from './auth/sessionService.js';
+import { registerPlayerSaveRoutes } from './player/playerSaveRoutes.js';
+import type { PlayerSaveService } from './player/playerSaveService.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
   database: DatabaseProbe;
   sessions?: SessionService;
+  playerSaves?: PlayerSaveService;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -120,6 +123,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     metrics,
     sessions: options.sessions,
+  });
+  await registerPlayerSaveRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    playerSaves: options.playerSaves,
   });
   return app;
 }

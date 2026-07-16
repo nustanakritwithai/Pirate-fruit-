@@ -44,11 +44,28 @@ failure and stays in Local mode instead of losing the save.
 included in Vite variables, API responses or public status endpoints. Structured
 logs explicitly redact Cookie, Set-Cookie, Authorization and CSRF headers.
 
-## Current S5 limitations
+## S6 save boundary
+
+- Save identity is always the session's character; body identity fields are rejected.
+- Strict envelopes and document sanitizers bound sizes, IDs, counts, coordinates,
+  schema versions, stats, mastery, inventory, boats, cargo, quests and resources.
+- Revision locking prevents stale overwrites; request hashes and idempotency rows make
+  retries safe; the one-time migration marker is committed atomically with the save.
+- Canonical coins are read from progression, never duplicated boat/item fields.
+- Session expiry/revocation is checked before every load or mutation.
+
+## Transitional trust model
+
+S6 provides durable, isolated and structurally validated saves, but normal gameplay
+values are still proposed by the Client. Bounds prevent malformed/duplicate documents;
+they do not prove that a level, item, coin gain, quest progress, HP or cargo change was
+earned. S7–S12 move economy, trade, rewards and combat decisions to authoritative
+Server commands. Remote Save must therefore not be described as anti-cheat authority.
+
+## Current limitations
 
 - Guest recovery is browser-cookie based; clearing the cookie loses access until
   account linking is added.
 - One initial character is selected for each guest. Multi-character selection is
   a later authenticated feature.
-- S5 authenticates identity but does not yet make player saves, economy, trade,
-  quests or combat authoritative. Their feature flags remain disabled.
+- Economy, trade, quest rewards and combat remain Client-authored until later phases.

@@ -14,7 +14,7 @@
    remains `client/dist`.
 3. Set `CLIENT_ORIGIN` to the exact public Static Site origin, without a trailing slash.
 4. Set `VITE_API_URL` and `VITE_WS_URL` to the public server origins, but keep
-   `VITE_USE_REMOTE_SERVER=false` until S6 and
+   `VITE_USE_REMOTE_SERVER=false` until S6 integration verification and
    `VITE_ENABLE_REMOTE_SESSION=false` until S5 verification finishes.
 5. Let Render generate `SESSION_SECRET`; never copy it into the client or repository.
 6. Keep remote feature flags false until their owning phase is merged.
@@ -52,6 +52,21 @@ npm run db:seed
 
 The seed is idempotent and creates only the empty `main` economy world. Do not
 put the seed command in every deploy because S7 will own live economy recovery.
+
+## Enable S6 Remote Save
+
+The repository contains no concrete Web Service URL and this work did not have
+Render Dashboard access. Resource creation, PostgreSQL availability and public
+health endpoints are therefore deployment blockers, not assumed from merged code.
+
+1. Deploy schema version 2 with both `ENABLE_REMOTE_SAVE=false` and
+   `VITE_USE_REMOTE_SERVER=false`.
+2. Verify `/health`, `/ready`, `/version`, migration checksums and a PostgreSQL backup.
+3. Run the cookie-jar session test and S6 integration test against a non-production account.
+4. Set Web Service `ENABLE_REMOTE_SAVE=true`; keep Static Site Remote Save false.
+5. Exercise migration, reload, stale revision, idempotent retry and Local fallback.
+6. Set Static Site `VITE_USE_REMOTE_SERVER=true` for a limited rollout. Keep economy
+   remote flags off. Monitor errors and revision conflicts before widening rollout.
 
 ## Verification
 

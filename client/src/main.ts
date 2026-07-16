@@ -478,6 +478,16 @@ async function main(): Promise<void> {
     game.add({ update: () => tc.update() });
   }
 
+  // Run synchronous gameplay serializers before draining the debounced remote queue.
+  // Local mirrors are updated first, so a browser that cannot finish network I/O still
+  // retains the latest recoverable save.
+  window.addEventListener('pagehide', () => {
+    saveSystem.save();
+    progression.save();
+    itemInventory.save();
+    void persistence.flush();
+  });
+
   loading.remove();
   game.start();
 }

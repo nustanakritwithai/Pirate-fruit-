@@ -9,6 +9,8 @@ import type {
 } from '@pirate-fruit/shared';
 import type { GameStorage } from '../GameStorage';
 import { resetGameStorageForTests } from '../GameStorage';
+import { initializeRemoteSession } from '../../session/RemoteSession';
+import { REMOTE_DIRTY_SAVE_KEY } from '../LocalSaveMigration';
 import { initializeGamePersistence } from '../GamePersistence';
 import {
   LocalCargoRepository,
@@ -35,8 +37,9 @@ class MemoryStorage implements GameStorage {
   }
 }
 
-afterEach(() => {
+afterEach(async () => {
   resetGameStorageForTests();
+  await initializeRemoteSession({ enabled: false });
   vi.restoreAllMocks();
 });
 
@@ -94,17 +97,12 @@ describe('S3 persistence repositories', () => {
     expect(mirror.lastError).toBeNull();
   });
 
-  it('serializes remote player saves so a stale request cannot win', async () => {
-    let releaseFirst: (() => void) | undefined;
-    const firstSave = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+  it('debounces player writes into one latest snapshot', async () => {
     const saved: PersistedPlayerState[] = [];
     const player: PlayerRepository = {
       loadPlayer: async () => null,
       savePlayer: async (_id, state) => {
         saved.push(state);
-        if (saved.length === 1) await firstSave;
       },
     };
     const cargo: CargoRepository = {
@@ -123,10 +121,9 @@ describe('S3 persistence repositories', () => {
     mirror.setItem(GAMEPLAY_STORAGE_KEYS.progression, 'first');
     mirror.setItem(GAMEPLAY_STORAGE_KEYS.progression, 'second');
     await Promise.resolve();
-    expect(saved).toHaveLength(1);
-    releaseFirst?.();
+    expect(saved).toHaveLength(0);
     await mirror.flush();
-    expect(saved.map((state) => state.progression)).toEqual(['first', 'second']);
+    expect(saved.map((state) => state.progression)).toEqual(['second']);
   });
 
   it('clears a stale local cache entry when the hydrated remote value is empty', async () => {
@@ -146,6 +143,7 @@ describe('S3 persistence repositories', () => {
     );
 
     expect(mirror.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBeNull();
+    expect(cache.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBeNull();
     mirror.removeItem(GAMEPLAY_STORAGE_KEYS.progression);
     expect(cache.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBeNull();
   });
@@ -163,8 +161,20 @@ describe('S3 persistence repositories', () => {
     const fetcher: FetchLike = async (input, init) => {
       calls.push({ url: String(input), init });
       return init?.method === 'POST'
-        ? new Response(null, { status: 204 })
-        : new Response(JSON.stringify(state), {
+        ? new Response(JSON.stringify({
+          ok: true,
+          revision: 1,
+          idempotentReplay: false,
+          migrated: false,
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+        : new Response(JSON.stringify({
+          ok: true,
+          schemaVersion: 1,
+          revision: 0,
+          migrated: false,
+          state,
+          cargo: { schemaVersion: 1, cargo: null },
+        }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -178,7 +188,11 @@ describe('S3 persistence repositories', () => {
       'https://server.example/api/player/save',
     ]);
     expect(calls.every((call) => call.init?.credentials === 'include')).toBe(true);
-    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ state });
+    expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({
+      schemaVersion: 1,
+      expectedRevision: 0,
+      documents: state,
+    });
   });
 
   it('falls back to the local save when remote endpoints are unavailable', async () => {
@@ -199,5 +213,62 @@ describe('S3 persistence repositories', () => {
     expect(persistence.activeMode).toBe('local');
     expect(persistence.storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBe('local-progress');
     expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a Local copy and switches mode when an online write exhausts retries', async () => {
+    const storage = new MemoryStorage();
+    const remoteState: PersistedPlayerState = {
+      schemaVersion: 1,
+      checkpoint: null,
+      progression: 'remote-progress',
+      inventory: null,
+      boats: null,
+      loadout: null,
+    };
+    const sessionPayload = {
+      ok: true,
+      created: false,
+      csrfToken: 'a'.repeat(43),
+      session: {
+        userId: '10000000-0000-4000-8000-000000000001',
+        characterId: '20000000-0000-4000-8000-000000000001',
+        characterName: 'Guest Pirate',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    };
+    const fetcher: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/session/me')) return Response.json(sessionPayload);
+      if (url.endsWith('/api/player/state')) return Response.json({
+        ok: true,
+        schemaVersion: 1,
+        revision: 1,
+        migrated: true,
+        state: remoteState,
+        cargo: { schemaVersion: 1, cargo: null },
+      });
+      if (url.endsWith('/api/player/save') && init?.method === 'POST') {
+        return new Response('{}', { status: 503 });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    };
+    await initializeRemoteSession({
+      enabled: true,
+      apiUrl: 'https://server.example',
+      fetcher,
+    });
+    const persistence = await initializeGamePersistence({
+      useRemoteServer: true,
+      apiUrl: 'https://server.example',
+      fetcher,
+      localStorage: storage,
+      warn: vi.fn(),
+    });
+    expect(persistence.activeMode).toBe('remote');
+    persistence.storage.setItem(GAMEPLAY_STORAGE_KEYS.progression, 'offline-change');
+    await persistence.flush();
+    expect(persistence.activeMode).toBe('local');
+    expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBe('offline-change');
+    expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).not.toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import {
   bigserial,
   boolean,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -66,6 +67,8 @@ export const characters = pgTable(
     coins: bigint('coins', { mode: 'bigint' }).default(sql`0`).notNull(),
     currentIslandId: varchar('current_island_id', { length: 96 }).notNull(),
     spawnId: varchar('spawn_id', { length: 96 }).notNull(),
+    saveRevision: bigint('save_revision', { mode: 'bigint' }).default(sql`0`).notNull(),
+    localSaveMigratedAt: timestamp('local_save_migrated_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -75,6 +78,7 @@ export const characters = pgTable(
     index('characters_current_island_idx').on(table.currentIslandId),
     check('characters_level_check', sql`${table.level} >= 1`),
     check('characters_coins_check', sql`${table.coins} >= 0`),
+    check('characters_save_revision_check', sql`${table.saveRevision} >= 0`),
   ],
 );
 
@@ -91,6 +95,7 @@ export const playerProgression = pgTable(
     blade: integer('blade').default(0).notNull(),
     ranged: integer('ranged').default(0).notNull(),
     fruitPower: integer('fruit_power').default(0).notNull(),
+    mana: integer('mana').default(1).notNull(),
     masteryJson: jsonb('mastery_json').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -100,7 +105,7 @@ export const playerProgression = pgTable(
     check('player_progression_stat_points_check', sql`${table.statPoints} >= 0`),
     check(
       'player_progression_stats_check',
-      sql`${table.combat} >= 0 and ${table.vitality} >= 0 and ${table.blade} >= 0 and ${table.ranged} >= 0 and ${table.fruitPower} >= 0`,
+      sql`${table.combat} >= 0 and ${table.vitality} >= 0 and ${table.blade} >= 0 and ${table.ranged} >= 0 and ${table.fruitPower} >= 0 and ${table.mana} >= 0`,
     ),
   ],
 );
@@ -264,10 +269,46 @@ export const playerCheckpoints = pgTable(
     islandId: varchar('island_id', { length: 96 }).notNull(),
     spawnId: varchar('spawn_id', { length: 96 }).notNull(),
     positionJson: jsonb('position_json').$type<{ x: number; y: number; z: number }>().notNull(),
+    heading: doublePrecision('heading').default(0).notNull(),
+    cameraYaw: doublePrecision('camera_yaw').default(0).notNull(),
+    worldTime: doublePrecision('world_time').default(0.31).notNull(),
     schemaVersion: integer('schema_version').default(1).notNull(),
     savedAt: timestamp('saved_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index('player_checkpoints_island_spawn_idx').on(table.islandId, table.spawnId)],
+);
+
+export const playerSaveOperations = pgTable(
+  'player_save_operations',
+  {
+    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+    characterId: uuid('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    operation: text('operation').notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
+    requestHash: varchar('request_hash', { length: 64 }).notNull(),
+    resultingRevision: bigint('resulting_revision', { mode: 'bigint' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('player_save_operations_character_key_uq').on(
+      table.characterId,
+      table.idempotencyKey,
+    ),
+    index('player_save_operations_character_created_idx').on(
+      table.characterId,
+      table.createdAt.desc(),
+    ),
+    check(
+      'player_save_operations_operation_check',
+      sql`${table.operation} in ('save', 'checkpoint', 'cargo', 'migration')`,
+    ),
+    check(
+      'player_save_operations_revision_check',
+      sql`${table.resultingRevision} >= 1`,
+    ),
+  ],
 );
 
 export const economyWorlds = pgTable(
@@ -367,3 +408,4 @@ export type UserRecord = typeof users.$inferSelect;
 export type CharacterRecord = typeof characters.$inferSelect;
 export type EconomyWorldRecord = typeof economyWorlds.$inferSelect;
 export type TradeTransactionRecord = typeof tradeTransactions.$inferSelect;
+export type PlayerSaveOperationRecord = typeof playerSaveOperations.$inferSelect;

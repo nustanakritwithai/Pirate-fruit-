@@ -39,6 +39,14 @@ describe('server environment', () => {
     ).toThrow(/DATABASE_URL.*SESSION_SECRET/);
   });
 
+  it('does not allow Remote Save to bypass the Remote Session identity gate', () => {
+    expect(() => loadEnvironment({
+      NODE_ENV: 'test',
+      ENABLE_REMOTE_SAVE: 'true',
+      DATABASE_URL: 'postgresql://localhost/pirate_fruit_test',
+    })).toThrow(/ENABLE_REMOTE_SESSION/);
+  });
+
   it('requires database and session secrets in production', () => {
     expect(() =>
       loadEnvironment({

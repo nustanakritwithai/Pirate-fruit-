@@ -3,6 +3,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresPool } from './database.js';
 import { applyDatabaseMigrations, rollbackS4Database } from './migrations.js';
 import { seedDatabase } from './seed.js';
+import {
+  LocalMigrationAlreadyAppliedError,
+  PostgresPlayerSaveRepository,
+  SaveRevisionConflictError,
+} from '../player/playerSaveRepository.js';
+import { defaultPlayerState } from '../player/playerState.js';
 
 const databaseTestUrl = process.env.DATABASE_TEST_URL;
 const integration = describe.runIf(Boolean(databaseTestUrl));
@@ -34,7 +40,7 @@ integration.sequential('PostgreSQL integration', () => {
   it('enforces schema constraints and idempotency on PostgreSQL', async () => {
     const database = pool!;
     const migration = await applyDatabaseMigrations(database);
-    expect(migration.version).toBe(1);
+    expect(migration.version).toBe(2);
     await applyDatabaseMigrations(database);
 
     const userId = '10000000-0000-4000-8000-000000000001';
@@ -94,5 +100,92 @@ integration.sequential('PostgreSQL integration', () => {
 
     expect(await seedDatabase(database)).toEqual({ worldId: 'main', inserted: true });
     expect(await seedDatabase(database)).toEqual({ worldId: 'main', inserted: false });
+  });
+
+  it('persists isolated revisioned saves, prevents duplicate migration, and rolls back', async () => {
+    const database = pool!;
+    const repository = new PostgresPlayerSaveRepository(database);
+    const userIds = [
+      '11000000-0000-4000-8000-000000000001',
+      '11000000-0000-4000-8000-000000000002',
+      '11000000-0000-4000-8000-000000000003',
+    ];
+    const characterIds = [
+      '21000000-0000-4000-8000-000000000001',
+      '21000000-0000-4000-8000-000000000002',
+      '21000000-0000-4000-8000-000000000003',
+    ];
+    for (let index = 0; index < userIds.length; index++) {
+      await database.query('insert into users (id) values ($1)', [userIds[index]]);
+      await database.query(
+        `insert into characters (id, user_id, name, current_island_id, spawn_id)
+         values ($1, $2, $3, 'starter-island', 'starter-dock')`,
+        [characterIds[index], userIds[index], `Save Tester ${index + 1}`],
+      );
+    }
+
+    const state = defaultPlayerState();
+    state.progression.coins = 321;
+    state.inventory.ownedSwords = ['training-sword'];
+    state.boats = [{
+      definitionId: 'training-dinghy',
+      name: 'Training Dinghy',
+      maxHp: 130,
+      cargoCapacity: 8,
+      upgrades: { hull: 0, cannon: 0, sail: 0 },
+      active: true,
+    }];
+    state.cargo.slots = [{ commodityId: 'fresh-fish', quantity: 4 }];
+    const migration = {
+      characterId: characterIds[0]!,
+      operation: 'migration' as const,
+      idempotencyKey: 'migration:postgres-test-0001',
+      requestHash: 'a'.repeat(64),
+    };
+    expect(await repository.migrate(migration, state)).toMatchObject({
+      revision: 1,
+      idempotentReplay: false,
+      migrated: true,
+    });
+    expect(await repository.migrate(migration, state)).toMatchObject({
+      revision: 1,
+      idempotentReplay: true,
+    });
+    await expect(repository.migrate({
+      ...migration,
+      idempotencyKey: 'migration:postgres-test-0002',
+      requestHash: 'b'.repeat(64),
+    }, state)).rejects.toBeInstanceOf(LocalMigrationAlreadyAppliedError);
+
+    const loaded = await repository.load(characterIds[0]!);
+    expect(loaded.state?.progression.coins).toBe(321);
+    expect(loaded.state?.inventory.ownedSwords).toEqual(['training-sword']);
+    expect(loaded.state?.boats).toHaveLength(1);
+    expect(loaded.state?.cargo.slots).toEqual([{ commodityId: 'fresh-fish', quantity: 4 }]);
+    expect((await repository.load(characterIds[1]!)).state).toBeNull();
+    await expect(repository.save({
+      characterId: characterIds[0]!,
+      operation: 'save',
+      expectedRevision: 0,
+      idempotencyKey: 'save:stale-postgres-test',
+      requestHash: 'c'.repeat(64),
+    }, state)).rejects.toBeInstanceOf(SaveRevisionConflictError);
+
+    const invalid = defaultPlayerState();
+    invalid.progression.coins = 999;
+    invalid.cargo.slots = [{ commodityId: 'fresh-fish', quantity: -1 }];
+    await expect(repository.migrate({
+      characterId: characterIds[2]!,
+      operation: 'migration',
+      idempotencyKey: 'migration:rollback-test',
+      requestHash: 'd'.repeat(64),
+    }, invalid)).rejects.toThrow();
+    expect((await repository.load(characterIds[2]!)).state).toBeNull();
+    const rolledBack = await database.query<{ save_revision: string; coins: string }>(
+      'select save_revision, coins from characters where id = $1',
+      [characterIds[2]],
+    );
+    expect(Number(rolledBack.rows[0]?.save_revision)).toBe(0);
+    expect(Number(rolledBack.rows[0]?.coins)).toBe(0);
   });
 });

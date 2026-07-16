@@ -1,15 +1,14 @@
 # Local Save Migration
 
-## S3 status
+## S6 status
 
 S3 introduces a persistence boundary without changing save contents or making the
 server authoritative. Existing gameplay code reads a synchronous in-memory mirror;
 the mirror is hydrated once from asynchronous repositories before controllers,
 inventory, progression, cargo, boats, or the economy are constructed.
 
-The default production mode remains local. Remote adapters are present for staged
-integration, but authenticated endpoints and one-time import validation belong to
-S5 and S6.
+The default production mode remains local. S6 adds authenticated remote player and
+cargo adapters while the economy remains Local until S7.
 
 ## Legacy keys preserved
 
@@ -32,8 +31,8 @@ the gameplay repositories.
 
 - `LocalPlayerRepository`, `LocalCargoRepository`, `LocalEconomyRepository` use the
   guarded browser storage adapter.
-- `RemotePlayerRepository`, `RemoteCargoRepository`, `RemoteEconomyRepository` use
-  cookie-authenticated HTTP requests with an eight-second timeout.
+- `RemotePlayerRepository` and `RemoteCargoRepository` use cookie-authenticated
+  requests, CSRF, an eight-second timeout and exponential retry backoff.
 - `RepositoryBackedStorage` presents the synchronous `getItem`/`setItem` contract
   expected by the existing game and serializes repository writes.
 
@@ -45,19 +44,31 @@ directly. Only the browser adapter and client-only graphics preference do so.
 ```text
 VITE_USE_REMOTE_SERVER=false  -> Local repositories
 VITE_USE_REMOTE_SERVER=true   -> Try VITE_API_URL remote repositories
-remote load fails             -> Warn and fall back to Local repositories
+session/load/write fails      -> Keep Local copy, mark dirty, and fall back safely
 ```
 
-The Render Static Site keeps remote mode disabled in S3. The fallback is a rollout
-safety mechanism, not a security boundary. Coins, inventory, cargo, and economy are
-still client-authoritative until their later server phases.
+The Render Static Site keeps both flags disabled. Remote Session and Remote Save
+can be enabled independently, but Save refuses Remote mode without an online Session.
 
-## S6 one-time import (not implemented in S3)
+## One-time import
 
-S6 will read these envelopes, validate schema versions and value limits on the
-server, import once under an authenticated session, record an idempotent migration
-marker, and retain a temporary local backup. S3 must not mark a save as migrated or
-delete any legacy key.
+1. Load remote revision and migration status for the cookie-owned character.
+2. If remote state is empty, copy all legacy player/cargo documents to
+   `pirate-fruit:remote-save-backup-v1` and persist a pending idempotency marker.
+3. Submit the documents. The Server strictly validates versions, IDs, numeric bounds,
+   island/spawn pairing and resource caps, then writes all normalized rows in one transaction.
+4. Reload and confirm the returned revision before marking migration confirmed.
+
+A network retry reuses the pending key. Another key cannot migrate the character
+again, so coins, items, boats and cargo cannot be duplicated. Gameplay keys are not
+deleted by migration. Clearing them after confirmation is safe because the next load
+hydrates from PostgreSQL. The backup is transitional recovery data and may be removed
+manually only after Render and restore verification.
+
+Autosaves debounce for 500 ms and batch each changed domain. A failed remote write
+keeps the synchronous Local mirror, records the server revision it forked from, and
+continues Local. On reconnect it uploads that dirty copy only if the server revision
+is unchanged; otherwise it stays Local instead of overwriting newer data.
 
 ## Rollback
 

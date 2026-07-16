@@ -39,6 +39,10 @@ export class LocalPlayerRepository implements PlayerRepository {
     write(this.storage, GAMEPLAY_STORAGE_KEYS.boats, state.boats);
     write(this.storage, GAMEPLAY_STORAGE_KEYS.loadout, state.loadout);
   }
+
+  async saveCheckpoint(_playerId: string, checkpoint: string | null): Promise<void> {
+    write(this.storage, GAMEPLAY_STORAGE_KEYS.checkpoint, checkpoint);
+  }
 }
 
 export class LocalCargoRepository implements CargoRepository {
