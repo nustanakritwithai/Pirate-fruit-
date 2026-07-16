@@ -21,6 +21,7 @@ export interface RemoteSessionOptions {
   enabled?: boolean;
   apiUrl?: string;
   fetcher?: SessionFetch;
+  requestTimeoutMs?: number;
   warn?: (message: string, error?: unknown) => void;
 }
 
@@ -80,9 +81,10 @@ async function sessionRequest(
   apiUrl: string,
   path: string,
   method: 'GET' | 'POST',
+  timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), 6_000);
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetcher(`${apiUrl}${path}`, {
       method,
@@ -128,10 +130,23 @@ export async function initializeRemoteSession(
   }
 
   const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
+  const requestTimeoutMs = Math.max(1_000, options.requestTimeoutMs ?? 6_000);
   try {
-    let response = await sessionRequest(fetcher, apiUrl, '/api/session/me', 'GET');
+    let response = await sessionRequest(
+      fetcher,
+      apiUrl,
+      '/api/session/me',
+      'GET',
+      requestTimeoutMs,
+    );
     if (response.status === 401) {
-      response = await sessionRequest(fetcher, apiUrl, '/api/session/guest', 'POST');
+      response = await sessionRequest(
+        fetcher,
+        apiUrl,
+        '/api/session/guest',
+        'POST',
+        requestTimeoutMs,
+      );
     }
     const payload = await parseSession(response);
     currentSession = {

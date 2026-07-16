@@ -554,7 +554,11 @@ async function main(): Promise<void> {
   // Once the HttpOnly session succeeds, serialize the Local mirror and reload once;
   // the normal bootstrap then performs the guarded one-time Remote migration.
   if (initialSession.mode === 'offline' && persistence.requestedMode === 'remote') {
-    void recoverRemoteSession({ attempts: 20, maxDelayMs: 30_000 }).then(async (recovered) => {
+    void recoverRemoteSession({
+      attempts: 5,
+      maxDelayMs: 15_000,
+      requestTimeoutMs: 70_000,
+    }).then(async (recovered) => {
       if (recovered.mode === 'online') {
         saveSystem.save();
         progression.save();
