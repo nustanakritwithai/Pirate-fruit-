@@ -17,7 +17,7 @@ const environmentSchema = z
     PORT: z.coerce.number().int().min(1).max(65_535).default(10_000),
     DATABASE_URL: z.string().min(1).optional(),
     CLIENT_ORIGIN: z.string().min(1).default('http://localhost:5173'),
-    SERVER_VERSION: z.string().min(1).default('0.4.0'),
+    SERVER_VERSION: z.string().min(1).default('0.5.0'),
     SESSION_SECRET: z.string().min(32).optional(),
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
     ADMIN_DEBUG_SECRET: z.string().min(32).optional(),
@@ -58,6 +58,22 @@ const environmentSchema = z
         code: 'custom',
         path: ['SESSION_SECRET'],
         message: 'SESSION_SECRET is required when ENABLE_REMOTE_SESSION is enabled',
+      });
+    }
+
+    if (environment.ENABLE_REMOTE_SAVE && !environment.ENABLE_REMOTE_SESSION) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_REMOTE_SESSION'],
+        message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_REMOTE_SAVE',
+      });
+    }
+
+    if (environment.ENABLE_REMOTE_SAVE && !environment.DATABASE_URL) {
+      context.addIssue({
+        code: 'custom',
+        path: ['DATABASE_URL'],
+        message: 'DATABASE_URL is required when ENABLE_REMOTE_SAVE is enabled',
       });
     }
 

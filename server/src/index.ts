@@ -7,6 +7,8 @@ import {
 } from './persistence/database.js';
 import { PostgresSessionRepository } from './auth/sessionRepository.js';
 import { SessionService } from './auth/sessionService.js';
+import { PostgresPlayerSaveRepository } from './player/playerSaveRepository.js';
+import { PlayerSaveService } from './player/playerSaveService.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
@@ -21,7 +23,10 @@ async function start(): Promise<void> {
         environment.SESSION_TTL_DAYS,
       )
     : undefined;
-  const app = await buildServer({ environment, database, sessions });
+  const playerSaves = pool
+    ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool))
+    : undefined;
+  const app = await buildServer({ environment, database, sessions, playerSaves });
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {

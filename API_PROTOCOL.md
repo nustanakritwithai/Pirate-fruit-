@@ -1,6 +1,6 @@
 # Pirate Fruit API Protocol
 
-The S5 API uses JSON over HTTPS and cookie-authenticated guest sessions. Every
+The S6 API uses JSON over HTTPS and cookie-authenticated guest sessions. Every
 error follows the versioned `ApiErrorResponse` envelope with a request ID.
 
 ## Browser requirements
@@ -67,5 +67,35 @@ Success returns `{ "ok": true }`, revokes the row and expires the cookie.
 | 403 | `UNTRUSTED_ORIGIN` | Explicit request Origin is not allowed |
 | 503 | `FEATURE_DISABLED` | `ENABLE_REMOTE_SESSION` is false |
 
-S6 extends this protocol with authenticated player state. No S5 endpoint accepts
-a Client-supplied user ID, character ID, reward, balance or inventory value.
+## S6 player state
+
+All routes below resolve `characterId` from the validated session cookie. Supplying
+`userId`, `playerId`, or `characterId` in a strict request body is rejected.
+
+| Method and route | Purpose | Revision behavior |
+| --- | --- | --- |
+| `GET /api/player/state` | Load canonical player and cargo documents | Returns current revision |
+| `POST /api/player/save` | Save validated progression, inventory, equipment, boats, quests and checkpoint | Requires `expectedRevision` |
+| `PUT /api/player/checkpoint` | Save position, island/spawn, HP, MP, Energy | Requires `expectedRevision` |
+| `PUT /api/player/cargo` | Save sanitized cargo | Requires `expectedRevision` |
+| `POST /api/player/migrate-local` | One-time legacy browser import | No revision; character must still be revision 0 |
+
+Unsafe routes require the session cookie, allowed Origin, and `x-csrf-token`.
+Mutation bodies use save `schemaVersion: 1`, an idempotency key of 16–128 safe
+characters, and (except migration) the last loaded `expectedRevision`. A success
+returns `{ ok, revision, idempotentReplay, migrated }`. Retrying the identical
+request and key returns the original revision without inserting data again.
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 400 | `INVALID_SAVE_REQUEST` | Envelope, schema version or unexpected property is invalid |
+| 401 | `SESSION_REQUIRED` / `SESSION_IDENTITY_INVALID` | Session is invalid or its character disappeared |
+| 409 | `STALE_SAVE_REVISION` | A newer save exists; response includes `currentRevision` |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | Key was reused for a different request |
+| 409 | `MIGRATION_ALREADY_APPLIED` | Import was already consumed or remote progress exists |
+| 422 | `INVALID_SAVE_DOCUMENT` | A legacy document failed semantic validation |
+| 503 | `FEATURE_DISABLED` | Remote Save is not enabled |
+
+Canonical coins come only from the progression document. Coin copies in item or
+boat documents are overwritten when state is serialized. The API never accepts a
+Client-selected identity, price, reward, or timestamp.

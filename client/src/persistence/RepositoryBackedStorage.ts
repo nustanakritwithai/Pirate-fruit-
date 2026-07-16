@@ -27,6 +27,12 @@ export interface RepositoryStorageIdentity {
   worldId: string;
 }
 
+export interface RepositoryBackedStorageOptions {
+  debounceMilliseconds?: number;
+  onRemoteDirty?: () => void;
+  onRemotePersisted?: () => void;
+}
+
 const GAMEPLAY_KEY_SET = new Set<string>(Object.values(GAMEPLAY_STORAGE_KEYS));
 
 function asError(value: unknown): Error {
@@ -42,24 +48,35 @@ export class RepositoryBackedStorage implements GameStorage {
   private readonly values = new Map<GameplayStorageKey, string>();
   private writeQueue: Promise<void> = Promise.resolve();
   private lastWriteError: Error | null = null;
+  private readonly pendingKeys = new Set<GameplayStorageKey>();
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   private constructor(
     private readonly repositories: GameRepositories,
     private readonly identity: RepositoryStorageIdentity,
     private readonly cache?: GameStorage,
+    private readonly debounceMilliseconds = 500,
+    private readonly options: RepositoryBackedStorageOptions = {},
   ) {}
 
   static async load(
     repositories: GameRepositories,
     identity: RepositoryStorageIdentity,
     cache?: GameStorage,
+    options: RepositoryBackedStorageOptions = {},
   ): Promise<RepositoryBackedStorage> {
     const [player, cargo, economy] = await Promise.all([
       repositories.player.loadPlayer(identity.playerId),
       repositories.cargo.loadCargo(identity.playerId),
       repositories.economy.loadWorld(identity.worldId),
     ]);
-    const storage = new RepositoryBackedStorage(repositories, identity, cache);
+    const storage = new RepositoryBackedStorage(
+      repositories,
+      identity,
+      cache,
+      Math.max(0, options.debounceMilliseconds ?? 500),
+      options,
+    );
     storage.hydrate(player, cargo, economy);
     return storage;
   }
@@ -97,6 +114,7 @@ export class RepositoryBackedStorage implements GameStorage {
   }
 
   async flush(): Promise<void> {
+    this.drainPending();
     await this.writeQueue;
   }
 
@@ -105,42 +123,76 @@ export class RepositoryBackedStorage implements GameStorage {
     cargo: PersistedCargoState,
     economy: PersistedEconomyState | null,
   ): void {
-    if (player) {
-      this.hydrateValue(GAMEPLAY_STORAGE_KEYS.checkpoint, player.checkpoint);
-      this.hydrateValue(GAMEPLAY_STORAGE_KEYS.progression, player.progression);
-      this.hydrateValue(GAMEPLAY_STORAGE_KEYS.inventory, player.inventory);
-      this.hydrateValue(GAMEPLAY_STORAGE_KEYS.boats, player.boats);
-      this.hydrateValue(GAMEPLAY_STORAGE_KEYS.loadout, player.loadout);
-    }
+    this.hydrateValue(GAMEPLAY_STORAGE_KEYS.checkpoint, player?.checkpoint ?? null);
+    this.hydrateValue(GAMEPLAY_STORAGE_KEYS.progression, player?.progression ?? null);
+    this.hydrateValue(GAMEPLAY_STORAGE_KEYS.inventory, player?.inventory ?? null);
+    this.hydrateValue(GAMEPLAY_STORAGE_KEYS.boats, player?.boats ?? null);
+    this.hydrateValue(GAMEPLAY_STORAGE_KEYS.loadout, player?.loadout ?? null);
     this.hydrateValue(GAMEPLAY_STORAGE_KEYS.cargo, cargo.cargo);
     this.hydrateValue(GAMEPLAY_STORAGE_KEYS.economy, economy?.world ?? null);
   }
 
   private hydrateValue(key: GameplayStorageKey, value: string | null): void {
-    if (value !== null) this.values.set(key, value);
+    if (value === null) {
+      this.values.delete(key);
+      this.cache?.removeItem(key);
+      return;
+    }
+    this.values.set(key, value);
+    this.cache?.setItem(key, value);
   }
 
   private persist(key: GameplayStorageKey): void {
-    let operation: () => Promise<void>;
-    if ((PLAYER_STORAGE_KEYS as readonly string[]).includes(key)) {
+    this.pendingKeys.add(key);
+    if (key !== GAMEPLAY_STORAGE_KEYS.economy) this.options.onRemoteDirty?.();
+    if (this.persistTimer !== null) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => this.drainPending(), this.debounceMilliseconds);
+  }
+
+  private drainPending(): void {
+    if (this.persistTimer !== null) clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    if (this.pendingKeys.size === 0) return;
+    const keys = new Set(this.pendingKeys);
+    this.pendingKeys.clear();
+
+    const operations: Array<() => Promise<void>> = [];
+    const playerKeys = [...keys].filter((key) =>
+      (PLAYER_STORAGE_KEYS as readonly string[]).includes(key));
+    if (playerKeys.length > 0) {
       const snapshot = this.playerSnapshot();
-      operation = () => this.repositories.player.savePlayer(this.identity.playerId, snapshot);
-    } else if (key === GAMEPLAY_STORAGE_KEYS.cargo) {
+      const checkpointOnly = playerKeys.length === 1
+        && playerKeys[0] === GAMEPLAY_STORAGE_KEYS.checkpoint
+        && this.repositories.player.saveCheckpoint;
+      operations.push(checkpointOnly
+        ? () => this.repositories.player.saveCheckpoint!(
+          this.identity.playerId,
+          snapshot.checkpoint,
+        )
+        : () => this.repositories.player.savePlayer(this.identity.playerId, snapshot));
+    }
+    if (keys.has(GAMEPLAY_STORAGE_KEYS.cargo)) {
       const snapshot: PersistedCargoState = {
         schemaVersion: PERSISTED_CARGO_SCHEMA_VERSION,
         cargo: this.getItem(GAMEPLAY_STORAGE_KEYS.cargo),
       };
-      operation = () => this.repositories.cargo.saveCargo(this.identity.playerId, snapshot);
-    } else {
+      operations.push(() => this.repositories.cargo.saveCargo(this.identity.playerId, snapshot));
+    }
+    if (keys.has(GAMEPLAY_STORAGE_KEYS.economy)) {
       const snapshot: PersistedEconomyState = {
         schemaVersion: PERSISTED_ECONOMY_SCHEMA_VERSION,
         world: this.getItem(GAMEPLAY_STORAGE_KEYS.economy),
       };
-      operation = () => this.repositories.economy.saveWorld(this.identity.worldId, snapshot);
+      operations.push(() => this.repositories.economy.saveWorld(this.identity.worldId, snapshot));
     }
 
     this.writeQueue = this.writeQueue
-      .then(operation)
+      .then(async () => {
+        for (const operation of operations) await operation();
+        if ([...keys].some((key) => key !== GAMEPLAY_STORAGE_KEYS.economy)) {
+          this.options.onRemotePersisted?.();
+        }
+      })
       .then(() => {
         this.lastWriteError = null;
       })

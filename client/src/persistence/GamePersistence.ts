@@ -6,14 +6,22 @@ import {
 } from './LocalRepositories';
 import {
   RemoteCargoRepository,
-  RemoteEconomyRepository,
   RemotePlayerRepository,
+  RemoteSaveCoordinator,
   type FetchLike,
 } from './RemoteRepositories';
 import {
   RepositoryBackedStorage,
   type GameRepositories,
 } from './RepositoryBackedStorage';
+import { getRemoteSession } from '../session/RemoteSession';
+import {
+  clearRemoteSaveDirty,
+  markRemoteSaveDirty,
+  migrateLocalSaveIfNeeded,
+  recoverDirtyLocalSave,
+} from './LocalSaveMigration';
+import type { CargoRepository, PlayerRepository } from '@pirate-fruit/shared';
 
 export type PersistenceMode = 'local' | 'remote';
 
@@ -62,17 +70,9 @@ function localRepositories(storage: GameStorage): GameRepositories {
   };
 }
 
-function remoteRepositories(apiUrl: string, fetcher?: FetchLike): GameRepositories {
-  return {
-    player: new RemotePlayerRepository(apiUrl, fetcher),
-    cargo: new RemoteCargoRepository(apiUrl, fetcher),
-    economy: new RemoteEconomyRepository(apiUrl, fetcher),
-  };
-}
-
 /**
- * Hydrates the repository mirror before gameplay construction. S3 deliberately falls back
- * to the legacy local repositories until the authenticated S5/S6 endpoints are available.
+ * Hydrates the repository mirror before gameplay construction. Remote Save is staged
+ * independently and always retains the legacy Local repositories as its safe fallback.
  */
 export async function initializeGamePersistence(
   options: GamePersistenceOptions = {},
@@ -89,10 +89,70 @@ export async function initializeGamePersistence(
 
   if (requestedRemote && apiUrl) {
     try {
+      const session = getRemoteSession();
+      if (session.mode !== 'online' || !session.csrfToken) {
+        throw new Error('Remote Save requires an active Remote Session');
+      }
+      const coordinator = new RemoteSaveCoordinator(apiUrl, {
+        fetcher: options.fetcher,
+        csrfToken: session.csrfToken,
+      });
+      await recoverDirtyLocalSave(coordinator, localStorage);
+      await migrateLocalSaveIfNeeded(coordinator, localStorage);
+
+      const local = localRepositories(localStorage);
+      const failover = { active: true };
+      const useLocal = (error: unknown): void => {
+        if (!failover.active) return;
+        failover.active = false;
+        activeMode = 'local';
+        markRemoteSaveDirty(localStorage, coordinator.revision);
+        warn('Remote save failed; changes remain in the Local fallback.', error);
+      };
+      const remotePlayer = new RemotePlayerRepository(apiUrl, options.fetcher, coordinator);
+      const remoteCargo = new RemoteCargoRepository(apiUrl, options.fetcher, coordinator);
+      const player: PlayerRepository = {
+        loadPlayer: (id) => remotePlayer.loadPlayer(id),
+        savePlayer: async (id, state) => {
+          if (!failover.active) return local.player.savePlayer(id, state);
+          try { await remotePlayer.savePlayer(id, state); } catch (error) {
+            useLocal(error);
+            await local.player.savePlayer(id, state);
+            throw error;
+          }
+        },
+        saveCheckpoint: async (id, checkpoint) => {
+          if (!failover.active) return local.player.saveCheckpoint?.(id, checkpoint);
+          try { await remotePlayer.saveCheckpoint(id, checkpoint); } catch (error) {
+            useLocal(error);
+            await local.player.saveCheckpoint?.(id, checkpoint);
+            throw error;
+          }
+        },
+      };
+      const cargo: CargoRepository = {
+        loadCargo: (id) => remoteCargo.loadCargo(id),
+        saveCargo: async (id, state) => {
+          if (!failover.active) return local.cargo.saveCargo(id, state);
+          try { await remoteCargo.saveCargo(id, state); } catch (error) {
+            useLocal(error);
+            await local.cargo.saveCargo(id, state);
+            throw error;
+          }
+        },
+      };
       storage = await RepositoryBackedStorage.load(
-        remoteRepositories(apiUrl, options.fetcher),
+        { player, cargo, economy: local.economy },
         { playerId: REMOTE_PLAYER_ID, worldId: WORLD_ID },
         localStorage,
+        {
+          onRemoteDirty: () => {
+            if (failover.active) markRemoteSaveDirty(localStorage, coordinator.revision);
+          },
+          onRemotePersisted: () => {
+            if (failover.active) clearRemoteSaveDirty(localStorage);
+          },
+        },
       );
       activeMode = 'remote';
     } catch (error) {
@@ -115,15 +175,10 @@ export async function initializeGamePersistence(
   }
 
   configureGameStorage(storage);
-  if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => {
-      void storage.flush();
-    });
-  }
 
   return {
     requestedMode,
-    activeMode,
+    get activeMode() { return activeMode; },
     storage,
     flush: () => storage.flush(),
   };

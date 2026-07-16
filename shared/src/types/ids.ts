@@ -65,3 +65,12 @@ export const LIVING_COMMODITY_IDS: readonly LivingCommodityId[] = [
   'storm-core',
   'volcanic-ore',
 ];
+
+export const TRADE_COMMODITY_IDS = [
+  ...LIVING_COMMODITY_IDS,
+  'ancient-relic',
+  'mist-spice',
+  'desert-salt',
+  'desert-gem',
+  'cactus-water',
+] as const;

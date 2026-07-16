@@ -1,8 +1,7 @@
 # Pirate Fruit Database Schema
 
-Phase S4 establishes PostgreSQL schema version 1. It creates storage and
-invariants only; Local mode remains the active gameplay path until S5–S8 add
-authenticated repositories and authoritative commands.
+Phase S6 advances PostgreSQL to schema version 2 for revisioned remote player saves.
+Production Remote Save remains disabled until Render integration verification.
 
 ## Tooling and source of truth
 
@@ -10,7 +9,9 @@ authenticated repositories and authoritative commands.
 - Drizzle config: `server/drizzle.config.ts`
 - Forward migration: `server/drizzle/0000_s4_core_schema.sql`
 - Reverse migration: `server/drizzle/rollback/0000_s4_core_schema.down.sql`
-- Application version: `schema_migrations.version = 1`
+- S6 migration: `server/drizzle/0001_s6_remote_player_save.sql`
+- S6 reverse migration: `server/drizzle/rollback/0001_s6_remote_player_save.down.sql`
+- Application version: `schema_migrations.version = 2`
 - Migration integrity: SHA-256 of the committed forward SQL
 
 Drizzle's `drizzle.__drizzle_migrations` table answers whether SQL ran. The
@@ -37,6 +38,12 @@ applied migration; add a new migration and increment the application version.
 | `economy_snapshots` | Crash-recovery history | Unique world/tick pair |
 | `trade_transactions` | Immutable trade audit rows | Unique character/idempotency key |
 | `schema_migrations` | Application schema ledger | Unique version and migration name |
+| `player_save_operations` | Save idempotency/revision ledger | Unique character/key; immutable resulting revision |
+
+S6 adds `characters.save_revision`, `characters.local_save_migrated_at`, progression
+`mana`, and checkpoint heading/camera/world-time fields. Each mutation locks the
+character row, compares the expected revision, updates all affected tables and writes
+the operation ledger in one transaction. Any partial failure rolls the transaction back.
 
 JSONB is reserved for evolving nested documents such as mastery, upgrades,
 quest objectives and economy snapshots. Identity, ownership, balances,

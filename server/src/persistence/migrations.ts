@@ -6,10 +6,16 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { Pool, PoolClient } from 'pg';
 
-export const DATABASE_SCHEMA_VERSION = 1;
+export const DATABASE_SCHEMA_VERSION = 2;
 export const CORE_MIGRATION_TAG = '0000_s4_core_schema';
+export const PLAYER_SAVE_MIGRATION_TAG = '0001_s6_remote_player_save';
 export const ROLLBACK_CONFIRMATION = 'rollback-s4-core';
 const DATABASE_MIGRATION_LOCK_ID = 1_347_565_126;
+
+const DATABASE_MIGRATIONS = [
+  { version: 1, name: CORE_MIGRATION_TAG },
+  { version: 2, name: PLAYER_SAVE_MIGRATION_TAG },
+] as const;
 
 export interface MigrationResult {
   version: number;
@@ -21,20 +27,25 @@ export function databaseMigrationDirectory(): string {
   return fileURLToPath(new URL('../../drizzle/', import.meta.url));
 }
 
-export async function calculateMigrationChecksum(migrationsFolder: string): Promise<string> {
-  const source = await readFile(join(migrationsFolder, `${CORE_MIGRATION_TAG}.sql`));
+export async function calculateMigrationChecksum(
+  migrationsFolder: string,
+  migrationTag = CORE_MIGRATION_TAG,
+): Promise<string> {
+  const source = await readFile(join(migrationsFolder, `${migrationTag}.sql`));
   return createHash('sha256').update(source).digest('hex');
 }
 
 async function verifyAndRecordSchemaMigrationWithClient(
   client: PoolClient,
   checksum: string,
+  version = 1,
+  name = CORE_MIGRATION_TAG,
 ): Promise<void> {
   try {
     await client.query('begin');
     const existing = await client.query<{ checksum: string }>(
       'select checksum from schema_migrations where version = $1 for update',
-      [DATABASE_SCHEMA_VERSION],
+      [version],
     );
 
     if (existing.rows.length > 0) {
@@ -45,7 +56,7 @@ async function verifyAndRecordSchemaMigrationWithClient(
       await client.query(
         `insert into schema_migrations (version, name, checksum)
          values ($1, $2, $3)`,
-        [DATABASE_SCHEMA_VERSION, CORE_MIGRATION_TAG, checksum],
+        [version, name, checksum],
       );
     }
     await client.query('commit');
@@ -58,10 +69,12 @@ async function verifyAndRecordSchemaMigrationWithClient(
 export async function verifyAndRecordSchemaMigration(
   pool: Pool,
   checksum: string,
+  version = 1,
+  name = CORE_MIGRATION_TAG,
 ): Promise<void> {
   const client = await pool.connect();
   try {
-    await verifyAndRecordSchemaMigrationWithClient(client, checksum);
+    await verifyAndRecordSchemaMigrationWithClient(client, checksum, version, name);
   } finally {
     client.release();
   }
@@ -79,9 +92,18 @@ export async function applyDatabaseMigrations(
     const database = drizzle(client);
     await migrate(database, { migrationsFolder });
 
-    const checksum = await calculateMigrationChecksum(migrationsFolder);
-    await verifyAndRecordSchemaMigrationWithClient(client, checksum);
-    return { version: DATABASE_SCHEMA_VERSION, name: CORE_MIGRATION_TAG, checksum };
+    let latest: MigrationResult | null = null;
+    for (const migration of DATABASE_MIGRATIONS) {
+      const checksum = await calculateMigrationChecksum(migrationsFolder, migration.name);
+      await verifyAndRecordSchemaMigrationWithClient(
+        client,
+        checksum,
+        migration.version,
+        migration.name,
+      );
+      latest = { ...migration, checksum };
+    }
+    return latest!;
   } finally {
     if (locked) {
       await client
@@ -96,10 +118,18 @@ export async function rollbackS4Database(
   pool: Pool,
   migrationsFolder = databaseMigrationDirectory(),
 ): Promise<void> {
-  const rollbackSql = await readFile(
-    join(migrationsFolder, 'rollback', `${CORE_MIGRATION_TAG}.down.sql`),
-    'utf8',
-  );
+  const rollbackSql = (
+    await Promise.all([
+      readFile(
+        join(migrationsFolder, 'rollback', `${PLAYER_SAVE_MIGRATION_TAG}.down.sql`),
+        'utf8',
+      ),
+      readFile(
+        join(migrationsFolder, 'rollback', `${CORE_MIGRATION_TAG}.down.sql`),
+        'utf8',
+      ),
+    ])
+  ).join('\n');
   const client = await pool.connect();
   try {
     await client.query('begin');

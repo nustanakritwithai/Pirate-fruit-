@@ -7,6 +7,7 @@ import {
   calculateMigrationChecksum,
   CORE_MIGRATION_TAG,
   databaseMigrationDirectory,
+  PLAYER_SAVE_MIGRATION_TAG,
   verifyAndRecordSchemaMigration,
 } from './migrations.js';
 import { seedDatabase } from './seed.js';
@@ -53,7 +54,23 @@ async function publicTables(pool: Pool): Promise<string[]> {
   return result.rows.map((row) => row.table_name);
 }
 
-describe('S4 database migrations', () => {
+describe('S4/S6 database migrations', () => {
+  it('keeps the S6 revision/idempotency migration and rollback manifest', async () => {
+    const directory = databaseMigrationDirectory();
+    const forward = await readFile(join(directory, `${PLAYER_SAVE_MIGRATION_TAG}.sql`), 'utf8');
+    const reverse = await readFile(
+      join(directory, 'rollback', `${PLAYER_SAVE_MIGRATION_TAG}.down.sql`),
+      'utf8',
+    );
+    expect(forward).toContain('CREATE TABLE "player_save_operations"');
+    expect(forward).toContain('ADD COLUMN "save_revision"');
+    expect(forward).toContain('ADD COLUMN "local_save_migrated_at"');
+    expect(reverse).toContain('DROP TABLE IF EXISTS "player_save_operations"');
+    expect(reverse).toContain('DROP COLUMN IF EXISTS "save_revision"');
+    expect(await calculateMigrationChecksum(directory, PLAYER_SAVE_MIGRATION_TAG))
+      .toMatch(/^[a-f0-9]{64}$/);
+  });
+
   it('keeps a complete forward and reverse manifest', async () => {
     const directory = databaseMigrationDirectory();
     const forward = await readFile(join(directory, `${CORE_MIGRATION_TAG}.sql`), 'utf8');
