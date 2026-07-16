@@ -3,8 +3,9 @@
 ## Decision
 
 Pirate Fruit uses a Node.js + TypeScript modular monolith built with Fastify.
-PostgreSQL access starts with the `pg` driver; Drizzle migrations and domain
-repositories are introduced in S4 after persistence interfaces are locked.
+PostgreSQL connections use `pg`, while Drizzle defines the typed S4 schema and
+runs ordered SQL migrations. Domain repositories are added incrementally on top
+of this database boundary from S5 onward.
 
 Fastify was selected because it supports structured logging, schema-oriented
 HTTP APIs, rate limiting, WebSocket plugins, and in-process request injection for
@@ -53,3 +54,18 @@ Legacy documents remain raw JSON envelopes so all existing sanitizers and save
 migrations still execute in their original domain modules. Typed server-owned
 database records, authenticated identity, validated import, and authoritative
 mutations remain gated by S4–S8. See `LOCAL_SAVE_MIGRATION.md`.
+
+## S4 database boundary
+
+- `server/src/persistence/schema.ts` is the typed schema source.
+- `server/drizzle/` contains immutable forward SQL and Drizzle metadata.
+- `schema_migrations` records the application schema version and SHA-256 checksum;
+  Drizzle separately tracks execution in `drizzle.__drizzle_migrations`.
+- Server startup applies pending migrations before opening the HTTP listener.
+- Seed data is explicit and idempotent; deploys never overwrite economy state.
+- Rollback requires an exact confirmation value and is limited to the S4 schema.
+
+The schema enforces non-negative balances and stock, one row per inventory item,
+one active boat per character, idempotent trade keys, and cargo ownership through
+the composite `(boat_id, character_id)` foreign key. No client feature flag is
+enabled by S4.

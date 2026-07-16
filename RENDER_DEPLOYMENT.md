@@ -19,6 +19,21 @@
 6. Keep remote feature flags false until their owning phase is merged.
 7. Confirm all resources use Singapore before the first creation; Render regions
    cannot be changed in place later.
+8. The Web Service start command runs `npm run db:migrate` before starting
+   Fastify. A checksum or migration failure prevents the service from accepting
+   traffic with a partially upgraded schema.
+
+## First database seed
+
+After the first successful schema migration, open a one-off Render shell for the
+Web Service and run:
+
+```bash
+npm run db:seed
+```
+
+The seed is idempotent and creates only the empty `main` economy world. Do not
+put the seed command in every deploy because S7 will own live economy recovery.
 
 ## Verification
 
@@ -42,3 +57,8 @@ Disable all remote feature flags first. Roll the server service back to its last
 healthy deploy in Render. Set `VITE_USE_REMOTE_SERVER=false` and redeploy the Static
 Site to force local repositories. S3 preserves all existing save keys and document
 formats, so this does not require data conversion.
+
+Do not run the destructive S4 down migration against a database containing live
+player data. Restore a verified PostgreSQL backup instead. The explicit down
+command and confirmation value are documented in `DATABASE_SCHEMA.md` for
+pre-production recovery only.

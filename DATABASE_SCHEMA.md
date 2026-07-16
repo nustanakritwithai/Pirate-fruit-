@@ -1,0 +1,88 @@
+# Pirate Fruit Database Schema
+
+Phase S4 establishes PostgreSQL schema version 1. It creates storage and
+invariants only; Local mode remains the active gameplay path until S5–S8 add
+authenticated repositories and authoritative commands.
+
+## Tooling and source of truth
+
+- Typed schema: `server/src/persistence/schema.ts`
+- Drizzle config: `server/drizzle.config.ts`
+- Forward migration: `server/drizzle/0000_s4_core_schema.sql`
+- Reverse migration: `server/drizzle/rollback/0000_s4_core_schema.down.sql`
+- Application version: `schema_migrations.version = 1`
+- Migration integrity: SHA-256 of the committed forward SQL
+
+Drizzle's `drizzle.__drizzle_migrations` table answers whether SQL ran. The
+application-owned `schema_migrations` table answers which Pirate Fruit schema
+version is supported and rejects a changed migration checksum. Never edit an
+applied migration; add a new migration and increment the application version.
+
+## Tables
+
+| Table | Responsibility | Important invariant/index |
+| --- | --- | --- |
+| `users` | Account root | Valid status only |
+| `sessions` | Hashed, expiring sessions | Unique `token_hash`; expiry/user indexes |
+| `characters` | Name, level, coins, island and spawn | Non-negative coins; unique name per user |
+| `player_progression` | EXP, stat allocation and mastery | Non-negative progression values |
+| `player_stats` | Current/max HP, MP and Energy | Current values cannot exceed maxima |
+| `player_inventory` | Item quantities and metadata | Unique character/item pair |
+| `player_equipment` | Equipped item per slot | Unique character/slot pair |
+| `player_boats` | Owned boats, upgrades and capacity | One active boat per character |
+| `player_cargo` | Commodities carried by a boat | Cargo character must own the referenced boat |
+| `player_quests` | Quest status, progress and cooldown | Unique character/quest pair |
+| `player_checkpoints` | Current island spawn and position | One checkpoint per character |
+| `economy_worlds` | Current durable world economy | Non-negative monotonic tick |
+| `economy_snapshots` | Crash-recovery history | Unique world/tick pair |
+| `trade_transactions` | Immutable trade audit rows | Unique character/idempotency key |
+| `schema_migrations` | Application schema ledger | Unique version and migration name |
+
+JSONB is reserved for evolving nested documents such as mastery, upgrades,
+quest objectives and economy snapshots. Identity, ownership, balances,
+quantities, prices and lookup fields remain normalized and constrained.
+
+## Commands
+
+From the repository root:
+
+```bash
+# Generate a new migration after changing schema.ts
+npm run db:generate
+
+# Local development (runs TypeScript directly)
+DATABASE_URL=postgresql://pirate_fruit:pirate_fruit@localhost:5432/pirate_fruit npm run db:migrate:dev
+DATABASE_URL=postgresql://pirate_fruit:pirate_fruit@localhost:5432/pirate_fruit npm run db:seed:dev
+
+# Built production commands
+npm run build:server
+DATABASE_URL=postgresql://... npm run db:migrate
+DATABASE_URL=postgresql://... npm run db:seed
+```
+
+The seed creates only the empty `main` economy world and uses `ON CONFLICT DO
+NOTHING`. It never replaces a running world's state.
+
+## Rollback
+
+The S4 rollback drops all S4 tables and therefore destroys server-side data. It
+is intended only before remote systems are enabled or after restoring a database
+backup. The command refuses to run without an exact confirmation:
+
+```bash
+DATABASE_URL=postgresql://... \
+DATABASE_ROLLBACK_CONFIRM=rollback-s4-core \
+npm run db:rollback
+```
+
+Disable all remote feature flags first. In any environment containing player
+data, take and verify a PostgreSQL backup before executing rollback.
+
+## Database tests
+
+Normal tests validate the migration manifest and execute the full schema against
+an in-memory PostgreSQL emulator. GitHub Actions also starts PostgreSQL 16 and
+runs migration, checksum, seed, ownership, check-constraint, idempotency and
+rollback integration coverage against the dedicated `pirate_fruit_test`
+database. The test refuses to reset a database whose name does not end in
+`_test`.
