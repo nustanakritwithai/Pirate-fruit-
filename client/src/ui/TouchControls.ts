@@ -1,11 +1,30 @@
 import type { Input } from '../engine/Input';
 import type { ControlMode } from '../engine/Input';
-import { isTouchDevice } from '../engine/device';
+import {
+  controlSurfaceLayout,
+  isTouchDevice,
+  type ControlSurfaceLayout,
+} from '../engine/device';
 
 const CAMERA_TOUCH_SENSITIVITY = 2.2;
 
-/** getter คืนค่า 0..1 = สัดส่วนคูลดาวน์ที่เหลือ (0 = พร้อมใช้) */
-export type CooldownGetter = () => number;
+export interface CooldownView {
+  /** 0..1 = สัดส่วนคูลดาวน์ที่เหลือ (0 = พร้อมใช้) */
+  fraction: number;
+  /** ใส่เมื่อ UI ควรแสดงเวลาที่เหลือเป็นตัวเลข */
+  remainingSeconds?: number;
+}
+
+/** รองรับ getter เดิมที่คืน fraction อย่างเดียว เพื่อไม่กระทบระบบเรือ/dash */
+export type CooldownGetter = () => number | CooldownView;
+
+export function formatCooldownText(remainingSeconds: number | undefined): string {
+  if (remainingSeconds === undefined || !Number.isFinite(remainingSeconds) || remainingSeconds <= 0) {
+    return '';
+  }
+  if (remainingSeconds >= 10) return `${Math.ceil(remainingSeconds)}s`;
+  return `${Math.max(0.1, remainingSeconds).toFixed(1)}s`;
+}
 
 export interface SkillAimCommand {
   slot: number;
@@ -114,17 +133,27 @@ export class TouchControls {
   private ultBtn: HTMLDivElement;
   private skillButtons: HTMLDivElement[] = [];
   private potionButtons: HTMLDivElement[] = [];
+  private readonly layout: ControlSurfaceLayout;
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
   static isTouchDevice(): boolean {
     return isTouchDevice();
   }
 
-  constructor(private input: Input) {
+  get usesTouchLayout(): boolean {
+    return this.layout === 'touch';
+  }
+
+  constructor(
+    private input: Input,
+    layout: ControlSurfaceLayout = controlSurfaceLayout(),
+  ) {
+    this.layout = layout;
     this.injectStyles();
 
     this.root = document.createElement('div');
-    this.root.className = 'tc-root';
+    this.root.className = `tc-root tc-${layout}`;
+    this.root.dataset.controlSurface = layout;
     document.body.appendChild(this.root);
 
     // ---------- โซนจอยสติ๊ก (ครึ่งซ้ายล่างของจอ) ----------
@@ -249,6 +278,7 @@ export class TouchControls {
     this.attackBtn = attack;
     this.dashBtn = dash;
     this.jumpBtn = jump;
+    this.decorateDesktopShortcuts();
   }
 
   setMode(mode: ControlMode): void {
@@ -481,7 +511,15 @@ export class TouchControls {
   /** เรียกทุกเฟรมจาก game loop เพื่ออัปเดตวงแหวนคูลดาวน์ */
   update(): void {
     for (const [btn, getter] of this.cooldownRings) {
-      const remain = getter();
+      const value = getter();
+      const fraction = typeof value === 'number' ? value : value.fraction;
+      const remain = Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : 0;
+      const cooldownText = btn.querySelector<HTMLElement>('.tc-cd-text');
+      if (cooldownText) {
+        cooldownText.textContent = formatCooldownText(
+          typeof value === 'number' ? undefined : value.remainingSeconds,
+        );
+      }
       if (remain <= 0) {
         btn.style.removeProperty('--cd');
         btn.classList.remove('tc-cooling');
@@ -651,7 +689,8 @@ export class TouchControls {
   ): HTMLDivElement {
     const btn = document.createElement('div');
     btn.className = `tc-btn ${className}`;
-    btn.innerHTML = `<span>${label}</span><div class="tc-ring"></div>`;
+    btn.setAttribute('role', 'button');
+    btn.innerHTML = `<span>${label}</span><div class="tc-ring"></div><small class="tc-cd-text"></small>`;
     if (onTap) {
       btn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -660,6 +699,29 @@ export class TouchControls {
     }
     this.root.appendChild(btn);
     return btn;
+  }
+
+  private decorateDesktopShortcuts(): void {
+    if (this.layout !== 'desktop') return;
+    const shortcuts: Array<[HTMLDivElement, string]> = [
+      [this.attackBtn, 'LMB'],
+      [this.dashBtn, 'Q'],
+      [this.jumpBtn, 'SPACE'],
+      [this.skillButtons[0], '1'],
+      [this.skillButtons[1], '2'],
+      [this.skillButtons[2], '3'],
+      [this.ultBtn, '4 / G'],
+      [this.blockBtn, 'F'],
+      [this.weaponBtn, 'R'],
+      [this.cannonLeftBtn, '1'],
+      [this.cannonRightBtn, '2'],
+    ];
+    for (const [button, key] of shortcuts) {
+      const badge = document.createElement('kbd');
+      badge.className = 'tc-key';
+      badge.textContent = key;
+      button.appendChild(badge);
+    }
   }
 
   private setButtonLabel(button: HTMLDivElement, label: string): void {
@@ -730,6 +792,13 @@ export class TouchControls {
                 color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
       .tc-btn:active { background: rgba(90,160,255,.5); }
       .tc-btn span { pointer-events: none; }
+      .tc-key { position:absolute; left:-4px; top:-7px; min-width:15px; height:15px; padding:0 3px;
+                border-radius:5px; border:1px solid rgba(255,255,255,.5); background:rgba(4,13,24,.92);
+                color:#eaf7ff; font:800 8px/15px 'Segoe UI',Tahoma,sans-serif; text-align:center;
+                box-shadow:0 1px 4px rgba(0,0,0,.55); pointer-events:none; }
+      .tc-cd-text { position:absolute; left:50%; bottom:1px; transform:translateX(-50%);
+                    z-index:2; min-width:28px; color:#fff; font:800 9px/1 'Segoe UI',Tahoma,sans-serif;
+                    text-align:center; text-shadow:0 1px 3px #000; pointer-events:none; }
 
       .tc-attack { right: 14px;  bottom: 18px;  width: 70px; height: 70px; font-size: 28px;
                    border-color: rgba(255,120,90,.8); background: rgba(120,35,20,.55); }
@@ -787,6 +856,29 @@ export class TouchControls {
                     background: rgba(80,68,18,.7); }
       .tc-autorun.tc-visible { display: flex; }
       .tc-autorun.tc-on { opacity: 1; background: rgba(255,215,90,.72); border-color: #ffe27a; }
+
+      /* Desktop ใช้คีย์บอร์ด/เมาส์จริง จึงแสดงเฉพาะ Combat HUD และไม่วางโซนโปร่งใสดักเมาส์ */
+      .tc-root.tc-desktop::before { content:''; position:absolute; right:8px; bottom:8px;
+                    width:292px; height:140px; border-radius:20px;
+                    border:1px solid rgba(130,205,255,.22);
+                    background:linear-gradient(145deg,rgba(5,18,33,.4),rgba(5,18,33,.16));
+                    box-shadow:0 8px 24px rgba(0,0,0,.18); pointer-events:none; }
+      .tc-desktop .tc-joyzone, .tc-desktop .tc-camzone, .tc-desktop .tc-joybase,
+      .tc-desktop .tc-autorun, .tc-desktop .tc-zoom, .tc-desktop .tc-potion { display:none !important; }
+      .tc-desktop .tc-attack { right:16px; bottom:16px; width:58px; height:58px; font-size:24px; }
+      .tc-desktop .tc-dash { right:84px; bottom:20px; width:44px; height:44px; }
+      .tc-desktop .tc-jump { right:136px; bottom:20px; width:44px; height:44px; }
+      .tc-desktop .tc-block { right:188px; bottom:20px; width:44px; height:44px; }
+      .tc-desktop .tc-weapon { right:240px; top:auto; bottom:20px; transform:none;
+                    width:44px; height:44px; }
+      .tc-desktop .tc-skill1 { right:16px; bottom:86px; width:46px; height:46px; }
+      .tc-desktop .tc-skill2 { right:70px; bottom:86px; width:46px; height:46px; }
+      .tc-desktop .tc-skill3 { right:124px; bottom:86px; width:46px; height:46px; }
+      .tc-desktop .tc-ult { right:180px; bottom:84px; width:50px; height:50px; }
+      .tc-desktop .tc-skill-cancel { right:240px; bottom:94px; }
+      .tc-desktop .tc-cannon-right { right:16px; bottom:18px; }
+      .tc-desktop .tc-cannon-left { right:90px; bottom:18px; }
+      .tc-desktop .tc-dash.tc-boat-boost { right:164px; }
 
       /* วงแหวนคูลดาวน์: --cd = องศาที่ยังมืดอยู่ */
       .tc-ring { position: absolute; inset: -2px; border-radius: 50%; pointer-events: none; }
