@@ -19,8 +19,10 @@ import {
 } from './TraderMemoryStore';
 import { createDefaultPlayerEconomy } from './PlayerEconomyHistory';
 import { trimEconomyWorldState } from './LivingEconomyBounds';
+import { gameStorage, type GameStorage } from '../../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../../persistence/storageKeys';
 
-const STORAGE_KEY = 'pirate-fruit:economy-v1';
+const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.economy;
 const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
 const ECONOMY_BALANCE_VERSION = 3;
 
@@ -189,9 +191,9 @@ function migrateWorld(world: EconomyWorldState, fromVersion: number): EconomyWor
   return world;
 }
 
-export function loadEconomyState(): EconomyWorldState | null {
+export function loadEconomyState(storage: GameStorage = gameStorage()): EconomyWorldState | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedEconomy;
     if (!saved.world?.cells?.length) return null;
@@ -212,13 +214,16 @@ export function loadEconomyState(): EconomyWorldState | null {
   }
 }
 
-export function saveEconomyState(world: EconomyWorldState): void {
+export function saveEconomyState(
+  world: EconomyWorldState,
+  storage: GameStorage = gameStorage(),
+): void {
   try {
     ensurePlayerEconomyState(world);
     ensureGenomeState(world);
     trimEconomyWorldState(world);
     const payload: SavedEconomy = { version: SAVE_VERSION, world };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    storage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     /* quota */
   }

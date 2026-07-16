@@ -2,8 +2,10 @@ import type { CharacterController } from '../player/CharacterController';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { getIsland, inferIslandId } from '../island/IslandRegistry';
 import type { IslandId } from '../island/IslandTypes';
+import { gameStorage, type GameStorage } from '../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 
-const SAVE_KEY = 'pirate-fruit:save-v1';
+const SAVE_KEY = GAMEPLAY_STORAGE_KEYS.checkpoint;
 const AUTOSAVE_INTERVAL = 3; // วินาที
 
 export interface SaveData {
@@ -22,7 +24,7 @@ export interface SaveData {
 }
 
 /**
- * เซฟตำแหน่งผู้เล่นลง localStorage อัตโนมัติ และโหลดคืนตอนเปิดเกม
+ * เซฟตำแหน่งผู้เล่นผ่าน persistence repository อัตโนมัติ และโหลดคืนตอนเปิดเกม
  * เซฟเฉพาะตอนยืนบนพื้น เพื่อไม่ให้จุดเกิดใหม่ค้างอยู่กลางอากาศ/กลางทะเล
  */
 export class SaveSystem {
@@ -36,13 +38,14 @@ export class SaveSystem {
       spawnId: 'starter-village',
       islandId: 'starter-island',
     }),
+    private readonly storage: GameStorage = gameStorage(),
   ) {
     window.addEventListener('beforeunload', () => this.save());
   }
 
-  static load(): SaveData | null {
+  static load(storage: GameStorage = gameStorage()): SaveData | null {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      const raw = storage.getItem(SAVE_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw) as SaveData;
       if (typeof data.x !== 'number' || typeof data.z !== 'number') return null;
@@ -76,7 +79,7 @@ export class SaveSystem {
       mp: this.controller.mp,
     };
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      this.storage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch {
       // storage เต็ม/ถูกปิด — ข้ามไป ไม่ให้เกมพัง
     }
@@ -84,7 +87,7 @@ export class SaveSystem {
 
   /** จุดเกิดล่าสุดสำหรับ respawn ตอนตกน้ำ */
   lastSpawn(): SaveData | null {
-    return SaveSystem.load();
+    return SaveSystem.load(this.storage);
   }
 
   update(dt: number): void {

@@ -16,6 +16,7 @@ import { BoatProgress } from './BoatProgress';
 import { carryRider, deckBoundsFor, deckHeightAt, withinDeck, worldToDeckLocal } from './DeckSpace';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
+import { gameStorage, type GameStorage } from '../persistence/GameStorage';
 
 const BOOST_DURATION = 1.2;
 const BOOST_COOLDOWN = 4;
@@ -55,8 +56,9 @@ export class BoatManager {
     private effects: Effects,
     private onBoatDestroyed: () => void,
     economy?: EconomyWallet,
+    storage: GameStorage = gameStorage(),
   ) {
-    this.progress = new BoatProgress(economy);
+    this.progress = new BoatProgress(economy, storage);
     this.shop = new BoatShopUI(
       this.progress,
       () => this.active,

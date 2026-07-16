@@ -1,6 +1,8 @@
 import { LOADOUT_ITEMS, type LoadoutCategory, type LoadoutItemDefinition } from './CombatData';
+import { gameStorage, type GameStorage } from '../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 
-const STORAGE_KEY = 'pirate-fruit:loadout-v1';
+const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.loadout;
 
 /** ลำดับช่องตามสเปก: 1 Style, 2 Sword, 3 Gun, 4 Fruit, 5 Utility */
 export const SLOT_ORDER: LoadoutCategory[] = ['style', 'sword', 'gun', 'fruit', 'utility'];
@@ -24,7 +26,7 @@ export class Loadout {
   };
   private active: LoadoutCategory = 'style';
 
-  constructor() {
+  constructor(private readonly storage: GameStorage = gameStorage()) {
     this.load();
   }
 
@@ -65,7 +67,7 @@ export class Loadout {
 
   private load(): void {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = this.storage.getItem(STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw) as Partial<LoadoutData>;
       if (data.slots) {
@@ -86,7 +88,7 @@ export class Loadout {
 
   private save(): void {
     try {
-      localStorage.setItem(
+      this.storage.setItem(
         STORAGE_KEY,
         JSON.stringify({ slots: this.slots, activeCategory: this.active } satisfies LoadoutData),
       );

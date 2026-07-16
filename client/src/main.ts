@@ -48,6 +48,7 @@ import { subscribePlayerEconomyEvents, classifyPlayerEventPriority } from './tra
 import type { ClassifiedEconomyEvent } from './trade/living/EconomyEventClassifier';
 import { CargoHUD } from './ui/CargoHUD';
 import { preloadPirateGameAssets } from './art/PirateAssetLibrary';
+import { initializeGamePersistence } from './persistence/GamePersistence';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -64,6 +65,8 @@ async function main(): Promise<void> {
   loading.textContent = 'กำลังโหลดเกม...';
   document.body.appendChild(loading);
 
+  // Hydrate save repositories once before gameplay objects read their synchronous storage view.
+  const persistence = await initializeGamePersistence();
   const graphics = loadGraphicsProfile();
   const game = new Game(container, graphics);
   const input = new Input(game.renderer.domElement);
@@ -86,15 +89,22 @@ async function main(): Promise<void> {
     () => camera.yaw,
   );
   world.setFocusProvider(() => controller.position);
-  const progression = new ProgressionManager({ resources: controller });
+  const progression = new ProgressionManager({
+    resources: controller,
+    storage: persistence.storage,
+  });
   // อินเวนทอรีอาวุธ/ผลไม้ + สถานะ SkillLoadout (Phase 7) — ProgressionManager เป็นกระเป๋าเงินร่วม
   // mastery ต่อชิ้นจริงขับการปลดล็อกสกิล (Blox Fruits): grind ไอเทมนั้น ๆ เพื่อปลด X/C/ไม้ตาย
-  const itemInventory = new ItemInventory(progression, (id) => progression.getMasteryLevel(id));
+  const itemInventory = new ItemInventory(
+    progression,
+    (id) => progression.getMasteryLevel(id),
+    persistence.storage,
+  );
 
   const spawnManager = new SpawnManager(controller, world.collision);
 
   // โหลดตำแหน่งเดิมเฉพาะจุดที่ยังปลอดภัย ไม่งั้นกลับจุดเกิดกลางหมู่บ้าน
-  const saved = SaveSystem.load();
+  const saved = SaveSystem.load(persistence.storage);
   if (saved) spawnManager.restoreCheckpoint(saved);
   if (saved && spawnManager.isSafeSavedPosition(saved)) {
     controller.teleport(
@@ -125,6 +135,7 @@ async function main(): Promise<void> {
     camera,
     () => world.timeOfDay,
     () => spawnManager.checkpoint,
+    persistence.storage,
   );
   const islandManager = new IslandManager(controller, spawnManager, world.islandDetailRoots);
   const effects = new Effects(game.scene);
@@ -144,8 +155,14 @@ async function main(): Promise<void> {
     effects,
     () => spawnManager.respawn(),
     progression,
+    persistence.storage,
   );
-  const tradeManager = new TradeManager(progression, boatManager.selectedBoatId ?? 'training-dinghy');
+  const tradeManager = new TradeManager(
+    progression,
+    boatManager.selectedBoatId ?? 'training-dinghy',
+    undefined,
+    persistence.storage,
+  );
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);

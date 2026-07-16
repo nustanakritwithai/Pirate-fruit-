@@ -6,9 +6,11 @@ import type {
   ProgressionState,
   StorageLike,
 } from './ProgressionTypes';
+import { gameStorage } from '../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 
-export const PROGRESSION_STORAGE_KEY = 'pirate-fruit:progression-v1';
-export const LEGACY_BOAT_STORAGE_KEY = 'pirate-fruit:boats-v1';
+export const PROGRESSION_STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.progression;
+export const LEGACY_BOAT_STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.boats;
 const SAVE_VERSION = 1;
 
 interface ProgressionSaveEnvelope {
@@ -146,9 +148,5 @@ export function saveProgression(storage: StorageLike | null, state: ProgressionS
 }
 
 export function browserStorage(): StorageLike | null {
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
-  } catch {
-    return null;
-  }
+  return gameStorage();
 }
