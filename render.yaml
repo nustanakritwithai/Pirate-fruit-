@@ -36,7 +36,7 @@ services:
     plan: free
     region: singapore
     buildCommand: npm ci && npm run build:shared && npm run build:server
-    startCommand: npm run start:server
+    startCommand: npm run db:migrate && npm run start:server
     healthCheckPath: /health
     maxShutdownDelaySeconds: 30
     buildFilter:
@@ -56,7 +56,7 @@ services:
       - key: CLIENT_ORIGIN
         sync: false
       - key: SERVER_VERSION
-        value: 0.2.0
+        value: 0.3.0
       - key: SESSION_SECRET
         generateValue: true
       - key: ENABLE_ECONOMY_SERVER

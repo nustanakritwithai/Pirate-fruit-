@@ -1,10 +1,26 @@
 import { performance } from 'node:perf_hooks';
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 
 export interface DatabaseProbe {
   readonly enabled: boolean;
   ping(): Promise<number>;
   close(): Promise<void>;
+}
+
+export function createPostgresPool(
+  databaseUrl: string,
+  overrides: Partial<PoolConfig> = {},
+): Pool {
+  return new Pool({
+    connectionString: databaseUrl,
+    application_name: 'pirate-fruit-server',
+    max: 10,
+    connectionTimeoutMillis: 3_000,
+    idleTimeoutMillis: 30_000,
+    query_timeout: 5_000,
+    statement_timeout: 5_000,
+    ...overrides,
+  });
 }
 
 class DisabledDatabaseProbe implements DatabaseProbe {
@@ -38,15 +54,5 @@ class PostgresDatabaseProbe implements DatabaseProbe {
 export function createDatabaseProbe(databaseUrl?: string): DatabaseProbe {
   if (!databaseUrl) return new DisabledDatabaseProbe();
 
-  return new PostgresDatabaseProbe(
-    new Pool({
-      connectionString: databaseUrl,
-      application_name: 'pirate-fruit-server',
-      max: 5,
-      connectionTimeoutMillis: 3_000,
-      idleTimeoutMillis: 30_000,
-      query_timeout: 3_000,
-      statement_timeout: 3_000,
-    }),
-  );
+  return new PostgresDatabaseProbe(createPostgresPool(databaseUrl, { max: 5 }));
 }

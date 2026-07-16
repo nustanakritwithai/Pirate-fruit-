@@ -17,7 +17,7 @@ const environmentSchema = z
     PORT: z.coerce.number().int().min(1).max(65_535).default(10_000),
     DATABASE_URL: z.string().min(1).optional(),
     CLIENT_ORIGIN: z.string().min(1).default('http://localhost:5173'),
-    SERVER_VERSION: z.string().min(1).default('0.2.0'),
+    SERVER_VERSION: z.string().min(1).default('0.3.0'),
     SESSION_SECRET: z.string().min(32).optional(),
     ADMIN_DEBUG_SECRET: z.string().min(32).optional(),
     LOG_LEVEL: z

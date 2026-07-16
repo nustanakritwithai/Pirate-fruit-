@@ -1,0 +1,16 @@
+DROP TABLE IF EXISTS "trade_transactions";
+DROP TABLE IF EXISTS "economy_snapshots";
+DROP TABLE IF EXISTS "player_cargo";
+DROP TABLE IF EXISTS "player_checkpoints";
+DROP TABLE IF EXISTS "player_equipment";
+DROP TABLE IF EXISTS "player_inventory";
+DROP TABLE IF EXISTS "player_progression";
+DROP TABLE IF EXISTS "player_quests";
+DROP TABLE IF EXISTS "player_stats";
+DROP TABLE IF EXISTS "player_boats";
+DROP TABLE IF EXISTS "characters";
+DROP TABLE IF EXISTS "sessions";
+DROP TABLE IF EXISTS "users";
+DROP TABLE IF EXISTS "economy_worlds";
+DROP TABLE IF EXISTS "schema_migrations";
+DROP SCHEMA IF EXISTS "drizzle" CASCADE;
