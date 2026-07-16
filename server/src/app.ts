@@ -52,6 +52,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
 
   await app.register(cors, {
     credentials: true,
+    // ค่า default ของ @fastify/cors คือ GET,HEAD,POST — ไม่ครอบ PUT ทำให้เบราว์เซอร์
+    // fail ตอน preflight ของ PUT /api/player/checkpoint และ /api/player/cargo
+    // ("Failed to fetch" → client ตกโหมด Local ทั้งที่ server ปกติ)
+    methods: ['GET', 'HEAD', 'POST', 'PUT'],
     origin(origin, callback) {
       if (!origin || origins.has(origin)) {
         callback(null, true);

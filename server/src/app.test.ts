@@ -95,6 +95,26 @@ describe('server foundation', () => {
     expect(rejected.headers['access-control-allow-origin']).toBeUndefined();
   });
 
+  it('allows browser preflight for PUT save endpoints with the CSRF header', async () => {
+    // regression: ค่า default ของ @fastify/cors ไม่มี PUT ทำให้ checkpoint/cargo
+    // fail ตั้งแต่ preflight ("Failed to fetch") และ client ตกโหมด Local ทั้งที่ server ปกติ
+    const { server } = await testServer();
+    const preflight = await server.inject({
+      method: 'OPTIONS',
+      url: '/api/player/cargo',
+      headers: {
+        origin: 'https://game.example',
+        'access-control-request-method': 'PUT',
+        'access-control-request-headers': 'content-type,x-csrf-token',
+      },
+    });
+
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-methods']).toContain('PUT');
+    expect(String(preflight.headers['access-control-allow-headers']).toLowerCase())
+      .toContain('x-csrf-token');
+  });
+
   it('protects internal status in production', async () => {
     const { server } = await testServer(databaseProbe(), {
       NODE_ENV: 'production',
