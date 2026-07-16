@@ -2,6 +2,9 @@ export const PERSISTED_PLAYER_SCHEMA_VERSION = 1;
 export const PERSISTED_CARGO_SCHEMA_VERSION = 1;
 export const PERSISTED_ECONOMY_SCHEMA_VERSION = 1;
 export const REMOTE_PLAYER_SAVE_SCHEMA_VERSION = 1;
+export const REMOTE_ECONOMY_SCHEMA_VERSION = 1;
+export const REMOTE_ECONOMY_WORLD_ID = 'main';
+export const REMOTE_ECONOMY_TICK_INTERVAL_MS = 5_000;
 
 /**
  * Transitional S3 envelope. Values remain the exact legacy JSON documents so
@@ -84,4 +87,19 @@ export interface RemoteSaveMutationResponse {
   revision: number;
   idempotentReplay: boolean;
   migrated: boolean;
+}
+
+/**
+ * S7 read-only shared-world contract. Browser clients never upload economy state;
+ * PostgreSQL and the elected Server runtime are the only canonical writers.
+ */
+export interface RemoteEconomySnapshotResponse {
+  ok: true;
+  schemaVersion: typeof REMOTE_ECONOMY_SCHEMA_VERSION;
+  worldId: typeof REMOTE_ECONOMY_WORLD_ID;
+  tick: number;
+  lastTickAt: string | null;
+  serverTime: string;
+  tickIntervalMs: typeof REMOTE_ECONOMY_TICK_INTERVAL_MS;
+  state: PersistedEconomyState;
 }

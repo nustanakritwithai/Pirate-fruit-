@@ -1,13 +1,14 @@
 {
   "name": "pirate-fruit-server",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.7.0",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:economy": "node scripts/build-economy-engine.mjs",
+    "build": "npm run build:economy && tsc -p tsconfig.json",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "node --enable-source-maps dist/persistence/runMigrations.js",
     "db:migrate:dev": "tsx src/persistence/runMigrations.ts",
@@ -15,11 +16,11 @@
     "db:rollback:dev": "tsx src/persistence/runRollback.ts",
     "db:seed": "node --enable-source-maps dist/persistence/runSeed.js",
     "db:seed:dev": "tsx src/persistence/runSeed.ts",
-    "dev": "tsx watch src/index.ts",
+    "dev": "npm run build:economy && tsx watch src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
     "smoke": "node scripts/smoke-runtime.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --no-file-parallelism"
+    "test": "npm run build:economy && vitest run --no-file-parallelism"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
@@ -35,6 +36,7 @@
     "@types/node": "^22.10.0",
     "@types/pg": "^8.15.0",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.1",
     "pg-mem": "^3.0.5",
     "tsx": "^4.20.0",
     "vitest": "^4.1.10"

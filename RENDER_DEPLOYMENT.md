@@ -14,7 +14,8 @@
    remains `client/dist`.
 3. Set `CLIENT_ORIGIN` to the exact public Static Site origin, without a trailing slash.
 4. Set `VITE_API_URL` and `VITE_WS_URL` to the public server origins, but keep
-   `VITE_USE_REMOTE_SERVER=false` until S6 integration verification and
+   `VITE_USE_REMOTE_SERVER=false` until S6 integration verification,
+   `VITE_ENABLE_ECONOMY_SERVER=false` until S7 integration verification, and
    `VITE_ENABLE_REMOTE_SESSION=false` until S5 verification finishes.
 5. Let Render generate `SESSION_SECRET`; never copy it into the client or repository.
 6. Keep remote feature flags false until their owning phase is merged.
@@ -84,9 +85,33 @@ Expected behavior:
 - `/ready` returns HTTP 200 with `database: ready` after PostgreSQL connects.
 - `/ready` returns HTTP 503 without exposing database credentials on failure.
 
+## Enable S7 Living Economy Server
+
+This repository still cannot confirm that the Render Web Service and PostgreSQL resources
+have been created or are online. Treat that as a deployment blocker, not as code failure.
+
+1. Keep both `ENABLE_ECONOMY_SERVER=false` (Web Service) and
+   `VITE_ENABLE_ECONOMY_SERVER=false` (Static Site). Deploy server version 0.7.0 and verify
+   `/health`, `/ready`, `/version`, PostgreSQL backup and green CI.
+2. Set only Web Service `ENABLE_ECONOMY_SERVER=true` and redeploy. This flag requires
+   `DATABASE_URL`; no database URL or secret belongs in Vite variables or chat.
+3. Request `GET /api/economy/world` twice at least five seconds apart. Verify tick advances,
+   world ID remains `main`, and `PUT /api/economy/world` is not available.
+4. Open two isolated browser profiles against the Server URL and verify identical tick,
+   price and stock snapshots. Restart the Web Service and verify catch-up is bounded and
+   the next snapshot remains monotonic.
+5. Set Static Site `VITE_ENABLE_ECONOMY_SERVER=true` for a canary and redeploy. Confirm the
+   browser economy tick stops while online, network polling is batched to five seconds, and
+   an offline test shows the Local-mode toast without deleting the Local mirror.
+6. Keep `VITE_USE_REMOTE_SERVER` and session/save flags at their independently verified
+   values. Remote Economy does not require enabling Remote Save and does not authorize trade.
+
+Rollback the Static Site flag first, then the Web Service flag. Do not delete economy rows
+or run a down migration; S7 adds no destructive schema change.
+
 ## Rollback
 
-Disable all remote feature flags first. Roll the server service back to its last
+Disable all remote feature flags first, including both economy flags. Roll the server service back to its last
 healthy deploy in Render. Set `VITE_USE_REMOTE_SERVER=false` and redeploy the Static
 Site to force local repositories. S3 preserves all existing save keys and document
 formats, so this does not require data conversion.

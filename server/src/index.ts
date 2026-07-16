@@ -9,6 +9,8 @@ import { PostgresSessionRepository } from './auth/sessionRepository.js';
 import { SessionService } from './auth/sessionService.js';
 import { PostgresPlayerSaveRepository } from './player/playerSaveRepository.js';
 import { PlayerSaveService } from './player/playerSaveService.js';
+import { PostgresEconomyWorldRepository } from './economy/economyWorldRepository.js';
+import { EconomyRuntime, type EconomyRuntimeLogger } from './economy/economyRuntime.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
@@ -26,7 +28,20 @@ async function start(): Promise<void> {
   const playerSaves = pool
     ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool))
     : undefined;
-  const app = await buildServer({ environment, database, sessions, playerSaves });
+  let runtimeLogger: EconomyRuntimeLogger | null = null;
+  const deferredEconomyLogger: EconomyRuntimeLogger = {
+    info: (fields, message) => runtimeLogger?.info(fields, message),
+    warn: (fields, message) => runtimeLogger?.warn(fields, message),
+    error: (fields, message) => runtimeLogger?.error(fields, message),
+  };
+  const economy = pool && environment.ENABLE_ECONOMY_SERVER
+    ? new EconomyRuntime({
+        repository: new PostgresEconomyWorldRepository(pool),
+        logger: deferredEconomyLogger,
+      })
+    : undefined;
+  const app = await buildServer({ environment, database, sessions, playerSaves, economy });
+  runtimeLogger = app.log;
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -47,6 +62,7 @@ async function start(): Promise<void> {
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
   try {
+    await economy?.start();
     await app.listen({ host: environment.HOST, port: environment.PORT });
   } catch (error) {
     app.log.fatal({ err: error }, 'server startup failed');

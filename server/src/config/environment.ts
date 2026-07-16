@@ -17,7 +17,7 @@ const environmentSchema = z
     PORT: z.coerce.number().int().min(1).max(65_535).default(10_000),
     DATABASE_URL: z.string().min(1).optional(),
     CLIENT_ORIGIN: z.string().min(1).default('http://localhost:5173'),
-    SERVER_VERSION: z.string().min(1).default('0.5.0'),
+    SERVER_VERSION: z.string().min(1).default('0.7.0'),
     SESSION_SECRET: z.string().min(32).optional(),
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
     ADMIN_DEBUG_SECRET: z.string().min(32).optional(),
@@ -74,6 +74,14 @@ const environmentSchema = z
         code: 'custom',
         path: ['DATABASE_URL'],
         message: 'DATABASE_URL is required when ENABLE_REMOTE_SAVE is enabled',
+      });
+    }
+
+    if (environment.ENABLE_ECONOMY_SERVER && !environment.DATABASE_URL) {
+      context.addIssue({
+        code: 'custom',
+        path: ['DATABASE_URL'],
+        message: 'DATABASE_URL is required when ENABLE_ECONOMY_SERVER is enabled',
       });
     }
 

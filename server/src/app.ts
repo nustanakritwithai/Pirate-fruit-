@@ -15,12 +15,15 @@ import { registerSessionRoutes } from './auth/sessionRoutes.js';
 import type { SessionService } from './auth/sessionService.js';
 import { registerPlayerSaveRoutes } from './player/playerSaveRoutes.js';
 import type { PlayerSaveService } from './player/playerSaveService.js';
+import { registerEconomyRoutes } from './economy/economyRoutes.js';
+import type { EconomyRuntime } from './economy/economyRuntime.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
   database: DatabaseProbe;
   sessions?: SessionService;
   playerSaves?: PlayerSaveService;
+  economy?: EconomyRuntime;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -72,6 +75,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   });
 
   app.addHook('onClose', async () => {
+    await options.economy?.stop();
     await database.close();
   });
 
@@ -128,6 +132,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     sessions: options.sessions,
     playerSaves: options.playerSaves,
+  });
+  await registerEconomyRoutes(app, {
+    environment,
+    economy: options.economy,
   });
   return app;
 }

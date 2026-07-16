@@ -1,7 +1,8 @@
 # Pirate Fruit Database Schema
 
-Phase S6 advances PostgreSQL to schema version 2 for revisioned remote player saves.
-Production Remote Save remains disabled until Render integration verification.
+Phase S7 activates the existing economy world/snapshot tables without changing the
+additive S6 schema version 2. Production Remote Save and Remote Economy remain disabled
+until Render integration verification.
 
 ## Tooling and source of truth
 
@@ -49,6 +50,25 @@ JSONB is reserved for evolving nested documents such as mastery, upgrades,
 quest objectives and economy snapshots. Identity, ownership, balances,
 quantities, prices and lookup fields remain normalized and constrained.
 
+## S7 economy durability
+
+- `economy_worlds.id = 'main'` is the canonical current document and monotonic tick.
+- One Server process holds a dedicated PostgreSQL advisory lock before it may tick.
+  Other instances are read-only followers and serve the same database row.
+- Every 5 seconds the leader runs the existing Living Economy kernel, locks the world
+  row with `SELECT ... FOR UPDATE`, rejects a database tick newer than memory, and updates
+  state plus `last_tick_at` in one transaction.
+- Every 12 ticks (one minute) the same transaction inserts an idempotent
+  `economy_snapshots` row. Retention is capped at the newest 120 snapshots.
+- Startup derives missed ticks from Server-owned `last_tick_at`, never a Client timestamp,
+  and simulates at most 12 missed ticks. This bounds restart CPU and offline inflation.
+- A failed state/snapshot write rolls back, releases leadership, discards the advanced
+  in-memory engine and reloads PostgreSQL before another write attempt.
+
+The S4 placeholder seed is detected as a non-gameplay document and replaced by a valid
+fresh world only after a process acquires leadership. The seed remains idempotent and
+never overwrites an already running economy.
+
 ## Commands
 
 From the repository root:
@@ -89,7 +109,8 @@ data, take and verify a PostgreSQL backup before executing rollback.
 
 Normal tests validate the migration manifest and execute the full schema against
 an in-memory PostgreSQL emulator. GitHub Actions also starts PostgreSQL 16 and
-runs migration, checksum, seed, ownership, check-constraint, idempotency and
-rollback integration coverage against the dedicated `pirate_fruit_test`
+runs migration, checksum, seed, ownership, check-constraint, idempotency, economy
+leadership, world/snapshot transaction, stale-tick and rollback integration coverage
+against the dedicated `pirate_fruit_test`
 database. The test refuses to reset a database whose name does not end in
 `_test`.

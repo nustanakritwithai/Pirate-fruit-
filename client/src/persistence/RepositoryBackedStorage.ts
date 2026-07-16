@@ -118,6 +118,11 @@ export class RepositoryBackedStorage implements GameStorage {
     await this.writeQueue;
   }
 
+  /** Apply a read-only S7 Server snapshot without enqueueing a browser write. */
+  replaceEconomySnapshot(economy: PersistedEconomyState): void {
+    this.hydrateValue(GAMEPLAY_STORAGE_KEYS.economy, economy.world);
+  }
+
   private hydrate(
     player: PersistedPlayerState | null,
     cargo: PersistedCargoState,

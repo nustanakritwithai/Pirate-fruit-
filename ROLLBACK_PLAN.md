@@ -1,4 +1,20 @@
-# S6 Rollback Plan
+# S7 Rollback Plan
+
+1. Set Static Site `VITE_ENABLE_ECONOMY_SERVER=false` and redeploy. Browsers immediately
+   resume the unchanged Local simulation and legacy economy document.
+2. Set Web Service `ENABLE_ECONOMY_SERVER=false` and redeploy. This stops leadership/ticks
+   and removes the read endpoint without deleting `economy_worlds` or snapshots.
+3. Preserve the canonical world row and newest snapshots for diagnosis. Compare monotonic
+   ticks and request IDs; never export database credentials, cookies or session values.
+4. Roll the Web Service back only after the Client flag is off. S7 adds no schema migration,
+   so rollback must not drop or rewrite tables. Prefer restoring a verified snapshot in a
+   controlled maintenance window if the world document itself is corrupt.
+
+The Server caps restart catch-up at 12 ticks and discards uncommitted in-memory advances on
+write failure. A Client network failure keeps its Local mirror and visibly switches to Local
+mode; operators must not instruct players to clear browser storage during the incident.
+
+## S6 Remote Save fallback
 
 1. Set Static Site `VITE_USE_REMOTE_SERVER=false` and redeploy. The unchanged legacy
    keys immediately restore Local mode; Remote Session may remain enabled independently.

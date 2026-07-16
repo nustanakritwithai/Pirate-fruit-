@@ -9,6 +9,7 @@ import {
   SaveRevisionConflictError,
 } from '../player/playerSaveRepository.js';
 import { defaultPlayerState } from '../player/playerState.js';
+import { PostgresEconomyWorldRepository } from '../economy/economyWorldRepository.js';
 
 const databaseTestUrl = process.env.DATABASE_TEST_URL;
 const integration = describe.runIf(Boolean(databaseTestUrl));
@@ -187,5 +188,52 @@ integration.sequential('PostgreSQL integration', () => {
     );
     expect(Number(rolledBack.rows[0]?.save_revision)).toBe(0);
     expect(Number(rolledBack.rows[0]?.coins)).toBe(0);
+  });
+
+  it('elects one economy writer and commits world plus snapshot in one transaction', async () => {
+    const database = pool!;
+    const repository = new PostgresEconomyWorldRepository(database);
+    const lease = await repository.tryAcquireLeadership();
+    expect(lease).not.toBeNull();
+    try {
+      const tickedAt = new Date('2026-01-01T00:00:00.000Z');
+      const document = {
+        version: 8,
+        world: { tick: 12, cells: [{ id: 'leaf-island', commodities: {} }] },
+      };
+      await lease!.save({
+        worldId: 'main',
+        schemaVersion: 1,
+        tick: 12,
+        document,
+        tickedAt,
+        createSnapshot: true,
+        snapshotRetention: 120,
+      });
+
+      expect(await lease!.load('main')).toMatchObject({
+        worldId: 'main',
+        schemaVersion: 1,
+        tick: 12,
+        document,
+      });
+      await expect(lease!.save({
+        worldId: 'main',
+        schemaVersion: 1,
+        tick: 11,
+        document: { version: 8, world: { tick: 11, cells: [] } },
+        tickedAt: new Date('2025-12-31T23:59:55.000Z'),
+        createSnapshot: false,
+        snapshotRetention: 120,
+      })).rejects.toThrow('Refusing stale economy write');
+      expect((await lease!.load('main'))?.tick).toBe(12);
+    } finally {
+      await lease?.release();
+    }
+    const snapshots = await database.query<{ count: number }>(
+      'select count(*)::int as count from economy_snapshots where world_id = $1 and tick = 12',
+      ['main'],
+    );
+    expect(snapshots.rows[0]?.count).toBe(1);
   });
 });
