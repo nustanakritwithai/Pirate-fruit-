@@ -36,6 +36,20 @@ use `/health` so a temporary database incident does not create a restart loop.
 
 ## Phase boundary
 
-S2 provides transport and operations only. It intentionally does not add login,
-remote saves, economy ticks, trade authority, quests, monsters, combat, movement,
-or naval multiplayer. Those remain gated by the S3–S14 sequence.
+S2 provides transport and operations only. S3 adds client-side persistence
+interfaces and adapters, but intentionally does not make the current placeholder
+remote endpoints authoritative.
+
+## S3 persistence boundary
+
+1. Client bootstrap selects local or remote repository adapters from configuration.
+2. Player, cargo, and economy documents load asynchronously before gameplay starts.
+3. A repository-backed synchronous mirror serves existing controllers and managers.
+4. Writes update the mirror/local cache immediately and serialize through the
+   selected repository to prevent stale remote saves winning races.
+5. Remote bootstrap failure falls back to local mode while remote flags are staged.
+
+Legacy documents remain raw JSON envelopes so all existing sanitizers and save
+migrations still execute in their original domain modules. Typed server-owned
+database records, authenticated identity, validated import, and authoritative
+mutations remain gated by S4–S8. See `LOCAL_SAVE_MIGRATION.md`.

@@ -2,7 +2,7 @@
  * Phase 7 — อินเวนทอรีไอเทม (ดาบ / ปืน / สไตล์ / ผลไม้) + สถานะ SkillLoadout
  * - เริ่มเกมมีแค่สไตล์มือเปล่า 'combat' (หมัด) ไม่มีผลไม้
  * - สุ่มของเพิ่มที่ร้านดีลเลอร์ แล้ว equip เพื่อใช้ชุดสกิลของชิ้นนั้น
- * - ถือ SkillLoadout state จริง (activeSet/equipped/mastery) + persist localStorage
+ * - ถือ SkillLoadout state จริง (activeSet/equipped/mastery) + persist ผ่าน repository
  */
 
 import { SkillLoadout, DEFAULT_SKILL_LOADOUT, type MasteryProvider } from '../combat/SkillLoadout';
@@ -14,8 +14,10 @@ import { getFightingStyle } from '../fighting-styles/FightingStyleRegistry';
 import { getFruit } from '../fruit/FruitRegistry';
 import { DRAW_COST, drawGacha, STARTER_STYLE_ID, type GachaEntry, type ItemKind } from './GachaData';
 import { getPotion } from './PotionData';
+import { gameStorage, type GameStorage } from '../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 
-const STORAGE_KEY = 'pirate-fruit:items-v1';
+const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.inventory;
 /** จำนวนช่องลัดใช้ยา */
 export const QUICKSLOT_COUNT = 2;
 
@@ -52,6 +54,7 @@ export class ItemInventory {
     private wallet?: EconomyWallet,
     /** provider mastery ต่อชิ้นจริง (ProgressionManager) — ขับการปลดล็อกสกิลแบบ Blox Fruits */
     masteryOf?: MasteryProvider,
+    private readonly storage: GameStorage = gameStorage(),
   ) {
     this.data = this.load();
     this.loadout = new SkillLoadout(this.data.loadout, masteryOf);
@@ -175,7 +178,7 @@ export class ItemInventory {
   save(): void {
     try {
       this.data.coins = this.coins;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      this.storage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     } catch {
       // เล่นต่อได้แม้ storage ปิด แค่ไม่จำ
     }
@@ -207,7 +210,7 @@ export class ItemInventory {
       loadout: { ...DEFAULT_SKILL_LOADOUT },
     };
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '') as Partial<InventoryData>;
+      const parsed = JSON.parse(this.storage.getItem(STORAGE_KEY) ?? '') as Partial<InventoryData>;
       const filter = (kind: ItemKind, list: unknown): string[] =>
         Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string' && VALIDATORS[kind](id)) : [];
       const ownedStyles = filter('fighting-style', parsed.ownedStyles);

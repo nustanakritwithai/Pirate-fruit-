@@ -4,9 +4,23 @@ services:
   - type: web
     name: pirate-fruit
     runtime: static
-    rootDir: client
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    rootDir: .
+    buildCommand: npm ci && npm run build:shared && npm run build:client
+    staticPublishPath: client/dist
+    buildFilter:
+      paths:
+        - package.json
+        - package-lock.json
+        - tsconfig.base.json
+        - client/**
+        - shared/**
+    envVars:
+      - key: VITE_USE_REMOTE_SERVER
+        value: false
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_WS_URL
+        sync: false
     routes:
       - type: rewrite
         source: /*

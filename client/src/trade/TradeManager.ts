@@ -13,8 +13,10 @@ import {
 import { buyPrice, cargoSlotsUsed, cargoTotalWeight, sellPrice } from './TradeFormulas';
 import { LivingTradeSimulator } from './living/LivingTradeSimulator';
 import { isLivingCommodity } from './living/LivingTradeConfig';
+import { gameStorage, type GameStorage } from '../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 
-const STORAGE_KEY = 'pirate-fruit:cargo-v1';
+const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.cargo;
 
 export interface TradeWallet {
   readonly coins: number;
@@ -31,6 +33,7 @@ export class TradeManager {
     private wallet: TradeWallet,
     private boatId: string = 'training-dinghy',
     livingSimulator?: LivingTradeSimulator,
+    private readonly storage: GameStorage = gameStorage(),
   ) {
     this.living = livingSimulator ?? new LivingTradeSimulator();
     this.living.setContractWallet(wallet);
@@ -249,7 +252,7 @@ export class TradeManager {
 
   private loadCargo(): CargoHold {
     try {
-      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<CargoHold>;
+      const raw = JSON.parse(this.storage.getItem(STORAGE_KEY) ?? '{}') as Partial<CargoHold>;
       return {
         maxSlots: raw.maxSlots ?? TRADE_SYSTEM_CONFIG.defaultCargoSlots,
         maxWeight: raw.maxWeight ?? 120,
@@ -261,7 +264,7 @@ export class TradeManager {
   }
 
   private saveCargo(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.cargo));
+    this.storage.setItem(STORAGE_KEY, JSON.stringify(this.cargo));
   }
 
   private isValidSlot(s: unknown): s is CargoSlot {

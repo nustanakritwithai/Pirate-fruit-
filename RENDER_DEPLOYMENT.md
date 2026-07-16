@@ -9,10 +9,15 @@
 ## Blueprint setup
 
 1. Sync the repository Blueprint from `render.yaml`.
-2. Set `CLIENT_ORIGIN` to the exact public Static Site origin, without a trailing slash.
-3. Let Render generate `SESSION_SECRET`; never copy it into the client or repository.
-4. Keep remote feature flags false until their owning phase is merged.
-5. Confirm all resources use Singapore before the first creation; Render regions
+2. The Static Site builds from the repository root because `client` consumes the
+   `shared` workspace; the root `package-lock.json` is canonical and publish output
+   remains `client/dist`.
+3. Set `CLIENT_ORIGIN` to the exact public Static Site origin, without a trailing slash.
+4. Set `VITE_API_URL` and `VITE_WS_URL` to the public server origins, but keep
+   `VITE_USE_REMOTE_SERVER=false` through S3.
+5. Let Render generate `SESSION_SECRET`; never copy it into the client or repository.
+6. Keep remote feature flags false until their owning phase is merged.
+7. Confirm all resources use Singapore before the first creation; Render regions
    cannot be changed in place later.
 
 ## Verification
@@ -34,5 +39,6 @@ Expected behavior:
 ## Rollback
 
 Disable all remote feature flags first. Roll the server service back to its last
-healthy deploy in Render. The Static Site remains playable in local mode because
-S2 does not change client behavior or local saves.
+healthy deploy in Render. Set `VITE_USE_REMOTE_SERVER=false` and redeploy the Static
+Site to force local repositories. S3 preserves all existing save keys and document
+formats, so this does not require data conversion.

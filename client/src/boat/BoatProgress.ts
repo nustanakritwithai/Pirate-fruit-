@@ -1,7 +1,9 @@
 import { getBoatDefinition, type BoatUpgradeKind } from './BoatData';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
+import { gameStorage, type GameStorage } from '../persistence/GameStorage';
+import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 
-const STORAGE_KEY = 'pirate-fruit:boats-v1';
+const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.boats;
 
 export interface BoatProgressData {
   coins: number;
@@ -21,7 +23,10 @@ const DEFAULT_PROGRESS: BoatProgressData = {
 export class BoatProgress {
   private data: BoatProgressData;
 
-  constructor(private wallet?: EconomyWallet) {
+  constructor(
+    private wallet?: EconomyWallet,
+    private readonly storage: GameStorage = gameStorage(),
+  ) {
     this.data = this.load();
   }
 
@@ -116,7 +121,7 @@ export class BoatProgress {
 
   private load(): BoatProgressData {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '') as Partial<BoatProgressData>;
+      const parsed = JSON.parse(this.storage.getItem(STORAGE_KEY) ?? '') as Partial<BoatProgressData>;
       const owned = Array.isArray(parsed.ownedBoatIds)
         ? parsed.ownedBoatIds.filter((id): id is string => typeof id === 'string' && Boolean(getBoatDefinition(id)))
         : [];
@@ -139,7 +144,7 @@ export class BoatProgress {
   private save(): void {
     try {
       this.data.coins = this.coins;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      this.storage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     } catch {
       // เกมยังเล่นต่อได้แม้ storage ถูกปิด
     }

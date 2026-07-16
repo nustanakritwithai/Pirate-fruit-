@@ -15,6 +15,7 @@
     "gen:skills": "vite-node scripts/gen-skill-gameplay.ts"
   },
   "dependencies": {
+    "@pirate-fruit/shared": "file:../shared",
     "three": "^0.178.0"
   },
   "devDependencies": {
