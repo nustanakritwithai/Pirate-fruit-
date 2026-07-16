@@ -14,7 +14,8 @@
    remains `client/dist`.
 3. Set `CLIENT_ORIGIN` to the exact public Static Site origin, without a trailing slash.
 4. Set `VITE_API_URL` and `VITE_WS_URL` to the public server origins, but keep
-   `VITE_USE_REMOTE_SERVER=false` through S3.
+   `VITE_USE_REMOTE_SERVER=false` until S6 and
+   `VITE_ENABLE_REMOTE_SESSION=false` until S5 verification finishes.
 5. Let Render generate `SESSION_SECRET`; never copy it into the client or repository.
 6. Keep remote feature flags false until their owning phase is merged.
 7. Confirm all resources use Singapore before the first creation; Render regions
@@ -22,6 +23,23 @@
 8. The Web Service start command runs `npm run db:migrate` before starting
    Fastify. A checksum or migration failure prevents the service from accepting
    traffic with a partially upgraded schema.
+
+## Enable S5 guest sessions
+
+1. Deploy the Server with `ENABLE_REMOTE_SESSION=false` and verify health,
+   readiness and database migration.
+2. Confirm `CLIENT_ORIGIN` exactly matches the Static Site origin.
+3. Set `ENABLE_REMOTE_SESSION=true` on the Web Service and redeploy.
+4. Verify `POST /api/session/guest` then `GET /api/session/me` retain the same IDs
+   when using one cookie jar.
+5. Set `VITE_ENABLE_REMOTE_SESSION=true` on the Static Site and redeploy.
+6. Keep `VITE_USE_REMOTE_SERVER=false` and `ENABLE_REMOTE_SAVE=false`; S5 creates
+   identity while all gameplay saves remain Local.
+
+For maximum cookie compatibility, use same-site custom domains (for example
+`game.example.com` and `api.example.com`). The default cross-site deployment uses
+a Secure, `SameSite=None`, Partitioned cookie and safely falls back to Local mode
+when a browser privacy policy blocks it.
 
 ## First database seed
 

@@ -1,11 +1,27 @@
 import { buildServer } from './app.js';
 import { loadEnvironment } from './config/environment.js';
-import { createDatabaseProbe } from './persistence/database.js';
+import {
+  createDatabaseProbe,
+  createDatabaseProbeFromPool,
+  createPostgresPool,
+} from './persistence/database.js';
+import { PostgresSessionRepository } from './auth/sessionRepository.js';
+import { SessionService } from './auth/sessionService.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
-  const database = createDatabaseProbe(environment.DATABASE_URL);
-  const app = await buildServer({ environment, database });
+  const pool = environment.DATABASE_URL
+    ? createPostgresPool(environment.DATABASE_URL)
+    : undefined;
+  const database = pool ? createDatabaseProbeFromPool(pool) : createDatabaseProbe();
+  const sessions = pool && environment.SESSION_SECRET
+    ? new SessionService(
+        new PostgresSessionRepository(pool),
+        environment.SESSION_SECRET,
+        environment.SESSION_TTL_DAYS,
+      )
+    : undefined;
+  const app = await buildServer({ environment, database, sessions });
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
