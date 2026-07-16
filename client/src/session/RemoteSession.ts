@@ -24,6 +24,13 @@ export interface RemoteSessionOptions {
   warn?: (message: string, error?: unknown) => void;
 }
 
+export interface RemoteSessionRecoveryOptions extends RemoteSessionOptions {
+  attempts?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  sleep?: (delayMs: number) => Promise<void>;
+}
+
 const DISABLED_SESSION: RemoteSessionHandle = {
   mode: 'disabled',
   session: null,
@@ -110,7 +117,7 @@ export async function initializeRemoteSession(
   }
 
   const apiUrl = normalizeApiUrl(
-    options.apiUrl ?? import.meta.env.VITE_API_URL ?? productionRemoteApiUrl(),
+    options.apiUrl ?? (import.meta.env.VITE_API_URL || productionRemoteApiUrl()),
   );
   const warn = options.warn
     ?? ((message: string, error?: unknown) => console.warn(message, error));
@@ -136,6 +143,38 @@ export async function initializeRemoteSession(
   } catch (error) {
     warn('Remote session is unavailable; continuing in Local mode.', error);
     currentSession = { ...DISABLED_SESSION, mode: 'offline' };
+  }
+  return currentSession;
+}
+
+/**
+ * Render Free services can need around a minute to wake. Gameplay keeps its Local
+ * fallback while this bounded loop retries the same cookie-authenticated bootstrap.
+ */
+export async function recoverRemoteSession(
+  options: RemoteSessionRecoveryOptions = {},
+): Promise<RemoteSessionHandle> {
+  if (currentSession.mode === 'online') return currentSession;
+
+  const attempts = Math.max(1, options.attempts ?? 8);
+  const initialDelayMs = Math.max(0, options.initialDelayMs ?? 2_000);
+  const maxDelayMs = Math.max(initialDelayMs, options.maxDelayMs ?? 15_000);
+  const sleep = options.sleep
+    ?? ((delayMs: number) => new Promise<void>((resolve) => {
+      globalThis.setTimeout(resolve, delayMs);
+    }));
+  const warn = options.warn
+    ?? ((message: string, error?: unknown) => console.warn(message, error));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(Math.min(maxDelayMs, initialDelayMs * (2 ** (attempt - 1))));
+    }
+    const result = await initializeRemoteSession({
+      ...options,
+      warn: attempt === attempts - 1 ? warn : () => undefined,
+    });
+    if (result.mode === 'online' || result.mode === 'disabled') return result;
   }
   return currentSession;
 }

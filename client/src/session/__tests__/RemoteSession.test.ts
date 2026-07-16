@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getRemoteSession,
   initializeRemoteSession,
+  recoverRemoteSession,
   type SessionFetch,
 } from '../RemoteSession';
 
@@ -84,5 +85,28 @@ describe('remote guest session bootstrap', () => {
 
     expect(result).toEqual({ mode: 'offline', session: null, csrfToken: null, created: false });
     expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('recovers automatically after transient Render wake-up failures', async () => {
+    const fetcher = vi
+      .fn<SessionFetch>()
+      .mockRejectedValueOnce(new TypeError('sleeping'))
+      .mockRejectedValueOnce(new TypeError('still waking'))
+      .mockResolvedValueOnce(jsonResponse(sessionPayload));
+    const sleep = vi.fn(async () => undefined);
+
+    const result = await recoverRemoteSession({
+      enabled: true,
+      apiUrl: 'https://server.example',
+      fetcher,
+      attempts: 3,
+      initialDelayMs: 1,
+      maxDelayMs: 2,
+      sleep,
+    });
+
+    expect(result.mode).toBe('online');
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
   });
 });
