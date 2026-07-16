@@ -269,11 +269,11 @@ export class PlayerCombat {
       touch.unlockSkills(['❔', '❔', '❔']);
       touch.unlockUltimate('🔒');
       touch.bindSkillCooldowns([
-        () => this.skillCooldownFraction(0),
-        () => this.skillCooldownFraction(1),
-        () => this.skillCooldownFraction(2),
+        () => this.skillCooldownView(0),
+        () => this.skillCooldownView(1),
+        () => this.skillCooldownView(2),
       ]);
-      touch.bindUltimateCooldown(() => this.skillCooldownFraction(ULTIMATE_SLOT));
+      touch.bindUltimateCooldown(() => this.skillCooldownView(ULTIMATE_SLOT));
     }
 
     this.refreshLoadout();
@@ -324,6 +324,19 @@ export class PlayerCombat {
     const skill = this.set.slots[slot];
     if (!skill) return 0;
     return Math.max(0, this.skillCooldowns.get(skill.id) ?? 0) / skill.cooldown;
+  }
+
+  skillCooldownRemaining(slot: number): number {
+    const skill = this.set.slots[slot];
+    if (!skill) return 0;
+    return Math.max(0, this.skillCooldowns.get(skill.id) ?? 0);
+  }
+
+  private skillCooldownView(slot: number): { fraction: number; remainingSeconds: number } {
+    return {
+      fraction: this.skillCooldownFraction(slot),
+      remainingSeconds: this.skillCooldownRemaining(slot),
+    };
   }
 
   get guardFraction(): number {

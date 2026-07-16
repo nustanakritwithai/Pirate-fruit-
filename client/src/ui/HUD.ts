@@ -1,6 +1,6 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { Game } from '../engine/Game';
-import { TouchControls } from './TouchControls';
+import { controlSurfaceLayout } from '../engine/device';
 
 /**
  * HUD พื้นฐาน (HTML overlay): Guard, พิกัด, FPS และคำแนะนำปุ่ม
@@ -31,6 +31,7 @@ export class HUD {
       .hud-help { left: 16px; top: 310px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
       .hud-help b { color: #ffd76b; }
+      .hud-combat-hint { color:#9fd4ff; }
       .hud-damage { position:fixed; inset:0; z-index:9; pointer-events:none; opacity:0;
         transition:opacity .35s ease-out;
         box-shadow: inset 0 0 120px 30px rgba(200,20,20,.65); }
@@ -59,7 +60,7 @@ export class HUD {
     this.timeText = info.querySelector('.time')!;
 
     // บนมือถือมีปุ่มบนจอครบแล้ว ไม่ต้องแสดงคำแนะนำคีย์บอร์ด
-    if (!TouchControls.isTouchDevice()) {
+    if (controlSurfaceLayout() === 'desktop') {
       const help = document.createElement('div');
       help.className = 'hud hud-help';
       help.innerHTML = `
@@ -71,7 +72,8 @@ export class HUD {
         <b>Z/X</b> ใช้ยา · <b>B</b> กระเป๋า · <b>K</b> เปิด Stats<br>
         <b>1/2</b> (ถือพวงมาลัย) ยิงปืนใหญ่กราบซ้าย/ขวา<br>
         <b>คลิกซ้าย</b> ล็อกเมาส์หมุนกล้อง (Esc ปลด) / คลิกอีกที = โจมตี<br>
-        <b>ล้อเมาส์</b> ซูม
+        <b>ล้อเมาส์</b> ซูม<br>
+        <span class="hud-combat-hint">วงปุ่มมุมขวาล่างแสดงสกิล คีย์ลัด และคูลดาวน์แบบเดียวกับมือถือ</span>
       `;
       document.body.appendChild(help);
     }
