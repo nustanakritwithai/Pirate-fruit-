@@ -35,7 +35,13 @@ export class ServerStatusBadge {
     const online = state.session === 'online'
       && state.save === 'remote'
       && state.economy === 'remote';
-    this.element.dataset.mode = online ? 'remote' : state.reconnecting ? 'connecting' : 'local';
+    this.element.dataset.mode = online
+      ? 'remote'
+      : state.reconnecting
+        ? 'connecting'
+        : state.session === 'online'
+          ? 'degraded'
+          : 'local';
     if (online) {
       this.element.textContent = '🌐 SERVER ONLINE · SAVE REMOTE';
       this.element.style.color = '#dfffea';
@@ -48,7 +54,15 @@ export class ServerStatusBadge {
       this.element.style.background = '#806000e8';
       return;
     }
-    this.element.textContent = '⚠ LOCAL FALLBACK · SERVER OFFLINE';
+    if (state.session === 'online') {
+      this.element.textContent = state.save === 'local'
+        ? '⚠ SERVER ONLINE · SAVE LOCAL'
+        : '⚠ SERVER ONLINE · ECONOMY LOCAL';
+      this.element.style.color = '#fff7d6';
+      this.element.style.background = '#806000e8';
+      return;
+    }
+    this.element.textContent = '⚠ SESSION OFFLINE · PLAYING LOCAL';
     this.element.style.color = '#ffe8e4';
     this.element.style.background = '#8b2f25e8';
   }
