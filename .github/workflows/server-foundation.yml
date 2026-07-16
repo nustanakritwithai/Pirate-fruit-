@@ -1,0 +1,26 @@
+name: Client and server gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - claude/blox-fruits-three-js-roadmap-1f2f5u
+
+concurrency:
+  group: server-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run smoke:server
+      - run: npm test

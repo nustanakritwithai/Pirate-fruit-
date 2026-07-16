@@ -1,8 +1,21 @@
-# Pirate Fruit Server — S1 skeleton
+# Pirate Fruit Server — S2 foundation
 
-This package is the buildable boundary for the future Render Web Service.
+Fastify modular-monolith foundation for the Render Web Service.
 
-S1 intentionally contains no HTTP listener, database connection, session handling,
-or gameplay authority. Those belong to S2 onward. It imports only browser-free
-contracts from `@pirate-fruit/shared` so the client can remain a working Render
-Static Site while the server boundary is introduced.
+Available endpoints:
+
+- `GET /health` — process liveness; never waits for PostgreSQL
+- `GET /ready` — readiness with PostgreSQL probe
+- `GET /version` — service/shared protocol versions
+- `GET /internal/status` — development-only or protected by `x-admin-secret`
+
+Run locally from the repository root:
+
+```bash
+npm install
+npm run build:shared
+npm run dev:server
+```
+
+S2 does not own gameplay state yet. Session, repositories, economy, trade,
+quests, combat, and multiplayer authority remain disabled for later phases.
