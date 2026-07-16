@@ -50,8 +50,13 @@ import type { ClassifiedEconomyEvent } from './trade/living/EconomyEventClassifi
 import { CargoHUD } from './ui/CargoHUD';
 import { preloadPirateGameAssets } from './art/PirateAssetLibrary';
 import { initializeGamePersistence } from './persistence/GamePersistence';
-import { initializeRemoteSession } from './session/RemoteSession';
+import {
+  getRemoteSession,
+  initializeRemoteSession,
+  recoverRemoteSession,
+} from './session/RemoteSession';
 import { REMOTE_ECONOMY_TICK_INTERVAL_MS } from '@pirate-fruit/shared';
+import { ServerStatusBadge } from './ui/ServerStatusBadge';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -69,9 +74,24 @@ async function main(): Promise<void> {
   document.body.appendChild(loading);
 
   // Establish identity first when staged remote sessions are enabled. Failure remains non-blocking.
-  await initializeRemoteSession();
+  const initialSession = await initializeRemoteSession();
   // Hydrate save repositories once before gameplay objects read their synchronous storage view.
   const persistence = await initializeGamePersistence();
+  const serverStatus = (
+    persistence.requestedMode === 'remote'
+    || persistence.requestedEconomyMode === 'remote'
+  ) ? new ServerStatusBadge() : null;
+  let reconnecting = initialSession.mode === 'offline';
+  const renderServerStatus = (): void => {
+    serverStatus?.update({
+      session: getRemoteSession().mode,
+      save: persistence.activeMode,
+      economy: persistence.activeEconomyMode,
+      reconnecting,
+    });
+  };
+  persistence.subscribeStatus(renderServerStatus);
+  renderServerStatus();
   const graphics = loadGraphicsProfile();
   const game = new Game(container, graphics);
   const input = new Input(game.renderer.domElement);
@@ -529,6 +549,24 @@ async function main(): Promise<void> {
     itemInventory.save();
     void persistence.flush();
   });
+
+  // A sleeping Render Free instance must not leave this browser permanently Local.
+  // Once the HttpOnly session succeeds, serialize the Local mirror and reload once;
+  // the normal bootstrap then performs the guarded one-time Remote migration.
+  if (initialSession.mode === 'offline' && persistence.requestedMode === 'remote') {
+    void recoverRemoteSession().then(async (recovered) => {
+      if (recovered.mode === 'online') {
+        saveSystem.save();
+        progression.save();
+        itemInventory.save();
+        await persistence.flush().catch(() => undefined);
+        window.location.reload();
+        return;
+      }
+      reconnecting = false;
+      renderServerStatus();
+    });
+  }
 
   loading.remove();
   game.start();

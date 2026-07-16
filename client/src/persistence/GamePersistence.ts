@@ -106,7 +106,7 @@ export async function initializeGamePersistence(
     ?? (enabled(import.meta.env.VITE_ENABLE_ECONOMY_SERVER) || productionRemoteEnabled());
   const requestedEconomyMode: PersistenceMode = requestedRemoteEconomy ? 'remote' : 'local';
   const apiUrl = normalizeApiUrl(
-    options.apiUrl ?? import.meta.env.VITE_API_URL ?? productionRemoteApiUrl(),
+    options.apiUrl ?? (import.meta.env.VITE_API_URL || productionRemoteApiUrl()),
   );
   const warn = options.warn ?? ((message: string, error?: unknown) => console.warn(message, error));
 
