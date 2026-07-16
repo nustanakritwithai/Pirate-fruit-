@@ -1,28 +1,37 @@
-import {
-  PROTOCOL_VERSION,
-  SERVER_SERVICE_NAME,
-  SHARED_PACKAGE_VERSION,
-  type HealthResponse,
-  type VersionResponse,
-} from '@pirate-fruit/shared';
+import { buildServer } from './app.js';
+import { loadEnvironment } from './config/environment.js';
+import { createDatabaseProbe } from './persistence/database.js';
 
-export const SERVER_VERSION = '0.1.0';
+async function start(): Promise<void> {
+  const environment = loadEnvironment();
+  const database = createDatabaseProbe(environment.DATABASE_URL);
+  const app = await buildServer({ environment, database });
+  let shuttingDown = false;
 
-/** S1 foundation only: HTTP/WebSocket wiring is intentionally deferred to S2. */
-export function createHealthResponse(): HealthResponse {
-  return {
-    ok: true,
-    service: SERVER_SERVICE_NAME,
-    version: SERVER_VERSION,
-    protocolVersion: PROTOCOL_VERSION,
+  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.info({ signal }, 'graceful shutdown started');
+
+    try {
+      await app.close();
+      app.log.info('graceful shutdown completed');
+    } catch (error) {
+      app.log.error({ err: error }, 'graceful shutdown failed');
+      process.exitCode = 1;
+    }
   };
+
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+
+  try {
+    await app.listen({ host: environment.HOST, port: environment.PORT });
+  } catch (error) {
+    app.log.fatal({ err: error }, 'server startup failed');
+    await app.close().catch(() => undefined);
+    process.exitCode = 1;
+  }
 }
 
-export function createVersionResponse(): VersionResponse {
-  return {
-    service: SERVER_SERVICE_NAME,
-    version: SERVER_VERSION,
-    protocolVersion: PROTOCOL_VERSION,
-    sharedVersion: SHARED_PACKAGE_VERSION,
-  };
-}
+void start();
