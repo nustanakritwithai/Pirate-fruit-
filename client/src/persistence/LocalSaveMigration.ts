@@ -52,7 +52,7 @@ function writeMarker(storage: GameStorage, marker: MigrationMarker): void {
 function archiveStaleDirtyMarker(
   storage: GameStorage,
   raw: string,
-  reason: 'different-character' | 'empty-remote',
+  reason: 'different-character' | 'empty-remote' | 'server-ahead' | 'invalid-marker',
 ): void {
   storage.setItem(REMOTE_STALE_DIRTY_SAVE_KEY, JSON.stringify({
     archivedAt: Date.now(),
@@ -149,6 +149,38 @@ export async function migrateLocalSaveIfNeeded(
   });
 }
 
+export const REMOTE_FALLBACK_REASON_KEY = 'pirate-fruit:remote-fallback-reason-v1';
+
+export interface RemoteFallbackReason {
+  message: string;
+  at: number;
+}
+
+/** บันทึกสาเหตุล่าสุดที่ Remote Save ตกลงโหมด Local — โชว์บนป้ายสถานะ/ใช้วินิจฉัยจากเครื่องผู้เล่น */
+export function recordRemoteFallbackReason(storage: GameStorage, error: unknown): void {
+  const message = (error instanceof Error ? error.message : String(error)).slice(0, 200);
+  storage.setItem(REMOTE_FALLBACK_REASON_KEY, JSON.stringify({
+    message,
+    at: Date.now(),
+  } satisfies RemoteFallbackReason));
+}
+
+export function clearRemoteFallbackReason(storage: GameStorage): void {
+  storage.removeItem(REMOTE_FALLBACK_REASON_KEY);
+}
+
+export function readRemoteFallbackReason(storage: GameStorage): RemoteFallbackReason | null {
+  try {
+    const raw = storage.getItem(REMOTE_FALLBACK_REASON_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RemoteFallbackReason>;
+    if (typeof parsed.message !== 'string') return null;
+    return { message: parsed.message, at: Number(parsed.at) || 0 };
+  } catch {
+    return null;
+  }
+}
+
 export function markRemoteSaveDirty(
   storage: GameStorage,
   revision: number,
@@ -182,7 +214,9 @@ export async function recoverDirtyLocalSave(
     expectedRevision = Number(parsed.revision);
     markerCharacterId = parsed.characterId;
   } catch {
-    throw new Error('Offline save recovery marker is invalid');
+    // Marker ที่อ่านไม่ออกห้ามล็อกเครื่องไว้ในโหมด Local ตลอดไป — เก็บเข้าคลังแล้วไปต่อ
+    archiveStaleDirtyMarker(storage, raw, 'invalid-marker');
+    return;
   }
 
   if (markerCharacterId && markerCharacterId !== characterId) {
@@ -196,7 +230,12 @@ export async function recoverDirtyLocalSave(
       archiveStaleDirtyMarker(storage, raw, 'empty-remote');
       return;
     }
-    throw new Error('Remote save changed while this browser was offline; keeping Local mode');
+    // ตัวละครนี้มี browser เดียวเป็นเจ้าของ (ผูก HttpOnly cookie) — server ที่ล้ำหน้า marker
+    // คือ write ของเราเองที่ไปถึงแล้วแต่ ack กลับไม่ทันก่อนปิดแท็บ (mark ตอน enqueue)
+    // ให้ server ชนะ: เก็บ marker เข้าคลังแล้วเล่นโหมด remote ต่อ (local mirror/backup ยังอยู่ครบ)
+    // การ throw ที่นี่จะทำให้ทุกการเปิดเกมตกโหมด Local ถาวรแบบไม่มีทางออก
+    archiveStaleDirtyMarker(storage, raw, 'server-ahead');
+    return;
   }
   const documents = localDocuments(storage);
   await coordinator.savePlayer({

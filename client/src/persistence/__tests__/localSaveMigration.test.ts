@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GameStorage } from '../GameStorage';
 import {
+  clearRemoteFallbackReason,
   migrateLocalSaveIfNeeded,
+  readRemoteFallbackReason,
+  recordRemoteFallbackReason,
   recoverDirtyLocalSave,
   REMOTE_DIRTY_SAVE_KEY,
   REMOTE_MIGRATION_MARKER_KEY,
@@ -183,6 +186,81 @@ describe('S6 local save migration', () => {
       revision: 1,
     });
     expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).not.toBeNull();
+  });
+
+  it('archives a same-character marker when the server is ahead (in-flight write landed)', async () => {
+    // ปิดแท็บระหว่าง write ลอยอยู่: server ได้ revision 5 แต่ marker ค้างที่ 4 —
+    // ต้องไม่ throw ถาวร ให้ server ชนะแล้วเล่นโหมด remote ต่อ
+    const storage = new MemoryStorage();
+    storage.setItem(GAMEPLAY_STORAGE_KEYS.progression, 'local-progress');
+    storage.setItem(REMOTE_DIRTY_SAVE_KEY, JSON.stringify({
+      revision: 4,
+      characterId: 'character-a',
+      markedAt: Date.now(),
+    }));
+    const calls: string[] = [];
+    const fetcher: FetchLike = async (input) => {
+      calls.push(String(input));
+      return Response.json({
+        ok: true,
+        schemaVersion: 1,
+        revision: 5,
+        migrated: true,
+        state: {
+          schemaVersion: 1,
+          checkpoint: null,
+          progression: 'server-progress',
+          inventory: null,
+          boats: null,
+          loadout: null,
+        },
+        cargo: { schemaVersion: 1, cargo: null },
+      });
+    };
+
+    await recoverDirtyLocalSave(
+      new RemoteSaveCoordinator('https://save.example', { fetcher }),
+      storage,
+      'character-a',
+    );
+
+    // อ่านสถานะอย่างเดียว — ห้ามอัปโหลดทับของ server
+    expect(calls.every((url) => url.endsWith('/api/player/state'))).toBe(true);
+    expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).toBeNull();
+    expect(JSON.parse(storage.getItem(REMOTE_STALE_DIRTY_SAVE_KEY)!)).toMatchObject({
+      reason: 'server-ahead',
+    });
+    // เซฟ local ต้องไม่ถูกลบ (ยังเป็น backup)
+    expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBe('local-progress');
+  });
+
+  it('archives an unreadable dirty marker instead of blocking every boot', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(REMOTE_DIRTY_SAVE_KEY, 'not-json{{');
+    const fetcher = vi.fn<FetchLike>();
+
+    await recoverDirtyLocalSave(
+      new RemoteSaveCoordinator('https://save.example', { fetcher }),
+      storage,
+      'character-a',
+    );
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).toBeNull();
+    expect(JSON.parse(storage.getItem(REMOTE_STALE_DIRTY_SAVE_KEY)!)).toMatchObject({
+      reason: 'invalid-marker',
+    });
+  });
+
+  it('records, reads, and clears the remote fallback reason', () => {
+    const storage = new MemoryStorage();
+    expect(readRemoteFallbackReason(storage)).toBeNull();
+    recordRemoteFallbackReason(storage, new Error('Remote save unavailable (503)'));
+    expect(readRemoteFallbackReason(storage)?.message).toBe('Remote save unavailable (503)');
+    recordRemoteFallbackReason(storage, 'plain-string-reason');
+    expect(readRemoteFallbackReason(storage)?.message).toBe('plain-string-reason');
+    clearRemoteFallbackReason(storage);
+    expect(readRemoteFallbackReason(storage)).toBeNull();
   });
 
   it('archives a dirty marker from another character instead of blocking an empty remote', async () => {

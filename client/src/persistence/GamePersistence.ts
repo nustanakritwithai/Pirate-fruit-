@@ -17,9 +17,12 @@ import {
 } from './RepositoryBackedStorage';
 import { getRemoteSession } from '../session/RemoteSession';
 import {
+  clearRemoteFallbackReason,
   clearRemoteSaveDirty,
   markRemoteSaveDirty,
   migrateLocalSaveIfNeeded,
+  readRemoteFallbackReason,
+  recordRemoteFallbackReason,
   recoverDirtyLocalSave,
 } from './LocalSaveMigration';
 import type {
@@ -49,6 +52,8 @@ export interface GamePersistenceHandle {
   readonly storage: RepositoryBackedStorage;
   refreshEconomy(): Promise<PersistedEconomyState | null>;
   subscribeStatus(listener: (event: PersistenceStatusEvent) => void): () => void;
+  /** สาเหตุล่าสุดที่ Remote Save ตกลงโหมด Local (null = ไม่เคย/เชื่อมสำเร็จแล้ว) */
+  readSaveFallbackReason(): string | null;
   flush(): Promise<void>;
 }
 
@@ -195,6 +200,7 @@ export async function initializeGamePersistence(
         failover.active = false;
         activeMode = 'local';
         markRemoteSaveDirty(localStorage, coordinator.revision, characterId);
+        recordRemoteFallbackReason(localStorage, error);
         const message = 'Remote save failed — changes remain in the Local fallback.';
         warn(message, error);
         emitStatus({ scope: 'save', mode: 'local', message });
@@ -247,8 +253,10 @@ export async function initializeGamePersistence(
         },
       );
       activeMode = 'remote';
+      clearRemoteFallbackReason(localStorage);
     } catch (error) {
       const message = 'Remote save unavailable — continuing in Local mode.';
+      recordRemoteFallbackReason(localStorage, error);
       warn(message, error);
       emitStatus({ scope: 'save', mode: 'local', message });
       storage = await RepositoryBackedStorage.load(
@@ -260,6 +268,7 @@ export async function initializeGamePersistence(
   } else {
     if (requestedRemote) {
       const message = 'Remote save enabled without a valid API URL — continuing in Local mode.';
+      recordRemoteFallbackReason(localStorage, new Error(message));
       warn(message);
       emitStatus({ scope: 'save', mode: 'local', message });
     }
@@ -297,6 +306,7 @@ export async function initializeGamePersistence(
       for (const event of statusEvents) listener(event);
       return () => statusListeners.delete(listener);
     },
+    readSaveFallbackReason: () => readRemoteFallbackReason(localStorage)?.message ?? null,
     flush: () => storage.flush(),
   };
 }

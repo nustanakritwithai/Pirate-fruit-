@@ -88,6 +88,7 @@ async function main(): Promise<void> {
       save: persistence.activeMode,
       economy: persistence.activeEconomyMode,
       reconnecting,
+      saveFallbackReason: persistence.readSaveFallbackReason(),
     });
   };
   persistence.subscribeStatus(renderServerStatus);
