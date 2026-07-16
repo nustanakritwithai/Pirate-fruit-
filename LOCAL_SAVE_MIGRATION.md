@@ -59,9 +59,12 @@ changing player/session mode.
 
 1. Load remote revision and migration status for the cookie-owned character.
 2. If remote state is empty, copy all legacy player/cargo documents to
-   `pirate-fruit:remote-save-backup-v1` and persist a pending idempotency marker.
-3. Submit the documents. The Server strictly validates versions, IDs, numeric bounds,
-   island/spawn pairing and resource caps, then writes all normalized rows in one transaction.
+   `pirate-fruit:remote-save-backup-v1` and persist a character-scoped pending
+   idempotency marker.
+3. Submit the documents. The Server validates versions, IDs, numeric bounds and
+   resource caps, repairs known checkpoint v1-v4 spawn metadata during this one-time
+   import, then writes all normalized rows in one transaction. Normal online checkpoint
+   writes remain strict and reject invalid island/spawn pairs or coordinates.
 4. Reload and confirm the returned revision before marking migration confirmed.
 
 A network retry reuses the pending key. Another key cannot migrate the character
@@ -69,6 +72,12 @@ again, so coins, items, boats and cargo cannot be duplicated. Gameplay keys are 
 deleted by migration. Clearing them after confirmation is safe because the next load
 hydrates from PostgreSQL. The backup is transitional recovery data and may be removed
 manually only after Render and restore verification.
+
+Migration and dirty markers include the Server character ID. If a cookie reset or
+service recreation issues a new empty character, a confirmed marker from the previous
+identity cannot block import. A dirty marker that belongs to another character is
+archived under `pirate-fruit:remote-dirty-save-stale-v1`; the Local gameplay documents
+and migration backup remain intact.
 
 Autosaves debounce for 500 ms and batch each changed domain. The dirty marker is written
 synchronously when a remote player/cargo change is enqueued, before debounce or fetch, and

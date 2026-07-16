@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { GameStorage } from '../GameStorage';
 import {
   migrateLocalSaveIfNeeded,
@@ -6,6 +6,7 @@ import {
   REMOTE_DIRTY_SAVE_KEY,
   REMOTE_MIGRATION_MARKER_KEY,
   REMOTE_SAVE_BACKUP_KEY,
+  REMOTE_STALE_DIRTY_SAVE_KEY,
 } from '../LocalSaveMigration';
 import { RemoteSaveCoordinator, type FetchLike } from '../RemoteRepositories';
 import { GAMEPLAY_STORAGE_KEYS } from '../storageKeys';
@@ -71,14 +72,15 @@ describe('S6 local save migration', () => {
       sleep: async () => undefined,
     });
 
-    await migrateLocalSaveIfNeeded(coordinator, storage);
-    await migrateLocalSaveIfNeeded(coordinator, storage);
+    await migrateLocalSaveIfNeeded(coordinator, storage, 'character-a');
+    await migrateLocalSaveIfNeeded(coordinator, storage, 'character-a');
 
     expect(postBodies).toHaveLength(2);
     expect(postBodies[0]).toBe(postBodies[1]);
     expect(storage.getItem(REMOTE_SAVE_BACKUP_KEY)).not.toBeNull();
     expect(JSON.parse(storage.getItem(REMOTE_MIGRATION_MARKER_KEY)!)).toMatchObject({
       status: 'confirmed',
+      characterId: 'character-a',
       revision: 1,
     });
     expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).not.toBeNull();
@@ -117,11 +119,91 @@ describe('S6 local save migration', () => {
     await recoverDirtyLocalSave(
       new RemoteSaveCoordinator('https://save.example', { fetcher }),
       storage,
+      'character-a',
     );
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toMatchObject({ expectedRevision: 4 });
     expect(bodies[0]).not.toHaveProperty('documents.cargo');
     expect(bodies[1]).toMatchObject({ expectedRevision: 5 });
     expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).toBeNull();
+  });
+
+  it('does not let a confirmed marker from an old Server character block migration', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(GAMEPLAY_STORAGE_KEYS.progression, JSON.stringify({
+      version: 1,
+      progression: { coins: 12_757 },
+    }));
+    storage.setItem(REMOTE_MIGRATION_MARKER_KEY, JSON.stringify({
+      idempotencyKey: 'local-migration:old-character',
+      status: 'confirmed',
+      characterId: 'character-old',
+      revision: 8,
+    }));
+    let migrated = false;
+    let migrationCalls = 0;
+    const fetcher: FetchLike = async (input) => {
+      if (String(input).endsWith('/api/player/migrate-local')) {
+        migrationCalls += 1;
+        migrated = true;
+        return Response.json({
+          ok: true,
+          revision: 1,
+          idempotentReplay: false,
+          migrated: true,
+        });
+      }
+      return Response.json({
+        ok: true,
+        schemaVersion: 1,
+        revision: migrated ? 1 : 0,
+        migrated,
+        state: migrated ? {
+          schemaVersion: 1,
+          checkpoint: null,
+          progression: storage.getItem(GAMEPLAY_STORAGE_KEYS.progression),
+          inventory: null,
+          boats: null,
+          loadout: null,
+        } : null,
+        cargo: { schemaVersion: 1, cargo: null },
+      });
+    };
+
+    await migrateLocalSaveIfNeeded(
+      new RemoteSaveCoordinator('https://save.example', { fetcher }),
+      storage,
+      'character-new',
+    );
+
+    expect(migrationCalls).toBe(1);
+    expect(JSON.parse(storage.getItem(REMOTE_MIGRATION_MARKER_KEY)!)).toMatchObject({
+      status: 'confirmed',
+      characterId: 'character-new',
+      revision: 1,
+    });
+    expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).not.toBeNull();
+  });
+
+  it('archives a dirty marker from another character instead of blocking an empty remote', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(REMOTE_DIRTY_SAVE_KEY, JSON.stringify({
+      revision: 9,
+      characterId: 'character-old',
+      markedAt: Date.now(),
+    }));
+    const fetcher = vi.fn<FetchLike>();
+
+    await recoverDirtyLocalSave(
+      new RemoteSaveCoordinator('https://save.example', { fetcher }),
+      storage,
+      'character-new',
+    );
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).toBeNull();
+    expect(JSON.parse(storage.getItem(REMOTE_STALE_DIRTY_SAVE_KEY)!)).toMatchObject({
+      reason: 'different-character',
+    });
   });
 });

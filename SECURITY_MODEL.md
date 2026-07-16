@@ -29,6 +29,9 @@ security controls.
   injection.
 - `SameSite=None` supports a separate Render Static Site and Web Service.
 - `Partitioned` supports modern third-party-cookie isolation.
+- After guest creation, the Client performs an authenticated `/api/session/me` read
+  before reporting Session Online. A response body alone is not treated as proof that
+  the browser retained the HttpOnly cookie.
 - HMAC CSRF tokens and exact Origin checks protect unsafe routes.
 - CORS permits credentials only for configured Client origins.
 - Guest creation has a stricter endpoint rate limit.
@@ -51,6 +54,8 @@ logs explicitly redact Cookie, Set-Cookie, Authorization and CSRF headers.
   schema versions, stats, mastery, inventory, boats, cargo, quests and resources.
 - Revision locking prevents stale overwrites; request hashes and idempotency rows make
   retries safe; the one-time migration marker is committed atomically with the save.
+- Browser migration/dirty markers are scoped to the Server character identity so a
+  marker from an obsolete guest cannot authorize or block another character's save.
 - Canonical coins are read from progression, never duplicated boat/item fields.
 - Session expiry/revocation is checked before every load or mutation.
 

@@ -9,11 +9,19 @@ import { GAMEPLAY_STORAGE_KEYS } from './storageKeys';
 export const REMOTE_SAVE_BACKUP_KEY = 'pirate-fruit:remote-save-backup-v1';
 export const REMOTE_MIGRATION_MARKER_KEY = 'pirate-fruit:remote-migration-v1';
 export const REMOTE_DIRTY_SAVE_KEY = 'pirate-fruit:remote-dirty-save-v1';
+export const REMOTE_STALE_DIRTY_SAVE_KEY = 'pirate-fruit:remote-dirty-save-stale-v1';
 
 interface MigrationMarker {
   idempotencyKey: string;
   status: 'pending' | 'confirmed';
+  characterId?: string;
   revision?: number;
+}
+
+interface DirtySaveMarker {
+  revision: number;
+  characterId?: string;
+  markedAt?: number;
 }
 
 function idempotencyKey(): string {
@@ -41,6 +49,19 @@ function writeMarker(storage: GameStorage, marker: MigrationMarker): void {
   storage.setItem(REMOTE_MIGRATION_MARKER_KEY, JSON.stringify(marker));
 }
 
+function archiveStaleDirtyMarker(
+  storage: GameStorage,
+  raw: string,
+  reason: 'different-character' | 'empty-remote',
+): void {
+  storage.setItem(REMOTE_STALE_DIRTY_SAVE_KEY, JSON.stringify({
+    archivedAt: Date.now(),
+    reason,
+    marker: raw,
+  }));
+  storage.removeItem(REMOTE_DIRTY_SAVE_KEY);
+}
+
 function localDocuments(storage: GameStorage): RemoteLocalMigrationRequest['documents'] {
   return {
     schemaVersion: PERSISTED_PLAYER_SCHEMA_VERSION,
@@ -65,14 +86,23 @@ function hasLocalSave(documents: RemoteLocalMigrationRequest['documents']): bool
 export async function migrateLocalSaveIfNeeded(
   coordinator: RemoteSaveCoordinator,
   storage: GameStorage,
+  characterId: string,
 ): Promise<void> {
   const remote = await coordinator.load();
   if (remote.migrated) {
     const marker = readMarker(storage);
-    if (marker?.status === 'pending') {
+    if (
+      !marker
+      || marker.characterId !== characterId
+      || marker.status === 'pending'
+      || marker.revision !== remote.revision
+    ) {
       writeMarker(storage, {
-        idempotencyKey: marker.idempotencyKey,
+        idempotencyKey: marker?.characterId === characterId
+          ? marker.idempotencyKey
+          : idempotencyKey(),
         status: 'confirmed',
+        characterId,
         revision: remote.revision,
       });
     }
@@ -84,13 +114,25 @@ export async function migrateLocalSaveIfNeeded(
   if (!hasLocalSave(documents)) return;
 
   let marker = readMarker(storage);
-  if (marker?.status === 'confirmed') return;
+  // A browser can receive a new Server character after a cookie reset or service
+  // recreation. A confirmed marker from the previous identity must never block the
+  // new empty character from importing the still-intact Local save.
+  if (
+    marker?.status === 'confirmed'
+    || (marker?.characterId !== undefined && marker.characterId !== characterId)
+  ) {
+    marker = null;
+  }
   if (!marker) {
-    marker = { idempotencyKey: idempotencyKey(), status: 'pending' };
+    marker = { idempotencyKey: idempotencyKey(), status: 'pending', characterId };
     storage.setItem(REMOTE_SAVE_BACKUP_KEY, JSON.stringify({
       createdAt: new Date().toISOString(),
+      characterId,
       documents,
     }));
+    writeMarker(storage, marker);
+  } else if (!marker.characterId) {
+    marker = { ...marker, characterId };
     writeMarker(storage, marker);
   }
 
@@ -102,12 +144,21 @@ export async function migrateLocalSaveIfNeeded(
   writeMarker(storage, {
     idempotencyKey: marker.idempotencyKey,
     status: 'confirmed',
+    characterId,
     revision: confirmed.revision,
   });
 }
 
-export function markRemoteSaveDirty(storage: GameStorage, revision: number): void {
-  storage.setItem(REMOTE_DIRTY_SAVE_KEY, JSON.stringify({ revision, markedAt: Date.now() }));
+export function markRemoteSaveDirty(
+  storage: GameStorage,
+  revision: number,
+  characterId: string,
+): void {
+  storage.setItem(REMOTE_DIRTY_SAVE_KEY, JSON.stringify({
+    revision,
+    characterId,
+    markedAt: Date.now(),
+  } satisfies DirtySaveMarker));
 }
 
 export function clearRemoteSaveDirty(storage: GameStorage): void {
@@ -118,20 +169,33 @@ export function clearRemoteSaveDirty(storage: GameStorage): void {
 export async function recoverDirtyLocalSave(
   coordinator: RemoteSaveCoordinator,
   storage: GameStorage,
+  characterId: string,
 ): Promise<void> {
   const raw = storage.getItem(REMOTE_DIRTY_SAVE_KEY);
   if (!raw) return;
   let expectedRevision: number;
+  let markerCharacterId: string | undefined;
   try {
-    const parsed = JSON.parse(raw) as { revision?: unknown };
+    const parsed = JSON.parse(raw) as { revision?: unknown; characterId?: unknown };
     if (!Number.isSafeInteger(parsed.revision) || Number(parsed.revision) < 0) throw new Error();
+    if (parsed.characterId !== undefined && typeof parsed.characterId !== 'string') throw new Error();
     expectedRevision = Number(parsed.revision);
+    markerCharacterId = parsed.characterId;
   } catch {
     throw new Error('Offline save recovery marker is invalid');
   }
 
+  if (markerCharacterId && markerCharacterId !== characterId) {
+    archiveStaleDirtyMarker(storage, raw, 'different-character');
+    return;
+  }
+
   const remote = await coordinator.load();
   if (remote.revision !== expectedRevision) {
+    if (remote.revision === 0 && !remote.migrated && remote.state === null) {
+      archiveStaleDirtyMarker(storage, raw, 'empty-remote');
+      return;
+    }
     throw new Error('Remote save changed while this browser was offline; keeping Local mode');
   }
   const documents = localDocuments(storage);

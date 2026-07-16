@@ -59,7 +59,8 @@ describe('remote guest session bootstrap', () => {
     const fetcher = vi
       .fn<SessionFetch>()
       .mockResolvedValueOnce(jsonResponse({ ok: false }, 401))
-      .mockResolvedValueOnce(jsonResponse(created, 201));
+      .mockResolvedValueOnce(jsonResponse(created, 201))
+      .mockResolvedValueOnce(jsonResponse(sessionPayload));
     const result = await initializeRemoteSession({
       enabled: true,
       apiUrl: 'https://server.example',
@@ -67,11 +68,34 @@ describe('remote guest session bootstrap', () => {
     });
 
     expect(result).toMatchObject({ mode: 'online', created: true });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher.mock.calls[1]).toEqual([
       'https://server.example/api/session/guest',
       expect.objectContaining({ method: 'POST', credentials: 'include', body: '{}' }),
     ]);
+    expect(fetcher.mock.calls[2]).toEqual([
+      'https://server.example/api/session/me',
+      expect.objectContaining({ method: 'GET', credentials: 'include' }),
+    ]);
+  });
+
+  it('stays offline when the browser does not retain the issued HttpOnly cookie', async () => {
+    const warn = vi.fn();
+    const fetcher = vi
+      .fn<SessionFetch>()
+      .mockResolvedValueOnce(jsonResponse({ ok: false }, 401))
+      .mockResolvedValueOnce(jsonResponse({ ...sessionPayload, created: true }, 201))
+      .mockResolvedValueOnce(jsonResponse({ ok: false }, 401));
+
+    const result = await initializeRemoteSession({
+      enabled: true,
+      apiUrl: 'https://server.example',
+      fetcher,
+      warn,
+    });
+
+    expect(result).toEqual({ mode: 'offline', session: null, csrfToken: null, created: false });
+    expect(warn).toHaveBeenCalledOnce();
   });
 
   it('falls back without blocking gameplay when the server response is invalid', async () => {

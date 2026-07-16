@@ -287,31 +287,47 @@ function resourceCaps(progression: CanonicalProgression): {
 export function sanitizeCheckpoint(
   document: string | null,
   progression: CanonicalProgression,
+  options: { legacyMigration?: boolean } = {},
 ): CanonicalCheckpoint {
   const parsed = parseDocument('checkpoint', document);
   const source = record(parsed);
-  if ('saveVersion' in source && ![2, 3, 4].includes(source.saveVersion as number)) {
+  const supportedVersions = options.legacyMigration ? [1, 2, 3, 4] : [2, 3, 4];
+  if ('saveVersion' in source && !supportedVersions.includes(source.saveVersion as number)) {
     throw new PlayerDocumentValidationError('Unsupported checkpoint schema version');
   }
-  const islandId = ISLAND_IDS.includes(source.islandId as IslandId)
+  const candidateIslandId = ISLAND_IDS.includes(source.islandId as IslandId)
     ? (source.islandId as IslandId)
     : DEFAULT_ISLAND_ID;
+  const validLegacyPosition = [source.x, source.y, source.z].every(
+    (value) => typeof value === 'number' && Number.isFinite(value),
+  ) && Number(source.x) >= -MAX_WORLD_COORDINATE
+    && Number(source.x) <= MAX_WORLD_COORDINATE
+    && Number(source.y) >= -1_000
+    && Number(source.y) <= MAX_WORLD_HEIGHT
+    && Number(source.z) >= -MAX_WORLD_COORDINATE
+    && Number(source.z) <= MAX_WORLD_COORDINATE;
+  const islandId = options.legacyMigration && parsed !== null && !validLegacyPosition
+    ? DEFAULT_ISLAND_ID
+    : candidateIslandId;
   const expectedSpawn = SPAWN_ID_BY_ISLAND[islandId];
   const suppliedSpawn = source.spawnId ?? expectedSpawn;
-  if (suppliedSpawn !== expectedSpawn) {
+  if (!options.legacyMigration && suppliedSpawn !== expectedSpawn) {
     throw new PlayerDocumentValidationError('checkpoint spawnId does not belong to islandId');
   }
   const caps = resourceCaps(progression);
-  return {
-    islandId,
-    spawnId: expectedSpawn,
-    position: parsed === null
+  const position = parsed === null
+    ? { x: 0, y: 0, z: 8 }
+    : options.legacyMigration && !validLegacyPosition
       ? { x: 0, y: 0, z: 8 }
       : {
           x: strictCoordinate(source.x, 'checkpoint.x', -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE),
           y: strictCoordinate(source.y, 'checkpoint.y', -1_000, MAX_WORLD_HEIGHT),
           z: strictCoordinate(source.z, 'checkpoint.z', -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE),
-        },
+        };
+  return {
+    islandId,
+    spawnId: expectedSpawn,
+    position,
     heading: finiteNumber(source.heading, 0, -Math.PI * 8, Math.PI * 8),
     cameraYaw: finiteNumber(source.cameraYaw, 0, -Math.PI * 8, Math.PI * 8),
     worldTime: finiteNumber(source.worldTime, 0.31, 0, 1),
@@ -437,12 +453,13 @@ function sanitizeCargo(document: string | null, boats: CanonicalBoat[]): Canonic
   };
 }
 
-export function sanitizePlayerDocuments(
+function sanitizeDocuments(
   player: PersistedPlayerState,
   cargo: PersistedCargoState = {
     schemaVersion: PERSISTED_CARGO_SCHEMA_VERSION,
     cargo: null,
   },
+  legacyMigration = false,
 ): CanonicalPlayerState {
   if (player.schemaVersion !== PERSISTED_PLAYER_SCHEMA_VERSION) {
     throw new PlayerDocumentValidationError('Unsupported player document schema version');
@@ -454,12 +471,31 @@ export function sanitizePlayerDocuments(
   const boats = sanitizeBoats(player.boats);
   return {
     progression,
-    checkpoint: sanitizeCheckpoint(player.checkpoint, progression),
+    checkpoint: sanitizeCheckpoint(player.checkpoint, progression, { legacyMigration }),
     inventory: sanitizeInventory(player.inventory),
     boats,
     loadout: sanitizeLegacyLoadout(player.loadout),
     cargo: sanitizeCargo(cargo.cargo, boats),
   };
+}
+
+export function sanitizePlayerDocuments(
+  player: PersistedPlayerState,
+  cargo?: PersistedCargoState,
+): CanonicalPlayerState {
+  return sanitizeDocuments(player, cargo, false);
+}
+
+/**
+ * One-time Local migration accepts known checkpoint v1-v4 metadata and repairs an
+ * obsolete spawn pairing or unsafe legacy position to a safe canonical value. Normal
+ * online checkpoint/save endpoints remain strict and still reject these payloads.
+ */
+export function sanitizeLocalMigrationDocuments(
+  player: PersistedPlayerState,
+  cargo?: PersistedCargoState,
+): CanonicalPlayerState {
+  return sanitizeDocuments(player, cargo, true);
 }
 
 export function defaultPlayerState(): CanonicalPlayerState {

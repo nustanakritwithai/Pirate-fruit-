@@ -18,6 +18,7 @@ import type {
 } from './playerSaveRepository.js';
 import {
   defaultPlayerState,
+  sanitizeLocalMigrationDocuments,
   sanitizeCheckpoint,
   sanitizePlayerDocuments,
   serializePlayerState,
@@ -146,7 +147,7 @@ export class PlayerSaveService {
 
   async migrateLocal(characterId: string, input: unknown): Promise<RemoteSaveMutationResponse> {
     const body: RemoteLocalMigrationRequest = migrationRequest.parse(input);
-    const state = sanitizePlayerDocuments(
+    const state = sanitizeLocalMigrationDocuments(
       body.documents,
       { schemaVersion: PERSISTED_CARGO_SCHEMA_VERSION, cargo: body.documents.cargo },
     );
