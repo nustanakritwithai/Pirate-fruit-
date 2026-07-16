@@ -124,9 +124,9 @@ export class PostgresSessionRepository implements SessionRepository {
   async touch(sessionId: string, now: Date): Promise<void> {
     await this.pool.query(
       `update sessions
-          set last_seen_at = $2
+          set last_seen_at = $2::timestamptz
         where id = $1
-          and last_seen_at < $2 - interval '5 minutes'`,
+          and last_seen_at < ($2::timestamptz - interval '5 minutes')`,
       [sessionId, now],
     );
   }

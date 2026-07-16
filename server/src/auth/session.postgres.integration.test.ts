@@ -120,6 +120,7 @@ integration.sequential('PostgreSQL guest sessions', () => {
       url: '/api/session/me',
       headers: { cookie: firstCookie },
     });
+    expect(firstMe.statusCode).toBe(200);
     expect(firstMe.json().session).toEqual(firstBody.session);
 
     const firstLogout = await app.inject({
