@@ -6,7 +6,7 @@
 
 ## 1. Executive status
 
-สถานะ Phase S0: **Code/test baseline ผ่าน; รอยืนยัน deploy branch ใน Render Dashboard**
+สถานะ Phase S0: **PASS — พร้อม merge และสร้าง baseline tag**
 
 - Remote default branch ที่ตรวจ: `claude/blox-fruits-three-js-roadmap-1f2f5u`
 - Code baseline commit: `5b2690f31a92c0eee3c9a3f965bdee6912be1f73`
@@ -15,9 +15,9 @@
 - Production build: PASS
 - Unit/integration suite: PASS — 39 files / 435 tests, exit 0
 - Extended economy 20,000 ticks: PASS — 1 file / 1 test, exit 0, ไม่มี worker heartbeat error
-- ก่อนเริ่ม S1 เหลือยืนยัน branch และ deployed commit ใน Render Dashboard
+- ผู้ใช้ยืนยันเมื่อ 2026-07-16 ว่า Render deploy branch คือ `claude/blox-fruits-three-js-roadmap-1f2f5u`
 
-Baseline commit ข้างต้นเป็น rollback anchor แบบ immutable ได้ทันที แต่ยังไม่ควรติด release tag `singleplayer-v1.0` จนกว่าจะยืนยัน Render deploy branch
+Baseline commit ข้างต้นเป็น rollback anchor แบบ immutable และ S0 พร้อมติด release tag `singleplayer-v1.0` หลัง merge PR นี้
 
 ## 2. Repository และ deployment baseline
 
@@ -27,11 +27,11 @@ Baseline commit ข้างต้นเป็น rollback anchor แบบ immu
 | Default branch | `claude/blox-fruits-three-js-roadmap-1f2f5u` | ใช้เป็น source of truth ของ S0 |
 | Baseline commit | `5b2690f31a92c0eee3c9a3f965bdee6912be1f73` | rollback anchor |
 | Render config | `render.yaml` | Static Site, `rootDir: client`, publish `dist` |
-| Render deploy branch | ไม่ถูกระบุใน repository | ต้องยืนยันจาก Render Dashboard; ห้ามเดาจาก default branch |
+| Render deploy branch | `claude/blox-fruits-three-js-roadmap-1f2f5u` | ผู้ใช้ยืนยันจาก Render เมื่อ 2026-07-16; Blueprint เองไม่ได้เก็บค่านี้ |
 | Current structure | root + `client/` | ยังไม่มี root workspace, `server/` หรือ `shared/` |
 | Local checkout metadata | HEAD `12177e2...`, ahead 2 / behind 16 และมี working tree ต่างจาก Git index 71 files | ห้ามใช้ `git add -A`; งาน S1 ต้องเริ่มจาก clean clone/worktree ของ remote baseline |
 
-ข้อสังเกต: Blueprint ระบุ build/deploy shape แต่ branch selection เป็นค่าใน Render Dashboard จึงพิสูจน์ branch ที่ deploy จริงจาก repository เพียงอย่างเดียวไม่ได้
+ข้อสังเกต: Blueprint ระบุ build/deploy shape แต่ branch selection เป็นค่าใน Render Dashboard จึงต้องอาศัยการยืนยันจาก Dashboard ซึ่งได้รับแล้ว
 
 ## 3. Open PR audit
 
@@ -190,7 +190,7 @@ Test-harness resolution:
 | ระดับ | ความเสี่ยง | Mitigation |
 |---|---|---|
 | Resolved | Test command เดิมไม่จบ exit 0 | cooperative test batches + benchmark-based timeout; full/extended suites ผ่าน exit 0 |
-| Blocker | Render deploy branch พิสูจน์ไม่ได้จาก repo | ยืนยัน Dashboard branch + deployed commit; บันทึกใน audit PR |
+| Resolved | Render deploy branch พิสูจน์ไม่ได้จาก repo เพียงอย่างเดียว | ผู้ใช้ยืนยัน Dashboard branch ตรงกับ default branch เมื่อ 2026-07-16 |
 | Critical | PR #30→#33 เป็น stacked dependency บน base เก่าและ mergeable=false | rebase/retarget ตามลำดับหรือปิด; ห้าม squash ทั้ง stack เข้า S1 |
 | Critical | Local checkout stale/dirty 71 files | S1 ใช้ clean clone/worktree จาก baseline/merged audit branch |
 | Critical | Client เชื่อ coins/cargo/trade/reward ทั้งหมด | Feature flags + repository abstraction; ห้ามเปิด remote authoritative บางส่วนแบบครึ่ง transaction |
@@ -234,21 +234,21 @@ Test-harness resolution:
 - เพิ่ม local DB integration tests, seed, forward migration และ rollback procedure
 - ยังไม่ย้าย authoritative gameplay จน S5 identity พร้อม
 
-Dependency: `Render deploy confirmation → S1 → S2 → S3 → S4`; ห้ามทำ S3/S4 ขนานแบบ merge ก่อน S1 เพราะ shared schemas เป็น contract กลาง
+Dependency: `S1 → S2 → S3 → S4`; ห้ามทำ S3/S4 ขนานแบบ merge ก่อน S1 เพราะ shared schemas เป็น contract กลาง
 
 ## 11. Baseline tag และ rollback
 
 Tag ที่แนะนำ: `singleplayer-v1.0`
 
-ให้สร้าง annotated tag ที่ code baseline commit `5b2690f31a92c0eee3c9a3f965bdee6912be1f73` **หลัง**:
+ให้สร้าง annotated tag ที่ S0 merge commit **หลัง**:
 
 1. test commands จบ exit code 0 โดยไม่เปลี่ยน gameplay assertions — **ผ่านแล้ว 2026-07-16**
-2. ยืนยัน Render Dashboard deploy branch และ live commit ตรงกัน
+2. ยืนยัน Render Dashboard deploy branch ตรงกับ default branch — **ผู้ใช้ยืนยันแล้ว 2026-07-16**
 
 คำสั่งเมื่อผ่าน gate:
 
 ```bash
-git tag -a singleplayer-v1.0 5b2690f31a92c0eee3c9a3f965bdee6912be1f73 -m "Pirate Fruit single-player baseline before server migration"
+git tag -a singleplayer-v1.0 <S0_MERGE_SHA> -m "Pirate Fruit single-player baseline before server migration"
 git push origin singleplayer-v1.0
 ```
 
@@ -259,7 +259,7 @@ Rollback ระหว่าง S1–S4: ปิด remote feature flags, deploy S
 - [x] ระบุ remote default branch และ immutable baseline commit
 - [x] ตรวจ Open PR และ dependency stack
 - [x] ตรวจ Render blueprint
-- [ ] ยืนยัน deploy branch ใน Render Dashboard
+- [x] ยืนยัน deploy branch ใน Render Dashboard
 - [x] TypeScript check ผ่าน
 - [x] Production build ผ่าน
 - [x] Full test command ผ่าน exit 0 — 435/435 tests
