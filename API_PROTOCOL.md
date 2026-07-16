@@ -1,6 +1,7 @@
 # Pirate Fruit API Protocol
 
-The S6 API uses JSON over HTTPS and cookie-authenticated guest sessions. Every
+The S6/S7 API uses JSON over HTTPS. Player routes use cookie-authenticated guest sessions;
+the shared S7 economy snapshot is a read-only public resource. Every
 error follows the versioned `ApiErrorResponse` envelope with a request ID.
 
 ## Browser requirements
@@ -99,3 +100,37 @@ request and key returns the original revision without inserting data again.
 Canonical coins come only from the progression document. Coin copies in item or
 boat documents are overwritten when state is serialized. The API never accepts a
 Client-selected identity, price, reward, or timestamp.
+
+## S7 shared living economy
+
+`GET /api/economy/world` returns the canonical PostgreSQL-backed world produced by
+the elected Server runtime. It does not require player identity because every browser
+reads the same world, but CORS, global rate limiting and a route limit of 60 requests
+per minute still apply. Responses use `Cache-Control: no-store` and a tick ETag.
+
+```json
+{
+  "ok": true,
+  "schemaVersion": 1,
+  "worldId": "main",
+  "tick": 42,
+  "lastTickAt": "2026-01-01T00:00:00.000Z",
+  "serverTime": "2026-01-01T00:00:01.000Z",
+  "tickIntervalMs": 5000,
+  "state": {
+    "schemaVersion": 1,
+    "world": "{\"version\":8,\"world\":{...}}"
+  }
+}
+```
+
+The inner `world` string deliberately matches the bounded Local save document so the
+existing Three.js client can hydrate the same simulation read model without rewriting
+gameplay UI. The Client validates envelope version, timestamp, world ID, tick and document
+shape before applying it.
+
+There is no `PUT /api/economy/world`. Browser-originated prices, stock, factories,
+fleets, orders, reservations, trader memory, genome state, news, tick or timestamps are
+never accepted. When `ENABLE_ECONOMY_SERVER=false`, the route is absent (404) and the
+Client continues with its Local economy. S8 will add narrow buy/sell intent endpoints;
+it will not add whole-world writes.

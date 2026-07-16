@@ -39,6 +39,7 @@ import { PBRPerformanceMonitor } from './art/PBRPerformanceMonitor';
 import { IslandManager } from './island/IslandManager';
 import { TradeManager } from './trade/TradeManager';
 import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
+import { parseEconomyDocument } from './trade/living/LivingTradePersistence';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -50,6 +51,7 @@ import { CargoHUD } from './ui/CargoHUD';
 import { preloadPirateGameAssets } from './art/PirateAssetLibrary';
 import { initializeGamePersistence } from './persistence/GamePersistence';
 import { initializeRemoteSession } from './session/RemoteSession';
+import { REMOTE_ECONOMY_TICK_INTERVAL_MS } from '@pirate-fruit/shared';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -166,10 +168,17 @@ async function main(): Promise<void> {
     undefined,
     persistence.storage,
   );
+  tradeManager.living.setServerReadOnly(persistence.activeEconomyMode === 'remote');
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);
   const economyHud = new EconomyMobileHUD(tradeManager);
+  persistence.subscribeStatus((event) => {
+    if (event.scope === 'economy') {
+      tradeManager.living.setServerReadOnly(event.mode === 'remote');
+    }
+    economyHud.notifyStatus(event.message, event.mode === 'local');
+  });
   const economyPanel = new EconomyPanel(tradeManager, () => islandManager.activeIsland);
   economyHud.bindPanel(
     economyPanel,
@@ -216,16 +225,49 @@ async function main(): Promise<void> {
   });
 
   let livingTickAccum = 0;
+  let remotePollAccum = 0;
+  let remotePollInFlight = false;
+  const refreshEconomyViews = (): void => {
+    tradeRouteHint.refresh();
+    tradeShop.refresh();
+    economyDebug.refresh();
+    economyPanel.refresh();
+  };
+  const pollRemoteEconomy = (): void => {
+    if (remotePollInFlight) return;
+    remotePollInFlight = true;
+    void persistence.refreshEconomy()
+      .then((state) => {
+        const world = state?.world ? parseEconomyDocument(state.world) : null;
+        if (!world) return;
+        tradeManager.living.replaceState(world);
+        tradeManager.living.setServerReadOnly(persistence.activeEconomyMode === 'remote');
+        refreshEconomyViews();
+      })
+      .finally(() => {
+        remotePollInFlight = false;
+      });
+  };
   game.add({
     update: (dt: number) => {
-      livingTickAccum += dt * 1000;
-      if (livingTickAccum >= LIVING_TICK_INTERVAL_MS) {
+      const elapsedMs = dt * 1000;
+      if (persistence.requestedEconomyMode === 'remote') {
+        remotePollAccum += elapsedMs;
+        if (remotePollAccum >= REMOTE_ECONOMY_TICK_INTERVAL_MS) {
+          remotePollAccum = 0;
+          pollRemoteEconomy();
+        }
+      }
+      if (persistence.activeEconomyMode === 'local') {
+        livingTickAccum += elapsedMs;
+        if (livingTickAccum >= LIVING_TICK_INTERVAL_MS) {
+          livingTickAccum = 0;
+          tradeManager.living.tick();
+          refreshEconomyViews();
+        }
+      } else {
+        // The Server owns time while online; never run a second browser economy tick.
         livingTickAccum = 0;
-        tradeManager.living.tick();
-        tradeRouteHint.refresh();
-        tradeShop.refresh();
-        economyDebug.refresh();
-        economyPanel.refresh();
       }
       economyHud.update(dt, {
         shopOpen: tradeShop.isOpen,

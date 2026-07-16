@@ -23,7 +23,7 @@ import { gameStorage, type GameStorage } from '../../persistence/GameStorage';
 import { GAMEPLAY_STORAGE_KEYS } from '../../persistence/storageKeys';
 
 const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.economy;
-const SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
+export const LIVING_ECONOMY_SAVE_VERSION = ECONOMY_GENOME_CONFIG.saveVersion;
 const ECONOMY_BALANCE_VERSION = 3;
 
 const INDUSTRIAL_RECOVERY_RATIO: Partial<Record<LivingCommodityId, number>> = {
@@ -39,7 +39,7 @@ const INDUSTRIAL_RECOVERY_RATIO: Partial<Record<LivingCommodityId, number>> = {
   'trade-crate': 0.6,
 };
 
-interface SavedEconomy {
+export interface SavedEconomyDocument {
   version: number;
   world: EconomyWorldState;
 }
@@ -183,7 +183,7 @@ function migrateWorld(world: EconomyWorldState, fromVersion: number): EconomyWor
     migrateRouteReputationsFromRoutes(world);
   }
   ensurePlayerEconomyState(world);
-  if (fromVersion < SAVE_VERSION) {
+  if (fromVersion < LIVING_ECONOMY_SAVE_VERSION) {
     migrateGenomeFromSave(world);
   } else {
     ensureGenomeState(world);
@@ -191,13 +191,12 @@ function migrateWorld(world: EconomyWorldState, fromVersion: number): EconomyWor
   return world;
 }
 
-export function loadEconomyState(storage: GameStorage = gameStorage()): EconomyWorldState | null {
+/** Decode and migrate the exact document used by both Local storage and S7 PostgreSQL. */
+export function parseEconomyDocument(raw: string): EconomyWorldState | null {
   try {
-    const raw = storage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const saved = JSON.parse(raw) as SavedEconomy;
+    const saved = JSON.parse(raw) as SavedEconomyDocument;
     if (!saved.world?.cells?.length) return null;
-    if (saved.version !== SAVE_VERSION
+    if (saved.version !== LIVING_ECONOMY_SAVE_VERSION
       && saved.version !== 2
       && saved.version !== 3
       && saved.version !== 4
@@ -214,16 +213,29 @@ export function loadEconomyState(storage: GameStorage = gameStorage()): EconomyW
   }
 }
 
+export function loadEconomyState(storage: GameStorage = gameStorage()): EconomyWorldState | null {
+  const raw = storage.getItem(STORAGE_KEY);
+  return raw ? parseEconomyDocument(raw) : null;
+}
+
+/** Produce the canonical bounded document without depending on a browser Storage object. */
+export function serializeEconomyState(world: EconomyWorldState): string {
+  ensurePlayerEconomyState(world);
+  ensureGenomeState(world);
+  trimEconomyWorldState(world);
+  const payload: SavedEconomyDocument = {
+    version: LIVING_ECONOMY_SAVE_VERSION,
+    world,
+  };
+  return JSON.stringify(payload);
+}
+
 export function saveEconomyState(
   world: EconomyWorldState,
   storage: GameStorage = gameStorage(),
 ): void {
   try {
-    ensurePlayerEconomyState(world);
-    ensureGenomeState(world);
-    trimEconomyWorldState(world);
-    const payload: SavedEconomy = { version: SAVE_VERSION, world };
-    storage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    storage.setItem(STORAGE_KEY, serializeEconomyState(world));
   } catch {
     /* quota */
   }

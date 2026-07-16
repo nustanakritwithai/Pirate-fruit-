@@ -101,6 +101,21 @@ export class EconomyMobileHUD {
     this.panel?.setEventHistory(this.eventHistory);
   }
 
+  notifyStatus(message: string, isFallback: boolean): void {
+    this.ingestPlayerEvent({
+      id: `persistence-${Date.now()}-${isFallback ? 'local' : 'remote'}`,
+      priority: isFallback ? 'critical' : 'medium',
+      kind: 'other',
+      mergeKey: 'persistence-mode',
+      message: message.slice(0, 30),
+      fullMessage: message,
+      icon: isFallback ? '⚠️' : '🌐',
+      createdAt: Date.now(),
+      toastEligible: true,
+      isAlert: isFallback,
+    });
+  }
+
   ingestTick(): void {
     const world = this.trade.living.state;
     if (world.tick === this.lastLogTick) return;

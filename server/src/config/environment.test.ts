@@ -47,6 +47,13 @@ describe('server environment', () => {
     })).toThrow(/ENABLE_REMOTE_SESSION/);
   });
 
+  it('requires PostgreSQL whenever the living economy Server is enabled', () => {
+    expect(() => loadEnvironment({
+      NODE_ENV: 'test',
+      ENABLE_ECONOMY_SERVER: 'true',
+    })).toThrow(/DATABASE_URL/);
+  });
+
   it('requires database and session secrets in production', () => {
     expect(() =>
       loadEnvironment({

@@ -19,6 +19,8 @@ services:
         value: false
       - key: VITE_ENABLE_REMOTE_SESSION
         value: false
+      - key: VITE_ENABLE_ECONOMY_SERVER
+        value: false
       - key: VITE_API_URL
         sync: false
       - key: VITE_WS_URL
@@ -48,6 +50,11 @@ services:
         - tsconfig.base.json
         - server/**
         - shared/**
+        # The Server build bundles the canonical Living Economy kernel from these pure Client modules.
+        - client/src/trade/living/**
+        - client/src/island/IslandTypes.ts
+        - client/src/persistence/GameStorage.ts
+        - client/src/persistence/storageKeys.ts
     envVars:
       - key: NODE_ENV
         value: production
@@ -58,7 +65,7 @@ services:
       - key: CLIENT_ORIGIN
         sync: false
       - key: SERVER_VERSION
-        value: 0.5.0
+        value: 0.7.0
       - key: SESSION_SECRET
         generateValue: true
       - key: ENABLE_REMOTE_SESSION

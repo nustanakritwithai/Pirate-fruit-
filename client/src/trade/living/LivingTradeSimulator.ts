@@ -76,21 +76,49 @@ import type {
   TradeNewsItem,
 } from './types';
 
+export interface LivingTradeSimulatorOptions {
+  /** Start from an already validated world (used by the S7 server runtime and snapshot sync). */
+  initialWorld?: EconomyWorldState;
+  fresh?: boolean;
+  /** Server execution supplies a no-op; browser Local mode keeps the legacy serializer. */
+  persist?: (world: EconomyWorldState) => void;
+}
+
 /** Economic Cellular Automata — หัวใจคือสินค้าและเศรษฐกิจเท่านั้น */
 export class LivingTradeSimulator {
   private world: EconomyWorldState;
   private tickLog: EconomyLogEntry[] = [];
   private contractWallet: ContractWallet | null = null;
+  private readonly persistWorld: (world: EconomyWorldState) => void;
+  private serverReadOnly = false;
 
-  constructor(fresh = false) {
-    const saved = fresh ? null : loadEconomyState();
+  constructor(freshOrOptions: boolean | LivingTradeSimulatorOptions = false) {
+    const options = typeof freshOrOptions === 'boolean'
+      ? { fresh: freshOrOptions }
+      : freshOrOptions;
+    this.persistWorld = options.persist ?? saveEconomyState;
+    const saved = options.initialWorld ?? (options.fresh ? null : loadEconomyState());
     if (saved) {
       this.world = saved;
     } else {
       this.world = createFreshWorld();
       for (const cell of this.world.cells) updatePrices(cell);
-      saveEconomyState(this.world);
+      this.persist();
     }
+  }
+
+  /** Replace the read model atomically when a newer server snapshot arrives. */
+  replaceState(world: EconomyWorldState): void {
+    this.world = world;
+    this.tickLog = [];
+  }
+
+  setServerReadOnly(readOnly: boolean): void {
+    this.serverReadOnly = readOnly;
+  }
+
+  private persist(): void {
+    this.persistWorld(this.world);
   }
 
   get state(): Readonly<EconomyWorldState> {
@@ -173,22 +201,29 @@ export class LivingTradeSimulator {
   }
 
   acceptPlayerContract(contractId: string) {
+    if (this.serverReadOnly) {
+      return { ok: false, message: 'สัญญา Remote จะเปิดเมื่อ Server รองรับใน S10', events: [] };
+    }
     if (!this.contractWallet) return { ok: false, message: 'ไม่มี wallet', events: [] };
     const result = acceptContract(this.world, contractId, this.contractWallet);
-    if (result.ok) saveEconomyState(this.world);
+    if (result.ok) this.persist();
     emitPlayerEconomyEvents(result.events);
     return result;
   }
 
   abandonPlayerContract(contractId: string) {
+    if (this.serverReadOnly) {
+      return { ok: false, message: 'สัญญา Remote จะเปิดเมื่อ Server รองรับใน S10', events: [] };
+    }
     if (!this.contractWallet) return { ok: false, message: 'ไม่มี wallet', events: [] };
     const result = abandonContract(this.world, contractId, this.contractWallet);
-    if (result.ok) saveEconomyState(this.world);
+    if (result.ok) this.persist();
     emitPlayerEconomyEvents(result.events);
     return result;
   }
 
   trackPlayerContract(contractId: string | null): void {
+    if (this.serverReadOnly) return;
     trackContract(this.world, contractId);
   }
 
@@ -202,6 +237,7 @@ export class LivingTradeSimulator {
     amount: number,
     unitPrice: number,
   ): void {
+    if (this.serverReadOnly) return;
     const cellId = resolveTradeCell(gameIslandId, commodityId);
     const cell = this.getCell(cellId);
     const item = this.getCommodity(cellId, commodityId);
@@ -228,7 +264,7 @@ export class LivingTradeSimulator {
       item,
     });
     emitPlayerEconomyEvents(events);
-    saveEconomyState(this.world);
+    this.persist();
   }
 
   applyPlayerSell(
@@ -237,6 +273,7 @@ export class LivingTradeSimulator {
     amount: number,
     unitPrice: number,
   ): void {
+    if (this.serverReadOnly) return;
     const cellId = resolveTradeCell(gameIslandId, commodityId);
     const cell = this.getCell(cellId);
     const item = this.getCommodity(cellId, commodityId);
@@ -263,7 +300,7 @@ export class LivingTradeSimulator {
     }, this.contractWallet ?? undefined);
 
     emitPlayerEconomyEvents(events);
-    saveEconomyState(this.world);
+    this.persist();
   }
 
   get factories(): readonly import('./types').FactoryAgentState[] {
@@ -277,6 +314,7 @@ export class LivingTradeSimulator {
   }
 
   tick(): void {
+    if (this.serverReadOnly) return;
     this.world.tick += 1;
     this.tickLog = [];
 
@@ -317,7 +355,7 @@ export class LivingTradeSimulator {
       LIVING_ECONOMY_BOUNDS.maxNewsEntries,
     );
     trimEconomyWorldState(this.world);
-    saveEconomyState(this.world);
+    this.persist();
   }
 
   tickMany(count: number): void {
@@ -349,45 +387,54 @@ export class LivingTradeSimulator {
   }
 
   injectShortage(cellId: EconomyCellId, commodityId: LivingCommodityId, amount: number): void {
+    if (this.serverReadOnly) return;
     dynForceShortage(this.world, cellId, commodityId, amount);
     const cell = this.getCell(cellId);
     if (cell) updatePrices(cell);
   }
 
   injectSurplus(cellId: EconomyCellId, commodityId: LivingCommodityId, amount: number): void {
+    if (this.serverReadOnly) return;
     debugForceSurplus(this.world, cellId, commodityId, amount);
     const cell = this.getCell(cellId);
     if (cell) updatePrices(cell);
   }
 
   generateOrdersDebug(): void {
+    if (this.serverReadOnly) return;
     updateDynamicTradeEconomy(this.world, this.tickLog);
   }
 
   assignBestOrderDebug(): void {
+    if (this.serverReadOnly) return;
     debugAssignBestOrder(this.world, this.tickLog);
   }
 
   failShipmentDebug(): void {
+    if (this.serverReadOnly) return;
     debugFailFirstInTransit(this.world, this.tickLog);
     moveCargo(this.world, this.tickLog);
   }
 
   completeShipmentDebug(): void {
+    if (this.serverReadOnly) return;
     debugCompleteFirstInTransit(this.world, this.tickLog);
     moveCargo(this.world, this.tickLog);
   }
 
   clearOrdersDebug(): void {
+    if (this.serverReadOnly) return;
     debugClearOrders(this.world);
   }
 
   forceRouteSuccessDebug(): void {
+    if (this.serverReadOnly) return;
     debugCompleteFirstInTransit(this.world, this.tickLog);
     moveCargo(this.world, this.tickLog);
   }
 
   forceRaidDebug(): void {
+    if (this.serverReadOnly) return;
     debugForceRaid(this.world, this.tickLog);
   }
 
@@ -398,14 +445,17 @@ export class LivingTradeSimulator {
     commodity: LivingCommodityId,
     profit: number,
   ): void {
+    if (this.serverReadOnly) return;
     debugAddProfitMemory(this.world, traderId, source, dest, commodity, profit);
   }
 
   clearTraderMemoryDebug(traderId: string): void {
+    if (this.serverReadOnly) return;
     clearTraderMemory(this.world, traderId);
   }
 
   resetRouteReputationDebug(): void {
+    if (this.serverReadOnly) return;
     resetRouteReputations(this.world);
   }
 
@@ -436,6 +486,7 @@ export class LivingTradeSimulator {
   private _lastTradeResult: import('./DynamicTradeEconomy').DynamicTradeTickResult | null = null;
 
   resetFactoryAgents(): void {
+    if (this.serverReadOnly) return;
     this.world.factories = [];
     for (const cell of this.world.cells) {
       this.world.factories.push(...createFactoryAgentsForCell(cell));
@@ -444,17 +495,20 @@ export class LivingTradeSimulator {
   }
 
   resetPlayerEconomyDebug(): void {
+    if (this.serverReadOnly) return;
     this.world.playerEconomy = createDefaultPlayerEconomy();
-    saveEconomyState(this.world);
+    this.persist();
   }
 
   freezeGenomeDebug(pressureToo = false): void {
+    if (this.serverReadOnly) return;
     ensureGenomeState(this.world);
     this.world.genomeState!.genomeDebug.freezeDrift = true;
     if (pressureToo) this.world.genomeState!.genomeDebug.freezePressureCollection = true;
   }
 
   resumeGenomeDebug(): void {
+    if (this.serverReadOnly) return;
     ensureGenomeState(this.world);
     this.world.genomeState!.genomeDebug.freezeDrift = false;
     this.world.genomeState!.genomeDebug.freezePressureCollection = false;
@@ -462,6 +516,7 @@ export class LivingTradeSimulator {
   }
 
   accelGenomeDebug(multiplier: number): void {
+    if (this.serverReadOnly) return;
     ensureGenomeState(this.world);
     this.world.genomeState!.genomeDebug.accelMultiplier = multiplier;
   }
@@ -472,6 +527,7 @@ export class LivingTradeSimulator {
     strength: number,
     commodityId?: LivingCommodityId,
   ): void {
+    if (this.serverReadOnly) return;
     addPressure(this.world, {
       cellId,
       source,
@@ -482,6 +538,7 @@ export class LivingTradeSimulator {
   }
 
   forceWoodPressureDebug(cellId: EconomyCellId, positive: boolean): void {
+    if (this.serverReadOnly) return;
     addPressure(this.world, {
       cellId,
       source: 'factory',
@@ -492,18 +549,22 @@ export class LivingTradeSimulator {
   }
 
   evaluateFitnessDebug(): void {
+    if (this.serverReadOnly) return;
     forceEvaluateFitness(this.world);
   }
 
   driftGenomeDebug(): void {
+    if (this.serverReadOnly) return;
     forceDriftGenomes(this.world);
   }
 
   resolveIdentityDebug(): void {
+    if (this.serverReadOnly) return;
     forceResolveIdentities(this.world);
   }
 
   resetGenomeDebug(cellId?: EconomyCellId): void {
+    if (this.serverReadOnly) return;
     ensureGenomeState(this.world);
     if (cellId) {
       const idx = this.world.genomeState!.genomes.findIndex((g) => g.cellId === cellId);
@@ -514,10 +575,12 @@ export class LivingTradeSimulator {
   }
 
   clearPressuresDebug(cellId?: EconomyCellId): void {
+    if (this.serverReadOnly) return;
     clearPressures(this.world, cellId);
   }
 
   clearEvolutionHistoryDebug(): void {
+    if (this.serverReadOnly) return;
     clearEvolutionHistory(this.world);
   }
 

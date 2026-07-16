@@ -62,10 +62,23 @@ they do not prove that a level, item, coin gain, quest progress, HP or cargo cha
 earned. S7–S12 move economy, trade, rewards and combat decisions to authoritative
 Server commands. Remote Save must therefore not be described as anti-cheat authority.
 
+S7 makes world time, market stock/prices, production, factories, NPC fleets, orders,
+reservations, trader memory, genome evolution, news and snapshots Server-owned. Browsers
+receive a read-only snapshot and cannot upload a whole world. PostgreSQL advisory locking
+prevents two Web Service instances from advancing the same world concurrently; row locking
+and monotonic ticks prevent an older in-memory state from replacing a newer row.
+
+Player trade, coins, cargo and contract/reward decisions are intentionally not made
+authoritative by S7. While the Remote Economy flag is enabled, Client buy/sell UX may still
+change its Local player wallet/cargo under the S6 transitional trust model, but it cannot
+change shared stock; that becomes one atomic Server intent in S8. Remote contract mutations
+are disabled until their owning authoritative phase. Do not market S7 as secure trading.
+
 ## Current limitations
 
 - Guest recovery is browser-cookie based; clearing the cookie loses access until
   account linking is added.
 - One initial character is selected for each guest. Multi-character selection is
   a later authenticated feature.
-- Economy, trade, quest rewards and combat remain Client-authored until later phases.
+- Trade/coins/cargo, quest rewards and combat remain Client-authored until later phases.
+- HTTP polling gives snapshots at five-second cadence; realtime ordering/resync belongs to S9.

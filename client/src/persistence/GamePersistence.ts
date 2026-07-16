@@ -6,6 +6,7 @@ import {
 } from './LocalRepositories';
 import {
   RemoteCargoRepository,
+  RemoteEconomyRepository,
   RemotePlayerRepository,
   RemoteSaveCoordinator,
   type FetchLike,
@@ -21,19 +22,35 @@ import {
   migrateLocalSaveIfNeeded,
   recoverDirtyLocalSave,
 } from './LocalSaveMigration';
-import type { CargoRepository, PlayerRepository } from '@pirate-fruit/shared';
+import type {
+  CargoRepository,
+  EconomyRepository,
+  PersistedEconomyState,
+  PlayerRepository,
+} from '@pirate-fruit/shared';
 
 export type PersistenceMode = 'local' | 'remote';
+
+export interface PersistenceStatusEvent {
+  scope: 'save' | 'economy';
+  mode: PersistenceMode;
+  message: string;
+}
 
 export interface GamePersistenceHandle {
   readonly requestedMode: PersistenceMode;
   readonly activeMode: PersistenceMode;
+  readonly requestedEconomyMode: PersistenceMode;
+  readonly activeEconomyMode: PersistenceMode;
   readonly storage: RepositoryBackedStorage;
+  refreshEconomy(): Promise<PersistedEconomyState | null>;
+  subscribeStatus(listener: (event: PersistenceStatusEvent) => void): () => void;
   flush(): Promise<void>;
 }
 
 export interface GamePersistenceOptions {
   useRemoteServer?: boolean;
+  useRemoteEconomy?: boolean;
   apiUrl?: string;
   fetcher?: FetchLike;
   localStorage?: GameStorage;
@@ -81,11 +98,73 @@ export async function initializeGamePersistence(
   const requestedRemote = options.useRemoteServer
     ?? enabled(import.meta.env.VITE_USE_REMOTE_SERVER);
   const requestedMode: PersistenceMode = requestedRemote ? 'remote' : 'local';
+  const requestedRemoteEconomy = options.useRemoteEconomy
+    ?? enabled(import.meta.env.VITE_ENABLE_ECONOMY_SERVER);
+  const requestedEconomyMode: PersistenceMode = requestedRemoteEconomy ? 'remote' : 'local';
   const apiUrl = normalizeApiUrl(options.apiUrl ?? import.meta.env.VITE_API_URL);
   const warn = options.warn ?? ((message: string, error?: unknown) => console.warn(message, error));
 
   let activeMode: PersistenceMode = 'local';
+  let activeEconomyMode: PersistenceMode = 'local';
   let storage: RepositoryBackedStorage;
+  const local = localRepositories(localStorage);
+  const statusEvents: PersistenceStatusEvent[] = [];
+  const statusListeners = new Set<(event: PersistenceStatusEvent) => void>();
+  const emitStatus = (event: PersistenceStatusEvent): void => {
+    statusEvents.push(event);
+    if (statusEvents.length > 8) statusEvents.shift();
+    for (const listener of statusListeners) listener(event);
+  };
+
+  let economyAttempted = false;
+  const changeEconomyMode = (
+    mode: PersistenceMode,
+    error?: unknown,
+  ): void => {
+    const previous = activeEconomyMode;
+    activeEconomyMode = mode;
+    if (mode === 'local' && (!economyAttempted || previous === 'remote')) {
+      const message = 'Remote economy unavailable — switched to Local economy safely.';
+      warn(message, error);
+      emitStatus({ scope: 'economy', mode: 'local', message });
+    } else if (mode === 'remote' && economyAttempted && previous === 'local') {
+      emitStatus({
+        scope: 'economy',
+        mode: 'remote',
+        message: 'Remote economy connection restored.',
+      });
+    }
+    economyAttempted = true;
+  };
+
+  const remoteEconomy = requestedRemoteEconomy && apiUrl
+    ? new RemoteEconomyRepository(apiUrl, options.fetcher)
+    : null;
+  const economy: EconomyRepository = remoteEconomy
+    ? {
+        loadWorld: async (worldId) => {
+          try {
+            const state = await remoteEconomy.loadWorld(worldId);
+            changeEconomyMode('remote');
+            return state;
+          } catch (error) {
+            changeEconomyMode('local', error);
+            return local.economy.loadWorld(worldId);
+          }
+        },
+        // S7 browser mutations remain a recoverable Local mirror. Only the Server writes the world.
+        saveWorld: (worldId, state) => local.economy.saveWorld(worldId, state),
+      }
+    : local.economy;
+
+  if (requestedRemoteEconomy && !apiUrl) {
+    changeEconomyMode('local', new Error('VITE_API_URL is missing or invalid'));
+  }
+
+  const repositories = (
+    player: PlayerRepository,
+    cargo: CargoRepository,
+  ): GameRepositories => ({ player, cargo, economy });
 
   if (requestedRemote && apiUrl) {
     try {
@@ -100,14 +179,15 @@ export async function initializeGamePersistence(
       await recoverDirtyLocalSave(coordinator, localStorage);
       await migrateLocalSaveIfNeeded(coordinator, localStorage);
 
-      const local = localRepositories(localStorage);
       const failover = { active: true };
       const useLocal = (error: unknown): void => {
         if (!failover.active) return;
         failover.active = false;
         activeMode = 'local';
         markRemoteSaveDirty(localStorage, coordinator.revision);
-        warn('Remote save failed; changes remain in the Local fallback.', error);
+        const message = 'Remote save failed — changes remain in the Local fallback.';
+        warn(message, error);
+        emitStatus({ scope: 'save', mode: 'local', message });
       };
       const remotePlayer = new RemotePlayerRepository(apiUrl, options.fetcher, coordinator);
       const remoteCargo = new RemoteCargoRepository(apiUrl, options.fetcher, coordinator);
@@ -142,7 +222,7 @@ export async function initializeGamePersistence(
         },
       };
       storage = await RepositoryBackedStorage.load(
-        { player, cargo, economy: local.economy },
+        repositories(player, cargo),
         { playerId: REMOTE_PLAYER_ID, worldId: WORLD_ID },
         localStorage,
         {
@@ -156,19 +236,23 @@ export async function initializeGamePersistence(
       );
       activeMode = 'remote';
     } catch (error) {
-      warn('Remote save is unavailable; continuing with the local save adapter.', error);
+      const message = 'Remote save unavailable — continuing in Local mode.';
+      warn(message, error);
+      emitStatus({ scope: 'save', mode: 'local', message });
       storage = await RepositoryBackedStorage.load(
-        localRepositories(localStorage),
+        repositories(local.player, local.cargo),
         { playerId: LOCAL_PLAYER_ID, worldId: WORLD_ID },
         localStorage,
       );
     }
   } else {
     if (requestedRemote) {
-      warn('VITE_USE_REMOTE_SERVER is enabled but VITE_API_URL is missing or invalid.');
+      const message = 'Remote save enabled without a valid API URL — continuing in Local mode.';
+      warn(message);
+      emitStatus({ scope: 'save', mode: 'local', message });
     }
     storage = await RepositoryBackedStorage.load(
-      localRepositories(localStorage),
+      repositories(local.player, local.cargo),
       { playerId: LOCAL_PLAYER_ID, worldId: WORLD_ID },
       localStorage,
     );
@@ -176,10 +260,31 @@ export async function initializeGamePersistence(
 
   configureGameStorage(storage);
 
+  const refreshEconomy = async (): Promise<PersistedEconomyState | null> => {
+    if (!remoteEconomy) return null;
+    try {
+      const state = await remoteEconomy.loadWorld(WORLD_ID);
+      if (state) storage.replaceEconomySnapshot(state);
+      changeEconomyMode('remote');
+      return state;
+    } catch (error) {
+      changeEconomyMode('local', error);
+      return null;
+    }
+  };
+
   return {
     requestedMode,
     get activeMode() { return activeMode; },
+    requestedEconomyMode,
+    get activeEconomyMode() { return activeEconomyMode; },
     storage,
+    refreshEconomy,
+    subscribeStatus(listener) {
+      statusListeners.add(listener);
+      for (const event of statusEvents) listener(event);
+      return () => statusListeners.delete(listener);
+    },
     flush: () => storage.flush(),
   };
 }

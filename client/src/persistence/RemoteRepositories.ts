@@ -1,5 +1,9 @@
 import {
   PERSISTED_CARGO_SCHEMA_VERSION,
+  PERSISTED_ECONOMY_SCHEMA_VERSION,
+  REMOTE_ECONOMY_SCHEMA_VERSION,
+  REMOTE_ECONOMY_TICK_INTERVAL_MS,
+  REMOTE_ECONOMY_WORLD_ID,
   REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
   type CargoRepository,
   type EconomyRepository,
@@ -12,6 +16,7 @@ import {
   type RemoteLocalMigrationRequest,
   type RemotePlayerSaveRequest,
   type RemotePlayerStateResponse,
+  type RemoteEconomySnapshotResponse,
   type RemoteSaveMutationResponse,
 } from '@pirate-fruit/shared';
 
@@ -67,6 +72,42 @@ function isMutationResponse(value: unknown): value is RemoteSaveMutationResponse
     && candidate.revision >= 1
     && typeof candidate.idempotentReplay === 'boolean'
     && typeof candidate.migrated === 'boolean';
+}
+
+function isEconomySnapshot(value: unknown): value is RemoteEconomySnapshotResponse {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<RemoteEconomySnapshotResponse>;
+  if (
+    candidate.ok !== true
+    || candidate.schemaVersion !== REMOTE_ECONOMY_SCHEMA_VERSION
+    || candidate.worldId !== REMOTE_ECONOMY_WORLD_ID
+    || candidate.tickIntervalMs !== REMOTE_ECONOMY_TICK_INTERVAL_MS
+    || !Number.isSafeInteger(candidate.tick)
+    || Number(candidate.tick) < 0
+    || typeof candidate.serverTime !== 'string'
+    || !Number.isFinite(Date.parse(candidate.serverTime))
+    || (candidate.lastTickAt !== null
+      && (typeof candidate.lastTickAt !== 'string'
+        || !Number.isFinite(Date.parse(candidate.lastTickAt))))
+    || !candidate.state
+    || typeof candidate.state !== 'object'
+    || candidate.state.schemaVersion !== PERSISTED_ECONOMY_SCHEMA_VERSION
+    || typeof candidate.state.world !== 'string'
+  ) return false;
+
+  try {
+    const document = JSON.parse(candidate.state.world) as {
+      version?: unknown;
+      world?: { tick?: unknown; cells?: unknown };
+    };
+    const world = document.world;
+    return Number.isSafeInteger(document.version)
+      && world !== undefined
+      && world.tick === candidate.tick
+      && Array.isArray(world.cells);
+  } catch {
+    return false;
+  }
 }
 
 class RemoteRepositoryClient {
@@ -300,22 +341,31 @@ export class RemoteCargoRepository implements CargoRepository {
   }
 }
 
-/** S7 owns these endpoints. S6 keeps the browser economy on LocalEconomyRepository. */
+/** S7 shared world is read-only from browsers; S8 adds validated trade intents. */
 export class RemoteEconomyRepository implements EconomyRepository {
   private readonly client: RemoteRepositoryClient;
+  private snapshot: RemoteEconomySnapshotResponse | null = null;
 
   constructor(baseUrl: string, fetcher?: FetchLike) {
     this.client = new RemoteRepositoryClient(baseUrl, { fetcher });
   }
 
   async loadWorld(_worldId: string): Promise<PersistedEconomyState | null> {
-    return this.client.request<PersistedEconomyState | null>('/api/economy/world');
+    return (await this.loadSnapshot()).state;
   }
 
-  async saveWorld(_worldId: string, state: PersistedEconomyState): Promise<void> {
-    await this.client.request<void>('/api/economy/world', {
-      method: 'PUT',
-      body: JSON.stringify({ state }),
-    });
+  async loadSnapshot(): Promise<RemoteEconomySnapshotResponse> {
+    const payload = await this.client.request<unknown>('/api/economy/world');
+    if (!isEconomySnapshot(payload)) throw new Error('Remote economy snapshot is invalid');
+    this.snapshot = payload;
+    return payload;
+  }
+
+  get current(): RemoteEconomySnapshotResponse | null {
+    return this.snapshot;
+  }
+
+  async saveWorld(_worldId: string, _state: PersistedEconomyState): Promise<void> {
+    throw new Error('Remote economy state is Server-owned and read-only');
   }
 }

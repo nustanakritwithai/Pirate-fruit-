@@ -8,7 +8,8 @@ the mirror is hydrated once from asynchronous repositories before controllers,
 inventory, progression, cargo, boats, or the economy are constructed.
 
 The default production mode remains local. S6 adds authenticated remote player and
-cargo adapters while the economy remains Local until S7.
+cargo adapters. S7 adds an independently flagged, read-only shared economy adapter;
+the legacy Local economy stays available as its offline fallback.
 
 ## Legacy keys preserved
 
@@ -33,6 +34,8 @@ the gameplay repositories.
   guarded browser storage adapter.
 - `RemotePlayerRepository` and `RemoteCargoRepository` use cookie-authenticated
   requests, CSRF, an eight-second timeout and exponential retry backoff.
+- `RemoteEconomyRepository` performs only `GET /api/economy/world`; browser world
+  writes are rejected and temporary offline changes remain in the Local mirror.
 - `RepositoryBackedStorage` presents the synchronous `getItem`/`setItem` contract
   expected by the existing game and serializes repository writes.
 
@@ -49,6 +52,8 @@ session/load/write fails      -> Keep Local copy, mark dirty, and fall back safe
 
 The Render Static Site keeps both flags disabled. Remote Session and Remote Save
 can be enabled independently, but Save refuses Remote mode without an online Session.
+`VITE_ENABLE_ECONOMY_SERVER` is independent of both and falls back to Local without
+changing player/session mode.
 
 ## One-time import
 
@@ -65,8 +70,11 @@ deleted by migration. Clearing them after confirmation is safe because the next 
 hydrates from PostgreSQL. The backup is transitional recovery data and may be removed
 manually only after Render and restore verification.
 
-Autosaves debounce for 500 ms and batch each changed domain. A failed remote write
-keeps the synchronous Local mirror, records the server revision it forked from, and
+Autosaves debounce for 500 ms and batch each changed domain. The dirty marker is written
+synchronously when a remote player/cargo change is enqueued, before debounce or fetch, and
+is cleared only after the Server acknowledgement. This closes the page-close window: the
+`pagehide` serializers always update the Local mirror first, even if the pending request
+cannot finish. A failed remote write keeps that mirror, records the server revision it forked from, and
 continues Local. On reconnect it uploads that dirty copy only if the server revision
 is unchanged; otherwise it stays Local instead of overwriting newer data.
 
