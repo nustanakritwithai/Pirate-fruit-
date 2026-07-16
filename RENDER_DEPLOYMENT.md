@@ -1,29 +1,38 @@
 # Render Deployment
 
-`render.yaml` defines three resources in Singapore:
+`render.yaml` is a backend-only Blueprint that defines two resources in Singapore:
 
-1. `pirate-fruit` — existing Vite/Three.js Static Site.
-2. `pirate-fruit-server` — Node.js Web Service.
-3. `pirate-fruit-db` — Render PostgreSQL using its internal connection string.
+1. `pirate-fruit-server` — Node.js Web Service.
+2. `pirate-fruit-db` — private Render PostgreSQL 16 using its internal connection string.
+
+The existing Vite/Three.js Static Site remains separately managed at
+`https://pirate-fruit-u555.onrender.com`. Keeping it outside this Blueprint prevents
+Render from creating a duplicate Static Site with a suffixed name and preserves the
+existing public URL and browser Local saves.
 
 ## Blueprint setup
 
-1. Sync the repository Blueprint from `render.yaml`.
-2. The Static Site builds from the repository root because `client` consumes the
-   `shared` workspace; the root `package-lock.json` is canonical and publish output
-   remains `client/dist`.
-3. Set `CLIENT_ORIGIN` to the exact public Static Site origin, without a trailing slash.
-4. Set `VITE_API_URL` and `VITE_WS_URL` to the public server origins, but keep
+1. Use the repository's **Deploy to Render** button or create a Blueprint from the
+   default branch and root `render.yaml`. The creation preview must show exactly one
+   Web Service and one PostgreSQL database; do not accept an unexpected Static Site.
+2. `CLIENT_ORIGIN` is pinned to the existing exact Static Site origin without a trailing slash.
+   Change it in source and resync if the public game origin changes.
+3. Render generates `SESSION_SECRET`, connects the database's internal connection string
+   to `DATABASE_URL`, runs schema migrations on startup, and performs the idempotent seed
+   once through `initialDeployHook`.
+4. After Render reveals the public Server URL, set `VITE_API_URL` and `VITE_WS_URL` on
+   the separately managed Static Site, but keep
    `VITE_USE_REMOTE_SERVER=false` until S6 integration verification,
    `VITE_ENABLE_ECONOMY_SERVER=false` until S7 integration verification, and
    `VITE_ENABLE_REMOTE_SESSION=false` until S5 verification finishes.
-5. Let Render generate `SESSION_SECRET`; never copy it into the client or repository.
-6. Keep remote feature flags false until their owning phase is merged.
-7. Confirm all resources use Singapore before the first creation; Render regions
+5. Never copy `SESSION_SECRET` or `DATABASE_URL` into the client, repository, or chat.
+6. Keep all remote feature flags false for the first online baseline.
+7. Confirm both resources use Singapore before the first creation; Render regions
    cannot be changed in place later.
 8. The Web Service start command runs `npm run db:migrate` before starting
    Fastify. A checksum or migration failure prevents the service from accepting
    traffic with a partially upgraded schema.
+9. Subsequent Server deploys wait for GitHub CI checks to pass before Render starts them.
 
 ## Enable S5 guest sessions
 
@@ -44,15 +53,9 @@ when a browser privacy policy blocks it.
 
 ## First database seed
 
-After the first successful schema migration, open a one-off Render shell for the
-Web Service and run:
-
-```bash
-npm run db:seed
-```
-
-The seed is idempotent and creates only the empty `main` economy world. Do not
-put the seed command in every deploy because S7 will own live economy recovery.
+The Blueprint runs `npm run db:seed` once through `initialDeployHook` after the first
+successful deploy. The seed is idempotent and creates only the empty `main` economy
+world. It is deliberately not part of every restart because S7 owns live economy recovery.
 
 ## Enable S6 Remote Save
 

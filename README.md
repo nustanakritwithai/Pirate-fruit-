@@ -207,37 +207,39 @@ npm run preview   # เสิร์ฟไฟล์ที่ build แล้ว
 
 ## Deploy ขึ้น Render
 
-repo นี้พร้อม deploy เป็น **Static Site** บน [Render](https://render.com) ผ่าน Blueprint [`render.yaml`](render.yaml)
+เกมเดิมทำงานเป็น Static Site แยกที่
+[`https://pirate-fruit-u555.onrender.com`](https://pirate-fruit-u555.onrender.com)
+เพื่อรักษา URL และ Local save เดิมไว้ ส่วน [`render.yaml`](render.yaml) เป็น
+Backend-only Blueprint ที่สร้างเฉพาะ `pirate-fruit-server` และ PostgreSQL
+`pirate-fruit-db` ใน Singapore โดยไม่สร้าง Static Site ซ้ำ
 
-### วิธีที่ 1 — Blueprint (แนะนำ)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/nustanakritwithai/Pirate-fruit-)
 
-1. Push branch ที่ต้องการ deploy ขึ้น GitHub
-2. เข้า [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
-3. เลือก repo `Pirate-fruit-` และ branch (เช่น `claude/blox-fruits-three-js-roadmap-1f2f5u` หรือ PR branch)
-4. Render อ่าน `render.yaml` แล้วตั้งค่าให้อัตโนมัติ:
-   - **Root Directory:** `client`
-   - **Build Command:** `npm install && npm run build`
-   - **Publish Directory:** `dist` (เมื่อ rootDir = `client`)
-   - **Node:** 22 (จาก `client/.node-version`)
-5. กด **Apply** — รอ build เสร็จได้ URL เช่น `https://pirate-fruit.onrender.com`
+1. กดปุ่มด้านบนและตรวจว่า Preview มีเพียง Web Service กับ PostgreSQL อย่างละหนึ่งรายการ
+2. กด **Deploy Blueprint**; Render เชื่อม `DATABASE_URL` และสร้าง `SESSION_SECRET` เอง
+3. รอให้ `pirate-fruit-db` เป็น Available และ `pirate-fruit-server` เป็น Live
+4. คัดลอกเฉพาะ public Server URL ไปตั้ง `VITE_API_URL` และ `VITE_WS_URL` บน Static Site เดิม
+5. คง remote feature flags ทั้งฝั่ง Server และ Static Site เป็น `false` ใน deploy แรก
 
-### วิธีที่ 2 — Static Site แบบตั้งเอง
+ห้ามคัดลอก `DATABASE_URL`, `SESSION_SECRET`, cookie หรือ CSRF token ลง repository หรือแชท
+
+### Static Site เดิม
 
 | ค่า | ตั้งเป็น |
 |-----|----------|
 | Environment | Static Site |
-| Root Directory | `client` |
-| Build Command | `npm install && npm run build` |
-| Publish Directory | `dist` |
+| Root Directory | เว้นว่าง (repository root) |
+| Build Command | `npm ci && npm run build:shared && npm run build:client` |
+| Publish Directory | `client/dist` |
 | Rewrite | `/*` → `/index.html` |
 
 ### ตรวจ build ก่อน deploy (เครื่อง local)
 
 ```bash
-cd client
 npm ci
-npm run build
-npm run preview   # เปิด http://localhost:4173
+npm run build:shared
+npm run build:client
+npm run preview --workspace=pirate-fruit-client # เปิด http://localhost:4173
 ```
 
 `dist/` ถูก gitignore — Render จะ build ใหม่ทุกครั้งที่ deploy
