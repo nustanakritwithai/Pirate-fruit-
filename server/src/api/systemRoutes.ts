@@ -10,11 +10,13 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ServerEnvironment } from '../config/environment.js';
 import type { RuntimeMetrics } from '../observability/runtimeMetrics.js';
 import type { DatabaseProbe } from '../persistence/database.js';
+import type { SessionService } from '../auth/sessionService.js';
 
 interface SystemRouteDependencies {
   environment: ServerEnvironment;
   database: DatabaseProbe;
   metrics: RuntimeMetrics;
+  sessions?: SessionService;
 }
 
 function hasDebugAccess(request: FastifyRequest, environment: ServerEnvironment): boolean {
@@ -27,7 +29,7 @@ export async function registerSystemRoutes(
   app: FastifyInstance,
   dependencies: SystemRouteDependencies,
 ): Promise<void> {
-  const { environment, database, metrics } = dependencies;
+  const { environment, database, metrics, sessions } = dependencies;
 
   app.get('/health', { config: { rateLimit: false } }, async (): Promise<HealthResponse> => ({
     ok: true,
@@ -79,12 +81,23 @@ export async function registerSystemRoutes(
       });
     }
 
+    let activeSessions: number | null = null;
+    if (environment.ENABLE_REMOTE_SESSION && sessions) {
+      try {
+        activeSessions = await sessions.activeCount();
+      } catch (error) {
+        app.log.warn({ err: error }, 'active session count failed');
+      }
+    }
+
     return {
       ok: true,
       service: SERVER_SERVICE_NAME,
       version: environment.SERVER_VERSION,
       metrics: metrics.snapshot(),
+      activeSessions,
       features: {
+        remoteSession: environment.ENABLE_REMOTE_SESSION,
         economyServer: environment.ENABLE_ECONOMY_SERVER,
         remoteSave: environment.ENABLE_REMOTE_SAVE,
       },

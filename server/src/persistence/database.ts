@@ -51,8 +51,12 @@ class PostgresDatabaseProbe implements DatabaseProbe {
   }
 }
 
+export function createDatabaseProbeFromPool(pool: Pool): DatabaseProbe {
+  return new PostgresDatabaseProbe(pool);
+}
+
 export function createDatabaseProbe(databaseUrl?: string): DatabaseProbe {
   if (!databaseUrl) return new DisabledDatabaseProbe();
 
-  return new PostgresDatabaseProbe(createPostgresPool(databaseUrl, { max: 5 }));
+  return createDatabaseProbeFromPool(createPostgresPool(databaseUrl, { max: 5 }));
 }

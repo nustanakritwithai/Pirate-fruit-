@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import type { ApiErrorResponse } from '@pirate-fruit/shared';
 import Fastify, {
@@ -10,10 +11,13 @@ import { registerSystemRoutes } from './api/systemRoutes.js';
 import { allowedOrigins, type ServerEnvironment } from './config/environment.js';
 import { RuntimeMetrics } from './observability/runtimeMetrics.js';
 import type { DatabaseProbe } from './persistence/database.js';
+import { registerSessionRoutes } from './auth/sessionRoutes.js';
+import type { SessionService } from './auth/sessionService.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
   database: DatabaseProbe;
+  sessions?: SessionService;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -24,7 +28,18 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
 
   const app = Fastify({
     bodyLimit: 64 * 1024,
-    logger: options.logger ?? { level: environment.LOG_LEVEL },
+    logger: options.logger ?? {
+      level: environment.LOG_LEVEL,
+      redact: {
+        paths: [
+          'req.headers.cookie',
+          'req.headers.authorization',
+          "req.headers['x-csrf-token']",
+          "res.headers['set-cookie']",
+        ],
+        censor: '[REDACTED]',
+      },
+    },
     requestIdHeader: 'x-request-id',
     trustProxy: environment.NODE_ENV === 'production',
   });
@@ -39,6 +54,8 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
       callback(null, false);
     },
   });
+
+  await app.register(cookie, { hook: 'onRequest' });
 
   await app.register(rateLimit, {
     global: true,
@@ -93,7 +110,17 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     return reply.status(statusCode).send(response);
   });
 
-  await registerSystemRoutes(app, { environment, database, metrics });
+  await registerSystemRoutes(app, {
+    environment,
+    database,
+    metrics,
+    sessions: options.sessions,
+  });
+  await registerSessionRoutes(app, {
+    environment,
+    metrics,
+    sessions: options.sessions,
+  });
   return app;
 }
 

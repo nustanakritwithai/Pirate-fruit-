@@ -17,6 +17,8 @@ services:
     envVars:
       - key: VITE_USE_REMOTE_SERVER
         value: false
+      - key: VITE_ENABLE_REMOTE_SESSION
+        value: false
       - key: VITE_API_URL
         sync: false
       - key: VITE_WS_URL
@@ -56,9 +58,11 @@ services:
       - key: CLIENT_ORIGIN
         sync: false
       - key: SERVER_VERSION
-        value: 0.3.0
+        value: 0.4.0
       - key: SESSION_SECRET
         generateValue: true
+      - key: ENABLE_REMOTE_SESSION
+        value: false
       - key: ENABLE_ECONOMY_SERVER
         value: false
       - key: ENABLE_REMOTE_SAVE

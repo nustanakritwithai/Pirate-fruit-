@@ -49,6 +49,7 @@ import type { ClassifiedEconomyEvent } from './trade/living/EconomyEventClassifi
 import { CargoHUD } from './ui/CargoHUD';
 import { preloadPirateGameAssets } from './art/PirateAssetLibrary';
 import { initializeGamePersistence } from './persistence/GamePersistence';
+import { initializeRemoteSession } from './session/RemoteSession';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -65,6 +66,8 @@ async function main(): Promise<void> {
   loading.textContent = 'กำลังโหลดเกม...';
   document.body.appendChild(loading);
 
+  // Establish identity first when staged remote sessions are enabled. Failure remains non-blocking.
+  await initializeRemoteSession();
   // Hydrate save repositories once before gameplay objects read their synchronous storage view.
   const persistence = await initializeGamePersistence();
   const graphics = loadGraphicsProfile();

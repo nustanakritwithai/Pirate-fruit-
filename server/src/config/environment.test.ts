@@ -7,6 +7,8 @@ describe('server environment', () => {
 
     expect(environment.HOST).toBe('0.0.0.0');
     expect(environment.PORT).toBe(10_000);
+    expect(environment.ENABLE_REMOTE_SESSION).toBe(false);
+    expect(environment.SESSION_TTL_DAYS).toBe(30);
     expect(environment.ENABLE_ECONOMY_SERVER).toBe(false);
     expect(environment.ENABLE_REMOTE_SAVE).toBe(false);
   });
@@ -16,15 +18,25 @@ describe('server environment', () => {
       NODE_ENV: 'test',
       CLIENT_ORIGIN: 'https://game.example, https://preview.example',
       ENABLE_ECONOMY_SERVER: 'true',
+      ENABLE_REMOTE_SESSION: 'yes',
       ENABLE_REMOTE_SAVE: '1',
+      DATABASE_URL: 'postgresql://user:password@localhost:5432/pirate_fruit',
+      SESSION_SECRET: 's'.repeat(32),
     });
 
     expect(environment.ENABLE_ECONOMY_SERVER).toBe(true);
+    expect(environment.ENABLE_REMOTE_SESSION).toBe(true);
     expect(environment.ENABLE_REMOTE_SAVE).toBe(true);
     expect([...allowedOrigins(environment)]).toEqual([
       'https://game.example',
       'https://preview.example',
     ]);
+  });
+
+  it('requires database and secret whenever remote sessions are enabled', () => {
+    expect(() =>
+      loadEnvironment({ NODE_ENV: 'test', ENABLE_REMOTE_SESSION: 'true' }),
+    ).toThrow(/DATABASE_URL.*SESSION_SECRET/);
   });
 
   it('requires database and session secrets in production', () => {

@@ -69,3 +69,17 @@ The schema enforces non-negative balances and stock, one row per inventory item,
 one active boat per character, idempotent trade keys, and cargo ownership through
 the composite `(boat_id, character_id)` foreign key. No client feature flag is
 enabled by S4.
+
+## S5 identity boundary
+
+1. An online Client first requests `GET /api/session/me` with credentials.
+2. A missing session triggers `POST /api/session/guest` exactly once per browser.
+3. The Server generates a 256-bit opaque token and stores only its SHA-256 hash.
+4. The raw token stays in an HttpOnly, host-only cookie; API JSON never exposes it.
+5. The session resolves the user and that guest's single character from PostgreSQL.
+6. Unsafe authenticated requests require a deterministic HMAC CSRF token returned
+   by `guest`/`me`; logout revokes the database row immediately.
+
+Production cookies use `Secure`, `SameSite=None`, `Partitioned`, `Path=/`, and the
+`__Host-` prefix. Session creation/resume is separately feature-flagged from
+remote saves, so identity can soak on Render while gameplay remains Local.
