@@ -7,10 +7,9 @@ services:
     runtime: node
     plan: free
     region: singapore
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: commit
     buildCommand: npm ci && npm run build:shared && npm run build:server
-    startCommand: npm run db:migrate && npm run start:server
-    initialDeployHook: npm run db:seed
+    startCommand: npm run db:migrate && npm run db:seed && npm run start:server
     healthCheckPath: /health
     buildFilter:
       paths:
@@ -40,11 +39,11 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: ENABLE_REMOTE_SESSION
-        value: 'false'
+        value: 'true'
       - key: ENABLE_ECONOMY_SERVER
-        value: 'false'
+        value: 'true'
       - key: ENABLE_REMOTE_SAVE
-        value: 'false'
+        value: 'true'
 
 databases:
   - name: pirate-fruit-db
