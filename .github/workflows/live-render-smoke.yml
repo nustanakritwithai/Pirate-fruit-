@@ -1,0 +1,22 @@
+name: Live Render handshake
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/live-render-smoke.yml'
+      - 'server/scripts/live-render-smoke.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  handshake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify production session, save, and economy
+        run: node server/scripts/live-render-smoke.mjs
