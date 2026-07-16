@@ -12,7 +12,6 @@ services:
     startCommand: npm run db:migrate && npm run start:server
     initialDeployHook: npm run db:seed
     healthCheckPath: /health
-    maxShutdownDelaySeconds: 30
     buildFilter:
       paths:
         - package.json
