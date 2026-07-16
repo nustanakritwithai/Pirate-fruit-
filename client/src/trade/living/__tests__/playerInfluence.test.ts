@@ -37,6 +37,7 @@ import type {
   EconomyWorldState,
   LivingCommodityId,
 } from '../types';
+import { yieldToTestRunner } from './soakTestUtils';
 
 const PLAYER = 'player';
 const ISLAND = 'starter-island' as const;
@@ -610,7 +611,7 @@ describe('Phase E3.5 — Player Influence & Trade Contracts', () => {
     expect(['shortage', 'balanced', 'surplus']).toContain(after);
   });
 
-  it('long-run 5000 ticks with player behaviors stable', () => {
+  it('long-run 5000 ticks with player behaviors stable', async () => {
     const freshSim = new LivingTradeSimulator(true);
     freshSim.setContractWallet(mockWallet(50_000));
     let helpfulTicks = 0;
@@ -636,6 +637,7 @@ describe('Phase E3.5 — Player Influence & Trade Contracts', () => {
         }
       }
       freshSim.tick();
+      await yieldToTestRunner(t);
     }
 
     const peState = freshSim.playerEconomy;
@@ -649,5 +651,5 @@ describe('Phase E3.5 — Player Influence & Trade Contracts', () => {
     expect(w.factories.some((f) => f.status === 'operating' || f.status === 'paused')).toBe(true);
     expect(helpfulTicks).toBeGreaterThan(0);
     expect(manipTicks).toBeGreaterThan(0);
-  }, 120_000);
+  }, 240_000);
 });

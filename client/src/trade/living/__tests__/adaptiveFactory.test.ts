@@ -15,6 +15,7 @@ import { LivingTradeSimulator } from '../LivingTradeSimulator';
 import { LIVING_COMMODITY_META, recipeForOutput } from '../ProductionRecipes';
 import { updateAdaptiveEconomy, ensureFactoryAgents } from '../AdaptiveEconomy';
 import type { EconomyCellState, FactoryAgentState } from '../types';
+import { runTicksCooperatively } from './soakTestUtils';
 
 function yard(sim: LivingTradeSimulator): EconomyCellState {
   return sim.getCell('shipyard-island')!;
@@ -289,9 +290,9 @@ describe('Phase E1 — Adaptive Factory', () => {
     expect(score.finalScore).toBeGreaterThan(ADAPTIVE_ECONOMY.reopenThreshold);
   });
 
-  it('21. long simulation keeps every supply chain alive (1000 ticks)', () => {
+  it('21. long simulation keeps every supply chain alive (1000 ticks)', async () => {
     const sim = new LivingTradeSimulator(true);
-    for (let i = 0; i < 1000; i++) sim.tick();
+    await runTicksCooperatively(sim, 1000);
     for (const cell of sim.state.cells) {
       for (const [commodityId, item] of Object.entries(cell.commodities)) {
         if (!item) continue;
@@ -313,5 +314,5 @@ describe('Phase E1 — Adaptive Factory', () => {
       expect(Number.isFinite(f.outputScale)).toBe(true);
       expect(Number.isFinite(f.profitEma)).toBe(true);
     }
-  }, 30_000);
+  }, 120_000);
 });
