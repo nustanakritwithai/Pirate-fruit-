@@ -178,19 +178,23 @@ export async function initializeGamePersistence(
       if (session.mode !== 'online' || !session.csrfToken) {
         throw new Error('Remote Save requires an active Remote Session');
       }
+      const characterId = session.session?.characterId;
+      if (!characterId) {
+        throw new Error('Remote Save requires a Server character identity');
+      }
       const coordinator = new RemoteSaveCoordinator(apiUrl, {
         fetcher: options.fetcher,
         csrfToken: session.csrfToken,
       });
-      await recoverDirtyLocalSave(coordinator, localStorage);
-      await migrateLocalSaveIfNeeded(coordinator, localStorage);
+      await recoverDirtyLocalSave(coordinator, localStorage, characterId);
+      await migrateLocalSaveIfNeeded(coordinator, localStorage, characterId);
 
       const failover = { active: true };
       const useLocal = (error: unknown): void => {
         if (!failover.active) return;
         failover.active = false;
         activeMode = 'local';
-        markRemoteSaveDirty(localStorage, coordinator.revision);
+        markRemoteSaveDirty(localStorage, coordinator.revision, characterId);
         const message = 'Remote save failed — changes remain in the Local fallback.';
         warn(message, error);
         emitStatus({ scope: 'save', mode: 'local', message });
@@ -233,7 +237,9 @@ export async function initializeGamePersistence(
         localStorage,
         {
           onRemoteDirty: () => {
-            if (failover.active) markRemoteSaveDirty(localStorage, coordinator.revision);
+            if (failover.active) {
+              markRemoteSaveDirty(localStorage, coordinator.revision, characterId);
+            }
           },
           onRemotePersisted: () => {
             if (failover.active) clearRemoteSaveDirty(localStorage);

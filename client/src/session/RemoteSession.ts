@@ -132,6 +132,7 @@ export async function initializeRemoteSession(
   const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
   const requestTimeoutMs = Math.max(1_000, options.requestTimeoutMs ?? 6_000);
   try {
+    let created = false;
     let response = await sessionRequest(
       fetcher,
       apiUrl,
@@ -140,11 +141,22 @@ export async function initializeRemoteSession(
       requestTimeoutMs,
     );
     if (response.status === 401) {
-      response = await sessionRequest(
+      const issued = await parseSession(await sessionRequest(
         fetcher,
         apiUrl,
         '/api/session/guest',
         'POST',
+        requestTimeoutMs,
+      ));
+      created = issued.created;
+      // Do not report SERVER ONLINE from the guest response alone. A follow-up
+      // authenticated read proves that this browser actually retained the HttpOnly
+      // partitioned cookie needed by every player-save endpoint.
+      response = await sessionRequest(
+        fetcher,
+        apiUrl,
+        '/api/session/me',
+        'GET',
         requestTimeoutMs,
       );
     }
@@ -153,7 +165,7 @@ export async function initializeRemoteSession(
       mode: 'online',
       session: payload.session,
       csrfToken: payload.csrfToken,
-      created: payload.created,
+      created,
     };
   } catch (error) {
     warn('Remote session is unavailable; continuing in Local mode.', error);
