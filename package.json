@@ -1,0 +1,31 @@
+{
+  "name": "pirate-fruit",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build:shared && npm run build:client && npm run build:server",
+    "build:client": "npm run build --workspace=pirate-fruit-client",
+    "build:server": "npm run build --workspace=pirate-fruit-server",
+    "build:shared": "npm run build --workspace=@pirate-fruit/shared",
+    "typecheck": "npm run build:shared && npm run typecheck:client && npm run typecheck:server",
+    "typecheck:client": "tsc -p client/tsconfig.json --noEmit",
+    "typecheck:server": "npm run typecheck --workspace=pirate-fruit-server",
+    "typecheck:shared": "npm run typecheck --workspace=@pirate-fruit/shared",
+    "test": "npm run test:shared && npm run test:client && npm run test:server",
+    "test:client": "npm test --workspace=pirate-fruit-client",
+    "test:server": "npm run test --workspace=pirate-fruit-server",
+    "test:shared": "npm run build --workspace=@pirate-fruit/shared && npm run typecheck --workspace=@pirate-fruit/shared",
+    "test:extended": "npm run test:extended --workspace=pirate-fruit-client"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
