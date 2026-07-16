@@ -1,6 +1,6 @@
 import type { Input } from '../engine/Input';
 import type { ControlMode } from '../engine/Input';
-import { isTouchDevice } from '../engine/device';
+import { isTouchDevice, loadTouchPanelVisible, saveTouchPanelVisible } from '../engine/device';
 
 const CAMERA_TOUCH_SENSITIVITY = 2.2;
 
@@ -82,13 +82,29 @@ export class TouchControls {
   private ultBtn: HTMLDivElement;
   private skillButtons: HTMLDivElement[] = [];
   private potionButtons: HTMLDivElement[] = [];
+  private toggleBtn: HTMLButtonElement | null = null;
+  private panelVisible = false;
+  private readonly onTouchDevice: boolean;
 
   /** เกมควรเปิดระบบสัมผัสไหม (มีจอสัมผัส หรือบังคับด้วย ?touch=1 สำหรับทดสอบ) */
   static isTouchDevice(): boolean {
     return isTouchDevice();
   }
 
-  constructor(private input: Input) {
+  isPanelVisible(): boolean {
+    return this.panelVisible;
+  }
+
+  setPanelVisible(show: boolean): void {
+    if (this.panelVisible === show) return;
+    this.panelVisible = show;
+    saveTouchPanelVisible(show);
+    this.applyPanelVisibility();
+  }
+
+  constructor(private input: Input, defaultVisible = loadTouchPanelVisible()) {
+    this.onTouchDevice = isTouchDevice();
+    this.panelVisible = defaultVisible;
     this.injectStyles();
 
     this.root = document.createElement('div');
@@ -213,6 +229,17 @@ export class TouchControls {
     this.attackBtn = attack;
     this.dashBtn = dash;
     this.jumpBtn = jump;
+
+    if (!this.onTouchDevice) {
+      this.toggleBtn = document.createElement('button');
+      this.toggleBtn.type = 'button';
+      this.toggleBtn.className = 'tc-toggle';
+      this.toggleBtn.title = 'เปิด/ปิดแผงควบคุมแบบมือถือ';
+      this.toggleBtn.addEventListener('click', () => this.setPanelVisible(!this.panelVisible));
+      document.body.appendChild(this.toggleBtn);
+    }
+
+    this.applyPanelVisibility();
   }
 
   setMode(mode: ControlMode): void {
@@ -378,6 +405,7 @@ export class TouchControls {
 
   /** เรียกทุกเฟรมจาก game loop เพื่ออัปเดตวงแหวนคูลดาวน์ */
   update(): void {
+    this.renderToggleLabel();
     for (const [btn, getter] of this.cooldownRings) {
       const remain = getter();
       if (remain <= 0) {
@@ -388,6 +416,19 @@ export class TouchControls {
         btn.classList.add('tc-cooling');
       }
     }
+  }
+
+  private applyPanelVisibility(): void {
+    this.root.classList.toggle('tc-hidden', !this.panelVisible);
+    document.body.classList.toggle('touch-panel-active', this.panelVisible);
+    this.renderToggleLabel();
+  }
+
+  private renderToggleLabel(): void {
+    if (!this.toggleBtn) return;
+    this.toggleBtn.textContent = this.panelVisible ? '✕ ปิดแผง' : '🎮 แผงควบคุม';
+    this.toggleBtn.classList.toggle('tc-toggle-on', this.panelVisible);
+    this.toggleBtn.setAttribute('aria-pressed', this.panelVisible ? 'true' : 'false');
   }
 
   // ---------- จอยสติ๊ก ----------
@@ -539,6 +580,15 @@ export class TouchControls {
       .tc-root { position: fixed; inset: 0; z-index: 20; pointer-events: none;
                  -webkit-user-select: none; user-select: none; touch-action: none;
                  font-family: 'Segoe UI', Tahoma, sans-serif; }
+      .tc-root.tc-hidden { display: none; }
+      .tc-toggle { position: fixed; left: 16px; bottom: 72px; z-index: 21; pointer-events: auto;
+        padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(140,200,255,.55);
+        background: rgba(10,28,48,.88); color: #dff4ff; font: 700 12px 'Segoe UI',Tahoma,sans-serif;
+        cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); touch-action: manipulation; }
+      .tc-toggle.tc-toggle-on { background: rgba(24,72,110,.92); border-color: rgba(160,230,255,.75); }
+      .tc-toggle:active { transform: scale(.97); }
+      body.touch-panel-active .hotkey-bar { display: none !important; }
+      body.touch-panel-active .hud-help { display: none !important; }
       .tc-joyzone { position: absolute; left: 0; bottom: 0; width: 45%; height: 75%;
                     pointer-events: auto; touch-action: none; }
       .tc-camzone { position: absolute; right: 0; top: 0; width: 55%; height: 100%;

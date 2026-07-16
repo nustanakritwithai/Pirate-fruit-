@@ -260,12 +260,9 @@ async function main(): Promise<void> {
   });
   new GraphicsSettings(graphics);
 
-  // ระบบบังคับบนจอสัมผัสแบบ RoV (เฉพาะอุปกรณ์มีจอสัมผัส หรือ ?touch=1)
-  let touchControls: TouchControls | null = null;
-  if (TouchControls.isTouchDevice()) {
-    touchControls = new TouchControls(input);
-    input.attachTouch(touchControls);
-  }
+  // แผงควบคุมบนจอ (จอย+ปุ่ม) — มือถือเปิดอัตโนมัติ, เดสก์ท็อปมีปุ่ม 🎮 แผงควบคุม
+  const touchControls = new TouchControls(input);
+  input.attachTouch(touchControls);
 
   // คีย์ลัดใช้ยา (Z/X + ปุ่มมือถือ) + แถบ quickslot
   hotkeyManager = new HotkeyManager(
@@ -273,7 +270,7 @@ async function main(): Promise<void> {
     controller,
     itemInventory,
     touchControls,
-    TouchControls.isTouchDevice(),
+    touchControls.isPanelVisible(),
   );
   // กระเป๋าเก็บของ (ปุ่ม 🎒 / คีย์ B) — ติดตั้ง/กิน/จัดยาลงช่องลัด
   let controlsBeforeInv = true;
