@@ -28,6 +28,10 @@ import type {
   PersistedEconomyState,
   PlayerRepository,
 } from '@pirate-fruit/shared';
+import {
+  productionRemoteApiUrl,
+  productionRemoteEnabled,
+} from '../config/ProductionRemote';
 
 export type PersistenceMode = 'local' | 'remote';
 
@@ -96,12 +100,14 @@ export async function initializeGamePersistence(
 ): Promise<GamePersistenceHandle> {
   const localStorage = options.localStorage ?? browserGameStorage();
   const requestedRemote = options.useRemoteServer
-    ?? enabled(import.meta.env.VITE_USE_REMOTE_SERVER);
+    ?? (enabled(import.meta.env.VITE_USE_REMOTE_SERVER) || productionRemoteEnabled());
   const requestedMode: PersistenceMode = requestedRemote ? 'remote' : 'local';
   const requestedRemoteEconomy = options.useRemoteEconomy
-    ?? enabled(import.meta.env.VITE_ENABLE_ECONOMY_SERVER);
+    ?? (enabled(import.meta.env.VITE_ENABLE_ECONOMY_SERVER) || productionRemoteEnabled());
   const requestedEconomyMode: PersistenceMode = requestedRemoteEconomy ? 'remote' : 'local';
-  const apiUrl = normalizeApiUrl(options.apiUrl ?? import.meta.env.VITE_API_URL);
+  const apiUrl = normalizeApiUrl(
+    options.apiUrl ?? import.meta.env.VITE_API_URL ?? productionRemoteApiUrl(),
+  );
   const warn = options.warn ?? ((message: string, error?: unknown) => console.warn(message, error));
 
   let activeMode: PersistenceMode = 'local';

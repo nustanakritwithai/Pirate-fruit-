@@ -1,4 +1,8 @@
 import type { SessionIdentity, SessionResponse } from '@pirate-fruit/shared';
+import {
+  productionRemoteApiUrl,
+  productionRemoteEnabled,
+} from '../config/ProductionRemote';
 
 export type SessionConnectionMode = 'disabled' | 'online' | 'offline';
 export type SessionFetch = (
@@ -99,13 +103,15 @@ export async function initializeRemoteSession(
   options: RemoteSessionOptions = {},
 ): Promise<RemoteSessionHandle> {
   const shouldConnect = options.enabled
-    ?? enabled(import.meta.env.VITE_ENABLE_REMOTE_SESSION);
+    ?? (enabled(import.meta.env.VITE_ENABLE_REMOTE_SESSION) || productionRemoteEnabled());
   if (!shouldConnect) {
     currentSession = DISABLED_SESSION;
     return currentSession;
   }
 
-  const apiUrl = normalizeApiUrl(options.apiUrl ?? import.meta.env.VITE_API_URL);
+  const apiUrl = normalizeApiUrl(
+    options.apiUrl ?? import.meta.env.VITE_API_URL ?? productionRemoteApiUrl(),
+  );
   const warn = options.warn
     ?? ((message: string, error?: unknown) => console.warn(message, error));
   if (!apiUrl) {
