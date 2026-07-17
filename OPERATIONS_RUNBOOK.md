@@ -76,3 +76,9 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ลำดับเปิดใช้: migrate อัตโนมัติตอน deploy (ตาราง `monster_kill_batches`) → CI browser-smoke เขียว → ตั้ง `ENABLE_MONSTER_SERVER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_MONSTER_SERVER=true` → ฆ่ามอน 1 ตัวแล้วดูเหรียญ/EXP ขึ้น (ดีเลย์ ~1-2 วิ = ปกติ รอ Server ตอบ) + ตรวจแถว `monster_kill_batches`
 - ตรวจรางวัลย้อนหลัง: `select * from monster_kill_batches where character_id = $1 order by created_at desc`
 - อาการ "ฆ่าแล้วรางวัลมาช้า": client คิวรายงานเป็นชุด (debounce 1.2s) และ retry เมื่อออฟไลน์ — คิวเก็บใน localStorage ไม่หายตอนรีเฟรช
+
+
+## S12 — Progression Server
+- ลำดับเปิดใช้: ต้องเปิด `ENABLE_QUEST_SERVER` + `ENABLE_MONSTER_SERVER` มาก่อนและ verify แล้ว → ตั้ง `ENABLE_PROGRESSION_SERVER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_PROGRESSION_SERVER=true` → ฆ่ามอน/เคลมเควสต์แล้วตรวจ `select level from characters` ขยับตาม + save ไม่เขียนทับ
+- ตรวจสถานะทางการ: `select c.level, p.exp from characters c left join player_progression p on p.character_id = c.id where c.id = $1`
+- ผู้เล่นเจอ 409 KILL_RATE_LIMITED ใน log = รายงานฆ่าเกิน 40 ตัว/นาที — client คิวไว้ retry เอง ไม่มีรางวัลหาย (ถ้าเจอบ่อยผิดปกติ = พฤติกรรมน่าสงสัย ควรดู audit)

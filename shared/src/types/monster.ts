@@ -12,6 +12,7 @@ export const MONSTER_KILLS_MAX_COUNT = 10 as const;
 
 export type MonsterRejectCode =
   | 'UNKNOWN_MONSTER'
+  | 'KILL_RATE_LIMITED'
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'INVALID_MONSTER_REQUEST'
   | 'SESSION_REQUIRED';

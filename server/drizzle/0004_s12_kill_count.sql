@@ -1,0 +1,1 @@
+ALTER TABLE "monster_kill_batches" ADD COLUMN "kill_count" integer DEFAULT 0 NOT NULL;

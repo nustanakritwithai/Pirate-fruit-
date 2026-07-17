@@ -131,3 +131,8 @@ database. The test refuses to reset a database whose name does not end in
 ## S11 notes
 - Migration `0003_s11_monster_kill_batches` (schema version 4): ตาราง `monster_kill_batches` — audit + idempotency ledger ของรางวัลการฆ่ามอนสเตอร์ (unique `(character_id, idempotency_key)`, เก็บ request hash, รายการรางวัลต่อ batch และ `coins_after`)
 - Rollback: `drizzle/rollback/0003_s11_monster_kill_batches.down.sql`
+
+
+## S12 notes
+- Migration `0004_s12_kill_count` (schema version 5): เพิ่มคอลัมน์ `monster_kill_batches.kill_count` (สถิติสำหรับ kill-rate plausibility)
+- เมื่อ `ENABLE_PROGRESSION_SERVER=true`: `player_progression.exp` + `characters.level` เดินโดย Server (accrual ในธุรกรรมแจกรางวัล) — save ไม่เขียนทับสองค่านี้; คอลัมน์อื่น (สเตต/mastery/stat_points) ยังมาจาก save ตามเดิม

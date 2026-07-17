@@ -428,6 +428,7 @@ export const monsterKillBatches = pgTable(
     idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
     requestHash: varchar('request_hash', { length: 64 }).notNull(),
     killsJson: jsonb('kills_json').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+    killCount: integer('kill_count').default(0).notNull(),
     playerExp: integer('player_exp').notNull(),
     masteryExp: integer('mastery_exp').notNull(),
     coins: integer('coins').notNull(),

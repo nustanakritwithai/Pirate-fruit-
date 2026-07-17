@@ -181,6 +181,18 @@ if (process.env.SMOKE_EXPECT_MONSTER === 'true') {
   }
 }
 
+// 3d) S12 progression: เมื่อเปิด flag เกมจะดึงสถานะ level/exp ทางการตอนบูต
+if (process.env.SMOKE_EXPECT_PROGRESSION === 'true') {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline
+    && !apiCalls.some((line) => line.includes('GET /api/progression/state -> 200'))) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!apiCalls.some((line) => line.includes('GET /api/progression/state -> 200'))) {
+    fail('progression state fetch was not observed cross-origin', { apiCalls, pageErrors });
+  }
+}
+
 // 4) S9 realtime: เมื่อเปิด flag ต้องมี WS เชื่อมจริง + ได้ welcome และ economy push
 if (process.env.SMOKE_EXPECT_REALTIME === 'true') {
   const deadline = Date.now() + 30_000;

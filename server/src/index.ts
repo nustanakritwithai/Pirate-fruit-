@@ -19,6 +19,7 @@ import { PostgresQuestRepository } from './quest/questRepository.js';
 import { QuestService } from './quest/questService.js';
 import { PostgresMonsterRepository } from './monster/monsterRepository.js';
 import { MonsterService } from './monster/monsterService.js';
+import { ProgressionService } from './progression/progressionService.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
@@ -34,7 +35,7 @@ async function start(): Promise<void> {
       )
     : undefined;
   const playerSaves = pool
-    ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool))
+    ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool, { preserveServerProgression: environment.ENABLE_PROGRESSION_SERVER }))
     : undefined;
   let runtimeLogger: EconomyRuntimeLogger | null = null;
   const deferredEconomyLogger: EconomyRuntimeLogger = {
@@ -61,13 +62,17 @@ async function start(): Promise<void> {
   const trade = pool && economy && environment.ENABLE_TRADE_SERVER
     ? new TradeService(economy, new PostgresTradeRepository(pool))
     : undefined;
+  const progressionAuthority = environment.ENABLE_PROGRESSION_SERVER;
   const quests = pool && environment.ENABLE_QUEST_SERVER
-    ? new QuestService(new PostgresQuestRepository(pool))
+    ? new QuestService(new PostgresQuestRepository(pool, { progressionAuthority }))
     : undefined;
   const monsters = pool && environment.ENABLE_MONSTER_SERVER
-    ? new MonsterService(new PostgresMonsterRepository(pool))
+    ? new MonsterService(new PostgresMonsterRepository(pool, { progressionAuthority }))
     : undefined;
-  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, quests, monsters, realtime });
+  const progression = pool && progressionAuthority
+    ? new ProgressionService(pool)
+    : undefined;
+  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, quests, monsters, progression, realtime });
   runtimeLogger = app.log;
   // S8 ops: เก็บกวาด session หมดอายุ + guest กำพร้าเป็นรอบ (ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ)
   const stopGuestCleanup = pool && environment.ENABLE_REMOTE_SESSION

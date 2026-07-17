@@ -33,6 +33,7 @@ const environmentSchema = z
     ENABLE_REALTIME: booleanFromEnvironment.default(false),
     ENABLE_QUEST_SERVER: booleanFromEnvironment.default(false),
     ENABLE_MONSTER_SERVER: booleanFromEnvironment.default(false),
+    ENABLE_PROGRESSION_SERVER: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -130,6 +131,19 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_REMOTE_SESSION'],
         message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_MONSTER_SERVER',
+      });
+    }
+
+    // Level authority เดินเลเวลจาก EXP ที่ Server แจกเอง — แหล่ง EXP ทุกทาง
+    // (quest + monster) ต้องเป็นของ Server ก่อน
+    if (
+      environment.ENABLE_PROGRESSION_SERVER
+      && (!environment.ENABLE_QUEST_SERVER || !environment.ENABLE_MONSTER_SERVER)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_PROGRESSION_SERVER'],
+        message: 'ENABLE_QUEST_SERVER and ENABLE_MONSTER_SERVER must be enabled before ENABLE_PROGRESSION_SERVER',
       });
     }
 

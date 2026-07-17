@@ -194,3 +194,16 @@ Flag: `ENABLE_MONSTER_SERVER` (ต้องเปิด `ENABLE_REMOTE_SESSION`)
 - Server คิดรางวัลจาก `shared/src/monster/rewards.ts` (ตาราง + สูตรตัวคูณส่วนต่างเลเวลเดียวกับเกม) โดยใช้ `characters.level` — เหรียญเข้า `characters.coins` แบบ atomic + audit ลง `monster_kill_batches`
 - ตอบรางวัลรายรายการ (ลำดับเดิม) + totals + `coinsTotal` — client ใช้เลขเหล่านี้ apply exp/mastery ฝั่งตน (mastery แตกต่ออาวุธด้วยสูตรแบ่งเดิมของเกม)
 - Idempotent: คีย์เดิม+payload เดิมคืนผลเดิม; คีย์เดิมต่าง payload → 409 `IDEMPOTENCY_KEY_REUSED`; rate limit 60/นาที
+
+
+## S12 — Progression Authority (Level/EXP)
+
+Flag: `ENABLE_PROGRESSION_SERVER` (ต้องเปิด `ENABLE_QUEST_SERVER` + `ENABLE_MONSTER_SERVER` ก่อน — แหล่ง EXP ทุกทางต้องเป็นของ Server แล้ว)
+
+### พฤติกรรมเมื่อเปิด flag
+- ทุกครั้งที่ Server แจก EXP (quest claim / monster kills) จะสะสมเข้า `player_progression.exp` แล้วเดินเลเวลด้วยสูตร shared (`floor(2×level^2.3 + 84)`) → เขียน `characters.level` ในธุรกรรมเดียวกับการแจกรางวัล
+- Endpoint save (`/api/player/*`) **เลิกเขียนทับ** `characters.level` และ `player_progression.exp` — level กลายเป็นค่าที่ Server พิสูจน์ได้ (ปิดช่องโหว่ level gate ของ S10/S11)
+- Kill-rate plausibility: จำกัดการฆ่ารวม ≤40 ตัวต่อหน้าต่าง 60 วิ ต่อตัวละคร — เกิน → 409 `KILL_RATE_LIMITED` (client เก็บคิวไว้ retry เอง)
+
+### GET /api/progression/state
+สถานะทางการ `{ level, exp, coins }` — client ใช้ reconcile ตอนบูต: Server นำหน้า → เติม EXP ส่วนต่างเข้า local; local นำหน้า (แต้มค้างท่อ) → ปล่อยให้ sync ไล่ส่งจนบรรจบ (ไม่มีการลดเลเวลผู้เล่น)

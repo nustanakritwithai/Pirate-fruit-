@@ -114,3 +114,10 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - เลขรางวัลจากการฆ่ามอนคิดฝั่ง Server จาก shared databook + ตัวคูณเลเวล (`characters.level`) — client รายงานได้แค่ "ฆ่าตัวไหนกี่ตัว"
 - เพดานต่อรายงาน: ≤20 รายการ, count ≤10, rate limit 60/นาที + idempotency ledger (`monster_kill_batches`)
 - Transitional (จนถึง S12 Combat authority): Server ยังพิสูจน์ไม่ได้ว่าการฆ่าเกิดจริง — เพดาน+rate limit จำกัดความเร็วฟาร์มสูงสุดไว้ (แหล่งเหรียญที่ client ยังแจกเองเหลือเฉพาะรางวัลเรือรบ/ยึดเรือ ซึ่งจะย้ายใน S12-S14)
+
+
+## S12 — Progression authority
+- `characters.level` เดินจาก EXP ที่ Server แจกเองเท่านั้น (quest + monster ซึ่งเป็นของ Server ตั้งแต่ S10-S11) — save จาก client เขียน level/exp ไม่ได้อีก เมื่อ `ENABLE_PROGRESSION_SERVER=true`
+- ผลลัพธ์: level gate ของเควสต์และตัวคูณรางวัลใช้ค่าที่ Server พิสูจน์ได้ ไม่ใช่ค่าที่ client รายงาน (ปิดความเสี่ยง transitional ข้อ "level มาจาก save" ของ S10/S11)
+- Kill-rate cap ต่อตัวละคร (40/60 วิ) เป็นชั้น plausibility เพิ่มจากเพดานต่อรายงานของ S11 — สถิติจริงเก็บใน `monster_kill_batches.kill_count`
+- ที่ยังเป็น transitional: เหรียญยังรับจาก save (แหล่งเหรียญ client เหลือ naval — S14), สเตต/mastery/สิ่งของยังเป็นของ client
