@@ -125,6 +125,39 @@ if (!sessionSeen || !stateSeen) {
   fail('expected session + player state calls were not observed', { apiCalls });
 }
 
+// 3b) S10 quest: เมื่อเปิด flag เกมจะ reconcile สถานะเควสต์ตอนบูต — ต้องเห็น
+//     GET /api/quest/state 200 จริงข้าม origin (พิสูจน์ cookie ผ่านชั้น CORS)
+if (process.env.SMOKE_EXPECT_QUEST === 'true') {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline
+    && !apiCalls.some((line) => line.includes('GET /api/quest/state -> 200'))) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!apiCalls.some((line) => line.includes('GET /api/quest/state -> 200'))) {
+    fail('quest state reconcile was not observed cross-origin', { apiCalls, pageErrors });
+  }
+  // mutation ต้องผ่าน preflight ด้วย (4xx ธุรกิจ = ผ่านชั้นเครือข่าย)
+  const questProbe = await page.evaluate(async (api) => {
+    try {
+      const response = await fetch(`${api}/api/quest/accept`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': 'x'.repeat(43),
+        },
+        body: '{}',
+      });
+      return { ok: true, status: response.status };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  }, API_URL);
+  if (!questProbe.ok) {
+    fail('quest endpoint failed at the network/CORS layer', { questProbe, apiCalls });
+  }
+}
+
 // 4) S9 realtime: เมื่อเปิด flag ต้องมี WS เชื่อมจริง + ได้ welcome และ economy push
 if (process.env.SMOKE_EXPECT_REALTIME === 'true') {
   const deadline = Date.now() + 30_000;

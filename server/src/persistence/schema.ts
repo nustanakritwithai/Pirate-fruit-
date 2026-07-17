@@ -388,6 +388,36 @@ export const tradeTransactions = pgTable(
   ],
 );
 
+export const questClaims = pgTable(
+  'quest_claims',
+  {
+    id: uuid('id').primaryKey(),
+    characterId: uuid('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    questId: varchar('quest_id', { length: 128 }).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
+    requestHash: varchar('request_hash', { length: 64 }).notNull(),
+    playerExp: integer('player_exp').notNull(),
+    coins: integer('coins').notNull(),
+    masteryBonus: integer('mastery_bonus').default(0).notNull(),
+    coinsAfter: bigint('coins_after', { mode: 'bigint' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('quest_claims_character_idempotency_uq').on(
+      table.characterId,
+      table.idempotencyKey,
+    ),
+    index('quest_claims_character_created_idx').on(table.characterId, table.createdAt.desc()),
+    index('quest_claims_quest_idx').on(table.questId),
+    check(
+      'quest_claims_reward_check',
+      sql`${table.playerExp} >= 0 and ${table.coins} >= 0 and ${table.masteryBonus} >= 0 and ${table.coinsAfter} >= 0`,
+    ),
+  ],
+);
+
 export const schemaMigrations = pgTable(
   'schema_migrations',
   {

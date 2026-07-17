@@ -51,6 +51,9 @@ services:
       # S9 WebSocket Foundation — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_REALTIME=true พร้อมกัน)
       - key: ENABLE_REALTIME
         value: 'false'
+      # S10 Quest/Reward Authority — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_QUEST_SERVER=true พร้อมกัน)
+      - key: ENABLE_QUEST_SERVER
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

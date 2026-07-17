@@ -101,3 +101,10 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - ช่องทาง push อย่างเดียว — ไม่มีคำสั่งเกมผ่าน WS (คำสั่งยังเป็น HTTP + CSRF จนกว่าจะย้ายรายระบบใน S10+)
 - Upgrade ตรวจ Origin + session cookie ใบเดียวกับ REST; ไม่มี token ใน URL
 - Client message ถูกจำกัดขนาด/ชนิด — ผิดสเปกปิดทันที (1008); เพดาน connection ต่อ instance 200
+
+
+## S10 — Quest/Reward authority
+- เลขรางวัล (exp/เหรียญ/mastery) มาจากนิยามใน shared databook ฝั่ง Server เท่านั้น — คำขอ claim ไม่มี field เลขรางวัลให้ส่ง
+- เงินรางวัลเขียนเข้า `characters.coins` (canonical) แบบ atomic พร้อม audit ใน `quest_claims` (unique idempotency key ต่อตัวละคร + request hash กัน key reuse ต่างเควสต์)
+- Progress เป็น client report ที่ถูกจำกัด: ≤10 events/รายงาน, amount ≤99, clamp ที่ requiredAmount, rate limit 60/นาที — และจับคู่ objective ฝั่ง Server เท่านั้น
+- Transitional (จนถึง S11-S12 Monster/Combat authority): Server ยังพิสูจน์ไม่ได้ว่าการฆ่ามอนเกิดจริง — เพดาน+rate limit จำกัดความเร็วฟาร์มเกินจริง และเควสต์ repeatable ก็เล่นซ้ำได้ตามดีไซน์อยู่แล้ว; `characters.level` ที่ใช้ gate ยังมาจาก save (client-reported) ในช่วงเปลี่ยนผ่าน

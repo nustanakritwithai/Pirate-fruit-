@@ -120,3 +120,9 @@ database. The test refuses to reset a database whose name does not end in
 - `trade_transactions` เริ่มถูกเขียนจริงโดย `/api/trade/execute` (audit + idempotency ledger); `metadata_json` เก็บ request hash + ผลลัพธ์สำหรับ idempotent replay
 - ไม่มี migration ใหม่ใน S8 — ใช้ตาราง S4/S6 เดิมทั้งหมด (`characters.coins`, `player_cargo`, `player_boats.is_active`, `trade_transactions`)
 - Retention: sessions หมดอายุ > 7 วัน และ orphan guest users > 45 วัน ถูกลบโดย cleanup job (cascade ลบ characters/sessions ของ guest นั้น)
+
+
+## S10 notes
+- Migration `0002_s10_quest_claims` (schema version 3): ตารางใหม่ `quest_claims` — audit การเคลมรางวัลเควสต์ + idempotency ledger (unique `(character_id, idempotency_key)`, เก็บ request hash, เลขรางวัล และ `coins_after`)
+- `player_quests` (มีตั้งแต่ S4) เริ่มถูกใช้จริง: หนึ่งแถวต่อ (ตัวละคร, เควสต์), `status` = active → completed → claimed (หรือ abandoned), `progress_json = {"objectives": number[]}`
+- Rollback: `drizzle/rollback/0002_s10_quest_claims.down.sql` (drop `quest_claims` อย่างเดียว — `player_quests` เป็นของ S4)

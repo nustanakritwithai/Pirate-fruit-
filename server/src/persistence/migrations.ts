@@ -6,15 +6,17 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { Pool, PoolClient } from 'pg';
 
-export const DATABASE_SCHEMA_VERSION = 2;
+export const DATABASE_SCHEMA_VERSION = 3;
 export const CORE_MIGRATION_TAG = '0000_s4_core_schema';
 export const PLAYER_SAVE_MIGRATION_TAG = '0001_s6_remote_player_save';
+export const QUEST_CLAIMS_MIGRATION_TAG = '0002_s10_quest_claims';
 export const ROLLBACK_CONFIRMATION = 'rollback-s4-core';
 const DATABASE_MIGRATION_LOCK_ID = 1_347_565_126;
 
 const DATABASE_MIGRATIONS = [
   { version: 1, name: CORE_MIGRATION_TAG },
   { version: 2, name: PLAYER_SAVE_MIGRATION_TAG },
+  { version: 3, name: QUEST_CLAIMS_MIGRATION_TAG },
 ] as const;
 
 export interface MigrationResult {
@@ -120,6 +122,10 @@ export async function rollbackS4Database(
 ): Promise<void> {
   const rollbackSql = (
     await Promise.all([
+      readFile(
+        join(migrationsFolder, 'rollback', `${QUEST_CLAIMS_MIGRATION_TAG}.down.sql`),
+        'utf8',
+      ),
       readFile(
         join(migrationsFolder, 'rollback', `${PLAYER_SAVE_MIGRATION_TAG}.down.sql`),
         'utf8',

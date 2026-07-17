@@ -41,3 +41,10 @@ copies; do not clear them as part of incident rollback.
 1. Rebuild Static Site โดยเอา `VITE_ENABLE_REALTIME` ออก (client กลับไป poll ทุก 5 วิ — ระบบเดิมยังอยู่ครบ)
 2. ตั้ง `ENABLE_REALTIME=false` ที่ Web Service (route /ws หายไป)
 3. ไม่มีข้อมูลใด ๆ ต้องกู้ — ช่องทางนี้ stateless ทั้งหมด
+
+
+## S10 — Quest Server rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_QUEST_SERVER` ออก (client กลับไปแจกรางวัลเควสต์แบบ local เดิม)
+2. ตั้ง `ENABLE_QUEST_SERVER=false` ที่ Web Service (endpoint ตอบ 503)
+3. ข้อมูลไม่ต้องกู้: `quest_claims` เป็น audit log เก็บไว้ตรวจสอบ; `player_quests` เป็นสถานะที่ client จะเขียนทับผ่านระบบเดิมเมื่อกลับ local; เหรียญที่แจกไปแล้วอยู่ใน `characters.coins` ตาม transitional model ปกติ
+4. ถอนตาราง (เฉพาะกรณีถอนทั้ง S10): `drizzle/rollback/0002_s10_quest_claims.down.sql`

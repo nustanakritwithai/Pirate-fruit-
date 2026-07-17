@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresPool } from './database.js';
-import { applyDatabaseMigrations, rollbackS4Database } from './migrations.js';
+import { applyDatabaseMigrations, DATABASE_SCHEMA_VERSION, rollbackS4Database } from './migrations.js';
 import { seedDatabase } from './seed.js';
 import {
   LocalMigrationAlreadyAppliedError,
@@ -41,7 +41,7 @@ integration.sequential('PostgreSQL integration', () => {
   it('enforces schema constraints and idempotency on PostgreSQL', async () => {
     const database = pool!;
     const migration = await applyDatabaseMigrations(database);
-    expect(migration.version).toBe(2);
+    expect(migration.version).toBe(DATABASE_SCHEMA_VERSION);
     await applyDatabaseMigrations(database);
 
     const userId = '10000000-0000-4000-8000-000000000001';

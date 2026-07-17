@@ -15,6 +15,8 @@ import { startGuestCleanup } from './auth/sessionCleanup.js';
 import { RealtimeHub } from './realtime/realtimeHub.js';
 import { PostgresTradeRepository } from './trade/tradeRepository.js';
 import { TradeService } from './trade/tradeService.js';
+import { PostgresQuestRepository } from './quest/questRepository.js';
+import { QuestService } from './quest/questService.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
@@ -57,7 +59,10 @@ async function start(): Promise<void> {
   const trade = pool && economy && environment.ENABLE_TRADE_SERVER
     ? new TradeService(economy, new PostgresTradeRepository(pool))
     : undefined;
-  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, realtime });
+  const quests = pool && environment.ENABLE_QUEST_SERVER
+    ? new QuestService(new PostgresQuestRepository(pool))
+    : undefined;
+  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, quests, realtime });
   runtimeLogger = app.log;
   // S8 ops: เก็บกวาด session หมดอายุ + guest กำพร้าเป็นรอบ (ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ)
   const stopGuestCleanup = pool && environment.ENABLE_REMOTE_SESSION

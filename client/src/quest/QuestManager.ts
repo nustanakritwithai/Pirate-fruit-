@@ -3,9 +3,13 @@ import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import type { ActiveQuest, QuestAcceptResult, QuestClaimResult } from './QuestData';
 import { QUESTS_BY_ID } from './QuestDefinitions';
 import { createActiveQuest, isQuestComplete } from './QuestProgress';
+import type { RemoteQuestSync } from './RemoteQuestSync';
 
 /** Quest framework เล็กและแยกจาก MonsterManager; รับ monster:killed และ trade:completed */
 export class QuestManager {
+  /** S10: ตัวประสานกับ Server — เมื่อ set แล้ว รางวัลแจกจากคำตอบ Server เท่านั้น */
+  private remoteSync: RemoteQuestSync | null = null;
+
   constructor(
     private progression: ProgressionManager,
     private getActiveItem: () => ActiveLoadoutItem | null,
@@ -20,6 +24,14 @@ export class QuestManager {
 
   get events() {
     return this.progression.events;
+  }
+
+  get isRemote(): boolean {
+    return this.remoteSync !== null;
+  }
+
+  setRemoteSync(sync: RemoteQuestSync | null): void {
+    this.remoteSync = sync;
   }
 
   acceptQuest(questId: string, replaceActive = false): QuestAcceptResult {
@@ -39,11 +51,13 @@ export class QuestManager {
 
     this.progression.setActiveQuest(questId, quest.objectives.map(() => 0));
     this.progression.events.emit('quest:accepted', { questId, name: quest.name });
+    this.remoteSync?.notifyAccepted(questId, replaceActive);
     return { accepted: true };
   }
 
   abandonQuest(): void {
     this.progression.setActiveQuest(null);
+    this.remoteSync?.notifyAbandoned();
   }
 
   getActiveQuest(): ActiveQuest | null {
@@ -75,7 +89,8 @@ export class QuestManager {
 
     if (!changed) return;
     this.progression.setQuestProgress(active.progress);
-    if (isQuestComplete(active.definition, active.progress)) this.claimQuestReward();
+    this.remoteSync?.notifyKill(monsterId, isBoss);
+    this.finishIfComplete(active);
   }
 
   recordDeliver(commodityId: string, islandId: string, quantity: number): void {
@@ -101,31 +116,83 @@ export class QuestManager {
 
     if (!changed) return;
     this.progression.setQuestProgress(active.progress);
-    if (isQuestComplete(active.definition, active.progress)) this.claimQuestReward();
+    this.remoteSync?.notifyDeliver(commodityId, islandId, quantity);
+    this.finishIfComplete(active);
+  }
+
+  /** โหมด remote: ครบแล้วรอ Server ยืนยัน+เคลม; โหมด local: แจกรางวัลทันทีตามเดิม */
+  private finishIfComplete(active: ActiveQuest): void {
+    if (!isQuestComplete(active.definition, active.progress)) return;
+    if (this.remoteSync) this.remoteSync.requestClaim(active.definition.id);
+    else this.claimQuestReward();
   }
 
   claimQuestReward(): QuestClaimResult {
     const active = this.getActiveQuest();
     if (!active) return { claimed: false, reason: 'no-active-quest' };
     if (!active.completed) return { claimed: false, reason: 'not-complete' };
-
-    const { rewards } = active.definition;
-    const activeItem = this.getActiveItem();
-    this.progression.addPlayerExp(rewards.playerExp, `quest:${active.definition.id}`);
-    this.progression.addCoins(rewards.coins, `quest:${active.definition.id}`);
-    const masteryBonus = rewards.masteryBonus ?? 0;
-    if (activeItem && masteryBonus > 0) {
-      this.progression.addMasteryExp(activeItem.itemId, activeItem.category, masteryBonus);
+    if (this.remoteSync) {
+      // Server เป็นผู้แจก — คิว claim ไว้ (applyServerClaim จะปิดเควสต์เมื่อสำเร็จ)
+      this.remoteSync.requestClaim(active.definition.id);
+      return { claimed: false, reason: 'pending-server' };
     }
-    this.progression.markQuestCompleted(active.definition.id);
+    this.grantRewards(active.definition.id, {
+      playerExp: active.definition.rewards.playerExp,
+      coins: active.definition.rewards.coins,
+      masteryBonus: active.definition.rewards.masteryBonus ?? 0,
+    });
+    return { claimed: true };
+  }
+
+  // ---- ส่วนที่ RemoteQuestSync (S10) เรียกกลับ ----
+
+  getLocalActive(): { questId: string; progress: number[] } | null {
+    const active = this.getActiveQuest();
+    return active ? { questId: active.definition.id, progress: [...active.progress] } : null;
+  }
+
+  /** ตั้งสถานะ local ตาม Server (reconcile) — ไม่แจกรางวัล ไม่ emit accepted */
+  forceState(questId: string | null, progress: number[]): void {
+    this.progression.setActiveQuest(questId, progress);
+  }
+
+  /** progress ทางการจาก Server มาทับ (เงียบ — UI อ่านจาก getActiveQuest ตามรอบ) */
+  syncServerProgress(questId: string, progress: number[]): void {
+    const state = this.progression.getState();
+    if (state.activeQuestId !== questId) return;
+    this.progression.setQuestProgress(progress);
+  }
+
+  /** รางวัลที่ Server ตัดสิน (โหมด remote) */
+  applyServerClaim(
+    questId: string,
+    rewards: { playerExp: number; coins: number; masteryBonus: number },
+  ): void {
+    const state = this.progression.getState();
+    if (state.activeQuestId !== questId) return;
+    this.grantRewards(questId, rewards);
+  }
+
+  private grantRewards(
+    questId: string,
+    rewards: { playerExp: number; coins: number; masteryBonus: number },
+  ): void {
+    const definition = QUESTS_BY_ID.get(questId);
+    if (!definition) return;
+    const activeItem = this.getActiveItem();
+    this.progression.addPlayerExp(rewards.playerExp, `quest:${questId}`);
+    this.progression.addCoins(rewards.coins, `quest:${questId}`);
+    if (activeItem && rewards.masteryBonus > 0) {
+      this.progression.addMasteryExp(activeItem.itemId, activeItem.category, rewards.masteryBonus);
+    }
+    this.progression.markQuestCompleted(questId);
     this.progression.events.emit('quest:completed', {
-      questId: active.definition.id,
-      name: active.definition.name,
+      questId,
+      name: definition.name,
       playerExp: rewards.playerExp,
       coins: rewards.coins,
-      masteryBonus,
+      masteryBonus: rewards.masteryBonus,
     });
     this.progression.save();
-    return { claimed: true };
   }
 }

@@ -31,6 +31,7 @@ const environmentSchema = z
     ENABLE_REMOTE_SAVE: booleanFromEnvironment.default(false),
     ENABLE_TRADE_SERVER: booleanFromEnvironment.default(false),
     ENABLE_REALTIME: booleanFromEnvironment.default(false),
+    ENABLE_QUEST_SERVER: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -110,6 +111,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_REMOTE_SESSION'],
         message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_REALTIME',
+      });
+    }
+
+    // Quest authority ผูกรางวัลกับ characters.coins — ต้องมี session identity ก่อน
+    if (environment.ENABLE_QUEST_SERVER && !environment.ENABLE_REMOTE_SESSION) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_REMOTE_SESSION'],
+        message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_QUEST_SERVER',
       });
     }
 

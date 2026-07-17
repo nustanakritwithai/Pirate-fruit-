@@ -21,6 +21,8 @@ import { registerTradeRoutes } from './trade/tradeRoutes.js';
 import { registerRealtimeRoutes } from './realtime/realtimeRoutes.js';
 import type { RealtimeHub } from './realtime/realtimeHub.js';
 import type { TradeService } from './trade/tradeService.js';
+import { registerQuestRoutes } from './quest/questRoutes.js';
+import type { QuestService } from './quest/questService.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
@@ -29,6 +31,7 @@ export interface BuildServerOptions {
   playerSaves?: PlayerSaveService;
   economy?: EconomyRuntime;
   trade?: TradeService;
+  quests?: QuestService;
   realtime?: RealtimeHub;
   logger?: FastifyServerOptions['logger'];
 }
@@ -152,6 +155,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     sessions: options.sessions,
     trade: options.trade,
+  });
+  await registerQuestRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    quests: options.quests,
   });
   await registerRealtimeRoutes(app, {
     environment,
