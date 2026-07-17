@@ -24,6 +24,17 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
 const apiCalls = [];
 const pageErrors = [];
+// S9: จับ WebSocket จริงจากหน้าเกม — ยืนยัน handshake + เฟรม economy push
+const wsEvents = { opened: 0, frames: [] };
+page.on('websocket', (socket) => {
+  wsEvents.opened += 1;
+  socket.on('framereceived', (frame) => {
+    try {
+      const message = JSON.parse(String(frame.payload));
+      if (message?.type) wsEvents.frames.push(message.type);
+    } catch { /* ไม่ใช่ JSON — ข้าม */ }
+  });
+});
 page.on('pageerror', (error) => pageErrors.push(String(error).slice(0, 200)));
 page.on('response', (response) => {
   if (response.url().startsWith(API_URL)) {
@@ -114,6 +125,18 @@ if (!sessionSeen || !stateSeen) {
   fail('expected session + player state calls were not observed', { apiCalls });
 }
 
+// 4) S9 realtime: เมื่อเปิด flag ต้องมี WS เชื่อมจริง + ได้ welcome และ economy push
+if (process.env.SMOKE_EXPECT_REALTIME === 'true') {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline
+    && !(wsEvents.frames.includes('welcome') && wsEvents.frames.includes('economy'))) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (wsEvents.opened === 0 || !wsEvents.frames.includes('welcome') || !wsEvents.frames.includes('economy')) {
+    fail('realtime websocket did not deliver welcome + economy frames', { wsEvents, apiCalls });
+  }
+}
+
 console.log('SMOKE PASS');
-console.log(JSON.stringify({ apiCalls: [...new Set(apiCalls)], tradeProbeStatus: tradeProbe.status, pageErrors }, null, 2));
+console.log(JSON.stringify({ apiCalls: [...new Set(apiCalls)], tradeProbeStatus: tradeProbe.status, wsEvents: { opened: wsEvents.opened, frames: [...new Set(wsEvents.frames)] }, pageErrors }, null, 2));
 await browser.close();

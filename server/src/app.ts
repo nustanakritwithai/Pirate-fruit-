@@ -18,6 +18,8 @@ import type { PlayerSaveService } from './player/playerSaveService.js';
 import { registerEconomyRoutes } from './economy/economyRoutes.js';
 import type { EconomyRuntime } from './economy/economyRuntime.js';
 import { registerTradeRoutes } from './trade/tradeRoutes.js';
+import { registerRealtimeRoutes } from './realtime/realtimeRoutes.js';
+import type { RealtimeHub } from './realtime/realtimeHub.js';
 import type { TradeService } from './trade/tradeService.js';
 
 export interface BuildServerOptions {
@@ -27,6 +29,7 @@ export interface BuildServerOptions {
   playerSaves?: PlayerSaveService;
   economy?: EconomyRuntime;
   trade?: TradeService;
+  realtime?: RealtimeHub;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -82,6 +85,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   });
 
   app.addHook('onClose', async () => {
+    options.realtime?.closeAll();
     await options.economy?.stop();
     await database.close();
   });
@@ -148,6 +152,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     sessions: options.sessions,
     trade: options.trade,
+  });
+  await registerRealtimeRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    realtime: options.realtime,
   });
   return app;
 }

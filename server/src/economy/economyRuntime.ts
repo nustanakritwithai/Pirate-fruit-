@@ -43,6 +43,8 @@ export interface EconomyRuntimeOptions {
   snapshotRetention?: number;
   setInterval?: typeof globalThis.setInterval;
   clearInterval?: typeof globalThis.clearInterval;
+  /** S9: เรียกหลัง persist สำเร็จทุกครั้ง (tick/trade) — ใช้ push realtime */
+  onSnapshotPersisted?: (snapshot: EconomyRuntimeSnapshot) => void;
 }
 
 const silentLogger: EconomyRuntimeLogger = {
@@ -209,6 +211,7 @@ export class EconomyRuntime {
       document: snapshot.document,
       lastTickAt: tickedAt,
     };
+    this.options.onSnapshotPersisted?.(this.cached);
   }
 
   private fromStored(stored: StoredEconomyWorld): EconomyRuntimeSnapshot {

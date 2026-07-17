@@ -12,6 +12,7 @@ import { PlayerSaveService } from './player/playerSaveService.js';
 import { PostgresEconomyWorldRepository } from './economy/economyWorldRepository.js';
 import { EconomyRuntime, type EconomyRuntimeLogger } from './economy/economyRuntime.js';
 import { startGuestCleanup } from './auth/sessionCleanup.js';
+import { RealtimeHub } from './realtime/realtimeHub.js';
 import { PostgresTradeRepository } from './trade/tradeRepository.js';
 import { TradeService } from './trade/tradeService.js';
 
@@ -37,21 +38,32 @@ async function start(): Promise<void> {
     warn: (fields, message) => runtimeLogger?.warn(fields, message),
     error: (fields, message) => runtimeLogger?.error(fields, message),
   };
+  const realtime = environment.ENABLE_REALTIME
+    ? new RealtimeHub({
+        info: (fields, message) => runtimeLogger?.info(fields, message),
+        warn: (fields, message) => runtimeLogger?.warn(fields, message),
+      })
+    : undefined;
   const economy = pool && environment.ENABLE_ECONOMY_SERVER
     ? new EconomyRuntime({
         repository: new PostgresEconomyWorldRepository(pool),
         logger: deferredEconomyLogger,
+        // S9: push โลกเศรษฐกิจให้ทุก connection ทันทีหลัง persist (tick หรือ trade)
+        onSnapshotPersisted: realtime
+          ? (snapshot) => realtime.broadcastEconomy(snapshot.tick, JSON.stringify(snapshot.document))
+          : undefined,
       })
     : undefined;
   const trade = pool && economy && environment.ENABLE_TRADE_SERVER
     ? new TradeService(economy, new PostgresTradeRepository(pool))
     : undefined;
-  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade });
+  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, realtime });
   runtimeLogger = app.log;
   // S8 ops: เก็บกวาด session หมดอายุ + guest กำพร้าเป็นรอบ (ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ)
   const stopGuestCleanup = pool && environment.ENABLE_REMOTE_SESSION
     ? startGuestCleanup(pool, app.log)
     : null;
+  const stopRealtimeReaper = realtime?.startReaper() ?? null;
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -61,6 +73,7 @@ async function start(): Promise<void> {
 
     try {
       stopGuestCleanup?.();
+      stopRealtimeReaper?.();
       await app.close();
       app.log.info('graceful shutdown completed');
     } catch (error) {

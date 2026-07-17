@@ -48,6 +48,9 @@ services:
       # (ฝั่ง client ต้อง build ด้วย VITE_ENABLE_TRADE_SERVER=true พร้อมกันตอนเปิดใช้)
       - key: ENABLE_TRADE_SERVER
         value: 'false'
+      # S9 WebSocket Foundation — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_REALTIME=true พร้อมกัน)
+      - key: ENABLE_REALTIME
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

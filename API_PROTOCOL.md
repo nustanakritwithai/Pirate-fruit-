@@ -148,3 +148,15 @@ it will not add whole-world writes.
 - Reject codes (409/422/503): `INSUFFICIENT_STOCK`, `INSUFFICIENT_COINS`, `INSUFFICIENT_CARGO`, `CARGO_FULL`, `PRICE_MOVED`, `MARKET_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED`, `INVALID_TRADE_REQUEST`, `ECONOMY_NOT_READY`
 - Consistency: ธุรกรรม PG เดียว (lock แถว character) + งานทั้งก้อน serialize บนคิวเดียวกับ economy tick (single writer ต่อ world document) — stock ใน engine ถูกหักหลัง DB commit เท่านั้น
 - Idempotency: unique `(character_id, idempotency_key)` + request hash — retry key เดิม payload เดิมคืนผลเดิม, key เดิม payload ต่างถูกปฏิเสธ
+
+
+## S9 — Realtime (WebSocket)
+
+### GET /ws (WebSocket upgrade)
+- Flag: `ENABLE_REALTIME` (ต้องเปิด `ENABLE_REMOTE_SESSION`) — ปิดอยู่ route ไม่ถูก register
+- Auth ที่จังหวะ upgrade: Origin allowlist (ปิด 4403) + session cookie (ปิด 4401)
+- Push อย่างเดียว: `welcome` (heartbeatIntervalMs) · `economy` (tick + world string เดียวกับ REST) · `announcement` · `pong`
+- Client ส่งได้แค่ `{type:'ping', sentAt}` — เกินสเปก/ใหญ่เกิน 1KB = ปิดด้วย 1008
+- **Out-of-order guard**: ทุกข้อความมี `seq` +1 ต่อ connection — client ทิ้ง seq ย้อนหลัง, seq กระโดด = พลาดข้อความ → ดึง snapshot ทาง REST (resync) แล้วนับต่อ
+- Heartbeat: client ping ตามรอบใน welcome; เงียบเกิน 45 วิ server ตัด (1001), เงียบ 2.5 รอบ client ตัดเองแล้ว reconnect แบบ exponential backoff (สูงสุด 30 วิ + jitter)
+- ระหว่าง WS เชื่อมอยู่ client หยุด poll `/api/economy/world`; WS หลุด → กลับไป poll อัตโนมัติ

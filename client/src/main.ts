@@ -41,6 +41,7 @@ import { TradeManager } from './trade/TradeManager';
 import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
 import { parseEconomyDocument } from './trade/living/LivingTradePersistence';
 import { initializeRemoteTrade } from './trade/RemoteTradeClient';
+import { initializeRealtime } from './realtime/RealtimeClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -273,10 +274,25 @@ async function main(): Promise<void> {
         remotePollInFlight = false;
       });
   };
+  // S9: Server push โลกเศรษฐกิจผ่าน WebSocket — ระหว่างเชื่อมอยู่หยุด poll 5 วิ
+  // (WS หลุด/ปิด flag = กลับไป poll เดิมอัตโนมัติ ไม่มีช่วงมืด)
+  const realtime = initializeRealtime({
+    onEconomy: (state) => {
+      const world = state?.world ? parseEconomyDocument(state.world) : null;
+      if (!world) return;
+      persistence.storage.replaceEconomySnapshot({ schemaVersion: state.schemaVersion, world: state.world });
+      tradeManager.living.replaceState(world);
+      tradeManager.living.setServerReadOnly(true);
+      refreshEconomyViews();
+    },
+    onResync: () => pollRemoteEconomy(),
+    onAnnouncement: (message, level) => economyHud.notifyStatus(message, level === 'warning'),
+  });
+  realtime?.start();
   game.add({
     update: (dt: number) => {
       const elapsedMs = dt * 1000;
-      if (persistence.requestedEconomyMode === 'remote') {
+      if (persistence.requestedEconomyMode === 'remote' && !realtime?.connected) {
         remotePollAccum += elapsedMs;
         if (remotePollAccum >= REMOTE_ECONOMY_TICK_INTERVAL_MS) {
           remotePollAccum = 0;
