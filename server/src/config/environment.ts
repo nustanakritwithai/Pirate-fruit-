@@ -30,6 +30,7 @@ const environmentSchema = z
     ENABLE_ECONOMY_SERVER: booleanFromEnvironment.default(false),
     ENABLE_REMOTE_SAVE: booleanFromEnvironment.default(false),
     ENABLE_TRADE_SERVER: booleanFromEnvironment.default(false),
+    ENABLE_REALTIME: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -100,6 +101,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_ECONOMY_SERVER'],
         message: 'ENABLE_ECONOMY_SERVER must be enabled before ENABLE_TRADE_SERVER',
+      });
+    }
+
+    // Realtime push ต้องมี identity — auth ที่จังหวะ upgrade ใช้ session cookie
+    if (environment.ENABLE_REALTIME && !environment.ENABLE_REMOTE_SESSION) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_REMOTE_SESSION'],
+        message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_REALTIME',
       });
     }
 

@@ -57,3 +57,9 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - Guest cleanup รันอัตโนมัติทุกชั่วโมงเมื่อ `ENABLE_REMOTE_SESSION=true` (log: `guest cleanup removed stale rows`)
 - ตรวจธุรกรรมย้อนหลัง: `select * from trade_transactions where character_id = $1 order by created_at desc`
 - CI มี job `browser-smoke`: บูตเกม build จริง + server จริง + PostgreSQL จริง แล้วยืนยัน session/save/PUT preflight/trade endpoint ข้าม origin
+
+
+## S9 — Realtime
+- ลำดับเปิดใช้: `ENABLE_REALTIME=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_REALTIME=true` → เปิดเกมสองเครื่องดูราคาขยับพร้อมกันแบบไม่ต้องรอ 5 วิ
+- Render free instance เดียว: WS + economy leader อยู่ process เดียวกันเสมอ
+- Debug: DevTools → Network → WS → เฟรม welcome/economy; client เงียบ = ดู reconnect backoff ใน console

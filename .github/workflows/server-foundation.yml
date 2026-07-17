@@ -69,12 +69,15 @@ jobs:
       ENABLE_REMOTE_SAVE: 'true'
       ENABLE_ECONOMY_SERVER: 'true'
       ENABLE_TRADE_SERVER: 'true'
+      ENABLE_REALTIME: 'true'
       PORT: '10000'
       VITE_API_URL: http://127.0.0.1:10000
       VITE_USE_REMOTE_SERVER: 'true'
       VITE_ENABLE_REMOTE_SESSION: 'true'
       VITE_ENABLE_ECONOMY_SERVER: 'true'
       VITE_ENABLE_TRADE_SERVER: 'true'
+      VITE_ENABLE_REALTIME: 'true'
+      SMOKE_EXPECT_REALTIME: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

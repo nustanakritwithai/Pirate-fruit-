@@ -35,3 +35,9 @@ copies; do not clear them as part of incident rollback.
 1. Rebuild Static Site โดยเอา `VITE_ENABLE_TRADE_SERVER` ออก (client กลับไปเทรดแบบ local)
 2. ตั้ง `ENABLE_TRADE_SERVER=false` ที่ Web Service (endpoint ตอบ 503)
 3. ไม่ต้องแตะข้อมูล: `trade_transactions` เป็น audit log เก็บไว้ตรวจสอบ, `characters.coins`/`player_cargo` ยัง sync ผ่านระบบ save ปกติ
+
+
+## S9 — Realtime rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_REALTIME` ออก (client กลับไป poll ทุก 5 วิ — ระบบเดิมยังอยู่ครบ)
+2. ตั้ง `ENABLE_REALTIME=false` ที่ Web Service (route /ws หายไป)
+3. ไม่มีข้อมูลใด ๆ ต้องกู้ — ช่องทางนี้ stateless ทั้งหมด
