@@ -126,3 +126,8 @@ database. The test refuses to reset a database whose name does not end in
 - Migration `0002_s10_quest_claims` (schema version 3): ตารางใหม่ `quest_claims` — audit การเคลมรางวัลเควสต์ + idempotency ledger (unique `(character_id, idempotency_key)`, เก็บ request hash, เลขรางวัล และ `coins_after`)
 - `player_quests` (มีตั้งแต่ S4) เริ่มถูกใช้จริง: หนึ่งแถวต่อ (ตัวละคร, เควสต์), `status` = active → completed → claimed (หรือ abandoned), `progress_json = {"objectives": number[]}`
 - Rollback: `drizzle/rollback/0002_s10_quest_claims.down.sql` (drop `quest_claims` อย่างเดียว — `player_quests` เป็นของ S4)
+
+
+## S11 notes
+- Migration `0003_s11_monster_kill_batches` (schema version 4): ตาราง `monster_kill_batches` — audit + idempotency ledger ของรางวัลการฆ่ามอนสเตอร์ (unique `(character_id, idempotency_key)`, เก็บ request hash, รายการรางวัลต่อ batch และ `coins_after`)
+- Rollback: `drizzle/rollback/0003_s11_monster_kill_batches.down.sql`

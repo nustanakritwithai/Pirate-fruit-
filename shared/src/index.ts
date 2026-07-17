@@ -10,4 +10,6 @@ export * from './types/trade.js';
 export * from './types/realtime.js';
 export * from './types/quest.js';
 export * from './quest/definitions.js';
+export * from './types/monster.js';
+export * from './monster/rewards.js';
 export * from './validation/guards.js';

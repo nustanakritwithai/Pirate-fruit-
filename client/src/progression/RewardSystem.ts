@@ -1,3 +1,4 @@
+import { computeEnemyReward, levelRewardMultiplier } from '@pirate-fruit/shared';
 import { PROGRESSION_CONFIG } from './ProgressionData';
 import type { CombatRewardSource } from '../combat/CombatData';
 import type {
@@ -82,19 +83,12 @@ export class RewardContributionTracker<TEnemy extends object> {
   }
 }
 
+// S11: สูตรตัวคูณย้ายไป shared (Server ใช้สูตรเดียวกันคิดรางวัล) — คง signature เดิม
 export function getLevelRewardMultiplier(playerLevel: number, enemyLevel: number): number {
-  const difference = Math.max(0, Math.floor(playerLevel) - Math.floor(enemyLevel));
-  if (difference <= PROGRESSION_CONFIG.rewardFullDifferenceMax) return 1;
-  if (difference <= PROGRESSION_CONFIG.rewardReducedDifferenceMax) {
-    return PROGRESSION_CONFIG.rewardReducedMultiplier;
-  }
-  if (difference <= PROGRESSION_CONFIG.rewardLowDifferenceMax) {
-    return PROGRESSION_CONFIG.rewardLowMultiplier;
-  }
-  return PROGRESSION_CONFIG.lowLevelRewardMinimumMultiplier;
+  return levelRewardMultiplier(playerLevel, enemyLevel);
 }
 
-function masteryRewards(
+export function masteryRewards(
   amount: number,
   contribution: RewardContribution,
 ): ItemMasteryReward[] {
@@ -130,15 +124,14 @@ export function grantEnemyRewards(
     return { playerExp: 0, coins: 0, mastery: [], multiplier: 0 };
   }
 
-  const baseMultiplier = getLevelRewardMultiplier(sink.level, enemy.level);
-  const multiplier = enemy.isBoss
-    ? Math.max(PROGRESSION_CONFIG.bossMinimumRewardMultiplier, baseMultiplier)
-    : baseMultiplier;
-  const playerExp = Math.floor(enemy.reward.playerExp * multiplier);
-  const masteryAmount = Math.floor(enemy.reward.masteryExp * multiplier);
-  const coinMultiplier = Math.max(PROGRESSION_CONFIG.coinMinimumRewardMultiplier, multiplier);
-  const coins = Math.floor(enemy.reward.coins * coinMultiplier);
-  const mastery = masteryRewards(masteryAmount, contribution);
+  // S11: เลขรางวัลมาจากสูตร shared ตัวเดียวกับ Server
+  const computed = computeEnemyReward(sink.level, {
+    level: enemy.level,
+    isBoss: enemy.isBoss,
+    ...enemy.reward,
+  });
+  const { playerExp, coins, multiplier } = computed;
+  const mastery = masteryRewards(computed.masteryExp, contribution);
 
   sink.addPlayerExp(playerExp, `enemy:${enemy.id}`);
   for (const reward of mastery) {

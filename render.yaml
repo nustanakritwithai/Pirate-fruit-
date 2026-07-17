@@ -54,6 +54,9 @@ services:
       # S10 Quest/Reward Authority — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_QUEST_SERVER=true พร้อมกัน)
       - key: ENABLE_QUEST_SERVER
         value: 'false'
+      # S11 Monster Reward Authority — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_MONSTER_SERVER=true พร้อมกัน)
+      - key: ENABLE_MONSTER_SERVER
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

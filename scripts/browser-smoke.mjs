@@ -158,6 +158,29 @@ if (process.env.SMOKE_EXPECT_QUEST === 'true') {
   }
 }
 
+// 3c) S11 monster: mutation ต้องผ่าน CORS preflight (4xx ธุรกิจ = ผ่านชั้นเครือข่าย)
+if (process.env.SMOKE_EXPECT_MONSTER === 'true') {
+  const monsterProbe = await page.evaluate(async (api) => {
+    try {
+      const response = await fetch(`${api}/api/monster/kills`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+          'x-csrf-token': 'x'.repeat(43),
+        },
+        body: '{}',
+      });
+      return { ok: true, status: response.status };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  }, API_URL);
+  if (!monsterProbe.ok) {
+    fail('monster endpoint failed at the network/CORS layer', { monsterProbe, apiCalls });
+  }
+}
+
 // 4) S9 realtime: เมื่อเปิด flag ต้องมี WS เชื่อมจริง + ได้ welcome และ economy push
 if (process.env.SMOKE_EXPECT_REALTIME === 'true') {
   const deadline = Date.now() + 30_000;
