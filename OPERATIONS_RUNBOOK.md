@@ -50,3 +50,10 @@ Authorization and CSRF headers.
 For economy incidents also monitor leader acquisition, pulse failures, database tick,
 `last_tick_at`, snapshot count and polling 5xx/429 rates. If ticks stop or regress, disable
 the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed a live world.
+
+
+## S8 — Trade Server
+- ลำดับเปิดใช้: ตรวจ CI browser-smoke เขียว → ตั้ง `ENABLE_TRADE_SERVER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_TRADE_SERVER=true` → ทดสอบซื้อ/ขายจริง 1 รายการ + ตรวจแถว `trade_transactions`
+- Guest cleanup รันอัตโนมัติทุกชั่วโมงเมื่อ `ENABLE_REMOTE_SESSION=true` (log: `guest cleanup removed stale rows`)
+- ตรวจธุรกรรมย้อนหลัง: `select * from trade_transactions where character_id = $1 order by created_at desc`
+- CI มี job `browser-smoke`: บูตเกม build จริง + server จริง + PostgreSQL จริง แล้วยืนยัน session/save/PUT preflight/trade endpoint ข้าม origin

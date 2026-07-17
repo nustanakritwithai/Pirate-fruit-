@@ -114,3 +114,9 @@ leadership, world/snapshot transaction, stale-tick and rollback integration cove
 against the dedicated `pirate_fruit_test`
 database. The test refuses to reset a database whose name does not end in
 `_test`.
+
+
+## S8 notes
+- `trade_transactions` เริ่มถูกเขียนจริงโดย `/api/trade/execute` (audit + idempotency ledger); `metadata_json` เก็บ request hash + ผลลัพธ์สำหรับ idempotent replay
+- ไม่มี migration ใหม่ใน S8 — ใช้ตาราง S4/S6 เดิมทั้งหมด (`characters.coins`, `player_cargo`, `player_boats.is_active`, `trade_transactions`)
+- Retention: sessions หมดอายุ > 7 วัน และ orphan guest users > 45 วัน ถูกลบโดย cleanup job (cascade ลบ characters/sessions ของ guest นั้น)

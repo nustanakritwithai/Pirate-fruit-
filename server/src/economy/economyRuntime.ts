@@ -119,6 +119,33 @@ export class EconomyRuntime {
     await this.enqueuePulse(true);
   }
 
+  /**
+   * S8 Trade Authority — รันงานแบบ exclusive บน "คิวเดียวกับ tick" เพื่อคงกติกา
+   * ผู้เขียนสถานะเศรษฐกิจมีคนเดียวเสมอ: ระหว่าง fn ทำงาน ไม่มี tick แทรก
+   * และ engine ถูก persist ทันทีหลัง fn สำเร็จ (error ธุรกิจของ trade
+   * propagate กลับผู้เรียกโดยไม่ฆ่าคิว tick และไม่สละ leadership)
+   */
+  async executeExclusive<T>(fn: (engine: EconomyEngine) => Promise<T> | T): Promise<T> {
+    const step = async (): Promise<T> => {
+      if (!this.running) throw new Error('ECONOMY_NOT_READY');
+      if (!this.lease) {
+        this.lease = await this.options.repository.tryAcquireLeadership();
+        if (this.lease) await this.initializeLeader(this.lease);
+      }
+      if (!this.lease || !this.engine) throw new Error('ECONOMY_NOT_READY');
+      const result = await fn(this.engine);
+      await this.persist(this.engine.snapshot(), this.now());
+      return result;
+    };
+    const run = this.pulseQueue.then(step);
+    // ต่อโซ่คิวเสมอไม่ว่า fn จะสำเร็จหรือปฏิเสธ — คิว tick ต้องเดินต่อ
+    this.pulseQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   private enqueuePulse(wait = false): Promise<void> {
     this.pulseQueue = this.pulseQueue
       .then(() => this.runPulse())

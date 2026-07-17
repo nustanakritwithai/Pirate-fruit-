@@ -4,10 +4,36 @@ export interface EconomyEngineSnapshot {
   document: Record<string, unknown>;
 }
 
+export interface EconomyCargoSlot {
+  commodityId: string;
+  quantity: number;
+}
+
+export interface EconomyBuyQuote {
+  unitPrice: number;
+  tradableStock: number | null;
+}
+
+export interface EconomySellQuote {
+  unitPrice: number;
+  feeRate: number;
+}
+
 export interface EconomyEngine {
   readonly tick: number;
   advance(): void;
   snapshot(): EconomyEngineSnapshot;
+  // S8 Trade Authority — สูตรเดียวกับ browser ผ่าน bundle เดียวกัน
+  quoteBuy(islandId: string, commodityId: string, quantity: number): EconomyBuyQuote | null;
+  quoteSell(islandId: string, commodityId: string, quantity: number): EconomySellQuote | null;
+  applyBuy(islandId: string, commodityId: string, quantity: number, unitPrice: number): void;
+  applySell(islandId: string, commodityId: string, quantity: number, unitPrice: number): void;
+  cargoFits(
+    boatId: string,
+    slots: readonly EconomyCargoSlot[],
+    commodityId: string,
+    quantity: number,
+  ): boolean;
 }
 
 export type EconomyEngineFactory = (initialDocument?: unknown) => Promise<EconomyEngine>;

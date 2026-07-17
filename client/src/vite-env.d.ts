@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_USE_REMOTE_SERVER?: string;
   readonly VITE_ENABLE_REMOTE_SESSION?: string;
   readonly VITE_ENABLE_ECONOMY_SERVER?: string;
+  readonly VITE_ENABLE_TRADE_SERVER?: string;
 }
 
 interface ImportMeta {

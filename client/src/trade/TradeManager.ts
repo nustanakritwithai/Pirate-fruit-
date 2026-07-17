@@ -10,11 +10,12 @@ import {
   findMarketEntryOnIsland,
   getCommodity,
 } from './TradeRegistry';
-import { buyPrice, cargoSlotsUsed, cargoTotalWeight, sellPrice } from './TradeFormulas';
+import { cargoFits, resolveBuyUnitPrice, resolveSellUnitPrice } from './TradePricing';
 import { LivingTradeSimulator } from './living/LivingTradeSimulator';
 import { isLivingCommodity } from './living/LivingTradeConfig';
 import { gameStorage, type GameStorage } from '../persistence/GameStorage';
 import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
+import { RemoteTradeError, type RemoteTradeExecutor } from './RemoteTradeClient';
 
 const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.cargo;
 
@@ -27,6 +28,7 @@ export interface TradeWallet {
 export class TradeManager {
   private cargo: CargoHold;
   private listener: TradeTransactionListener | null = null;
+  private remote: RemoteTradeExecutor | null = null;
   readonly living: LivingTradeSimulator;
 
   constructor(
@@ -59,28 +61,14 @@ export class TradeManager {
     this.saveCargo();
   }
 
-  /** ราคาซื้อ — living หรือ static */
+  /** ราคาซื้อ — living หรือ static (สูตรกลางใน TradePricing ใช้ร่วมกับ server) */
   resolveBuyPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
-    const found = findMarketEntryOnIsland(islandId, commodityId);
-    const livingPrice = this.living.getBuyPrice(islandId, commodityId, quantity);
-    if (livingPrice != null) {
-      return Math.max(1, Math.round(livingPrice * marketRoleMultiplier(found?.entry.role, 'buy')));
-    }
-    const commodity = getCommodity(commodityId);
-    if (!commodity || !found) return null;
-    return buyPrice(commodity, found.entry);
+    return resolveBuyUnitPrice(this.living, islandId, commodityId, quantity);
   }
 
   /** ราคาขาย — living หรือ static */
   resolveSellPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
-    const found = findMarketEntryOnIsland(islandId, commodityId);
-    const livingPrice = this.living.getSellPrice(islandId, commodityId, quantity);
-    if (livingPrice != null) {
-      return Math.max(1, Math.round(livingPrice * marketRoleMultiplier(found?.entry.role, 'sell')));
-    }
-    const commodity = getCommodity(commodityId);
-    if (!commodity || !found) return null;
-    return sellPrice(commodity, found.entry);
+    return resolveSellUnitPrice(this.living, islandId, commodityId, quantity);
   }
 
   buy(islandId: IslandId, commodityId: string, quantity: number): TradeTransactionResult {
@@ -89,6 +77,91 @@ export class TradeManager {
 
   sell(islandId: IslandId, commodityId: string, quantity: number): TradeTransactionResult {
     return this.transact('sell', islandId, commodityId, quantity);
+  }
+
+  /** S8: เปิด/ปิดโหมด Server ตัดสินธุรกรรม (null = โหมด local เดิมทุกประการ) */
+  setRemoteExecutor(executor: RemoteTradeExecutor | null): void {
+    this.remote = executor;
+  }
+
+  get isRemoteTrade(): boolean {
+    return this.remote !== null;
+  }
+
+  /** ซื้อ/ขายแบบรอผลจริง — ใช้ Server เมื่อเปิด trade authority, ไม่งั้น local เดิม */
+  async buyAsync(islandId: IslandId, commodityId: string, quantity: number): Promise<TradeTransactionResult> {
+    if (!this.remote) return this.buy(islandId, commodityId, quantity);
+    return this.transactRemote('buy', islandId, commodityId, quantity);
+  }
+
+  async sellAsync(islandId: IslandId, commodityId: string, quantity: number): Promise<TradeTransactionResult> {
+    if (!this.remote) return this.sell(islandId, commodityId, quantity);
+    return this.transactRemote('sell', islandId, commodityId, quantity);
+  }
+
+  /**
+   * ส่ง intent ให้ Server ตัดสิน แล้ว sync ผลจริงกลับ:
+   * - เหรียญ: apply เป็น delta ของธุรกรรม (ไม่ทับยอด local เพราะรางวัลมอน/เควสต์
+   *   ยังเป็นฝั่ง client จนถึง S10-S12 — transitional trust model)
+   * - cargo: แทนที่ทั้งชุดด้วย canonical จาก player_cargo
+   * - สต็อกเมือง: Server หักแล้ว mirror ฝั่งนี้ตามมากับ economy poll รอบถัดไป
+   * ปฏิเสธ/เน็ตล่ม = ไม่แตะสถานะ local ใด ๆ (ห้าม fork ยอดเงินกับ Server)
+   */
+  private async transactRemote(
+    action: 'buy' | 'sell',
+    islandId: IslandId,
+    commodityId: string,
+    quantity: number,
+  ): Promise<TradeTransactionResult> {
+    const commodity = getCommodity(commodityId);
+    if (!commodity) return this.emit({ ok: false, message: 'ไม่พบสินค้า' });
+    const qty = Math.max(1, Math.floor(quantity));
+    const expected = action === 'buy'
+      ? this.resolveBuyPrice(islandId, commodityId, qty)
+      : this.resolveSellPrice(islandId, commodityId, qty);
+
+    try {
+      const response = await this.remote!.execute({
+        action,
+        islandId,
+        commodityId,
+        quantity: qty,
+        expectedUnitPrice: expected ?? undefined,
+      });
+      if (action === 'buy') {
+        if (!this.wallet.spendCoins(response.total, `trade:buy:${commodityId}`)) {
+          // Server หักแล้วแต่กระเป๋า local ไม่พอ (ยอด local ตามหลัง) — บังคับ sync ยอดจริง
+          this.wallet.addCoins(
+            Math.max(0, response.coins - this.wallet.coins),
+            'trade:reconcile',
+          );
+        }
+      } else {
+        this.wallet.addCoins(response.total, `trade:sell:${commodityId}`);
+      }
+      this.cargo.slots = response.cargo.map((slot) => ({
+        commodityId: slot.commodityId,
+        quantity: slot.quantity,
+      }));
+      this.saveCargo();
+      const message = action === 'buy'
+        ? `ซื้อ ${commodity.nameTh} x${qty} (${response.total} Beli)`
+        : `ขาย ${commodity.nameTh} x${qty} ได้ ${response.total} Beli${response.fee > 0 ? ` (ค่าธรรมเนียม ${response.fee})` : ''}`;
+      return this.emit({
+        ok: true,
+        message,
+        coinsDelta: action === 'buy' ? -response.total : response.total,
+        commodityId,
+        quantityDelta: action === 'buy' ? qty : -qty,
+        islandId,
+        action,
+      });
+    } catch (error) {
+      if (error instanceof RemoteTradeError) {
+        return this.emit({ ok: false, message: rejectMessageTh(error) });
+      }
+      return this.emit({ ok: false, message: 'เชื่อมต่อ Server ไม่ได้ ลองใหม่อีกครั้ง' });
+    }
   }
 
   private transact(
@@ -202,26 +275,7 @@ export class TradeManager {
   }
 
   private canAddCargo(commodityId: string, quantity: number): boolean {
-    const commodity = getCommodity(commodityId);
-    if (!commodity) return false;
-
-    const trial = [...this.cargo.slots];
-    const existing = trial.find((s) => s.commodityId === commodityId);
-    if (existing) existing.quantity += quantity;
-    else trial.push({ commodityId, quantity });
-
-    const cap = BOAT_CARGO_CAPACITY[this.boatId] ?? {
-      slots: TRADE_SYSTEM_CONFIG.defaultCargoSlots,
-      maxWeight: 120,
-    };
-    const commodities = trial
-      .map((s) => getCommodity(s.commodityId))
-      .filter((c): c is NonNullable<typeof c> => Boolean(c));
-
-    return (
-      cargoSlotsUsed(trial) <= cap.slots &&
-      cargoTotalWeight(trial, commodities) <= cap.maxWeight
-    );
+    return cargoFits(this.boatId, this.cargo.slots, commodityId, quantity);
   }
 
   private addToCargo(commodityId: string, quantity: number): void {
@@ -274,11 +328,18 @@ export class TradeManager {
   }
 }
 
-function marketRoleMultiplier(
-  role: 'export' | 'import' | 'neutral' | undefined,
-  action: 'buy' | 'sell',
-): number {
-  if (role === 'export') return action === 'buy' ? 0.9 : 0.9;
-  if (role === 'import') return action === 'buy' ? 1.2 : 1.12;
-  return 1;
+/** แปลโค้ดปฏิเสธจาก Server เป็นข้อความผู้เล่น */
+function rejectMessageTh(error: RemoteTradeError): string {
+  switch (error.code) {
+    case 'INSUFFICIENT_STOCK': return 'สต็อกของเมืองไม่พอ (ราคา/สต็อกเป็นของ Server แล้ว)';
+    case 'INSUFFICIENT_COINS': return 'เหรียญบนบัญชี Server ไม่พอ';
+    case 'INSUFFICIENT_CARGO': return 'สินค้าใน cargo บน Server ไม่พอ';
+    case 'CARGO_FULL': return 'Cargo เต็มหรือน้ำหนักเกิน';
+    case 'PRICE_MOVED': return 'ราคาขยับไปแล้ว กดยืนยันใหม่ด้วยราคาปัจจุบัน';
+    case 'MARKET_UNAVAILABLE': return 'ตลาดนี้ไม่ซื้อขายสินค้านี้';
+    case 'ECONOMY_NOT_READY': return 'Server เศรษฐกิจยังไม่พร้อม ลองใหม่สักครู่';
+    case 'NETWORK': return error.message;
+    default: return `Server ปฏิเสธ: ${error.message}`;
+  }
 }
+

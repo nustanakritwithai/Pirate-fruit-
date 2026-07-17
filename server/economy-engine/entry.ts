@@ -5,11 +5,35 @@ import {
   parseEconomyDocument,
   serializeEconomyState,
 } from '../../client/src/trade/living/LivingTradePersistence';
+import { isLivingCommodity } from '../../client/src/trade/living/LivingTradeConfig';
+import {
+  cargoFits,
+  resolveBuyUnitPrice,
+  resolveSellUnitPrice,
+} from '../../client/src/trade/TradePricing';
+import type { IslandId } from '../../client/src/island/IslandTypes';
 
 export interface BundledEconomySnapshot {
   tick: number;
   documentVersion: number;
   document: Record<string, unknown>;
+}
+
+export interface BundledCargoSlot {
+  commodityId: string;
+  quantity: number;
+}
+
+export interface BundledBuyQuote {
+  unitPrice: number;
+  /** จำนวนที่เมืองยอมขาย (null = สินค้า static ไม่จำกัดด้วยคลังเมือง) */
+  tradableStock: number | null;
+}
+
+export interface BundledSellQuote {
+  unitPrice: number;
+  /** สัดส่วนค่าธรรมเนียมขายของเกาะ (0..1) */
+  feeRate: number;
 }
 
 function decode(document: unknown) {
@@ -48,6 +72,52 @@ export function createEconomyEngine(initialDocument?: unknown) {
         documentVersion: LIVING_ECONOMY_SAVE_VERSION,
         document: JSON.parse(serialized) as Record<string, unknown>,
       };
+    },
+
+    // ---------- S8 Trade Authority: quote/apply ใช้สูตรกลางตัวเดียวกับ browser ----------
+
+    /** ใบเสนอราคาซื้อจากสถานะโลกจริงบน Server (null = ตลาดนี้ไม่ขายสินค้านี้) */
+    quoteBuy(islandId: string, commodityId: string, quantity: number): BundledBuyQuote | null {
+      const island = islandId as IslandId;
+      const unitPrice = resolveBuyUnitPrice(simulator, island, commodityId, quantity);
+      if (unitPrice == null) return null;
+      return {
+        unitPrice,
+        tradableStock: simulator.getTradableStock(island, commodityId),
+      };
+    },
+
+    /** ใบเสนอราคาขาย (null = ตลาดนี้ไม่รับซื้อ) */
+    quoteSell(islandId: string, commodityId: string, quantity: number): BundledSellQuote | null {
+      const island = islandId as IslandId;
+      const unitPrice = resolveSellUnitPrice(simulator, island, commodityId, quantity);
+      if (unitPrice == null) return null;
+      return {
+        unitPrice,
+        feeRate: simulator.getFeeModifierForIsland(island),
+      };
+    },
+
+    /** หักคลังเมืองหลังธุรกรรมซื้อ commit แล้ว (เฉพาะสินค้า living) */
+    applyBuy(islandId: string, commodityId: string, quantity: number, unitPrice: number): void {
+      if (!isLivingCommodity(commodityId)) return;
+      simulator.applyPlayerBuy(islandId as IslandId, commodityId, quantity, unitPrice);
+    },
+
+    /** เพิ่มคลังเมืองหลังธุรกรรมขาย commit แล้ว */
+    applySell(islandId: string, commodityId: string, quantity: number, unitPrice: number): void {
+      if (!isLivingCommodity(commodityId)) return;
+      simulator.applyPlayerSell(islandId as IslandId, commodityId, quantity, unitPrice);
+    },
+
+    /** เช็คความจุ cargo ของเรือด้วย databook เดียวกับ browser (pure) */
+    cargoFits(
+      boatId: string,
+      slots: readonly BundledCargoSlot[],
+      commodityId: string,
+      quantity: number,
+    ): boolean {
+      return cargoFits(boatId, slots, commodityId, quantity);
     },
   };
 }

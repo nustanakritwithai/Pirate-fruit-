@@ -29,3 +29,9 @@ The S6 down migration drops revision and migration history. Use it only in an em
 pre-production database after a verified backup. Never run the full S4 rollback on live
 player data. A browser's `pirate-fruit:remote-save-backup-v1` and legacy keys are recovery
 copies; do not clear them as part of incident rollback.
+
+
+## S8 — Trade Server rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_TRADE_SERVER` ออก (client กลับไปเทรดแบบ local)
+2. ตั้ง `ENABLE_TRADE_SERVER=false` ที่ Web Service (endpoint ตอบ 503)
+3. ไม่ต้องแตะข้อมูล: `trade_transactions` เป็น audit log เก็บไว้ตรวจสอบ, `characters.coins`/`player_cargo` ยัง sync ผ่านระบบ save ปกติ

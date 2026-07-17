@@ -41,3 +41,58 @@ jobs:
       - run: npm run smoke:server
       - run: npm test
       - run: npm run test:extended
+
+  # S8: บูตเกม build จริงในเบราว์เซอร์จริง ยิงข้าม origin ไป server จริง —
+  # จับบั๊กคลาส CORS/cookie/preflight ที่ inject/Node fetch มองไม่เห็น
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pirate_fruit_smoke
+          POSTGRES_USER: pirate_fruit
+          POSTGRES_PASSWORD: pirate_fruit_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pirate_fruit -d pirate_fruit_smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://pirate_fruit:pirate_fruit_smoke@127.0.0.1:5432/pirate_fruit_smoke
+      SESSION_SECRET: browser-smoke-secret-0123456789abcdef
+      CLIENT_ORIGIN: http://127.0.0.1:4173
+      ENABLE_REMOTE_SESSION: 'true'
+      ENABLE_REMOTE_SAVE: 'true'
+      ENABLE_ECONOMY_SERVER: 'true'
+      ENABLE_TRADE_SERVER: 'true'
+      PORT: '10000'
+      VITE_API_URL: http://127.0.0.1:10000
+      VITE_USE_REMOTE_SERVER: 'true'
+      VITE_ENABLE_REMOTE_SESSION: 'true'
+      VITE_ENABLE_ECONOMY_SERVER: 'true'
+      VITE_ENABLE_TRADE_SERVER: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run db:migrate
+      - name: Start server and client preview
+        run: |
+          node server/dist/index.js &
+          npx --workspace=pirate-fruit-client vite preview --port 4173 --strictPort --host 127.0.0.1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:10000/ready && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:4173/ > /dev/null
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/browser-smoke.mjs

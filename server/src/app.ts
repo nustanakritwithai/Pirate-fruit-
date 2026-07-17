@@ -17,6 +17,8 @@ import { registerPlayerSaveRoutes } from './player/playerSaveRoutes.js';
 import type { PlayerSaveService } from './player/playerSaveService.js';
 import { registerEconomyRoutes } from './economy/economyRoutes.js';
 import type { EconomyRuntime } from './economy/economyRuntime.js';
+import { registerTradeRoutes } from './trade/tradeRoutes.js';
+import type { TradeService } from './trade/tradeService.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
@@ -24,6 +26,7 @@ export interface BuildServerOptions {
   sessions?: SessionService;
   playerSaves?: PlayerSaveService;
   economy?: EconomyRuntime;
+  trade?: TradeService;
   logger?: FastifyServerOptions['logger'];
 }
 
@@ -140,6 +143,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   await registerEconomyRoutes(app, {
     environment,
     economy: options.economy,
+  });
+  await registerTradeRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    trade: options.trade,
   });
   return app;
 }
