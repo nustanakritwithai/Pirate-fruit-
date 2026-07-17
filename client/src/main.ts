@@ -41,6 +41,8 @@ import { TradeManager } from './trade/TradeManager';
 import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
 import { parseEconomyDocument } from './trade/living/LivingTradePersistence';
 import { initializeRemoteTrade } from './trade/RemoteTradeClient';
+import { initializeRemoteQuest } from './quest/RemoteQuestClient';
+import { RemoteQuestSync } from './quest/RemoteQuestSync';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
@@ -195,6 +197,14 @@ async function main(): Promise<void> {
   // S8: Server ตัดสินซื้อ/ขายเมื่อ VITE_ENABLE_TRADE_SERVER เปิด + session online
   // (null = โหมด local เดิมทุกประการ — flag ปิดใน production จนกว่าจะ verify)
   tradeManager.setRemoteExecutor(initializeRemoteTrade());
+  // S10: Server ตัดสินสถานะเควสต์+รางวัลเมื่อ VITE_ENABLE_QUEST_SERVER เปิด + session online
+  // (null = โหมด local เดิมทุกประการ — flag ปิดใน production จนกว่าจะ verify)
+  const remoteQuest = initializeRemoteQuest();
+  if (remoteQuest) {
+    const questSync = new RemoteQuestSync(remoteQuest, questManager);
+    questManager.setRemoteSync(questSync);
+    void questSync.reconcile();
+  }
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);

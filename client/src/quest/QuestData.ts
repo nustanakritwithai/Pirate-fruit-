@@ -1,28 +1,11 @@
-export type QuestObjectiveType = 'kill' | 'boss' | 'collect' | 'talk' | 'deliver';
-
-export interface QuestObjective {
-  type: QuestObjectiveType;
-  targetId: string;
-  requiredAmount: number;
-  /** เกาะปลายทางสำหรับ deliver */
-  islandId?: string;
-}
-
-export interface QuestReward {
-  playerExp: number;
-  coins: number;
-  masteryBonus?: number;
-}
-
-export interface QuestDefinition {
-  id: string;
-  name: string;
-  description: string;
-  minimumLevel: number;
-  repeatable: boolean;
-  objectives: QuestObjective[];
-  rewards: QuestReward;
-}
+// S10: ชนิดข้อมูลนิยามเควสต์ย้ายไป shared (Server ใช้ตัดสินรางวัลจาก databook เดียวกัน)
+export type {
+  QuestDefinition,
+  QuestObjective,
+  QuestObjectiveType,
+  QuestReward,
+} from '@pirate-fruit/shared';
+import type { QuestDefinition } from '@pirate-fruit/shared';
 
 export interface ActiveQuest {
   definition: QuestDefinition;
@@ -43,5 +26,5 @@ export interface QuestAcceptResult {
 
 export interface QuestClaimResult {
   claimed: boolean;
-  reason?: 'no-active-quest' | 'not-complete';
+  reason?: 'no-active-quest' | 'not-complete' | 'pending-server';
 }

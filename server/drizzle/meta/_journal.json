@@ -15,6 +15,13 @@
       "when": 1784202347833,
       "tag": "0001_s6_remote_player_save",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784283850309,
+      "tag": "0002_s10_quest_claims",
+      "breakpoints": true
     }
   ]
 }

@@ -63,3 +63,10 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ลำดับเปิดใช้: `ENABLE_REALTIME=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_REALTIME=true` → เปิดเกมสองเครื่องดูราคาขยับพร้อมกันแบบไม่ต้องรอ 5 วิ
 - Render free instance เดียว: WS + economy leader อยู่ process เดียวกันเสมอ
 - Debug: DevTools → Network → WS → เฟรม welcome/economy; client เงียบ = ดู reconnect backoff ใน console
+
+
+## S10 — Quest Server
+- ลำดับเปิดใช้: migrate อัตโนมัติตอน deploy (ตาราง `quest_claims`) → ตรวจ CI browser-smoke เขียว → ตั้ง `ENABLE_QUEST_SERVER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_QUEST_SERVER=true` → รับเควสต์ starter ฆ่ามอนครบ แล้วตรวจแถว `quest_claims` + เหรียญใน `characters.coins`
+- ตรวจการเคลมย้อนหลัง: `select * from quest_claims where character_id = $1 order by created_at desc`
+- สถานะเควสต์ทางการ: `select * from player_quests where character_id = $1`
+- อาการ "เควสต์เด้งกลับ/ถูกปรับ": client reconcile กับ Server ตอนบูต (Server ชนะ) — ปกติหลังสลับเครื่อง/เปิด flag ครั้งแรก

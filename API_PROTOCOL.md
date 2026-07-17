@@ -160,3 +160,26 @@ it will not add whole-world writes.
 - **Out-of-order guard**: ทุกข้อความมี `seq` +1 ต่อ connection — client ทิ้ง seq ย้อนหลัง, seq กระโดด = พลาดข้อความ → ดึง snapshot ทาง REST (resync) แล้วนับต่อ
 - Heartbeat: client ping ตามรอบใน welcome; เงียบเกิน 45 วิ server ตัด (1001), เงียบ 2.5 รอบ client ตัดเองแล้ว reconnect แบบ exponential backoff (สูงสุด 30 วิ + jitter)
 - ระหว่าง WS เชื่อมอยู่ client หยุด poll `/api/economy/world`; WS หลุด → กลับไป poll อัตโนมัติ
+
+
+## S10 — Quest/Reward Authority
+
+Flag: `ENABLE_QUEST_SERVER` (ต้องเปิด `ENABLE_REMOTE_SESSION`) — ปิดอยู่ทุก endpoint ตอบ 503 `FEATURE_DISABLED`
+ทุก mutation ต้องมี session cookie + `x-csrf-token` + Origin allowlist; รางวัลทุกเลขมาจาก databook ฝั่ง Server (`shared/src/quest/definitions.ts`)
+
+### GET /api/quest/state
+สถานะทางการของตัวละคร: `{ active: { questId, progress[], status: 'active'|'completed' } | null, completedQuestIds[] }` — client ใช้ reconcile ตอนบูต (Server ชนะ)
+
+### POST /api/quest/accept — `{ schemaVersion, questId, replaceActive? }`
+ตรวจ `characters.level` กับ `minimumLevel` (LEVEL_TOO_LOW), เควสต์ active ซ้ำ (QUEST_ALREADY_ACTIVE), มีเควสต์อื่น active โดยไม่ replace (ACTIVE_QUEST_CONFLICT) — replace จะ mark ตัวเก่าเป็น `abandoned`
+
+### POST /api/quest/progress — `{ schemaVersion, events[] }` (สูงสุด 10 events/ครั้ง)
+event: `{ kind: 'kill'|'deliver', targetId, amount ≤ 99, isBoss?, islandId? }` — Server จับคู่กับ objective ของเควสต์ active เท่านั้น (boss objective ต้อง isBoss, deliver ตรวจ islandId), clamp ที่ requiredAmount แล้วคืน progress ทางการ + `completed`
+ไม่มีเควสต์ active → events ถูกทิ้งเงียบ ๆ (`questId: null`) ไม่ใช่ error; rate limit 60/นาที
+
+### POST /api/quest/claim — `{ schemaVersion, questId, idempotencyKey }`
+เคลมได้เฉพาะเมื่อ Server เห็นสถานะ `completed` เท่านั้น (QUEST_NOT_COMPLETE ถ้ายังไม่ครบ/เคลมรอบนี้ไปแล้ว) — ธุรกรรมเดียว: lock ตัวละคร → ตรวจ idempotency (`quest_claims`) → บวกเหรียญเข้า `characters.coins` → mark `claimed` → บันทึก audit
+ตอบ `{ playerExp, coins, masteryBonus, coinsTotal, idempotentReplay }` — client apply exp/mastery ฝั่งตนด้วยเลขจาก Server (transitional จนกว่า progression จะเป็นของ Server เต็มตัว)
+
+### POST /api/quest/abandon — `{}`
+mark เควสต์ active/completed เป็น `abandoned` (ไม่มีรางวัล)
