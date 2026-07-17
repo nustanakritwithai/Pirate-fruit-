@@ -134,3 +134,17 @@ fleets, orders, reservations, trader memory, genome state, news, tick or timesta
 never accepted. When `ENABLE_ECONOMY_SERVER=false`, the route is absent (404) and the
 Client continues with its Local economy. S8 will add narrow buy/sell intent endpoints;
 it will not add whole-world writes.
+
+
+## S8 — Server-authoritative Trade
+
+### POST /api/trade/execute
+- Auth: session cookie + `x-csrf-token` + Origin allowlist · Rate limit 30/นาที
+- Flag: `ENABLE_TRADE_SERVER` (ต้องเปิด `ENABLE_REMOTE_SESSION` + `ENABLE_ECONOMY_SERVER` ก่อน) — ปิดอยู่ตอบ 503 `FEATURE_DISABLED`
+- Request: `{ schemaVersion: 1, idempotencyKey, action: 'buy'|'sell', islandId, commodityId, quantity (1-999), expectedUnitPrice? }`
+- Server เป็นผู้คิดราคา/ตรวจสต็อก/หักเงิน/ย้าย cargo ทั้งหมด — `expectedUnitPrice` ใช้เทียบ tolerance 10% เท่านั้น (`PRICE_MOVED` เมื่อราคาวิ่งเกิน)
+- Response 200: `{ ok, action, islandId, commodityId, quantity, unitPrice, total, fee, coins, cargo[], idempotentReplay }`
+  - `coins` = canonical จาก `characters.coins`, `cargo` = canonical จาก `player_cargo`
+- Reject codes (409/422/503): `INSUFFICIENT_STOCK`, `INSUFFICIENT_COINS`, `INSUFFICIENT_CARGO`, `CARGO_FULL`, `PRICE_MOVED`, `MARKET_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED`, `INVALID_TRADE_REQUEST`, `ECONOMY_NOT_READY`
+- Consistency: ธุรกรรม PG เดียว (lock แถว character) + งานทั้งก้อน serialize บนคิวเดียวกับ economy tick (single writer ต่อ world document) — stock ใน engine ถูกหักหลัง DB commit เท่านั้น
+- Idempotency: unique `(character_id, idempotency_key)` + request hash — retry key เดิม payload เดิมคืนผลเดิม, key เดิม payload ต่างถูกปฏิเสธ

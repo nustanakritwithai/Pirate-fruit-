@@ -29,6 +29,7 @@ const environmentSchema = z
     ENABLE_REMOTE_SESSION: booleanFromEnvironment.default(false),
     ENABLE_ECONOMY_SERVER: booleanFromEnvironment.default(false),
     ENABLE_REMOTE_SAVE: booleanFromEnvironment.default(false),
+    ENABLE_TRADE_SERVER: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -82,6 +83,23 @@ const environmentSchema = z
         code: 'custom',
         path: ['DATABASE_URL'],
         message: 'DATABASE_URL is required when ENABLE_ECONOMY_SERVER is enabled',
+      });
+    }
+
+    // Trade authority ต้องมีทั้ง identity (session) และ stock authority (economy)
+    if (environment.ENABLE_TRADE_SERVER && !environment.ENABLE_REMOTE_SESSION) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_REMOTE_SESSION'],
+        message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_TRADE_SERVER',
+      });
+    }
+
+    if (environment.ENABLE_TRADE_SERVER && !environment.ENABLE_ECONOMY_SERVER) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_ECONOMY_SERVER'],
+        message: 'ENABLE_ECONOMY_SERVER must be enabled before ENABLE_TRADE_SERVER',
       });
     }
 

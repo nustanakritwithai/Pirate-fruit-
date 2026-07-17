@@ -19,6 +19,12 @@ const engineFactory: EconomyEngineFactory = async (initial): Promise<EconomyEngi
     get tick() { return tick; },
     advance() { tick += 1; },
     snapshot: () => ({ tick, documentVersion: 8, document: documentAt(tick) }),
+    // S8 trade facade — เทสต์ runtime ไม่ใช้ ราคาคงที่พอ
+    quoteBuy: () => ({ unitPrice: 10, tradableStock: 100 }),
+    quoteSell: () => ({ unitPrice: 8, feeRate: 0.05 }),
+    applyBuy: () => undefined,
+    applySell: () => undefined,
+    cargoFits: () => true,
   };
 };
 
@@ -136,5 +142,43 @@ describe('S7 economy runtime', () => {
     expect(followerSnapshot.document).toEqual(leaderSnapshot.document);
     await follower.stop();
     await leader.stop();
+  });
+
+  it('serializes S8 trades on the tick queue and survives business rejections', async () => {
+    const repository = new MemoryEconomyRepository();
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory,
+      setInterval: (() => ({}) as ReturnType<typeof setInterval>) as unknown as typeof setInterval,
+      clearInterval: vi.fn() as unknown as typeof clearInterval,
+    });
+    await runtime.start();
+    const savesBefore = repository.saves.length;
+
+    // งาน trade เข้าคิวเดียวกับ tick — ไม่ interleave และ persist หลังสำเร็จ
+    const order: string[] = [];
+    const trade = runtime.executeExclusive(async (engine) => {
+      order.push('trade-start');
+      engine.applyBuy('starter-island', 'fish-fresh', 2, 10);
+      order.push('trade-end');
+      return engine.tick;
+    });
+    const pulse = runtime.pulseNow();
+    await Promise.all([trade, pulse]);
+    expect(order).toEqual(['trade-start', 'trade-end']);
+    expect(repository.saves.length).toBeGreaterThan(savesBefore);
+
+    // ปฏิเสธเชิงธุรกิจต้องไม่ฆ่าคิว/ไม่สละ leadership — tick ถัดไปยังทำงาน
+    await expect(
+      runtime.executeExclusive(() => {
+        throw new Error('INSUFFICIENT_COINS');
+      }),
+    ).rejects.toThrow('INSUFFICIENT_COINS');
+    expect(runtime.isLeader).toBe(true);
+    const ticksBefore = (await runtime.getSnapshot()).tick;
+    await runtime.pulseNow();
+    expect((await runtime.getSnapshot()).tick).toBe(ticksBefore + 1);
+
+    await runtime.stop();
   });
 });

@@ -40,6 +40,7 @@ import { IslandManager } from './island/IslandManager';
 import { TradeManager } from './trade/TradeManager';
 import { LIVING_TICK_INTERVAL_MS } from './trade/living/LivingTradeConfig';
 import { parseEconomyDocument } from './trade/living/LivingTradePersistence';
+import { initializeRemoteTrade } from './trade/RemoteTradeClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -190,6 +191,9 @@ async function main(): Promise<void> {
     persistence.storage,
   );
   tradeManager.living.setServerReadOnly(persistence.activeEconomyMode === 'remote');
+  // S8: Server ตัดสินซื้อ/ขายเมื่อ VITE_ENABLE_TRADE_SERVER เปิด + session online
+  // (null = โหมด local เดิมทุกประการ — flag ปิดใน production จนกว่าจะ verify)
+  tradeManager.setRemoteExecutor(initializeRemoteTrade());
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);

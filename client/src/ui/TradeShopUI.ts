@@ -55,6 +55,8 @@ export class TradeShopUI {
   private readonly status: HTMLDivElement;
   private readonly news: HTMLDivElement;
   private closeCallback: (() => void) | null = null;
+  /** S8: กันกดซื้อ/ขายซ้ำระหว่างรอผลจาก Server */
+  private transactionInFlight = false;
   private islandId: IslandId = 'starter-island';
   private vendorName = '';
   private marketId: string | null = null;
@@ -96,14 +98,22 @@ export class TradeShopUI {
       const commodityId = btn.dataset.commodity!;
       const action = btn.dataset.trade as 'buy' | 'sell';
       const qty = Number(btn.dataset.qty ?? '1');
-      const result = action === 'buy'
-        ? this.trade.buy(this.islandId, commodityId, qty)
-        : this.trade.sell(this.islandId, commodityId, qty);
-      this.setStatus(result.message, result.ok);
-      if (result.ok) {
-        this.onChange?.();
-        this.render();
-      }
+      // S8: โหมด Server ตัดสินเป็น async — กันกดซ้ำระหว่างรอผล
+      if (this.transactionInFlight) return;
+      this.transactionInFlight = true;
+      if (this.trade.isRemoteTrade) this.setStatus('กำลังส่งคำสั่งไป Server...', true);
+      void (action === 'buy'
+        ? this.trade.buyAsync(this.islandId, commodityId, qty)
+        : this.trade.sellAsync(this.islandId, commodityId, qty)
+      ).then((result) => {
+        this.setStatus(result.message, result.ok);
+        if (result.ok) {
+          this.onChange?.();
+          this.render();
+        }
+      }).finally(() => {
+        this.transactionInFlight = false;
+      });
     });
     this.root.style.display = 'none';
   }

@@ -87,3 +87,11 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
   a later authenticated feature.
 - Trade/coins/cargo, quest rewards and combat remain Client-authored until later phases.
 - HTTP polling gives snapshots at five-second cadence; realtime ordering/resync belongs to S9.
+
+
+## S8 — Trade authority และ transitional coins model
+- Client ส่งเฉพาะ intent; ราคา/สต็อก/ค่าธรรมเนียมคิดจาก engine บน Server (bundle สูตรเดียวกับเกม)
+- Canonical coins = `characters.coins` และ cargo = `player_cargo`; ธุรกรรม trade แก้ค่าเหล่านี้แบบ atomic พร้อม audit ใน `trade_transactions`
+- Transitional (จนถึง S10-S12): รางวัลจากมอนสเตอร์/เควสต์ยังเกิดฝั่ง client และเข้าระบบผ่าน player save — endpoint save ยังรับ coins จาก client ในช่วงเปลี่ยนผ่าน โดยมี trade audit log ไว้ reconcile; อำนาจเต็มจะปิดช่องนี้เมื่อแหล่งรายได้ทุกทางย้ายขึ้น Server
+- Browser smoke test ใน CI ยิงข้าม origin ด้วยเบราว์เซอร์จริง — กัน regression คลาส CORS/preflight/cookie ที่เทสต์ระดับ inject/Node fetch มองไม่เห็น (บทเรียนจากเหตุการณ์ CORS PUT ใน production)
+- Guest cleanup: sessions ที่หมดอายุ/ถูก revoke เกิน 7 วันถูกลบ; guest ที่ไม่มี session เหลือ ไม่มีความคืบหน้า (save_revision=0 และไม่เคย migrate) และเก่ากว่า 45 วันถูกลบ — ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ
