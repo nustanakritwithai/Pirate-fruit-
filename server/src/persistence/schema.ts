@@ -418,6 +418,38 @@ export const questClaims = pgTable(
   ],
 );
 
+export const monsterKillBatches = pgTable(
+  'monster_kill_batches',
+  {
+    id: uuid('id').primaryKey(),
+    characterId: uuid('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
+    requestHash: varchar('request_hash', { length: 64 }).notNull(),
+    killsJson: jsonb('kills_json').$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+    playerExp: integer('player_exp').notNull(),
+    masteryExp: integer('mastery_exp').notNull(),
+    coins: integer('coins').notNull(),
+    coinsAfter: bigint('coins_after', { mode: 'bigint' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('monster_kill_batches_character_idempotency_uq').on(
+      table.characterId,
+      table.idempotencyKey,
+    ),
+    index('monster_kill_batches_character_created_idx').on(
+      table.characterId,
+      table.createdAt.desc(),
+    ),
+    check(
+      'monster_kill_batches_reward_check',
+      sql`${table.playerExp} >= 0 and ${table.masteryExp} >= 0 and ${table.coins} >= 0 and ${table.coinsAfter} >= 0`,
+    ),
+  ],
+);
+
 export const schemaMigrations = pgTable(
   'schema_migrations',
   {

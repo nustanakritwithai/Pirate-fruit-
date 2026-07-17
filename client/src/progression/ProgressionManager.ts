@@ -204,7 +204,27 @@ export class ProgressionManager implements Updatable {
     this.skillRequirements.set(itemId, [...skills]);
   }
 
+  /** S11: เมื่อ set แล้ว การฆ่าถูกส่งให้ Server ตัดสินรางวัลแทนการแจก local */
+  private remoteEnemyRewarder:
+    | ((enemy: RewardEnemy, contribution: RewardContribution) => boolean)
+    | null = null;
+
+  setRemoteEnemyRewarder(
+    rewarder: ((enemy: RewardEnemy, contribution: RewardContribution) => boolean) | null,
+  ): void {
+    this.remoteEnemyRewarder = rewarder;
+  }
+
+  /** ให้ RemoteMonsterSync ปล่อย event รางวัลหลัง Server ตอบ (UI เดิมฟัง event นี้) */
+  emitRewardGranted(reward: GrantedReward): void {
+    this.events.emit('reward:granted', reward);
+  }
+
   grantEnemyRewards(enemy: RewardEnemy, contribution: RewardContribution): GrantedReward {
+    if (contribution.killed && this.remoteEnemyRewarder?.(enemy, contribution)) {
+      // คิวส่ง Server แล้ว — รางวัลจะ apply เมื่อ Server ตอบ (ไม่แจกซ้ำฝั่งนี้)
+      return { playerExp: 0, coins: 0, mastery: [], multiplier: 0 };
+    }
     const reward = grantRewards(this, enemy, contribution);
     if (reward.playerExp > 0 || reward.coins > 0 || reward.mastery.length > 0) {
       this.events.emit('reward:granted', reward);

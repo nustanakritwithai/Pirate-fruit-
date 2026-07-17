@@ -183,3 +183,14 @@ event: `{ kind: 'kill'|'deliver', targetId, amount ≤ 99, isBoss?, islandId? }`
 
 ### POST /api/quest/abandon — `{}`
 mark เควสต์ active/completed เป็น `abandoned` (ไม่มีรางวัล)
+
+
+## S11 — Monster Reward Authority
+
+Flag: `ENABLE_MONSTER_SERVER` (ต้องเปิด `ENABLE_REMOTE_SESSION`) — ปิดอยู่ endpoint ตอบ 503 `FEATURE_DISABLED`
+
+### POST /api/monster/kills — `{ schemaVersion, idempotencyKey, kills[] }`
+- `kills`: สูงสุด 20 รายการ, `{ monsterId, count ≤ 10 }` — id ต้องอยู่ใน databook (`UNKNOWN_MONSTER` = 422)
+- Server คิดรางวัลจาก `shared/src/monster/rewards.ts` (ตาราง + สูตรตัวคูณส่วนต่างเลเวลเดียวกับเกม) โดยใช้ `characters.level` — เหรียญเข้า `characters.coins` แบบ atomic + audit ลง `monster_kill_batches`
+- ตอบรางวัลรายรายการ (ลำดับเดิม) + totals + `coinsTotal` — client ใช้เลขเหล่านี้ apply exp/mastery ฝั่งตน (mastery แตกต่ออาวุธด้วยสูตรแบ่งเดิมของเกม)
+- Idempotent: คีย์เดิม+payload เดิมคืนผลเดิม; คีย์เดิมต่าง payload → 409 `IDEMPOTENCY_KEY_REUSED`; rate limit 60/นาที

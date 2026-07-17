@@ -43,6 +43,8 @@ import { parseEconomyDocument } from './trade/living/LivingTradePersistence';
 import { initializeRemoteTrade } from './trade/RemoteTradeClient';
 import { initializeRemoteQuest } from './quest/RemoteQuestClient';
 import { RemoteQuestSync } from './quest/RemoteQuestSync';
+import { initializeRemoteMonster } from './monster/RemoteMonsterClient';
+import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
@@ -204,6 +206,14 @@ async function main(): Promise<void> {
     const questSync = new RemoteQuestSync(remoteQuest, questManager);
     questManager.setRemoteSync(questSync);
     void questSync.reconcile();
+  }
+  // S11: Server ตัดสินรางวัลการฆ่ามอนสเตอร์เมื่อ VITE_ENABLE_MONSTER_SERVER เปิด
+  // + session online (null = แจกรางวัล local เดิม — flag ปิดใน production จนกว่าจะ verify)
+  const remoteMonster = initializeRemoteMonster();
+  if (remoteMonster) {
+    const monsterSync = new RemoteMonsterSync(remoteMonster, progression);
+    progression.setRemoteEnemyRewarder((enemy, contribution) =>
+      monsterSync.enqueueKill(enemy, contribution));
   }
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();

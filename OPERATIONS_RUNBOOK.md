@@ -70,3 +70,9 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ตรวจการเคลมย้อนหลัง: `select * from quest_claims where character_id = $1 order by created_at desc`
 - สถานะเควสต์ทางการ: `select * from player_quests where character_id = $1`
 - อาการ "เควสต์เด้งกลับ/ถูกปรับ": client reconcile กับ Server ตอนบูต (Server ชนะ) — ปกติหลังสลับเครื่อง/เปิด flag ครั้งแรก
+
+
+## S11 — Monster Reward Server
+- ลำดับเปิดใช้: migrate อัตโนมัติตอน deploy (ตาราง `monster_kill_batches`) → CI browser-smoke เขียว → ตั้ง `ENABLE_MONSTER_SERVER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_MONSTER_SERVER=true` → ฆ่ามอน 1 ตัวแล้วดูเหรียญ/EXP ขึ้น (ดีเลย์ ~1-2 วิ = ปกติ รอ Server ตอบ) + ตรวจแถว `monster_kill_batches`
+- ตรวจรางวัลย้อนหลัง: `select * from monster_kill_batches where character_id = $1 order by created_at desc`
+- อาการ "ฆ่าแล้วรางวัลมาช้า": client คิวรายงานเป็นชุด (debounce 1.2s) และ retry เมื่อออฟไลน์ — คิวเก็บใน localStorage ไม่หายตอนรีเฟรช

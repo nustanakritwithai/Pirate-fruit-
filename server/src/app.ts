@@ -23,6 +23,8 @@ import type { RealtimeHub } from './realtime/realtimeHub.js';
 import type { TradeService } from './trade/tradeService.js';
 import { registerQuestRoutes } from './quest/questRoutes.js';
 import type { QuestService } from './quest/questService.js';
+import { registerMonsterRoutes } from './monster/monsterRoutes.js';
+import type { MonsterService } from './monster/monsterService.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
@@ -32,6 +34,7 @@ export interface BuildServerOptions {
   economy?: EconomyRuntime;
   trade?: TradeService;
   quests?: QuestService;
+  monsters?: MonsterService;
   realtime?: RealtimeHub;
   logger?: FastifyServerOptions['logger'];
 }
@@ -160,6 +163,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     sessions: options.sessions,
     quests: options.quests,
+  });
+  await registerMonsterRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    monsters: options.monsters,
   });
   await registerRealtimeRoutes(app, {
     environment,

@@ -17,6 +17,8 @@ import { PostgresTradeRepository } from './trade/tradeRepository.js';
 import { TradeService } from './trade/tradeService.js';
 import { PostgresQuestRepository } from './quest/questRepository.js';
 import { QuestService } from './quest/questService.js';
+import { PostgresMonsterRepository } from './monster/monsterRepository.js';
+import { MonsterService } from './monster/monsterService.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
@@ -62,7 +64,10 @@ async function start(): Promise<void> {
   const quests = pool && environment.ENABLE_QUEST_SERVER
     ? new QuestService(new PostgresQuestRepository(pool))
     : undefined;
-  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, quests, realtime });
+  const monsters = pool && environment.ENABLE_MONSTER_SERVER
+    ? new MonsterService(new PostgresMonsterRepository(pool))
+    : undefined;
+  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, quests, monsters, realtime });
   runtimeLogger = app.log;
   // S8 ops: เก็บกวาด session หมดอายุ + guest กำพร้าเป็นรอบ (ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ)
   const stopGuestCleanup = pool && environment.ENABLE_REMOTE_SESSION

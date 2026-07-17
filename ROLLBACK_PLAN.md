@@ -48,3 +48,10 @@ copies; do not clear them as part of incident rollback.
 2. ตั้ง `ENABLE_QUEST_SERVER=false` ที่ Web Service (endpoint ตอบ 503)
 3. ข้อมูลไม่ต้องกู้: `quest_claims` เป็น audit log เก็บไว้ตรวจสอบ; `player_quests` เป็นสถานะที่ client จะเขียนทับผ่านระบบเดิมเมื่อกลับ local; เหรียญที่แจกไปแล้วอยู่ใน `characters.coins` ตาม transitional model ปกติ
 4. ถอนตาราง (เฉพาะกรณีถอนทั้ง S10): `drizzle/rollback/0002_s10_quest_claims.down.sql`
+
+
+## S11 — Monster Reward Server rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_MONSTER_SERVER` ออก (client กลับไปแจกรางวัล local เดิม)
+2. ตั้ง `ENABLE_MONSTER_SERVER=false` ที่ Web Service (endpoint ตอบ 503)
+3. ข้อมูลไม่ต้องกู้: `monster_kill_batches` เป็น audit log; เหรียญที่แจกไปแล้วอยู่ใน `characters.coins` ตาม transitional model
+4. ถอนตาราง (เฉพาะกรณีถอนทั้ง S11): `drizzle/rollback/0003_s11_monster_kill_batches.down.sql`

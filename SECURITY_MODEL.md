@@ -108,3 +108,9 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - เงินรางวัลเขียนเข้า `characters.coins` (canonical) แบบ atomic พร้อม audit ใน `quest_claims` (unique idempotency key ต่อตัวละคร + request hash กัน key reuse ต่างเควสต์)
 - Progress เป็น client report ที่ถูกจำกัด: ≤10 events/รายงาน, amount ≤99, clamp ที่ requiredAmount, rate limit 60/นาที — และจับคู่ objective ฝั่ง Server เท่านั้น
 - Transitional (จนถึง S11-S12 Monster/Combat authority): Server ยังพิสูจน์ไม่ได้ว่าการฆ่ามอนเกิดจริง — เพดาน+rate limit จำกัดความเร็วฟาร์มเกินจริง และเควสต์ repeatable ก็เล่นซ้ำได้ตามดีไซน์อยู่แล้ว; `characters.level` ที่ใช้ gate ยังมาจาก save (client-reported) ในช่วงเปลี่ยนผ่าน
+
+
+## S11 — Monster reward authority
+- เลขรางวัลจากการฆ่ามอนคิดฝั่ง Server จาก shared databook + ตัวคูณเลเวล (`characters.level`) — client รายงานได้แค่ "ฆ่าตัวไหนกี่ตัว"
+- เพดานต่อรายงาน: ≤20 รายการ, count ≤10, rate limit 60/นาที + idempotency ledger (`monster_kill_batches`)
+- Transitional (จนถึง S12 Combat authority): Server ยังพิสูจน์ไม่ได้ว่าการฆ่าเกิดจริง — เพดาน+rate limit จำกัดความเร็วฟาร์มสูงสุดไว้ (แหล่งเหรียญที่ client ยังแจกเองเหลือเฉพาะรางวัลเรือรบ/ยึดเรือ ซึ่งจะย้ายใน S12-S14)
