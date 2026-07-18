@@ -2,14 +2,17 @@ const SAILING_TRACKS = [
   '/assets/audio/sailing/moon-pirate-treasure-01.mp3',
   '/assets/audio/sailing/moon-pirate-treasure-02.mp3',
 ] as const;
+const ISLAND_TRACKS = ['/assets/audio/island-devil-fruit-fury.mp3'] as const;
+
+export type WorldMusicContext = 'island' | 'sailing' | 'none';
 
 /**
- * เพลงเดินเรือแบบ client-only: เริ่มเฉพาะเมื่อผู้เล่นคุมหางเสือ และค่อย ๆ เบาเมื่อหยุดเรือ.
+ * เพลงโลกแบบ client-only: เพลงบรรยากาศบนเกาะและเพลงเดินเรือใช้คนละชุด แล้ว fade เมื่อเปลี่ยนพื้นที่.
  * ไม่เก็บ state ลง save จึงไม่กระทบ local/remote authority หรือการกู้ save เดิม.
  */
 export class SailingMusic {
   private readonly audio: HTMLAudioElement;
-  private isSailing = false;
+  private context: WorldMusicContext = 'none';
   private started = false;
   private trackIndex = -1;
   private targetVolume = 0;
@@ -20,7 +23,7 @@ export class SailingMusic {
     this.audio.preload = 'metadata';
     this.audio.volume = 0;
     this.audio.addEventListener('ended', () => {
-      if (!this.isSailing) return;
+      if (this.context === 'none') return;
       this.chooseNextTrack();
       void this.play();
     });
@@ -29,10 +32,15 @@ export class SailingMusic {
     window.addEventListener('keydown', this.retryAfterGesture);
   }
 
-  setSailing(isSailing: boolean): void {
-    this.isSailing = isSailing;
-    this.targetVolume = isSailing ? 0.32 : 0;
-    if (isSailing && !this.started) {
+  setContext(context: WorldMusicContext): void {
+    if (context === this.context) return;
+    const shouldChangeTrack = context !== 'none' && context !== this.context;
+    this.context = context;
+    this.targetVolume = context === 'none' ? 0 : 0.32;
+    if (shouldChangeTrack) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+      this.started = false;
       this.chooseNextTrack();
       void this.play();
     }
@@ -41,7 +49,7 @@ export class SailingMusic {
   update(dt: number): void {
     const change = Math.min(1, dt * 1.5);
     this.audio.volume += (this.targetVolume - this.audio.volume) * change;
-    if (!this.isSailing && this.audio.volume < 0.01 && !this.audio.paused) {
+    if (this.context === 'none' && this.audio.volume < 0.01 && !this.audio.paused) {
       this.audio.pause();
       this.audio.currentTime = 0;
       this.started = false;
@@ -56,13 +64,14 @@ export class SailingMusic {
   }
 
   private readonly retryAfterGesture = (): void => {
-    if (this.isSailing && !this.started) void this.play();
+    if (this.context !== 'none' && !this.started) void this.play();
   };
 
   private chooseNextTrack(): void {
-    const offset = Math.floor(this.random() * SAILING_TRACKS.length);
-    this.trackIndex = (this.trackIndex + 1 + offset) % SAILING_TRACKS.length;
-    this.audio.src = SAILING_TRACKS[this.trackIndex];
+    const tracks = this.context === 'island' ? ISLAND_TRACKS : SAILING_TRACKS;
+    const offset = Math.floor(this.random() * tracks.length);
+    this.trackIndex = (this.trackIndex + 1 + offset) % tracks.length;
+    this.audio.src = tracks[this.trackIndex];
   }
 
   private async play(): Promise<void> {

@@ -666,8 +666,14 @@ async function main(): Promise<void> {
     if (boatId) tradeManager.setBoat(boatId);
   } });
   game.add({ update: (dt: number) => {
-    // เล่นเฉพาะขณะคุมหางเสือ ไม่เล่นเมื่อแค่ยืนบนดาดฟ้า/จอดเรือ
-    sailingMusic?.setSailing(boatManager.riderState === 'helm');
+    // บนเกาะใช้เพลง ambient; คุมหางเสือใช้เพลงเดินเรือ; ยืนบนดาดฟ้าไม่เล่นเพลงซ้อน
+    sailingMusic?.setContext(
+      boatManager.riderState === 'off'
+        ? 'island'
+        : boatManager.riderState === 'helm'
+          ? 'sailing'
+          : 'none',
+    );
     sailingMusic?.update(dt);
   } });
   game.add({ update: () => hud.update() });
