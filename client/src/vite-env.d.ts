@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_PROGRESSION_SERVER?: string;
   readonly VITE_ENABLE_MULTIPLAYER?: string;
   readonly VITE_ENABLE_PVP?: string;
+  /** เพลงเดินเรือ client-only; ปิดเป็นค่าเริ่มต้นจนกว่าจะทดสอบ production */
+  readonly VITE_ENABLE_SAILING_MUSIC?: string;
   readonly VITE_ENABLE_REALTIME?: string;
 }
 
