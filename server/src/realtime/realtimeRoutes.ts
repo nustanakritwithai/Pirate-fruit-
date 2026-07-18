@@ -47,6 +47,7 @@ export async function registerRealtimeRoutes(
       socket as unknown as RealtimeSocket,
       session.record.userId,
       session.record.characterId,
+      session.record.characterName,
     );
     if (!connection) return;
 

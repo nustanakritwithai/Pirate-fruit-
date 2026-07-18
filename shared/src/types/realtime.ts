@@ -43,18 +43,59 @@ export interface RealtimePong {
   echo: number;
 }
 
+/**
+ * S13 — presence ของผู้เล่นคนอื่นบนเกาะเดียวกัน (ตำแหน่ง/ทิศ ล่าสุด)
+ * เป็นข้อมูล ephemeral: เฟรมที่มาช้าหรือหลุดช่วงไม่ต้อง resync — เฟรมถัดไปเป็น
+ * ตำแหน่งสัมบูรณ์ที่ทับของเก่าได้เลย (ต่างจาก economy ที่ต้องกันช่องว่าง)
+ */
+export interface RealtimePresence {
+  type: 'presence';
+  seq: number;
+  playerId: string;
+  name: string;
+  islandId: string;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  /** true = ผู้เล่นกำลังขับเรือ (client เลือกโมเดล ghost ให้ต่างออกไปได้) */
+  onBoat: boolean;
+}
+
+export interface RealtimePresenceLeave {
+  type: 'presence-leave';
+  seq: number;
+  playerId: string;
+}
+
 export type RealtimeServerMessage =
   | RealtimeWelcome
   | RealtimeEconomyUpdate
   | RealtimeAnnouncement
-  | RealtimePong;
+  | RealtimePong
+  | RealtimePresence
+  | RealtimePresenceLeave;
 
 export interface RealtimePing {
   type: 'ping';
   sentAt: number;
 }
 
-export type RealtimeClientMessage = RealtimePing;
+/** S13 — client รายงานตำแหน่งตัวเอง (presence relay เท่านั้น — ไม่ใช่ authority) */
+export interface RealtimeMove {
+  type: 'move';
+  islandId: string;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  onBoat: boolean;
+}
+
+export type RealtimeClientMessage = RealtimePing | RealtimeMove;
 
 /** ข้อความ client ใหญ่เกินนี้ = protocol violation → ปิด connection */
 export const REALTIME_MAX_CLIENT_MESSAGE_BYTES = 1_024;
+
+/** S13 — ผู้เล่นส่ง move ถี่กว่านี้ Server จะทิ้ง (throttle presence relay ~12.5/วิ) */
+export const REALTIME_MOVE_MIN_INTERVAL_MS = 80;

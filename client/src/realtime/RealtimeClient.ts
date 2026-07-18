@@ -25,12 +25,26 @@ export interface RealtimeSocketLike {
   onerror: ((event: unknown) => void) | null;
 }
 
+export interface RealtimePresenceSnapshot {
+  playerId: string;
+  name: string;
+  islandId: string;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  onBoat: boolean;
+}
+
 export interface RealtimeHandlers {
   onEconomy(state: { schemaVersion: number; world: string }, tick: number): void;
   /** seq กระโดด/หลุดช่วง — ผู้เรียกควรดึง snapshot ทาง REST หนึ่งครั้ง */
   onResync(): void;
   onAnnouncement?(message: string, level: 'info' | 'warning'): void;
   onStatusChange?(connected: boolean): void;
+  /** S13: presence ของผู้เล่นคนอื่น (ตำแหน่งล่าสุด — apply ได้เลยไม่ต้องสน seq gap) */
+  onPresence?(snapshot: RealtimePresenceSnapshot): void;
+  onPresenceLeave?(playerId: string): void;
 }
 
 export interface RealtimeClientOptions {
@@ -132,21 +146,50 @@ export class RealtimeClient {
     // out-of-order guard: ย้อนหลัง/ซ้ำ = ทิ้ง, กระโดดข้าม = พลาดข้อความ → resync
     if (message.seq <= this.lastSeq) return;
     if (message.seq > this.lastSeq + 1) {
+      // พลาดข้อความบางตัว → resync economy หนึ่งครั้ง แต่ยัง apply เฟรมที่มากับ gap
+      // (presence เป็น absolute ใช้ได้เลย; economy ใหม่กว่าเดิมแน่นอน)
       this.lastSeq = message.seq;
       this.handlers.onResync();
-      if (message.type === 'economy') {
-        this.handlers.onEconomy(message.state, message.tick);
-      }
+      this.dispatch(message);
       return;
     }
     this.lastSeq = message.seq;
+    this.dispatch(message);
+  }
 
+  private dispatch(message: RealtimeServerMessage): void {
     if (message.type === 'economy') {
       this.handlers.onEconomy(message.state, message.tick);
     } else if (message.type === 'announcement') {
       this.handlers.onAnnouncement?.(message.message, message.level);
+    } else if (message.type === 'presence') {
+      this.handlers.onPresence?.({
+        playerId: message.playerId,
+        name: message.name,
+        islandId: message.islandId,
+        x: message.x,
+        y: message.y,
+        z: message.z,
+        heading: message.heading,
+        onBoat: message.onBoat,
+      });
+    } else if (message.type === 'presence-leave') {
+      this.handlers.onPresenceLeave?.(message.playerId);
     }
     // pong: แค่รีเซ็ต idle watchdog (ทำไปแล้วต้นฟังก์ชัน)
+  }
+
+  /** S13: รายงานตำแหน่งตัวเองให้ Server relay ให้ผู้เล่นคนอื่น (presence เท่านั้น) */
+  sendMove(position: {
+    islandId: string;
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+    onBoat: boolean;
+  }): void {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
+    this.socket.send(JSON.stringify({ type: 'move', ...position }));
   }
 
   private handleDisconnect(): void {

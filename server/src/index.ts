@@ -44,10 +44,15 @@ async function start(): Promise<void> {
     error: (fields, message) => runtimeLogger?.error(fields, message),
   };
   const realtime = environment.ENABLE_REALTIME
-    ? new RealtimeHub({
-        info: (fields, message) => runtimeLogger?.info(fields, message),
-        warn: (fields, message) => runtimeLogger?.warn(fields, message),
-      })
+    ? new RealtimeHub(
+        {
+          info: (fields, message) => runtimeLogger?.info(fields, message),
+          warn: (fields, message) => runtimeLogger?.warn(fields, message),
+        },
+        () => Date.now(),
+        200,
+        environment.ENABLE_MULTIPLAYER,
+      )
     : undefined;
   const economy = pool && environment.ENABLE_ECONOMY_SERVER
     ? new EconomyRuntime({

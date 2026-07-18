@@ -2,6 +2,7 @@ import {
   REALTIME_HEARTBEAT_INTERVAL_MS,
   REALTIME_IDLE_TIMEOUT_MS,
   REALTIME_MAX_CLIENT_MESSAGE_BYTES,
+  REALTIME_MOVE_MIN_INTERVAL_MS,
   REALTIME_PROTOCOL_VERSION,
   type RealtimeAnnouncement,
   type RealtimeEconomyUpdate,
@@ -17,12 +18,25 @@ export interface RealtimeSocket {
 
 const OPEN = 1;
 
+export interface PresencePosition {
+  islandId: string;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  onBoat: boolean;
+}
+
 export interface RealtimeConnection {
   socket: RealtimeSocket;
   userId: string;
   characterId: string;
+  characterName: string;
   seq: number;
   lastSeenAt: number;
+  /** S13: ตำแหน่งล่าสุดที่ผู้เล่นรายงาน (null = ยังไม่เคยส่ง move) */
+  presence: PresencePosition | null;
+  lastMoveAt: number;
 }
 
 export interface RealtimeHubLogger {
@@ -34,6 +48,38 @@ const silentLogger: RealtimeHubLogger = {
   info: () => undefined,
   warn: () => undefined,
 };
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** อ่าน+ตรวจ payload ของ move (พิกัดต้องเป็นตัวเลขจำกัด, islandId สั้น ๆ) */
+function readPosition(message: Record<string, unknown>): PresencePosition | null {
+  const x = finiteNumber(message.x);
+  const y = finiteNumber(message.y);
+  const z = finiteNumber(message.z);
+  const heading = finiteNumber(message.heading);
+  const islandId = message.islandId;
+  if (x === null || y === null || z === null || heading === null) return null;
+  if (typeof islandId !== 'string' || islandId.length === 0 || islandId.length > 96) return null;
+  return { islandId, x, y, z, heading, onBoat: message.onBoat === true };
+}
+
+function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage {
+  const presence = connection.presence!;
+  return {
+    type: 'presence',
+    seq: 0,
+    playerId: connection.characterId,
+    name: connection.characterName,
+    islandId: presence.islandId,
+    x: presence.x,
+    y: presence.y,
+    z: presence.z,
+    heading: presence.heading,
+    onBoat: presence.onBoat,
+  };
+}
 
 /**
  * S9 — ทะเบียน connection + broadcast แบบมี sequence ต่อ connection
@@ -48,6 +94,8 @@ export class RealtimeHub {
     private readonly logger: RealtimeHubLogger = silentLogger,
     private readonly now: () => number = () => Date.now(),
     private readonly maxConnections = 200,
+    /** S13: เปิด presence relay (ผู้เล่นเห็นกันเคลื่อนที่) — ปิด = ไม่รับ move */
+    private readonly presenceEnabled = false,
   ) {}
 
   get connectionCount(): number {
@@ -55,7 +103,12 @@ export class RealtimeHub {
   }
 
   /** รับ connection ที่ผ่าน session auth แล้ว — ส่ง welcome ทันที */
-  register(socket: RealtimeSocket, userId: string, characterId: string): RealtimeConnection | null {
+  register(
+    socket: RealtimeSocket,
+    userId: string,
+    characterId: string,
+    characterName = 'Pirate',
+  ): RealtimeConnection | null {
     if (this.connections.size >= this.maxConnections) {
       socket.close(1013, 'realtime capacity reached');
       return null;
@@ -64,8 +117,11 @@ export class RealtimeHub {
       socket,
       userId,
       characterId,
+      characterName,
       seq: 0,
       lastSeenAt: this.now(),
+      presence: null,
+      lastMoveAt: 0,
     };
     this.connections.add(connection);
     this.sendTo(connection, {
@@ -79,7 +135,11 @@ export class RealtimeHub {
   }
 
   unregister(connection: RealtimeConnection): void {
-    this.connections.delete(connection);
+    const wasPresent = this.connections.delete(connection);
+    // S13: แจ้งผู้เล่นคนอื่นบนเกาะเดียวกันว่าคนนี้ออกไปแล้ว
+    if (wasPresent && connection.presence) {
+      this.broadcastPresenceLeave(connection);
+    }
   }
 
   /** client ส่งอะไรมาก็ตาม: รับเฉพาะ ping เล็ก ๆ — เกินสเปกคือ protocol violation */
@@ -97,12 +157,58 @@ export class RealtimeHub {
       this.drop(connection, 1008, 'invalid message');
       return;
     }
-    const message = parsed as { type?: unknown; sentAt?: unknown };
+    const message = parsed as Record<string, unknown>;
     if (message.type === 'ping' && typeof message.sentAt === 'number') {
       this.sendTo(connection, { type: 'pong', seq: 0, echo: message.sentAt });
       return;
     }
+    if (message.type === 'move') {
+      this.handleMove(connection, message);
+      return;
+    }
     this.drop(connection, 1008, 'unsupported message type');
+  }
+
+  /** S13: รับตำแหน่งจากผู้เล่น → relay presence ให้คนอื่นบนเกาะเดียวกัน */
+  private handleMove(connection: RealtimeConnection, message: Record<string, unknown>): void {
+    if (!this.presenceEnabled) return; // ปิด flag = เพิกเฉย (ไม่ถือเป็น violation)
+    const position = readPosition(message);
+    if (!position) {
+      this.drop(connection, 1008, 'invalid move payload');
+      return;
+    }
+    // throttle: ส่งถี่เกินก็อัปเดตตำแหน่งแต่ไม่ relay (กัน broadcast ท่วม)
+    const now = this.now();
+    const firstMove = connection.presence === null;
+    const islandChanged = connection.presence?.islandId !== position.islandId;
+    connection.presence = position;
+    if (!firstMove && !islandChanged && now - connection.lastMoveAt < REALTIME_MOVE_MIN_INTERVAL_MS) {
+      return;
+    }
+    connection.lastMoveAt = now;
+
+    // ผู้เล่นคนนี้เพิ่งปรากฏ/เพิ่งย้ายเกาะ → ส่ง presence ของคนอื่นบนเกาะให้เห็นทันที
+    if (firstMove || islandChanged) {
+      for (const other of this.connections) {
+        if (other === connection || !other.presence) continue;
+        if (other.presence.islandId !== position.islandId) continue;
+        this.sendTo(connection, presenceMessage(other));
+      }
+    }
+    // และ broadcast ตำแหน่งของคนนี้ให้คนอื่นบนเกาะเดียวกัน
+    for (const other of this.connections) {
+      if (other === connection || !other.presence) continue;
+      if (other.presence.islandId !== position.islandId) continue;
+      this.sendTo(other, presenceMessage(connection));
+    }
+  }
+
+  private broadcastPresenceLeave(connection: RealtimeConnection): void {
+    const islandId = connection.presence?.islandId;
+    for (const other of this.connections) {
+      if (!other.presence || other.presence.islandId !== islandId) continue;
+      this.sendTo(other, { type: 'presence-leave', seq: 0, playerId: connection.characterId });
+    }
   }
 
   /** economy tick/trade เขียนสำเร็จ → push ให้ทุก connection */

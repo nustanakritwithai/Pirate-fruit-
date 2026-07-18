@@ -47,6 +47,7 @@ import { initializeRemoteMonster } from './monster/RemoteMonsterClient';
 import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
+import { RemotePlayers } from './realtime/RemotePlayers';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -300,6 +301,13 @@ async function main(): Promise<void> {
   };
   // S9: Server push โลกเศรษฐกิจผ่าน WebSocket — ระหว่างเชื่อมอยู่หยุด poll 5 วิ
   // (WS หลุด/ปิด flag = กลับไป poll เดิมอัตโนมัติ ไม่มีช่วงมืด)
+  // S13: ผู้เล่นคนอื่นบนเกาะเดียวกัน (เปิดด้วย VITE_ENABLE_MULTIPLAYER) — แสดงผลล้วน
+  const multiplayerEnabled = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true'
+    || import.meta.env.VITE_ENABLE_MULTIPLAYER === '1';
+  const remotePlayers = multiplayerEnabled
+    ? new RemotePlayers(game.scene, islandManager.activeIsland)
+    : null;
+  if (remotePlayers) game.add(remotePlayers);
   const realtime = initializeRealtime({
     onEconomy: (state) => {
       const world = state?.world ? parseEconomyDocument(state.world) : null;
@@ -311,8 +319,27 @@ async function main(): Promise<void> {
     },
     onResync: () => pollRemoteEconomy(),
     onAnnouncement: (message, level) => economyHud.notifyStatus(message, level === 'warning'),
+    onPresence: (snapshot) => remotePlayers?.applyPresence(snapshot),
+    onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
   });
   realtime?.start();
+  // S13: รายงานตำแหน่งตัวเองให้ Server relay ทุก 100ms ผ่าน setInterval —
+  // จงใจไม่ผูกกับ game loop (rAF) เพราะแท็บพื้นหลังโดน throttle จน presence ไม่ไหล
+  if (realtime && multiplayerEnabled) {
+    setInterval(() => {
+      remotePlayers?.setIsland(islandManager.activeIsland);
+      if (!realtime.connected) return;
+      const position = controller.position;
+      realtime.sendMove({
+        islandId: islandManager.activeIsland,
+        x: position.x,
+        y: position.y,
+        z: position.z,
+        heading: controller.heading,
+        onBoat: boatManager.riderState !== 'off',
+      });
+    }, 100);
+  }
   game.add({
     update: (dt: number) => {
       const elapsedMs = dt * 1000;

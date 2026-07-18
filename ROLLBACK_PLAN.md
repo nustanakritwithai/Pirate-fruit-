@@ -61,3 +61,15 @@ copies; do not clear them as part of incident rollback.
 1. Rebuild Static Site โดยเอา `VITE_ENABLE_PROGRESSION_SERVER` ออก
 2. ตั้ง `ENABLE_PROGRESSION_SERVER=false` — save กลับไปเขียน level/exp แบบเดิม (ค่าล่าสุดจาก client ชนะ — level ที่ Server เดินไว้จะถูก save รอบถัดไปเขียนทับ ซึ่งตรงกับ local ของผู้เล่นอยู่แล้ว)
 3. ถอนคอลัมน์ (เฉพาะกรณีถอนทั้ง S12): `drizzle/rollback/0004_s12_kill_count.down.sql`
+
+
+## S13 — Multiplayer Movement rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_MULTIPLAYER` ออก (client เลิกส่ง move + ไม่เรนเดอร์ผู้เล่นอื่น)
+2. ตั้ง `ENABLE_MULTIPLAYER=false` ที่ Web Service (Server เพิกเฉย move — ผู้เล่นเห็นแต่ตัวเอง)
+3. ไม่มีข้อมูลต้องกู้ — presence เป็น memory ล้วน stateless; ช่อง WS (S9) ยังทำงานปกติ
+
+
+## S13 — Multiplayer Movement rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_MULTIPLAYER` ออก (client เลิกส่ง move + ไม่เรนเดอร์ผู้เล่นอื่น)
+2. ตั้ง `ENABLE_MULTIPLAYER=false` ที่ Web Service (Server เพิกเฉย move — ผู้เล่นเห็นแต่ตัวเอง)
+3. ไม่มีข้อมูลต้องกู้ — presence เป็น memory ล้วน stateless; ช่อง WS (S9) ยังทำงานปกติ

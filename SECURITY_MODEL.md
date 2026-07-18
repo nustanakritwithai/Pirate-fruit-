@@ -121,3 +121,17 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - ผลลัพธ์: level gate ของเควสต์และตัวคูณรางวัลใช้ค่าที่ Server พิสูจน์ได้ ไม่ใช่ค่าที่ client รายงาน (ปิดความเสี่ยง transitional ข้อ "level มาจาก save" ของ S10/S11)
 - Kill-rate cap ต่อตัวละคร (40/60 วิ) เป็นชั้น plausibility เพิ่มจากเพดานต่อรายงานของ S11 — สถิติจริงเก็บใน `monster_kill_batches.kill_count`
 - ที่ยังเป็น transitional: เหรียญยังรับจาก save (แหล่งเหรียญ client เหลือ naval — S14), สเตต/mastery/สิ่งของยังเป็นของ client
+
+
+## S13 — Multiplayer presence
+- ช่อง `move` เป็น presence relay ล้วน — Server ไม่เชื่อพิกัดเป็น authority ใด ๆ (ไม่มีผลเงิน/รางวัล/collision); ผู้เล่นเห็นกันเดินได้แต่ยังชนกันไม่ได้ในเฟสนี้
+- validate payload (พิกัดต้องเป็นตัวเลขจำกัด, islandId ≤96 ตัว) + throttle 80ms/relay + จำกัดขนาดข้อความ 1KB เดิม — กัน broadcast flood
+- กรอง relay ตามเกาะ: presence ไม่รั่วข้ามเกาะ (ลด surface + payload)
+- ตัวตน presence (playerId/name) มาจาก session ที่ auth แล้ว — client ปลอมชื่อคนอื่นไม่ได้ (Server แนบจาก characterName ของ connection เอง)
+
+
+## S13 — Multiplayer presence
+- ช่อง `move` เป็น presence relay ล้วน — Server ไม่เชื่อพิกัดเป็น authority ใด ๆ (ไม่มีผลเงิน/รางวัล/collision); ผู้เล่นเห็นกันเดินได้แต่ยังชนกันไม่ได้ในเฟสนี้
+- validate payload (พิกัดเป็นตัวเลขจำกัด, islandId ≤96) + throttle 80ms/relay + จำกัดขนาดข้อความ 1KB เดิม — กัน broadcast flood
+- กรอง relay ตามเกาะ: presence ไม่รั่วข้ามเกาะ
+- ตัวตน presence (playerId/name) แนบจาก session ที่ auth แล้วฝั่ง Server (characterName ของ connection) — client ปลอมชื่อ/ตัวตนคนอื่นไม่ได้
