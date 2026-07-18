@@ -235,8 +235,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
-  const peerMove = () => peer.send(JSON.stringify({
-    type: 'move', islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0,
+  const peerMove = (x = 12, z = 8) => peer.send(JSON.stringify({
+    type: 'move', islandId: 'starter-island', x, y: 0, z, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
   peer.on('open', () => {
@@ -336,7 +336,9 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       await pumpSelfMove(); // page1 คงมี presence → ได้ snapshot/delta ของเกาะ
       // อย่าพึ่ง setInterval ของ peer: page.evaluate/world delta อาจทำให้ Node event loop starve
       // แล้ว Server จะปัด hit ที่ไม่มีตำแหน่งล่าสุด แม้ WebSocket ยังเปิดอยู่
-      if (peer.readyState === 1) peerMove();
+      // ย้ายผู้โจมตีไปที่ spawn โดยตรงก่อนส่ง intent เพื่อให้ range assertion
+      // deterministic และไม่ขึ้นกับตำแหน่งที่ AI patrol/chase มาถึงหลัง PvP smoke
+      if (peer.readyState === 1) peerMove(22, -4);
       if (peer.readyState === 1) {
         peer.send(JSON.stringify({ type: 'world-monster-hit', spawnId, kind: 'skill' }));
         worldDiag.hitsSent += 1;
