@@ -237,8 +237,16 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
 
   const gotNaval = () => wsEvents.presence.some((p) => p.onBoat === true && p.boatId === 'war-galleon');
   const done = () => (NAVAL ? gotNaval() : wsEvents.frames.includes('presence'));
+  // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
+  // (relay ข้าม connection ที่ยังไม่เคยขยับ) — ปั๊ม move จากฝั่ง Node ทุกรอบผ่าน
+  // __realtime.sendMove โดยตรง ไม่พึ่ง setInterval ในหน้าเว็บที่ headless CI throttle
+  const pumpSelfMove = () => page.evaluate(() => {
+    const rt = window.__realtime;
+    rt?.sendMove?.({ islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false });
+  }).catch(() => {});
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
+    await pumpSelfMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   peer.close();

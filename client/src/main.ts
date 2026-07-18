@@ -323,6 +323,9 @@ async function main(): Promise<void> {
     onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
   });
   realtime?.start();
+  // debug/E2E hook (อ่าน+ส่ง move ตรง ๆ ได้) — ให้ browser-smoke ปั๊ม presence
+  // จากฝั่ง Node ได้แน่นอน โดยไม่พึ่ง setInterval ในหน้าเว็บที่ headless throttle
+  (window as unknown as { __realtime?: typeof realtime }).__realtime = realtime;
   // S13: รายงานตำแหน่งตัวเองให้ Server relay ทุก 100ms ผ่าน setInterval —
   // จงใจไม่ผูกกับ game loop (rAF) เพราะแท็บพื้นหลังโดน throttle จน presence ไม่ไหล
   if (realtime && multiplayerEnabled) {
