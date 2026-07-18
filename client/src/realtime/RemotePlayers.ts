@@ -1,17 +1,25 @@
 /**
- * S13 — Multiplayer Movement (ฝั่งภาพ)
- * รับ presence ของผู้เล่นคนอื่นจาก RealtimeClient แล้วเรนเดอร์เป็น "ผี" (ghost)
- * ที่ไถลเข้าหาตำแหน่งล่าสุดแบบนุ่ม (interpolate) เพื่อกลบ jitter ของเน็ต
- * - presence เป็นข้อมูลแสดงผลล้วน: ไม่มีผล gameplay/collision (เฟสนี้เดินทะลุกันได้)
+ * S13/S14 — Multiplayer Movement + Naval (ฝั่งภาพ)
+ * รับ presence ของผู้เล่นคนอื่นจาก RealtimeClient แล้วเรนเดอร์:
+ * - เดินเท้า → "ผี" (ghost) โทนฟ้าโปร่งแสง
+ * - S14 ขับเรือ → เรือ proxy ขนาด/สีตามรุ่น (BOAT_DEFINITIONS)
+ * ไถลเข้าหาตำแหน่งล่าสุดแบบนุ่ม (interpolate) เพื่อกลบ jitter ของเน็ต
+ * - presence เป็นข้อมูลแสดงผลล้วน: ไม่มีผล gameplay/collision (เฟสนี้ทะลุกันได้)
  * - ผู้เล่นบนเกาะอื่นถูก Server กรองออกแล้ว; ที่นี่ยังกรองซ้ำตามเกาะปัจจุบันด้วย
  */
 
 import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
+import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
 
 const LERP_PER_SECOND = 9; // ความเร็วไถลเข้าหาเป้า (สูง = ตามติดขึ้น)
 const STALE_MS = 20_000; // ไม่ได้ยิน presence เกินนี้ = ถือว่าหลุด เอาออก
+
+const BOAT_BY_ID = new Map(BOAT_DEFINITIONS.map((definition) => [definition.id, definition]));
+
+/** ชนิด avatar ปัจจุบัน — เปลี่ยนเมื่อผู้เล่นขึ้น/ลงเรือ (หรือเปลี่ยนรุ่นเรือ) */
+type AvatarKind = string; // 'foot' | `boat:${boatId}`
 
 interface RemotePlayer {
   group: THREE.Group;
@@ -19,6 +27,8 @@ interface RemotePlayer {
   targetHeading: number;
   islandId: string;
   onBoat: boolean;
+  name: string;
+  avatarKind: AvatarKind;
   lastSeenAt: number;
 }
 
@@ -73,6 +83,42 @@ function makeGhostBody(): THREE.Group {
   return group;
 }
 
+/** S14: เรือ proxy แบบเบา (ตัวเรือ + ใบเรือ) ขนาด/สีตามรุ่น — ไม่ใช้ BoatModel เต็ม */
+function makeBoatProxy(boatId: string | undefined): THREE.Group {
+  const group = new THREE.Group();
+  const definition = boatId ? BOAT_BY_ID.get(boatId) : undefined;
+  const length = definition?.length ?? 6;
+  const width = definition?.width ?? 2.2;
+  const color = definition?.color ?? 0x8a5a2b;
+  const hullMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05 });
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(width, 0.9, length), hullMaterial);
+  hull.position.y = 0.45;
+  group.add(hull);
+  if (definition?.hasSail !== false) {
+    const mastMaterial = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 });
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, length * 0.7, 8), mastMaterial);
+    mast.position.y = length * 0.35 + 0.9;
+    group.add(mast);
+    const sailMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf3ead2, roughness: 0.9, side: THREE.DoubleSide,
+    });
+    const sail = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.8, length * 0.5), sailMaterial);
+    sail.position.set(0, length * 0.3 + 0.9, 0);
+    group.add(sail);
+  }
+  return group;
+}
+
+function avatarKindOf(snapshot: RealtimePresenceSnapshot): AvatarKind {
+  return snapshot.onBoat ? `boat:${snapshot.boatId ?? 'default'}` : 'foot';
+}
+
+function buildAvatar(snapshot: RealtimePresenceSnapshot): THREE.Group {
+  const group = snapshot.onBoat ? makeBoatProxy(snapshot.boatId) : makeGhostBody();
+  group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
+  return group;
+}
+
 export class RemotePlayers implements Updatable {
   private readonly players = new Map<string, RemotePlayer>();
   private currentIslandId: string;
@@ -101,22 +147,36 @@ export class RemotePlayers implements Updatable {
       this.remove(snapshot.playerId);
       return;
     }
+    const kind = avatarKindOf(snapshot);
     let player = this.players.get(snapshot.playerId);
     if (!player) {
-      const group = makeGhostBody();
-      group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
+      const group = buildAvatar(snapshot);
       group.position.set(snapshot.x, snapshot.y, snapshot.z);
+      group.rotation.y = snapshot.heading;
       this.scene.add(group);
-      player = {
+      this.players.set(snapshot.playerId, {
         group,
         target: new THREE.Vector3(snapshot.x, snapshot.y, snapshot.z),
         targetHeading: snapshot.heading,
         islandId: snapshot.islandId,
         onBoat: snapshot.onBoat,
+        name: snapshot.name,
+        avatarKind: kind,
         lastSeenAt: this.now(),
-      };
-      this.players.set(snapshot.playerId, player);
+      });
       return;
+    }
+    // S14: ผู้เล่นขึ้น/ลงเรือ หรือเปลี่ยนรุ่นเรือ → สร้าง avatar ใหม่ที่ตำแหน่งเดิม
+    if (kind !== player.avatarKind) {
+      const position = player.group.position.clone();
+      const rotationY = player.group.rotation.y;
+      this.disposeGroup(player.group);
+      const group = buildAvatar(snapshot);
+      group.position.copy(position);
+      group.rotation.y = rotationY;
+      this.scene.add(group);
+      player.group = group;
+      player.avatarKind = kind;
     }
     player.target.set(snapshot.x, snapshot.y, snapshot.z);
     player.targetHeading = snapshot.heading;
@@ -124,11 +184,14 @@ export class RemotePlayers implements Updatable {
     player.lastSeenAt = this.now();
   }
 
-  remove(playerId: string): void {
-    const player = this.players.get(playerId);
-    if (!player) return;
-    this.scene.remove(player.group);
-    player.group.traverse((object) => {
+  /** ชนิด avatar ปัจจุบันของผู้เล่น ('foot' | `boat:<id>`) — ใช้ในเทสต์ */
+  avatarKindFor(playerId: string): string | null {
+    return this.players.get(playerId)?.avatarKind ?? null;
+  }
+
+  private disposeGroup(group: THREE.Group): void {
+    this.scene.remove(group);
+    group.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose();
         (object.material as THREE.Material).dispose();
@@ -137,6 +200,12 @@ export class RemotePlayers implements Updatable {
         object.material.dispose();
       }
     });
+  }
+
+  remove(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    this.disposeGroup(player.group);
     this.players.delete(playerId);
   }
 

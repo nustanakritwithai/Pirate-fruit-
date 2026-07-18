@@ -135,3 +135,8 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - validate payload (พิกัดเป็นตัวเลขจำกัด, islandId ≤96) + throttle 80ms/relay + จำกัดขนาดข้อความ 1KB เดิม — กัน broadcast flood
 - กรอง relay ตามเกาะ: presence ไม่รั่วข้ามเกาะ
 - ตัวตน presence (playerId/name) แนบจาก session ที่ auth แล้วฝั่ง Server (characterName ของ connection) — client ปลอมชื่อ/ตัวตนคนอื่นไม่ได้
+
+
+## S14 — Boat presence
+- `boatId` เป็นข้อมูลแสดงผลล้วน (เลือกโมเดลเรือ) — ไม่มีผล gameplay/รางวัล/ความเร็วจริง; Server ไม่เชื่อเป็น authority
+- validate: รับ `boatId` เฉพาะเมื่อ `onBoat=true` และยาว ≤128; อื่น ๆ ทิ้ง — เดินบน relay + throttle + กรองเกาะเดิมของ S13

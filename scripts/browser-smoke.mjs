@@ -25,13 +25,15 @@ const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
 const apiCalls = [];
 const pageErrors = [];
 // S9: จับ WebSocket จริงจากหน้าเกม — ยืนยัน handshake + เฟรม economy push
-const wsEvents = { opened: 0, frames: [] };
+// S14: เก็บ payload ของ presence ด้วย เพื่อยืนยัน boatId เดินทางถึงหน้าเกม
+const wsEvents = { opened: 0, frames: [], presence: [] };
 page.on('websocket', (socket) => {
   wsEvents.opened += 1;
   socket.on('framereceived', (frame) => {
     try {
       const message = JSON.parse(String(frame.payload));
       if (message?.type) wsEvents.frames.push(message.type);
+      if (message?.type === 'presence') wsEvents.presence.push(message);
     } catch { /* ไม่ใช่ JSON — ข้าม */ }
   });
 });
@@ -220,8 +222,11 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
+  // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
+  const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
   const peerMove = () => peer.send(JSON.stringify({
-    type: 'move', islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0, onBoat: false,
+    type: 'move', islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0,
+    onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
   peer.on('open', () => {
     peerMove();
@@ -230,13 +235,17 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     peer.on('close', () => clearInterval(timer));
   });
 
+  const gotNaval = () => wsEvents.presence.some((p) => p.onBoat === true && p.boatId === 'war-galleon');
+  const done = () => (NAVAL ? gotNaval() : wsEvents.frames.includes('presence'));
   const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline && !wsEvents.frames.includes('presence')) {
+  while (Date.now() < deadline && !done()) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   peer.close();
-  if (!wsEvents.frames.includes('presence')) {
-    fail('did not receive a presence frame from the second player', { wsEvents, apiCalls });
+  if (!done()) {
+    fail('did not receive the expected presence frame from the second player', {
+      naval: NAVAL, presence: wsEvents.presence.slice(0, 3), wsEvents, apiCalls,
+    });
   }
 }
 

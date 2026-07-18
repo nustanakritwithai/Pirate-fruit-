@@ -96,3 +96,9 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ไม่มี migration/ตารางใหม่ — presence อยู่ใน memory ของ instance เท่านั้น
 - Render free instance เดียว: ผู้เล่นทุกคนต่อ WS เข้า process เดียวกัน relay ทำงานทันที (สเกลหลาย instance ในอนาคตต้องมี shared presence bus)
 - Debug: DevTools → Network → WS → เฟรม move (ออก) / presence (เข้า)
+
+
+## S14 — Boat/Naval Multiplayer
+- ใช้ flag เดิม `ENABLE_MULTIPLAYER` + `VITE_ENABLE_MULTIPLAYER` (S13) — เปิดแล้วได้ทั้งเดินเท้าและเรืออัตโนมัติ ไม่มีขั้นตอนเปิดเพิ่ม
+- ตรวจ: เปิดเกมสองเครื่องบนเกาะเดียวกัน ให้คนหนึ่งเรียกเรือแล้วขับ อีกคนต้องเห็น "เรือ" แล่น (ไม่ใช่ ghost) ตามรุ่นที่ขับ
+- ไม่มี migration/ตาราง/endpoint ใหม่

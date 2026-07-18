@@ -90,6 +90,7 @@ jobs:
       SMOKE_EXPECT_MONSTER: 'true'
       SMOKE_EXPECT_PROGRESSION: 'true'
       SMOKE_EXPECT_MULTIPLAYER: 'true'
+      SMOKE_EXPECT_NAVAL: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

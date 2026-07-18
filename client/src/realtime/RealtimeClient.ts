@@ -34,6 +34,8 @@ export interface RealtimePresenceSnapshot {
   z: number;
   heading: number;
   onBoat: boolean;
+  /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
+  boatId?: string;
 }
 
 export interface RealtimeHandlers {
@@ -172,6 +174,7 @@ export class RealtimeClient {
         z: message.z,
         heading: message.heading,
         onBoat: message.onBoat,
+        boatId: message.boatId,
       });
     } else if (message.type === 'presence-leave') {
       this.handlers.onPresenceLeave?.(message.playerId);
@@ -187,6 +190,7 @@ export class RealtimeClient {
     z: number;
     heading: number;
     onBoat: boolean;
+    boatId?: string;
   }): void {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
     this.socket.send(JSON.stringify({ type: 'move', ...position }));

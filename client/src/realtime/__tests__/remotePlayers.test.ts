@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { RemotePlayers } from '../RemotePlayers';
 import type { RealtimePresenceSnapshot } from '../RealtimeClient';
 
+function countMeshes(scene: THREE.Scene): number {
+  let n = 0;
+  scene.traverse((o) => { if (o instanceof THREE.Mesh) n += 1; });
+  return n;
+}
+
 function snapshot(overrides: Partial<RealtimePresenceSnapshot> = {}): RealtimePresenceSnapshot {
   return {
     playerId: 'char-b',
@@ -63,4 +69,32 @@ describe('S13 RemotePlayers', () => {
     players.update(0.016);
     expect(players.count).toBe(0);
   });
+
+  it('renders a boat proxy when onBoat and swaps back to a ghost on foot (S14)', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+
+    players.applyPresence(snapshot({ onBoat: true, boatId: 'war-galleon' }));
+    expect(players.avatarKindFor('char-b')).toBe('boat:war-galleon');
+    const meshCountBoat = countMeshes(scene);
+    expect(meshCountBoat).toBeGreaterThan(0);
+
+    // ลงจากเรือ → กลับเป็น ghost (avatar ถูกสร้างใหม่ที่ตำแหน่งเดิม)
+    players.applyPresence(snapshot({ onBoat: false }));
+    expect(players.avatarKindFor('char-b')).toBe('foot');
+    expect(players.count).toBe(1);
+
+    // เปลี่ยนรุ่นเรือ → avatar ใหม่ตามรุ่น
+    players.applyPresence(snapshot({ onBoat: true, boatId: 'swift-sloop' }));
+    expect(players.avatarKindFor('char-b')).toBe('boat:swift-sloop');
+  });
+
+  it('falls back to a default boat when the boat id is unknown', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ onBoat: true, boatId: 'not-a-real-boat' }));
+    expect(players.avatarKindFor('char-b')).toBe('boat:not-a-real-boat');
+    expect(players.count).toBe(1);
+  });
+
 });

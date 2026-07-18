@@ -25,6 +25,8 @@ export interface PresencePosition {
   z: number;
   heading: number;
   onBoat: boolean;
+  /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
+  boatId?: string;
 }
 
 export interface RealtimeConnection {
@@ -62,7 +64,11 @@ function readPosition(message: Record<string, unknown>): PresencePosition | null
   const islandId = message.islandId;
   if (x === null || y === null || z === null || heading === null) return null;
   if (typeof islandId !== 'string' || islandId.length === 0 || islandId.length > 96) return null;
-  return { islandId, x, y, z, heading, onBoat: message.onBoat === true };
+  const onBoat = message.onBoat === true;
+  const boatId = onBoat && typeof message.boatId === 'string' && message.boatId.length <= 128
+    ? message.boatId
+    : undefined;
+  return { islandId, x, y, z, heading, onBoat, boatId };
 }
 
 function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage {
@@ -78,6 +84,7 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
     z: presence.z,
     heading: presence.heading,
     onBoat: presence.onBoat,
+    boatId: presence.boatId,
   };
 }
 
