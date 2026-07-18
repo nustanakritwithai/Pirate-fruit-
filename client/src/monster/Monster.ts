@@ -199,6 +199,38 @@ export class Monster {
     return Math.max(0, this.hp / this.type.maxHp);
   }
 
+  /**
+   * Apply absolute S16 world state without letting the render client simulate HP.
+   * SharedMonsterClient reuses this method so the authoritative path gets the
+   * same preloaded GLB, fallback visual, health bar and animation lifecycle as
+   * local monsters.
+   */
+  applyAuthoritativeState(hp: number, maxHp: number, state: MonsterState): void {
+    const nextHp = THREE.MathUtils.clamp(Number.isFinite(hp) ? hp : 0, 0, Math.max(1, maxHp));
+    const wasDead = this.state === 'dead';
+
+    if (state === 'dead') {
+      this.hp = 0;
+      this.healthBar.draw(0);
+      if (!wasDead) this.die();
+      return;
+    }
+
+    if (wasDead) {
+      this.deathTimer = 0;
+      this.animator.reset();
+      this.group.scale.set(1, 1, 1);
+      this.group.rotation.x = 0;
+      this.group.rotation.z = 0;
+    }
+    if (state === 'attack' && this.state !== 'attack') this.animator.triggerAttack(false);
+    this.hp = nextHp;
+    this.state = state;
+    this.group.visible = true;
+    this.healthBar.sprite.visible = true;
+    this.healthBar.draw(nextHp / Math.max(1, maxHp));
+  }
+
   /** รับดาเมจ คืน true ถ้าตายจากครั้งนี้ */
   takeDamage(amount: number): boolean {
     if (this.state === 'dead') return false;
