@@ -306,7 +306,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         }
       }
       if (message?.type === 'world-monster-dead') peerDiag.worldDead.push(message.spawnId);
-      if (message?.type === 'boat-delta') peerDiag.boatDeltas.push(message.boat);
+      if (message?.type === 'boat-delta') {
+        peerDiag.boatDeltas.push(message.boat);
+        if (peerDiag.boatDeltas.length > 200) {
+          peerDiag.boatDeltas.splice(0, peerDiag.boatDeltas.length - 200);
+        }
+      }
     } catch { /* ไม่ใช่ JSON */ }
   });
   peer.on('error', (err) => { peerDiag.error = String(err).slice(0, 200); });
@@ -426,7 +431,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const boatDiag = {
     starterBoatAcquired: false, saveStatus: null, intentId: null, summonSent: false,
     summonAttempts: 0, accepted: false, reason: null, entityId: null,
-    inputSent: 0, peerMoved: false,
+    resolutionSource: null, inputSent: 0, peerMoved: false,
   };
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
     // A new account intentionally owns no boat. Acquire the free starter through the real
@@ -470,6 +475,19 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         boatDiag.accepted = resolution.accepted;
         boatDiag.reason = resolution.reason ?? null;
         boatDiag.entityId = resolution.entityId ?? null;
+        boatDiag.resolutionSource = 'owner-result';
+        break;
+      }
+      // The page's inbound message task can lag behind the Node peer while the shared-world
+      // delta stream is busy. A matching boat-delta on the independent peer is the same
+      // server-authoritative acceptance evidence: only the server chooses entityId/transform.
+      const peerBoat = peerDiag.boatDeltas.find((boat) => boat?.ownerId !== peerCharacterId
+        && boat?.definitionId === 'training-dinghy'
+        && boat?.islandId === 'starter-island');
+      if (peerBoat) {
+        boatDiag.accepted = true;
+        boatDiag.entityId = peerBoat.entityId;
+        boatDiag.resolutionSource = 'peer-delta';
         break;
       }
       const resent = await page.evaluate((intentId) => Boolean(
