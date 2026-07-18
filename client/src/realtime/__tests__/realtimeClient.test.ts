@@ -197,10 +197,13 @@ describe('S9 realtime client', () => {
         hp: 130, maxHp: 130, anchor: true, state: 'docked', passengerIds: [] },
     });
     expect(deltas).toEqual(['boat-a:130']);
-    client.sendBoatIntent('input', { entityId: 'boat-a', throttle: 1, steer: -1 });
-    const intent = socket.sent.map((raw) => JSON.parse(raw)).find((message) => message.type === 'boat-intent');
+    const intentId = client.sendBoatIntent('input', { entityId: 'boat-a', throttle: 1, steer: -1 });
+    client.sendBoatIntent('input', { entityId: 'boat-a', throttle: 1, steer: -1 }, intentId!);
+    const intents = socket.sent.map((raw) => JSON.parse(raw)).filter((message) => message.type === 'boat-intent');
+    const intent = intents[0];
     expect(intent).toMatchObject({ type: 'boat-intent', action: 'input', entityId: 'boat-a', throttle: 1, steer: -1 });
     expect(intent.intentId).toEqual(expect.any(String));
+    expect(intents[1].intentId).toBe(intent.intentId);
     expect(intent).not.toHaveProperty('x');
     expect(intent).not.toHaveProperty('hp');
     expect(intent).not.toHaveProperty('damage');

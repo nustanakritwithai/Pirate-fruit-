@@ -425,7 +425,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // dock transform and movement; the independent peer must observe the same boat delta.
   const boatDiag = {
     starterBoatAcquired: false, saveStatus: null, intentId: null, summonSent: false,
-    accepted: false, reason: null, entityId: null, inputSent: 0, peerMoved: false,
+    summonAttempts: 0, accepted: false, reason: null, entityId: null,
+    inputSent: 0, peerMoved: false,
   };
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
     // A new account intentionally owns no boat. Acquire the free starter through the real
@@ -439,9 +440,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       );
       await starterButton.waitFor({ state: 'visible', timeout: 10_000 });
       const saveResponse = page.waitForResponse(
-        (response) => response.url().startsWith(API_URL)
-          && ['POST', 'PUT'].includes(response.request().method())
-          && response.url().includes('/api/player/')
+        (response) => new URL(response.url()).pathname === '/api/player/save'
+          && response.request().method() === 'POST'
           && response.status() === 200,
         { timeout: 30_000 },
       );
@@ -459,6 +459,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     }));
     boatDiag.intentId = await page.evaluate(() => window.__realtime?.sendBoatIntent('summon') ?? null);
     boatDiag.summonSent = Boolean(boatDiag.intentId);
+    if (boatDiag.summonSent) boatDiag.summonAttempts += 1;
     const summonDeadline = Date.now() + 20_000;
     while (Date.now() < summonDeadline && !boatDiag.accepted && !boatDiag.reason) {
       const browserBoat = await page.evaluate(() => window.__smokeRealtime ?? null);
@@ -471,6 +472,10 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         boatDiag.entityId = resolution.entityId ?? null;
         break;
       }
+      const resent = await page.evaluate((intentId) => Boolean(
+        window.__realtime?.sendBoatIntent('summon', {}, intentId),
+      ), boatDiag.intentId);
+      if (resent) boatDiag.summonAttempts += 1;
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
     if (boatDiag.entityId) {

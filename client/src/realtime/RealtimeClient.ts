@@ -264,9 +264,9 @@ export class RealtimeClient {
   sendBoatIntent(action: BoatIntentAction, payload: {
     entityId?: string; throttle?: number; steer?: number; anchor?: boolean;
     fireSide?: 'port' | 'starboard';
-  } = {}): string | null {
+  } = {}, retryIntentId?: string): string | null {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return null;
-    const intentId = globalThis.crypto?.randomUUID?.()
+    const intentId = retryIntentId ?? globalThis.crypto?.randomUUID?.()
       ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     this.socket.send(JSON.stringify({ type: 'boat-intent', intentId, action, ...payload }));
     return intentId;
