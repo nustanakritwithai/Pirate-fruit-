@@ -37,6 +37,7 @@ const environmentSchema = z
     ENABLE_MULTIPLAYER: booleanFromEnvironment.default(false),
     ENABLE_PVP: booleanFromEnvironment.default(false),
     ENABLE_SHARED_WORLD_MONSTERS: booleanFromEnvironment.default(false),
+    ENABLE_BOAT_WORLD: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -174,6 +175,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_MULTIPLAYER'],
         message: 'ENABLE_MULTIPLAYER must be enabled before ENABLE_SHARED_WORLD_MONSTERS',
+      });
+    }
+
+    // Authoritative boat entities ride on authenticated multiplayer WebSocket presence.
+    if (environment.ENABLE_BOAT_WORLD && !environment.ENABLE_MULTIPLAYER) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_MULTIPLAYER'],
+        message: 'ENABLE_MULTIPLAYER must be enabled before ENABLE_BOAT_WORLD',
       });
     }
 

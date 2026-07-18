@@ -17,6 +17,7 @@ import { carryRider, deckBoundsFor, deckHeightAt, withinDeck, worldToDeckLocal }
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
 import { gameStorage, type GameStorage } from '../persistence/GameStorage';
+import type { BoatWorldSnapshot, BoatIntentAction } from '@pirate-fruit/shared';
 
 const BOOST_DURATION = 1.2;
 const BOOST_COOLDOWN = 4;
@@ -27,6 +28,14 @@ const HELM_RANGE = 2.1;
 
 /** สถานะผู้เล่นกับเรือ: นอกเรือ / เดินบนดาดฟ้า / ถือพวงมาลัย */
 export type BoatRiderState = 'off' | 'deck' | 'helm';
+
+export interface BoatAuthorityAdapter {
+  connected(): boolean;
+  send(action: BoatIntentAction, payload?: {
+    entityId?: string; throttle?: number; steer?: number; anchor?: boolean;
+    fireSide?: 'port' | 'starboard';
+  }): void;
+}
 
 export class BoatManager {
   private active: Boat | null = null;
@@ -44,6 +53,9 @@ export class BoatManager {
   private prevHeading = 0;
   private gearArmed = true;
   private gearRepeat = 0;
+  private authority: BoatAuthorityAdapter | null = null;
+  private authorityEntityId: string | null = null;
+  private authorityInputAccum = 0;
 
   constructor(
     private scene: THREE.Scene,
@@ -82,6 +94,57 @@ export class BoatManager {
     return this.progress.selectedBoatId;
   }
 
+  setAuthority(adapter: BoatAuthorityAdapter | null): void {
+    this.authority = adapter;
+    this.authorityEntityId = null;
+  }
+
+  private get authorityActive(): boolean {
+    return this.authority?.connected() === true;
+  }
+
+  /** Absolute state from S17 Server; never accepts client-computed HP/position. */
+  applyAuthoritativeBoat(snapshot: BoatWorldSnapshot, serverRider: BoatRiderState = 'off'): void {
+    if (snapshot.definitionId !== this.selectedBoatId) return;
+    this.authorityEntityId = snapshot.entityId;
+    let boat = this.active;
+    if (!boat) {
+      const definition = this.progress.getRuntimeDefinition(snapshot.definitionId)
+        ?? getBoatDefinition(snapshot.definitionId);
+      if (!definition) return;
+      boat = new Boat(definition, this.textures, this.graphics);
+      this.scene.add(boat.group);
+      this.active = boat;
+      this.ensureDeckProvider(boat);
+    }
+    if (boat.definition.id !== snapshot.definitionId) return;
+    boat.group.visible = snapshot.state !== 'sunk' && snapshot.state !== 'respawning';
+    boat.group.position.x = snapshot.x;
+    boat.group.position.z = snapshot.z;
+    boat.heading = snapshot.heading;
+    boat.group.rotation.y = snapshot.heading;
+    boat.speed = snapshot.speed;
+    boat.hp = snapshot.hp;
+    boat.anchor = snapshot.anchor;
+    if (serverRider !== this.rider) {
+      this.rider = serverRider;
+      const helm = serverRider === 'helm';
+      this.controller.setMounted(helm);
+      this.controller.setControlsEnabled(!helm);
+      this.input.setMode(helm ? 'boat' : 'player');
+      this.camera.setBoatMode(helm);
+      if (serverRider !== 'off') {
+        boat.group.updateMatrixWorld();
+        this.placeRiderOnDeck(boat);
+      }
+    }
+    if (snapshot.state !== 'sunk' && snapshot.state !== 'respawning') {
+      boat.state = this.rider === 'helm'
+        ? 'piloted'
+        : Math.abs(snapshot.speed) > 0.15 ? 'spawned' : 'docked';
+    }
+  }
+
   /** พาผู้เล่นกลับขึ้นดาดฟ้าเรือตัวเอง (หลังยึดเรือศัตรู) — คืน false ถ้าไม่มีเรือ */
   returnRiderToDeck(): boolean {
     const boat = this.active;
@@ -92,6 +155,7 @@ export class BoatManager {
 
   /** โดนกระสุนปืนใหญ่ศัตรู (Naval Combat) — คืน true ถ้าโดนจริง */
   damageActiveBoat(amount: number): boolean {
+    if (this.authorityActive) return false;
     const boat = this.active;
     if (!boat || boat.state === 'destroyed') return false;
     boat.damage(amount);
@@ -145,13 +209,15 @@ export class BoatManager {
     const previousZ = boat.group.position.z;
     if (boat.state === 'piloted') {
       this.updatePiloted(boat, dt);
-    } else {
+    } else if (!this.authorityActive) {
       this.updateIdle(boat, dt);
     }
 
-    boat.group.position.x += Math.sin(boat.heading) * boat.speed * dt;
-    boat.group.position.z += Math.cos(boat.heading) * boat.speed * dt;
-    this.resolveCollision(boat, previousX, previousZ);
+    if (!this.authorityActive) {
+      boat.group.position.x += Math.sin(boat.heading) * boat.speed * dt;
+      boat.group.position.z += Math.cos(boat.heading) * boat.speed * dt;
+      this.resolveCollision(boat, previousX, previousZ);
+    }
     this.updateBuoyancy(boat, dt);
     this.updateWake(boat);
     this.updateSail(boat, dt);
@@ -200,6 +266,9 @@ export class BoatManager {
   }
 
   private setRiderOff(): void {
+    if (this.authorityActive && this.rider !== 'off') {
+      this.authority!.send('disembark', { entityId: this.authorityEntityId ?? undefined });
+    }
     this.rider = 'off';
     this.prompt.hide();
   }
@@ -232,6 +301,7 @@ export class BoatManager {
 
     if (this.input.consumeAnchor()) {
       boat.anchor = !boat.anchor;
+      if (this.authorityActive) this.authority!.send('input', { entityId: this.authorityEntityId ?? undefined, anchor: boat.anchor });
       this.hud.notify(boat.anchor ? '⚓ ทอดสมอแล้ว' : 'ยกสมอแล้ว');
     }
 
@@ -244,6 +314,27 @@ export class BoatManager {
     const move = this.input.moveVector();
     const throttle = THREE.MathUtils.clamp(-move.z, -1, 1);
     const steering = THREE.MathUtils.clamp(move.x, -1, 1);
+
+    if (this.authorityActive) {
+      this.authorityInputAccum += dt;
+      if (this.authorityInputAccum >= 0.1) {
+        this.authorityInputAccum = 0;
+        this.authority!.send('input', {
+          entityId: this.authorityEntityId ?? undefined,
+          throttle,
+          steer: steering,
+          anchor: boat.anchor,
+        });
+      }
+      const cannon = this.input.consumeCannon();
+      if (cannon === 1 || cannon === 2) {
+        this.authority!.send('fire', {
+          entityId: this.authorityEntityId ?? undefined,
+          fireSide: cannon === 1 ? 'port' : 'starboard',
+        });
+      }
+      return;
+    }
 
     // ---------- เกียร์ใบเรือ 0-3: ดันหน้า +1 / ดึงหลัง -1 (edge + repeat ตอนค้าง) ----------
     this.gearRepeat -= dt;
@@ -349,6 +440,7 @@ export class BoatManager {
     this.ensureDeckProvider(boat);
     if (!preservePosition) this.placeRiderOnDeck(boat);
     this.rider = 'deck';
+    if (this.authorityActive) this.authority!.send('board', { entityId: this.authorityEntityId ?? undefined });
     this.prevMatrix.copy(boat.group.matrixWorld);
     this.prevHeading = boat.heading;
     this.prompt.hide();
@@ -515,6 +607,10 @@ export class BoatManager {
     }
     if (action === 'repair') {
       if (!this.active) return;
+      if (this.authorityActive) {
+        this.shop.setStatus('การซ่อมเรืออยู่ภายใต้ Server — กลับท่าเพื่อรอระบบซ่อม', true);
+        return;
+      }
       this.active.hp = this.active.definition.maxHp;
       this.shop.setStatus('ซ่อมเรือเต็ม HP แล้ว');
       return;
@@ -564,5 +660,6 @@ export class BoatManager {
     this.ensureDeckProvider(boat);
     this.shop.setStatus(`เรียก ${definition.name} ที่${dock.name}แล้ว`);
     this.effects.spawnBoatImpact(boat.group.position);
+    if (this.authorityActive) this.authority!.send('summon');
   }
 }

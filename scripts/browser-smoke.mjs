@@ -27,6 +27,7 @@ const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
 await page.addInitScript(() => {
   window.__smokeRealtime = {
     combat: [], worldSnapshot: 0, worldDeltas: [], worldDead: [],
+    boatSnapshots: [], boatDeltas: [], boatResults: [], boatCannon: [],
   };
   const NativeWebSocket = window.WebSocket;
   window.WebSocket = new Proxy(NativeWebSocket, {
@@ -47,6 +48,10 @@ await page.addInitScript(() => {
             }
           }
           if (message?.type === 'world-monster-dead') diag.worldDead.push(message.spawnId);
+          if (message?.type === 'boat-snapshot') diag.boatSnapshots.push(...(message.boats ?? []));
+          if (message?.type === 'boat-delta') diag.boatDeltas.push(message.boat);
+          if (message?.type === 'boat-intent-result') diag.boatResults.push(message);
+          if (message?.type === 'boat-cannon') diag.boatCannon.push(message);
         } catch { /* ไม่ใช่ JSON — ข้าม */ }
       });
       return socket;
@@ -60,6 +65,7 @@ const pageErrors = [];
 const wsEvents = {
   opened: 0, frames: [], presence: [], combat: [],
   worldSnapshot: 0, worldDeltas: [], worldDead: [],
+  boatSnapshots: [], boatDeltas: [], boatResults: [], boatCannon: [],
 };
 page.on('websocket', (socket) => {
   wsEvents.opened += 1;
@@ -74,6 +80,10 @@ page.on('websocket', (socket) => {
       if (message?.type === 'world-monster-snapshot') wsEvents.worldSnapshot = message.monsters?.length ?? 0;
       if (message?.type === 'world-monster-delta') wsEvents.worldDeltas.push(...(message.updates ?? []));
       if (message?.type === 'world-monster-dead') wsEvents.worldDead.push(message.spawnId);
+      if (message?.type === 'boat-snapshot') wsEvents.boatSnapshots.push(...(message.boats ?? []));
+      if (message?.type === 'boat-delta') wsEvents.boatDeltas.push(message.boat);
+      if (message?.type === 'boat-intent-result') wsEvents.boatResults.push(message);
+      if (message?.type === 'boat-cannon') wsEvents.boatCannon.push(message);
     } catch { /* ไม่ใช่ JSON — ข้าม */ }
   });
 });
@@ -264,7 +274,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
   const peerDiag = {
     guestStatus: guest.status, peerCharacterId, frames: [], gotPage1Presence: false,
-    combat: [], worldDeltas: [], worldDead: [], error: null, closed: null,
+    combat: [], worldDeltas: [], worldDead: [], boatDeltas: [], error: null, closed: null,
   };
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
@@ -296,6 +306,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         }
       }
       if (message?.type === 'world-monster-dead') peerDiag.worldDead.push(message.spawnId);
+      if (message?.type === 'boat-delta') {
+        peerDiag.boatDeltas.push(message.boat);
+        if (peerDiag.boatDeltas.length > 200) {
+          peerDiag.boatDeltas.splice(0, peerDiag.boatDeltas.length - 200);
+        }
+      }
     } catch { /* ไม่ใช่ JSON */ }
   });
   peer.on('error', (err) => { peerDiag.error = String(err).slice(0, 200); });
@@ -410,6 +426,97 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     worldDiag.peerSawDead = peerSawDead();
   }
 
+  // S17 boat authority: browser sends summon/control intents only. Server chooses entity,
+  // dock transform and movement; the independent peer must observe the same boat delta.
+  const boatDiag = {
+    starterBoatAcquired: false, saveStatus: null, intentId: null, summonSent: false,
+    summonAttempts: 0, accepted: false, reason: null, entityId: null,
+    resolutionSource: null, inputSent: 0, peerMoved: false,
+  };
+  if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
+    // A new account intentionally owns no boat. Acquire the free starter through the real
+    // shop/storage path, then wait for the credentialed cross-origin save before summoning.
+    // This keeps the smoke subject to the same canonical player_boats gate as production.
+    const selectedBoat = await page.evaluate(() => window.__boat?.selectedBoatId ?? null);
+    if (selectedBoat !== 'training-dinghy') {
+      await page.evaluate(() => window.__boat?.openShop('starter-harbor'));
+      const starterButton = page.locator(
+        '.boat-shop button[data-action="purchase"][data-boat-id="training-dinghy"]',
+      );
+      await starterButton.waitFor({ state: 'visible', timeout: 10_000 });
+      const saveResponse = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/api/player/save'
+          && response.request().method() === 'POST'
+          && response.status() === 200,
+        { timeout: 30_000 },
+      );
+      await starterButton.click();
+      await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+      boatDiag.saveStatus = (await saveResponse).status();
+      await page.locator('.boat-shop-close').click();
+    }
+    boatDiag.starterBoatAcquired = await page.evaluate(
+      () => window.__boat?.selectedBoatId === 'training-dinghy',
+    );
+    await page.evaluate(() => window.__realtime?.sendMove({
+      islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
+      onBoat: false,
+    }));
+    boatDiag.intentId = await page.evaluate(() => window.__realtime?.sendBoatIntent('summon') ?? null);
+    boatDiag.summonSent = Boolean(boatDiag.intentId);
+    if (boatDiag.summonSent) boatDiag.summonAttempts += 1;
+    const summonDeadline = Date.now() + 20_000;
+    while (Date.now() < summonDeadline && !boatDiag.accepted && !boatDiag.reason) {
+      const browserBoat = await page.evaluate(() => window.__smokeRealtime ?? null);
+      const resolution = browserBoat?.boatResults.find(
+        (result) => result.intentId === boatDiag.intentId,
+      );
+      if (resolution) {
+        boatDiag.accepted = resolution.accepted;
+        boatDiag.reason = resolution.reason ?? null;
+        boatDiag.entityId = resolution.entityId ?? null;
+        boatDiag.resolutionSource = 'owner-result';
+        break;
+      }
+      // The page's inbound message task can lag behind the Node peer while the shared-world
+      // delta stream is busy. A matching boat-delta on the independent peer is the same
+      // server-authoritative acceptance evidence: only the server chooses entityId/transform.
+      const peerBoat = peerDiag.boatDeltas.find((boat) => boat?.ownerId !== peerCharacterId
+        && boat?.definitionId === 'training-dinghy'
+        && boat?.islandId === 'starter-island');
+      if (peerBoat) {
+        boatDiag.accepted = true;
+        boatDiag.entityId = peerBoat.entityId;
+        boatDiag.resolutionSource = 'peer-delta';
+        break;
+      }
+      const resent = await page.evaluate((intentId) => Boolean(
+        window.__realtime?.sendBoatIntent('summon', {}, intentId),
+      ), boatDiag.intentId);
+      if (resent) boatDiag.summonAttempts += 1;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (boatDiag.entityId) {
+      await page.evaluate((entityId) => {
+        window.__realtime?.sendMove({ islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI, onBoat: false });
+        window.__realtime?.sendBoatIntent('board', { entityId });
+      }, boatDiag.entityId);
+      const initial = peerDiag.boatDeltas.find((boat) => boat?.entityId === boatDiag.entityId);
+      const initialX = initial?.x ?? 4.2;
+      const initialZ = initial?.z ?? -43;
+      const moveDeadline = Date.now() + 15_000;
+      while (Date.now() < moveDeadline && !boatDiag.peerMoved) {
+        const sent = await page.evaluate((entityId) => Boolean(window.__realtime?.sendBoatIntent('input', {
+          entityId, throttle: 1, steer: 0, anchor: false,
+        })), boatDiag.entityId);
+        if (sent) boatDiag.inputSent += 1;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        boatDiag.peerMoved = peerDiag.boatDeltas.some((boat) => boat?.entityId === boatDiag.entityId
+          && Math.hypot(boat.x - initialX, boat.z - initialZ) > 0.25);
+      }
+    }
+  }
+
   peer.close();
   if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true'
     && !(worldDiag.gotSnapshot > 0 && worldDiag.hitsSent > 0
@@ -424,7 +531,11 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       pvpDiag, combat: wsEvents.combat.slice(0, 3), peerDiag, pumpDiag,
     });
   }
-  console.log('S13/S14/S15/S16 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag, worldDiag }));
+  if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true'
+    && !(boatDiag.summonSent && boatDiag.accepted && boatDiag.entityId && boatDiag.inputSent > 0 && boatDiag.peerMoved)) {
+    fail('authoritative boat state did not cross browser and peer', { boatDiag, peerDiag, wsEvents, pumpDiag });
+  }
+  console.log('S13-S17 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag, worldDiag, boatDiag }));
 }
 
 console.log('SMOKE PASS');

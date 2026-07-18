@@ -76,6 +76,7 @@ jobs:
       ENABLE_MULTIPLAYER: 'true'
       ENABLE_PVP: 'true'
       ENABLE_SHARED_WORLD_MONSTERS: 'true'
+      ENABLE_BOAT_WORLD: 'true'
       PORT: '10000'
       VITE_API_URL: http://127.0.0.1:10000
       VITE_USE_REMOTE_SERVER: 'true'
@@ -89,14 +90,17 @@ jobs:
       VITE_ENABLE_MULTIPLAYER: 'true'
       VITE_ENABLE_PVP: 'true'
       VITE_ENABLE_SHARED_WORLD_MONSTERS: 'true'
+      VITE_ENABLE_BOAT_WORLD: 'true'
       SMOKE_EXPECT_REALTIME: 'true'
       SMOKE_EXPECT_QUEST: 'true'
       SMOKE_EXPECT_MONSTER: 'true'
       SMOKE_EXPECT_PROGRESSION: 'true'
       SMOKE_EXPECT_MULTIPLAYER: 'true'
-      SMOKE_EXPECT_NAVAL: 'true'
+      # S17 replaces S14 boatId presence in this slice; S14 fallback remains covered with the flag off in unit tests.
+      SMOKE_EXPECT_NAVAL: 'false'
       SMOKE_EXPECT_PVP: 'true'
       SMOKE_EXPECT_WORLD_MONSTERS: 'true'
+      SMOKE_EXPECT_BOAT_WORLD: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

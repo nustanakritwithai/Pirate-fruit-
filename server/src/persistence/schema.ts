@@ -465,6 +465,35 @@ export const worldMonsterState = pgTable('world_monster_state', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// S17 — authoritative boat entity persisted independently from client presence.
+export const worldBoatState = pgTable(
+  'world_boat_state',
+  {
+    boatId: uuid('boat_id').primaryKey().references(() => playerBoats.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id').notNull().references(() => characters.id, { onDelete: 'cascade' }),
+    definitionId: varchar('definition_id', { length: 128 }).notNull(),
+    islandId: varchar('island_id', { length: 96 }).notNull(),
+    x: real('x').notNull(),
+    z: real('z').notNull(),
+    heading: real('heading').notNull(),
+    speed: real('speed').default(0).notNull(),
+    hp: integer('hp').notNull(),
+    maxHp: integer('max_hp').notNull(),
+    anchor: boolean('anchor').default(true).notNull(),
+    state: varchar('state', { length: 24 }).default('docked').notNull(),
+    helmId: uuid('helm_id').references(() => characters.id, { onDelete: 'set null' }),
+    passengerIds: jsonb('passenger_ids').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    respawnAt: bigint('respawn_at', { mode: 'number' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('world_boat_island_idx').on(table.islandId),
+    index('world_boat_owner_idx').on(table.ownerId),
+    check('world_boat_vitals_check', sql`${table.maxHp} > 0 and ${table.hp} >= 0 and ${table.hp} <= ${table.maxHp}`),
+    check('world_boat_state_check', sql`${table.state} in ('docked', 'sailing', 'sunk', 'respawning')`),
+  ],
+);
+
 export const schemaMigrations = pgTable(
   'schema_migrations',
   {

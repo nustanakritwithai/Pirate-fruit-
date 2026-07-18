@@ -285,3 +285,19 @@ flag ใหม่ `ENABLE_SHARED_WORLD_MONSTERS` (server) + `VITE_ENABLE_SHARED_
 - damage contribution ต่อผู้เล่น (มีหน้าต่างเวลา) — เก็บไว้แจก reward/loot ใน phase ถัดไป
 - interest = ระดับเกาะ (broadcast เฉพาะผู้เล่นบนเกาะนั้น) + tick rate จำกัด — คุมต้นทุน
 - restart recovery: persist HP/state/ตำแหน่ง/respawn ลงตาราง `world_monster_state` เป็นระยะ + ตอน shutdown; โหลดกลับตอนบูต
+
+## S17 — Authoritative Boat Entity & Naval World
+
+Flags `ENABLE_BOAT_WORLD` / `VITE_ENABLE_BOAT_WORLD` default `false`; ต้องเปิด Realtime + Multiplayer ก่อน เมื่อปิด flag จะใช้ S14 `onBoat/boatId` presence เดิม
+
+### Client → Server: `boat-intent`
+- `{type:'boat-intent', intentId, action:'summon'|'board'|'disembark'|'input'|'fire', entityId?, throttle?, steer?, anchor?, fireSide?}`
+- ไม่มี position, speed, HP, damage, target หรือ reward ใน contract; ตัวตนผู้เล่นมาจาก session cookie
+- `intentId` deduplicate ต่อ character (เก็บผล 128 รายการล่าสุด) จึง replay แล้วไม่ยิง/สร้าง entity ซ้ำ
+- `summon`: Server อ่าน active `player_boats` และ dock transform เอง; `board`: ตรวจเกาะ/ระยะ; `input`: รับเฉพาะ helm; `fire`: Server เลือกเป้าจาก broadside/range/cooldown
+
+### Server → Client
+- `boat-snapshot {islandId,boats[]}` ตอนเข้าเกาะ/resync; `boat-delta {boat}` เป็น absolute state ต่อ tick
+- `boat-cannon`, `boat-sunk`, `boat-respawn` เป็นผล naval ที่ Server ตัดสิน
+- `boat-intent-result {intentId,accepted,reason?,entityId?}` เป็น acknowledgement แบบ idempotent
+- เมื่ออยู่บนเรือ Server สร้าง passenger presence จาก boat transform และเพิกเฉย legacy move ของ Client

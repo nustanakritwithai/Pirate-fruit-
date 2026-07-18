@@ -115,6 +115,18 @@ against the dedicated `pirate_fruit_test`
 database. The test refuses to reset a database whose name does not end in
 `_test`.
 
+## S17 schema version 7
+
+Migration `0006_s17_world_boat_state` adds `world_boat_state`, keyed by the canonical
+`player_boats.id`. It persists owner/definition/island transform, speed, HP, anchor,
+state, helm, passengers and respawn time. Foreign keys cascade with the owned boat
+and character; HP/state checks prevent impossible persisted values. Cargo remains in
+`player_cargo` under the same canonical boat id, so its existing capacity/ownership
+transaction checks apply to the entity actually present in the world.
+
+The down migration is `server/drizzle/rollback/0006_s17_world_boat_state.down.sql`.
+Normal feature rollback leaves this table intact for restart recovery.
+
 
 ## S8 notes
 - `trade_transactions` เริ่มถูกเขียนจริงโดย `/api/trade/execute` (audit + idempotency ledger); `metadata_json` เก็บ request hash + ผลลัพธ์สำหรับ idempotent replay

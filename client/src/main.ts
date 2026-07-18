@@ -16,6 +16,7 @@ import { SpawnManager } from './world/SpawnManager';
 import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
 import { NavalCombat } from './boat/NavalCombat';
+import { BoatWorldClient } from './boat/BoatWorldClient';
 import { MonsterManager } from './monster/MonsterManager';
 import { PlayerCombat } from './combat/PlayerCombat';
 import { ItemInventory } from './shop/ItemInventory';
@@ -348,7 +349,15 @@ async function main(): Promise<void> {
       },
     });
   }
+  // S17: boat simulation/render bridge; false keeps the complete S14/local boat path.
+  const boatWorldEnabled = multiplayerEnabled
+    && (import.meta.env.VITE_ENABLE_BOAT_WORLD === 'true'
+      || import.meta.env.VITE_ENABLE_BOAT_WORLD === '1');
   const selfCharacterId = getRemoteSession().session?.characterId ?? null;
+  const boatWorldClient = boatWorldEnabled
+    ? new BoatWorldClient(game.scene, selfCharacterId, boatManager, worldTextures, graphics, effects)
+    : null;
+  if (boatWorldClient) game.add(boatWorldClient);
   const realtime = initializeRealtime({
     onEconomy: (state) => {
       const world = state?.world ? parseEconomyDocument(state.world) : null;
@@ -400,7 +409,21 @@ async function main(): Promise<void> {
     onWorldMonsterDelta: (islandId, updates) => sharedMonsters?.applyDelta(islandId, updates),
     onWorldMonsterDead: (spawnId) => sharedMonsters?.markDead(spawnId),
     onWorldMonsterRespawn: (monster) => sharedMonsters?.applyRespawn(monster),
+    onBoatSnapshot: (islandId, boats) => boatWorldClient?.applySnapshot(islandId, boats),
+    onBoatDelta: (boat) => boatWorldClient?.applyDelta(boat),
+    onBoatCannon: (event) => boatWorldClient?.applyCannon(event),
+    onBoatSunk: (entityId) => boatWorldClient?.markSunk(entityId),
+    onBoatRespawn: (boat) => boatWorldClient?.applyRespawn(boat),
+    onBoatIntentResult: (result) => {
+      if (!result.accepted) touchControls?.notify(`คำสั่งเรือถูกปฏิเสธ: ${result.reason ?? 'invalid'}`);
+    },
   });
+  if (realtime && boatWorldEnabled) {
+    boatManager.setAuthority({
+      connected: () => realtime.connected,
+      send: (action, payload) => { realtime.sendBoatIntent(action, payload); },
+    });
+  }
   realtime?.start();
   // debug/E2E hook (อ่าน+ส่ง move ตรง ๆ ได้) — ให้ browser-smoke ปั๊ม presence
   // จากฝั่ง Node ได้แน่นอน โดยไม่พึ่ง setInterval ในหน้าเว็บที่ headless throttle
@@ -414,6 +437,7 @@ async function main(): Promise<void> {
       remotePlayers?.setIsland(islandManager.activeIsland);
       sharedMonsters?.setIsland(islandManager.activeIsland);
       if (!realtime.connected) return;
+      if (boatWorldEnabled && boatManager.riderState !== 'off') return;
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
       realtime.sendMove({
@@ -579,6 +603,7 @@ async function main(): Promise<void> {
     worldTextures,
     graphics,
     (message) => touchControls?.notify(message),
+    boatWorldEnabled,
   );
 
   playerCombat = new PlayerCombat(

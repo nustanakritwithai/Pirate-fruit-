@@ -69,10 +69,14 @@ services:
       # S16 Shared Monster World — Server จำลองมอนสเตอร์กลาง (ต้องเปิด ENABLE_MULTIPLAYER ก่อน; client ต้อง build ด้วย VITE_ENABLE_SHARED_WORLD_MONSTERS=true พร้อมกัน)
       - key: ENABLE_SHARED_WORLD_MONSTERS
         value: 'false'
+      # S17 Authoritative Boat World — Server owns boat movement/HP/cannon/passengers.
+      - key: ENABLE_BOAT_WORLD
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db
-    plan: free
+    # Keep Blueprint aligned with the paid production database (PITR/recovery gate).
+    plan: basic-256mb
     region: singapore
     postgresMajorVersion: '16'
     databaseName: pirate_fruit

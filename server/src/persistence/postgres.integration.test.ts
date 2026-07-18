@@ -67,6 +67,21 @@ integration.sequential('PostgreSQL integration', () => {
        values ($1, $2, 'sloop', 'Test Sloop', 100, 100, 20, true)`,
       [boatId, characterId],
     );
+    await database.query(
+      `insert into world_boat_state
+         (boat_id, owner_id, definition_id, island_id, x, z, heading, hp, max_hp)
+       values ($1, $2, 'training-dinghy', 'starter-island', 4.2, -43, 0, 100, 100)`,
+      [boatId, characterId],
+    );
+    await expect(database.query(
+      `update world_boat_state set hp = 101 where boat_id = $1`, [boatId],
+    )).rejects.toThrow();
+    const worldBoat = await database.query<{ definition_id: string; cargo_capacity: number }>(
+      `select w.definition_id, b.cargo_capacity
+         from world_boat_state w join player_boats b on b.id = w.boat_id
+        where w.boat_id = $1`, [boatId],
+    );
+    expect(worldBoat.rows[0]).toEqual({ definition_id: 'training-dinghy', cargo_capacity: 20 });
 
     await expect(
       database.query(

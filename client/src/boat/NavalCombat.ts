@@ -149,11 +149,15 @@ export class NavalCombat {
     textures: WorldTextures,
     graphics: GraphicsProfile,
     private notify?: (message: string) => void,
+    private readonly serverAuthoritative = false,
   ) {
     const definitions = new Map(PIRATE_SHIP_TIERS.map((definition) => [definition.tier, definition]));
     for (const spawn of PIRATE_SPAWNS) {
       const definition = definitions.get(spawn.tier) ?? PIRATE_CUTTER;
       this.ships.push(this.spawnShip(definition, spawn, textures, graphics));
+    }
+    if (serverAuthoritative) {
+      for (const ship of this.ships) ship.group.visible = false;
     }
 
     const makeArc = (inner: number, outer: number, material: THREE.MeshBasicMaterial) => {
@@ -191,6 +195,7 @@ export class NavalCombat {
     damage: number,
     hitShips?: Set<string>,
   ): boolean {
+    if (this.serverAuthoritative) return false;
     if (this.boats.riderState !== 'deck') return false;
     let target: EnemyShip | null = null;
     let best = Number.POSITIVE_INFINITY;
@@ -286,6 +291,11 @@ export class NavalCombat {
 
   update(dt: number): void {
     this.elapsed += dt;
+    if (this.serverAuthoritative) {
+      this.aimArc.visible = false;
+      this.prompt.hide();
+      return;
+    }
     this.playerFireCooldown = Math.max(0, this.playerFireCooldown - dt);
 
     const playerBoat = this.boats.activeBoat;

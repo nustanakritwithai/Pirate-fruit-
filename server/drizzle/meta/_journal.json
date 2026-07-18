@@ -43,6 +43,13 @@
       "when": 1784358000000,
       "tag": "0005_s16_world_monster_state",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784386800000,
+      "tag": "0006_s17_world_boat_state",
+      "breakpoints": true
     }
   ]
 }

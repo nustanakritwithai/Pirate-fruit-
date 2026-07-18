@@ -14,6 +14,8 @@ import {
   type RealtimeServerMessage,
   type WorldMonsterSnapshot,
   type WorldMonsterDelta,
+  type BoatWorldSnapshot,
+  type BoatIntentAction,
 } from '@pirate-fruit/shared';
 import { getRemoteSession } from '../session/RemoteSession';
 
@@ -58,6 +60,13 @@ export interface RealtimeHandlers {
   onWorldMonsterDelta?(islandId: string, updates: WorldMonsterDelta[]): void;
   onWorldMonsterDead?(spawnId: string, byId?: string): void;
   onWorldMonsterRespawn?(monster: WorldMonsterSnapshot): void;
+  /** S17 authoritative boat world. */
+  onBoatSnapshot?(islandId: string, boats: BoatWorldSnapshot[]): void;
+  onBoatDelta?(boat: BoatWorldSnapshot): void;
+  onBoatCannon?(event: { attackerId: string; targetId?: string; side: 'port' | 'starboard'; damage: number; targetHp?: number; x: number; z: number }): void;
+  onBoatSunk?(entityId: string, byEntityId: string | undefined, respawnAt: number): void;
+  onBoatRespawn?(boat: BoatWorldSnapshot): void;
+  onBoatIntentResult?(result: { intentId: string; accepted: boolean; reason?: string; entityId?: string }): void;
 }
 
 export interface RealtimeClientOptions {
@@ -209,6 +218,18 @@ export class RealtimeClient {
       this.handlers.onWorldMonsterDead?.(message.spawnId, message.byId);
     } else if (message.type === 'world-monster-respawn') {
       this.handlers.onWorldMonsterRespawn?.(message.monster);
+    } else if (message.type === 'boat-snapshot') {
+      this.handlers.onBoatSnapshot?.(message.islandId, message.boats);
+    } else if (message.type === 'boat-delta') {
+      this.handlers.onBoatDelta?.(message.boat);
+    } else if (message.type === 'boat-cannon') {
+      this.handlers.onBoatCannon?.(message);
+    } else if (message.type === 'boat-sunk') {
+      this.handlers.onBoatSunk?.(message.entityId, message.byEntityId, message.respawnAt);
+    } else if (message.type === 'boat-respawn') {
+      this.handlers.onBoatRespawn?.(message.boat);
+    } else if (message.type === 'boat-intent-result') {
+      this.handlers.onBoatIntentResult?.(message);
     }
     // pong: แค่รีเซ็ต idle watchdog (ทำไปแล้วต้นฟังก์ชัน)
   }
@@ -237,6 +258,18 @@ export class RealtimeClient {
   sendMonsterHit(spawnId: string, kind: 'melee' | 'skill'): void {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
     this.socket.send(JSON.stringify({ type: 'world-monster-hit', spawnId, kind }));
+  }
+
+  /** S17: only control intent; no position/HP/damage/reward fields exist in this payload. */
+  sendBoatIntent(action: BoatIntentAction, payload: {
+    entityId?: string; throttle?: number; steer?: number; anchor?: boolean;
+    fireSide?: 'port' | 'starboard';
+  } = {}, retryIntentId?: string): string | null {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return null;
+    const intentId = retryIntentId ?? globalThis.crypto?.randomUUID?.()
+      ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    this.socket.send(JSON.stringify({ type: 'boat-intent', intentId, action, ...payload }));
+    return intentId;
   }
 
   private handleDisconnect(): void {
