@@ -73,6 +73,7 @@ jobs:
       ENABLE_QUEST_SERVER: 'true'
       ENABLE_MONSTER_SERVER: 'true'
       ENABLE_PROGRESSION_SERVER: 'true'
+      ENABLE_MULTIPLAYER: 'true'
       PORT: '10000'
       VITE_API_URL: http://127.0.0.1:10000
       VITE_USE_REMOTE_SERVER: 'true'
@@ -83,10 +84,12 @@ jobs:
       VITE_ENABLE_QUEST_SERVER: 'true'
       VITE_ENABLE_MONSTER_SERVER: 'true'
       VITE_ENABLE_PROGRESSION_SERVER: 'true'
+      VITE_ENABLE_MULTIPLAYER: 'true'
       SMOKE_EXPECT_REALTIME: 'true'
       SMOKE_EXPECT_QUEST: 'true'
       SMOKE_EXPECT_MONSTER: 'true'
       SMOKE_EXPECT_PROGRESSION: 'true'
+      SMOKE_EXPECT_MULTIPLAYER: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -205,6 +205,41 @@ if (process.env.SMOKE_EXPECT_REALTIME === 'true') {
   }
 }
 
+// 5) S13 multiplayer: เปิดผู้เล่นคนที่สอง (context ใหม่ = คนละ session/ตัวละคร)
+//    ทั้งคู่อยู่เกาะเริ่มต้นและส่ง move อัตโนมัติ — หน้าแรกต้องได้เฟรม presence ของคนที่สอง
+if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
+  // ผู้เล่นคนที่สอง = client WebSocket จริง (node ws) — ไม่ถูก rAF/timer throttle
+  // ให้ผลนิ่งใน headless CI: เปิด session ของตัวเอง ต่อ /ws แล้วส่ง move บนเกาะเดียวกัน
+  // page1 (เบราว์เซอร์จริง, มี presence อยู่แล้ว) ต้องได้เฟรม presence ของผู้เล่นคนที่สอง
+  const { default: NodeWebSocket } = await import('ws');
+  const guest = await fetch(`${API_URL}/api/session/guest`, {
+    method: 'POST',
+    headers: { origin: GAME_URL, 'content-type': 'application/json' },
+    body: '{}',
+  });
+  const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
+  const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
+  const peerMove = () => peer.send(JSON.stringify({
+    type: 'move', islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0, onBoat: false,
+  }));
+  peer.on('open', () => {
+    peerMove();
+    // ส่งซ้ำเป็นระยะ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก
+    const timer = setInterval(peerMove, 1_000);
+    peer.on('close', () => clearInterval(timer));
+  });
+
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline && !wsEvents.frames.includes('presence')) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  peer.close();
+  if (!wsEvents.frames.includes('presence')) {
+    fail('did not receive a presence frame from the second player', { wsEvents, apiCalls });
+  }
+}
+
 console.log('SMOKE PASS');
 console.log(JSON.stringify({ apiCalls: [...new Set(apiCalls)], tradeProbeStatus: tradeProbe.status, wsEvents: { opened: wsEvents.opened, frames: [...new Set(wsEvents.frames)] }, pageErrors }, null, 2));
 await browser.close();

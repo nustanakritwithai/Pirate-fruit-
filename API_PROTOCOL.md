@@ -207,3 +207,34 @@ Flag: `ENABLE_PROGRESSION_SERVER` (ต้องเปิด `ENABLE_QUEST_SERVER
 
 ### GET /api/progression/state
 สถานะทางการ `{ level, exp, coins }` — client ใช้ reconcile ตอนบูต: Server นำหน้า → เติม EXP ส่วนต่างเข้า local; local นำหน้า (แต้มค้างท่อ) → ปล่อยให้ sync ไล่ส่งจนบรรจบ (ไม่มีการลดเลเวลผู้เล่น)
+
+
+## S13 — Multiplayer Movement (presence relay)
+
+Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อน) — เดินบนช่อง WebSocket เดิม (S9)
+
+### Client → Server: `{type:'move', islandId, x, y, z, heading, onBoat}`
+- ข้อยกเว้นเดียวของช่อง push-only: client ส่ง move ได้ (ยังส่ง ping ได้เหมือนเดิม; type อื่นยังปิด 1008)
+- ไม่ใช่ authority: เป็นแค่ presence relay — ไม่มีผล gameplay/collision/รางวัล; payload ผิดรูป (พิกัดไม่ใช่ตัวเลข) ปิด 1008
+- Throttle: ส่งถี่กว่า `REALTIME_MOVE_MIN_INTERVAL_MS` (80ms) Server เก็บตำแหน่งล่าสุดแต่ไม่ relay
+
+### Server → Client: `{type:'presence', seq, playerId, name, islandId, x, y, z, heading, onBoat}` / `{type:'presence-leave', seq, playerId}`
+- Server relay ตำแหน่งให้เฉพาะผู้เล่น**บนเกาะเดียวกัน**; ผู้เล่นที่เพิ่งปรากฏ/ย้ายเกาะจะได้ presence ของคนอื่นบนเกาะทันที (seed)
+- presence เป็นข้อมูล ephemeral: ใช้ seq stream เดียวกับ economy แต่ client apply ได้เลยแม้ seq กระโดด (ตำแหน่งสัมบูรณ์ทับของเก่า) — resync ยังทำงานให้ economy ตามปกติ
+- disconnect → broadcast presence-leave ให้ islanders
+
+
+## S13 — Multiplayer Movement (presence relay)
+
+Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อน) — เดินบนช่อง WebSocket เดิม (S9)
+
+### Client → Server: `{type:'move', islandId, x, y, z, heading, onBoat}`
+- ข้อยกเว้นเดียวของช่อง push-only: client ส่ง move ได้ (ยังส่ง ping ได้; type อื่นยังปิด 1008)
+- ไม่ใช่ authority — presence relay ล้วน (ไม่มีผล gameplay/collision/รางวัล); พิกัดไม่ใช่ตัวเลขจำกัด/islandId ว่าง → ปิด 1008
+- Throttle: ส่งถี่กว่า `REALTIME_MOVE_MIN_INTERVAL_MS` (80ms) Server เก็บตำแหน่งล่าสุดแต่ไม่ relay
+- client เกม: ส่งทุก 100ms ผ่าน `setInterval` (จงใจไม่ผูก rAF game loop — แท็บพื้นหลังโดน throttle จน presence ไม่ไหล)
+
+### Server → Client: `{type:'presence', seq, playerId, name, islandId, x, y, z, heading, onBoat}` / `{type:'presence-leave', seq, playerId}`
+- Server relay ตำแหน่งให้เฉพาะผู้เล่น**บนเกาะเดียวกัน**; ผู้เล่นที่เพิ่งปรากฏ/ย้ายเกาะจะได้ presence ของคนอื่นบนเกาะทันที (seed)
+- presence เป็น ephemeral: ใช้ seq stream เดียวกับ economy แต่ client apply ได้เลยแม้ seq กระโดด (ตำแหน่งสัมบูรณ์ทับของเก่า) — resync ยังทำงานให้ economy ตามปกติ
+- disconnect → broadcast presence-leave ให้ islanders

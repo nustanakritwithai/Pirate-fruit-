@@ -34,6 +34,7 @@ const environmentSchema = z
     ENABLE_QUEST_SERVER: booleanFromEnvironment.default(false),
     ENABLE_MONSTER_SERVER: booleanFromEnvironment.default(false),
     ENABLE_PROGRESSION_SERVER: booleanFromEnvironment.default(false),
+    ENABLE_MULTIPLAYER: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -144,6 +145,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_PROGRESSION_SERVER'],
         message: 'ENABLE_QUEST_SERVER and ENABLE_MONSTER_SERVER must be enabled before ENABLE_PROGRESSION_SERVER',
+      });
+    }
+
+    // Multiplayer presence เดินบนช่อง WebSocket — ต้องเปิด realtime ก่อน
+    if (environment.ENABLE_MULTIPLAYER && !environment.ENABLE_REALTIME) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_REALTIME'],
+        message: 'ENABLE_REALTIME must be enabled before ENABLE_MULTIPLAYER',
       });
     }
 

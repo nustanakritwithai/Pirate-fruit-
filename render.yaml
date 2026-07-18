@@ -60,6 +60,9 @@ services:
       # S12 Progression Authority — level เดินจาก EXP ที่ Server แจก (ต้องเปิด QUEST+MONSTER ก่อน; client ต้อง build ด้วย VITE_ENABLE_PROGRESSION_SERVER=true พร้อมกัน)
       - key: ENABLE_PROGRESSION_SERVER
         value: 'false'
+      # S13 Multiplayer Movement — presence relay บน WebSocket (ต้องเปิด ENABLE_REALTIME ก่อน; client ต้อง build ด้วย VITE_ENABLE_MULTIPLAYER=true พร้อมกัน)
+      - key: ENABLE_MULTIPLAYER
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

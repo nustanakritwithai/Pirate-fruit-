@@ -82,3 +82,17 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ลำดับเปิดใช้: ต้องเปิด `ENABLE_QUEST_SERVER` + `ENABLE_MONSTER_SERVER` มาก่อนและ verify แล้ว → ตั้ง `ENABLE_PROGRESSION_SERVER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_PROGRESSION_SERVER=true` → ฆ่ามอน/เคลมเควสต์แล้วตรวจ `select level from characters` ขยับตาม + save ไม่เขียนทับ
 - ตรวจสถานะทางการ: `select c.level, p.exp from characters c left join player_progression p on p.character_id = c.id where c.id = $1`
 - ผู้เล่นเจอ 409 KILL_RATE_LIMITED ใน log = รายงานฆ่าเกิน 40 ตัว/นาที — client คิวไว้ retry เอง ไม่มีรางวัลหาย (ถ้าเจอบ่อยผิดปกติ = พฤติกรรมน่าสงสัย ควรดู audit)
+
+
+## S13 — Multiplayer Movement
+- ลำดับเปิดใช้: ต้องเปิด `ENABLE_REALTIME` และ verify แล้ว → ตั้ง `ENABLE_MULTIPLAYER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_MULTIPLAYER=true` → เปิดเกมสองเครื่อง (คนละบัญชี/แท็บ incognito) บนเกาะเดียวกัน เห็นผีอีกคนเดินตาม
+- ไม่มี migration/ตารางใหม่ — presence อยู่ใน memory ของ instance เท่านั้น
+- Render free instance เดียว: ผู้เล่นทุกคนต่อ WS เข้า process เดียวกัน presence relay จึงทำงานได้ทันที (ถ้าสเกลหลาย instance ในอนาคตต้องมี shared presence bus)
+- Debug: DevTools → Network → WS → เฟรม move (ออก) / presence (เข้า)
+
+
+## S13 — Multiplayer Movement
+- ลำดับเปิดใช้: ต้องเปิด `ENABLE_REALTIME` และ verify แล้ว → ตั้ง `ENABLE_MULTIPLAYER=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_MULTIPLAYER=true` → เปิดเกมสองเครื่อง (คนละบัญชี/แท็บ incognito) บนเกาะเดียวกัน เห็นผีอีกคนเดินตาม
+- ไม่มี migration/ตารางใหม่ — presence อยู่ใน memory ของ instance เท่านั้น
+- Render free instance เดียว: ผู้เล่นทุกคนต่อ WS เข้า process เดียวกัน relay ทำงานทันที (สเกลหลาย instance ในอนาคตต้องมี shared presence bus)
+- Debug: DevTools → Network → WS → เฟรม move (ออก) / presence (เข้า)

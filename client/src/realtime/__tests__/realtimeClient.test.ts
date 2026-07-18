@@ -140,4 +140,39 @@ describe('S9 realtime client', () => {
     expect(client.connected).toBe(false);
     client.stop();
   });
+
+  it('dispatches presence and presence-leave to handlers and sends move frames', () => {
+    const sockets: FakeSocket[] = [];
+    const presence: string[] = [];
+    const left: string[] = [];
+    const client = new RealtimeClient('ws://test/ws', {
+      onEconomy: () => undefined,
+      onResync: () => undefined,
+      onPresence: (snapshot) => presence.push(`${snapshot.playerId}@${snapshot.x},${snapshot.z}`),
+      onPresenceLeave: (playerId) => left.push(playerId),
+    }, {
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    client.start();
+    const socket = sockets[0];
+    socket.welcome();
+
+    socket.push({
+      type: 'presence', seq: 2, playerId: 'char-b', name: 'Bob',
+      islandId: 'starter-island', x: 5, y: 0, z: 6, heading: 0, onBoat: false,
+    });
+    socket.push({ type: 'presence-leave', seq: 3, playerId: 'char-b' });
+    expect(presence).toEqual(['char-b@5,6']);
+    expect(left).toEqual(['char-b']);
+
+    client.sendMove({ islandId: 'starter-island', x: 1, y: 0, z: 2, heading: 0.5, onBoat: false });
+    const moveFrame = socket.sent.map((raw) => JSON.parse(raw)).find((m) => m.type === 'move');
+    expect(moveFrame).toMatchObject({ type: 'move', islandId: 'starter-island', x: 1, z: 2 });
+    client.stop();
+  });
+
 });
