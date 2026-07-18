@@ -219,6 +219,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     headers: { origin: GAME_URL, 'content-type': 'application/json' },
     body: '{}',
   });
+  // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
+  const peerDiag = { guestStatus: guest.status, frames: [], gotPage1Presence: false, error: null, closed: null };
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
@@ -234,16 +236,39 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     const timer = setInterval(peerMove, 1_000);
     peer.on('close', () => clearInterval(timer));
   });
+  peer.on('message', (data) => {
+    try {
+      const message = JSON.parse(String(data));
+      if (message?.type) peerDiag.frames.push(message.type);
+      // peer ได้ presence = page1 ลง presence สำเร็จ + relay ทำงาน (พิสูจน์คนละทางกับ page1)
+      if (message?.type === 'presence') peerDiag.gotPage1Presence = true;
+    } catch { /* ไม่ใช่ JSON */ }
+  });
+  peer.on('error', (err) => { peerDiag.error = String(err).slice(0, 200); });
+  peer.on('unexpected-response', (_req, res) => { peerDiag.error = `unexpected-response ${res.statusCode}`; });
+  peer.on('close', (code) => { peerDiag.closed = code; });
 
   const gotNaval = () => wsEvents.presence.some((p) => p.onBoat === true && p.boatId === 'war-galleon');
   const done = () => (NAVAL ? gotNaval() : wsEvents.frames.includes('presence'));
   // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
   // (relay ข้าม connection ที่ยังไม่เคยขยับ) — ปั๊ม move จากฝั่ง Node ทุกรอบผ่าน
   // __realtime.sendMove โดยตรง ไม่พึ่ง setInterval ในหน้าเว็บที่ headless CI throttle
+  let pumpDiag = { hasRealtime: false, connected: false, sent: 0 };
   const pumpSelfMove = () => page.evaluate(() => {
     const rt = window.__realtime;
-    rt?.sendMove?.({ islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false });
-  }).catch(() => {});
+    const out = { hasRealtime: Boolean(rt), connected: Boolean(rt && rt.connected), sent: false };
+    if (rt && typeof rt.sendMove === 'function') {
+      rt.sendMove({ islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false });
+      out.sent = true;
+    }
+    return out;
+  }).then((out) => {
+    if (out) {
+      pumpDiag.hasRealtime = out.hasRealtime;
+      pumpDiag.connected = out.connected;
+      if (out.sent) pumpDiag.sent += 1;
+    }
+  }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
     await pumpSelfMove();
@@ -252,9 +277,10 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   peer.close();
   if (!done()) {
     fail('did not receive the expected presence frame from the second player', {
-      naval: NAVAL, presence: wsEvents.presence.slice(0, 3), wsEvents, apiCalls,
+      naval: NAVAL, presence: wsEvents.presence.slice(0, 3), wsEvents, peerDiag, pumpDiag, apiCalls,
     });
   }
+  console.log('S13/S14 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag }));
 }
 
 console.log('SMOKE PASS');
