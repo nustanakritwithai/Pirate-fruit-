@@ -8,6 +8,7 @@ import {
   type RealtimeEconomyUpdate,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
+import { CombatAuthority, type AttackKind } from './combatAuthority.js';
 
 /** ส่วนของ WebSocket ที่ hub ใช้ — แคบพอให้เทสต์ด้วย fake ได้ */
 export interface RealtimeSocket {
@@ -96,6 +97,9 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
 export class RealtimeHub {
   private readonly connections = new Set<RealtimeConnection>();
   private reaper: ReturnType<typeof setInterval> | null = null;
+  private combatTicker: ReturnType<typeof setInterval> | null = null;
+  /** S15: แหล่งความจริงของ HP PvP — Client ส่งได้แค่เจตนาโจมตี */
+  private readonly combat = new CombatAuthority();
 
   constructor(
     private readonly logger: RealtimeHubLogger = silentLogger,
@@ -103,6 +107,8 @@ export class RealtimeHub {
     private readonly maxConnections = 200,
     /** S13: เปิด presence relay (ผู้เล่นเห็นกันเคลื่อนที่) — ปิด = ไม่รับ move */
     private readonly presenceEnabled = false,
+    /** S15: เปิด PvP combat authority — ปิด = ไม่รับ attack */
+    private readonly pvpEnabled = false,
   ) {}
 
   get connectionCount(): number {
@@ -131,6 +137,7 @@ export class RealtimeHub {
       lastMoveAt: 0,
     };
     this.connections.add(connection);
+    if (this.pvpEnabled) this.combat.ensure(characterId);
     this.sendTo(connection, {
       type: 'welcome',
       seq: 0, // ถูกแทนที่ใน sendTo
@@ -147,6 +154,17 @@ export class RealtimeHub {
     if (wasPresent && connection.presence) {
       this.broadcastPresenceLeave(connection);
     }
+    // S15: ไม่มี connection ของ character นี้เหลือแล้ว → ล้างสถานะ PvP
+    if (this.pvpEnabled && !this.hasCharacter(connection.characterId)) {
+      this.combat.remove(connection.characterId);
+    }
+  }
+
+  private hasCharacter(characterId: string): boolean {
+    for (const other of this.connections) {
+      if (other.characterId === characterId) return true;
+    }
+    return false;
   }
 
   /** client ส่งอะไรมาก็ตาม: รับเฉพาะ ping เล็ก ๆ — เกินสเปกคือ protocol violation */
@@ -171,6 +189,10 @@ export class RealtimeHub {
     }
     if (message.type === 'move') {
       this.handleMove(connection, message);
+      return;
+    }
+    if (message.type === 'attack') {
+      this.handleAttack(connection, message);
       return;
     }
     this.drop(connection, 1008, 'unsupported message type');
@@ -216,6 +238,91 @@ export class RealtimeHub {
       if (!other.presence || other.presence.islandId !== islandId) continue;
       this.sendTo(other, { type: 'presence-leave', seq: 0, playerId: connection.characterId });
     }
+  }
+
+  /** S15: รับเจตนาโจมตี → Server ตัดสินระยะ/คูลดาวน์/ดาเมจเอง แล้ว broadcast ผล */
+  private handleAttack(connection: RealtimeConnection, message: Record<string, unknown>): void {
+    if (!this.pvpEnabled) return; // ปิด flag = เพิกเฉย (ไม่ถือเป็น violation)
+    const targetId = message.targetId;
+    if (typeof targetId !== 'string' || targetId.length === 0 || targetId.length > 128) {
+      this.drop(connection, 1008, 'invalid attack payload');
+      return;
+    }
+    const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
+    const attackerPos = connection.presence;
+    const targetPos = this.presenceOfCharacter(targetId);
+    // ต้องอยู่เกาะเดียวกัน (range check เป็นเรขาคณิตล้วน — กันพิกัดชนกันข้ามเกาะ)
+    if (!attackerPos || !targetPos || attackerPos.islandId !== targetPos.islandId) return;
+    const resolution = this.combat.resolveAttack(
+      this.now(),
+      connection.characterId,
+      attackerPos,
+      targetId,
+      targetPos,
+      kind,
+    );
+    if (!resolution) return;
+    const islandId = targetPos.islandId;
+    this.broadcastToIsland(islandId, {
+      type: 'combat-hit',
+      seq: 0,
+      attackerId: connection.characterId,
+      targetId,
+      damage: resolution.damage,
+      hp: resolution.hp,
+      maxHp: resolution.maxHp,
+    });
+    if (resolution.defeated) {
+      this.broadcastToIsland(islandId, {
+        type: 'combat-defeat',
+        seq: 0,
+        playerId: targetId,
+        byId: connection.characterId,
+      });
+    }
+  }
+
+  /** presence ล่าสุดของ character (connection แรกที่มี presence) — null ถ้าไม่มี */
+  private presenceOfCharacter(characterId: string): PresencePosition | null {
+    for (const other of this.connections) {
+      if (other.characterId === characterId && other.presence) return other.presence;
+    }
+    return null;
+  }
+
+  private broadcastToIsland(islandId: string, message: RealtimeServerMessage): void {
+    for (const other of this.connections) {
+      if (other.presence?.islandId !== islandId) continue;
+      this.sendTo(other, message);
+    }
+  }
+
+  /** S15: รอบเกิดใหม่ PvP — ผู้เล่นที่ครบเวลาแล้วรีเซ็ต HP เต็ม + broadcast */
+  processCombatRespawns(): void {
+    if (!this.pvpEnabled) return;
+    for (const event of this.combat.collectRespawns(this.now())) {
+      const islandId = this.presenceOfCharacter(event.playerId)?.islandId;
+      for (const other of this.connections) {
+        const sameIsland = islandId !== undefined && other.presence?.islandId === islandId;
+        if (other.characterId !== event.playerId && !sameIsland) continue;
+        this.sendTo(other, {
+          type: 'combat-respawn',
+          seq: 0,
+          playerId: event.playerId,
+          hp: event.hp,
+          maxHp: event.maxHp,
+        });
+      }
+    }
+  }
+
+  /** เริ่มรอบตรวจเกิดใหม่ PvP (ละเอียดกว่ารอบ reaper) */
+  startCombatTicker(intervalMs = 1_000): () => void {
+    this.combatTicker = setInterval(() => this.processCombatRespawns(), intervalMs);
+    return () => {
+      if (this.combatTicker) clearInterval(this.combatTicker);
+      this.combatTicker = null;
+    };
   }
 
   /** economy tick/trade เขียนสำเร็จ → push ให้ทุก connection */

@@ -26,7 +26,7 @@ const apiCalls = [];
 const pageErrors = [];
 // S9: จับ WebSocket จริงจากหน้าเกม — ยืนยัน handshake + เฟรม economy push
 // S14: เก็บ payload ของ presence ด้วย เพื่อยืนยัน boatId เดินทางถึงหน้าเกม
-const wsEvents = { opened: 0, frames: [], presence: [] };
+const wsEvents = { opened: 0, frames: [], presence: [], combat: [] };
 page.on('websocket', (socket) => {
   wsEvents.opened += 1;
   socket.on('framereceived', (frame) => {
@@ -34,6 +34,8 @@ page.on('websocket', (socket) => {
       const message = JSON.parse(String(frame.payload));
       if (message?.type) wsEvents.frames.push(message.type);
       if (message?.type === 'presence') wsEvents.presence.push(message);
+      // S15: เก็บเฟรม PvP ที่ Server ตัดสิน (โดนเราเอง) เพื่อยืนยัน authority ถึงหน้าเกม
+      if (message?.type === 'combat-hit') wsEvents.combat.push(message);
     } catch { /* ไม่ใช่ JSON — ข้าม */ }
   });
 });
@@ -274,13 +276,38 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     await pumpSelfMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  peer.close();
   if (!done()) {
+    peer.close();
     fail('did not receive the expected presence frame from the second player', {
       naval: NAVAL, presence: wsEvents.presence.slice(0, 3), wsEvents, peerDiag, pumpDiag, apiCalls,
     });
   }
-  console.log('S13/S14 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag }));
+
+  // S15 PvP: peer โจมตี page1 → page1 (เป้า) ต้องได้ combat-hit ที่ Server ตัดสินเอง
+  // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority เดินทางถึงเบราว์เซอร์จริง ไม่เชื่อ Client)
+  const pvpDiag = { hasTarget: false, attacksSent: 0, gotHit: false };
+  if (process.env.SMOKE_EXPECT_PVP === 'true') {
+    const targetId = await page.evaluate(() => window.__characterId ?? null);
+    pvpDiag.hasTarget = Boolean(targetId);
+    const gotCombat = () => wsEvents.combat.some((c) => c.targetId === targetId && c.hp < c.maxHp);
+    const pvpDeadline = Date.now() + 20_000;
+    while (targetId && Date.now() < pvpDeadline && !gotCombat()) {
+      await pumpSelfMove(); // page1 คงมี presence เป็นเป้าให้ Server วัดระยะ
+      if (peer.readyState === 1) {
+        peer.send(JSON.stringify({ type: 'attack', targetId, kind: 'skill' }));
+        pvpDiag.attacksSent += 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    pvpDiag.gotHit = gotCombat();
+  }
+  peer.close();
+  if (process.env.SMOKE_EXPECT_PVP === 'true' && !pvpDiag.gotHit) {
+    fail('did not receive a server-authoritative combat-hit from PvP', {
+      pvpDiag, combat: wsEvents.combat.slice(0, 3), peerDiag, pumpDiag,
+    });
+  }
+  console.log('S13/S14/S15 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag }));
 }
 
 console.log('SMOKE PASS');

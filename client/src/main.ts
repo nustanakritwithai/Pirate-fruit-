@@ -63,7 +63,7 @@ import {
   initializeRemoteSession,
   recoverRemoteSession,
 } from './session/RemoteSession';
-import { REMOTE_ECONOMY_TICK_INTERVAL_MS } from '@pirate-fruit/shared';
+import { REMOTE_ECONOMY_TICK_INTERVAL_MS, PVP_MELEE_RANGE, PVP_SKILL_RANGE } from '@pirate-fruit/shared';
 import { ServerStatusBadge } from './ui/ServerStatusBadge';
 
 async function main(): Promise<void> {
@@ -308,6 +308,10 @@ async function main(): Promise<void> {
     ? new RemotePlayers(game.scene, islandManager.activeIsland)
     : null;
   if (remotePlayers) game.add(remotePlayers);
+  // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
+  const pvpEnabled = multiplayerEnabled
+    && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
+  const selfCharacterId = getRemoteSession().session?.characterId ?? null;
   const realtime = initializeRealtime({
     onEconomy: (state) => {
       const world = state?.world ? parseEconomyDocument(state.world) : null;
@@ -321,11 +325,46 @@ async function main(): Promise<void> {
     onAnnouncement: (message, level) => economyHud.notifyStatus(message, level === 'warning'),
     onPresence: (snapshot) => remotePlayers?.applyPresence(snapshot),
     onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
+    // S15: ผล PvP จาก Server (authority) — โดนเราเอง = ปรับหลอดเลือดตาม Server
+    onCombatHit: ({ attackerId, targetId, damage, hp, maxHp }) => {
+      if (targetId === selfCharacterId) {
+        const fraction = maxHp > 0 ? hp / maxHp : 0;
+        controller.hp = Math.max(0, Math.round(fraction * controller.hpMax));
+        hud.flashDamage();
+        playerCombat?.notifyDamaged();
+        effects.spawnDamageNumber(controller.position, damage, '#ff6b6b');
+      } else {
+        const at = remotePlayers?.positionOf(targetId);
+        if (at) {
+          at.y += 2.2;
+          effects.spawnDamageNumber(at, damage, attackerId === selfCharacterId ? '#ffe28a' : '#ff8a8a');
+        }
+      }
+    },
+    onCombatDefeat: (playerId) => {
+      if (playerId === selfCharacterId) {
+        // แพ้ PvP → กลับจุดปลอดภัย (Server จะส่ง respawn คืน HP เต็มตามเวลา)
+        controller.hp = Math.max(1, Math.round(controller.hpMax * 0.1));
+        spawnManager.teleportToCheckpoint();
+        hud.flashDamage();
+      } else {
+        remotePlayers?.markDefeated(playerId);
+      }
+    },
+    onCombatRespawn: (playerId) => {
+      if (playerId === selfCharacterId) {
+        controller.hp = controller.hpMax;
+      } else {
+        remotePlayers?.markRespawn(playerId);
+      }
+    },
   });
   realtime?.start();
   // debug/E2E hook (อ่าน+ส่ง move ตรง ๆ ได้) — ให้ browser-smoke ปั๊ม presence
   // จากฝั่ง Node ได้แน่นอน โดยไม่พึ่ง setInterval ในหน้าเว็บที่ headless throttle
   (window as unknown as { __realtime?: typeof realtime }).__realtime = realtime;
+  // S15: characterId ของเราให้ browser-smoke ใช้เป็นเป้าทดสอบ PvP (อ่านอย่างเดียว)
+  (window as unknown as { __characterId?: string | null }).__characterId = selfCharacterId;
   // S13: รายงานตำแหน่งตัวเองให้ Server relay ทุก 100ms ผ่าน setInterval —
   // จงใจไม่ผูกกับ game loop (rAF) เพราะแท็บพื้นหลังโดน throttle จน presence ไม่ไหล
   if (realtime && multiplayerEnabled) {
@@ -525,6 +564,17 @@ async function main(): Promise<void> {
     skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
   }));
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
+  // S15: ต่อ M1/สกิลของผู้เล่นเข้ากับ PvP — หาผู้เล่นคนอื่นในกรวยหน้าแล้วส่ง "เจตนาโจมตี"
+  // ให้ Server ตัดสิน (ระยะ/คูลดาวน์/ดาเมจ) — Client ไม่ส่งดาเมจ (กันโกง)
+  if (pvpEnabled && realtime && remotePlayers) {
+    const CONE_HALF_ANGLE = Math.PI / 3; // ~120° กรวยหน้า
+    playerCombat.onPvpAttack = ({ origin, forwardX, forwardZ, kind, skillId }) => {
+      const range = kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
+      for (const targetId of remotePlayers.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE)) {
+        realtime.sendAttack(targetId, kind, skillId);
+      }
+    };
+  }
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
   (window as unknown as { __boat?: BoatManager }).__boat = boatManager;

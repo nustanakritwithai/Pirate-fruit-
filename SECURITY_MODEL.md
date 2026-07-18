@@ -140,3 +140,10 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 ## S14 — Boat presence
 - `boatId` เป็นข้อมูลแสดงผลล้วน (เลือกโมเดลเรือ) — ไม่มีผล gameplay/รางวัล/ความเร็วจริง; Server ไม่เชื่อเป็น authority
 - validate: รับ `boatId` เฉพาะเมื่อ `onBoat=true` และยาว ≤128; อื่น ๆ ทิ้ง — เดินบน relay + throttle + กรองเกาะเดิมของ S13
+
+## S15 — PvP combat authority
+- **ห้ามเชื่อดาเมจจาก Client**: ข้อความ `attack` ไม่มีฟิลด์ดาเมจ — Server เลือกดาเมจจากตารางคงที่ตาม `kind` เท่านั้น (client ปั้นเลขดาเมจไม่ได้)
+- **Server เป็นเจ้าของ HP**: HP การต่อสู้อยู่ในหน่วยความจำ Server (ephemeral ต่อ session, ไม่ persist) — Client ปรับหลอดเลือดตามค่า `hp/maxHp` ที่ Server ส่ง (โดนเราเอง) ไม่ใช่ตัวตัดสินเอง
+- **ระยะ/ตำแหน่งวัดจากฝั่ง Server**: ใช้ presence ล่าสุดที่ auth แล้ว — client ยิงข้ามเกาะ/นอกระยะ/ใส่ตัวเองไม่ได้ (ปัดตกเงียบ); ตัวตนผู้โจมตี (`attackerId`) แนบจาก connection ของ Server
+- **กันสแปม/ออโต้**: throttle ต่อคู่ผู้โจมตี→เป้า (`PVP_ATTACK_MIN_INTERVAL_MS`) — ยิงถี่เกินถูกทิ้ง; ตาย/เกิดใหม่ Server เป็นคนตั้งเวลา (`PVP_RESPAWN_MS`)
+- ยังไม่มีผลต่อเศรษฐกิจ/รางวัล: แพ้ PvP ไม่เสียเหรียญ/ของ (ephemeral duel) — reward-on-kill เป็นงานอนาคต; ปิดด้วย `ENABLE_PVP=false` default ในโปรดักชัน

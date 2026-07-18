@@ -97,4 +97,27 @@ describe('S13 RemotePlayers', () => {
     expect(players.count).toBe(1);
   });
 
+  it('finds only players inside the forward attack cone and in range (S15)', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ playerId: 'front', x: 0, z: 3 }));   // ตรงหน้า ใกล้
+    players.applyPresence(snapshot({ playerId: 'behind', x: 0, z: -3 }));  // ข้างหลัง
+    players.applyPresence(snapshot({ playerId: 'far', x: 0, z: 40 }));     // หน้า แต่ไกล
+    const origin = new THREE.Vector3(0, 0, 0);
+    // forward = +Z, กรวย 90° (half=PI/4), ระยะ 5
+    const hits = players.targetsInCone(origin, 0, 1, 5, Math.PI / 4);
+    expect(hits).toEqual(['front']);
+  });
+
+  it('hides a defeated player and shows them again on respawn (S15)', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1 }));
+    players.markDefeated('foe');
+    // ถูกซ่อน → ไม่ถูกเลือกเป็นเป้าอีก
+    expect(players.targetsInCone(new THREE.Vector3(0, 0, 0), 0, 1, 20, Math.PI)).not.toContain('foe');
+    players.markRespawn('foe');
+    expect(players.targetsInCone(new THREE.Vector3(0, 0, 0), 0, 1, 20, Math.PI)).toContain('foe');
+  });
+
 });

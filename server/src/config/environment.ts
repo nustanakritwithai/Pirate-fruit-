@@ -35,6 +35,7 @@ const environmentSchema = z
     ENABLE_MONSTER_SERVER: booleanFromEnvironment.default(false),
     ENABLE_PROGRESSION_SERVER: booleanFromEnvironment.default(false),
     ENABLE_MULTIPLAYER: booleanFromEnvironment.default(false),
+    ENABLE_PVP: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -154,6 +155,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_REALTIME'],
         message: 'ENABLE_REALTIME must be enabled before ENABLE_MULTIPLAYER',
+      });
+    }
+
+    // PvP combat authority ต้องรู้ตำแหน่งผู้เล่นจาก presence ก่อน (วัดระยะโจมตี)
+    if (environment.ENABLE_PVP && !environment.ENABLE_MULTIPLAYER) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_MULTIPLAYER'],
+        message: 'ENABLE_MULTIPLAYER must be enabled before ENABLE_PVP',
       });
     }
 
