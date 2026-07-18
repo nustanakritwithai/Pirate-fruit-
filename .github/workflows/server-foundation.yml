@@ -75,6 +75,7 @@ jobs:
       ENABLE_PROGRESSION_SERVER: 'true'
       ENABLE_MULTIPLAYER: 'true'
       ENABLE_PVP: 'true'
+      ENABLE_SHARED_WORLD_MONSTERS: 'true'
       PORT: '10000'
       VITE_API_URL: http://127.0.0.1:10000
       VITE_USE_REMOTE_SERVER: 'true'
@@ -87,6 +88,7 @@ jobs:
       VITE_ENABLE_PROGRESSION_SERVER: 'true'
       VITE_ENABLE_MULTIPLAYER: 'true'
       VITE_ENABLE_PVP: 'true'
+      VITE_ENABLE_SHARED_WORLD_MONSTERS: 'true'
       SMOKE_EXPECT_REALTIME: 'true'
       SMOKE_EXPECT_QUEST: 'true'
       SMOKE_EXPECT_MONSTER: 'true'
@@ -94,6 +96,7 @@ jobs:
       SMOKE_EXPECT_MULTIPLAYER: 'true'
       SMOKE_EXPECT_NAVAL: 'true'
       SMOKE_EXPECT_PVP: 'true'
+      SMOKE_EXPECT_WORLD_MONSTERS: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

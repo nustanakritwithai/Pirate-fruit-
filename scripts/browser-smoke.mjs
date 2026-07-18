@@ -26,7 +26,10 @@ const apiCalls = [];
 const pageErrors = [];
 // S9: จับ WebSocket จริงจากหน้าเกม — ยืนยัน handshake + เฟรม economy push
 // S14: เก็บ payload ของ presence ด้วย เพื่อยืนยัน boatId เดินทางถึงหน้าเกม
-const wsEvents = { opened: 0, frames: [], presence: [], combat: [] };
+const wsEvents = {
+  opened: 0, frames: [], presence: [], combat: [],
+  worldSnapshot: 0, worldDeltas: [], worldDead: [],
+};
 page.on('websocket', (socket) => {
   wsEvents.opened += 1;
   socket.on('framereceived', (frame) => {
@@ -36,6 +39,10 @@ page.on('websocket', (socket) => {
       if (message?.type === 'presence') wsEvents.presence.push(message);
       // S15: เก็บเฟรม PvP ที่ Server ตัดสิน (โดนเราเอง) เพื่อยืนยัน authority ถึงหน้าเกม
       if (message?.type === 'combat-hit') wsEvents.combat.push(message);
+      // S16: มอนสเตอร์กลาง — snapshot ตอน join + delta/dead ที่ Server ตัดสิน
+      if (message?.type === 'world-monster-snapshot') wsEvents.worldSnapshot = message.monsters?.length ?? 0;
+      if (message?.type === 'world-monster-delta') wsEvents.worldDeltas.push(...(message.updates ?? []));
+      if (message?.type === 'world-monster-dead') wsEvents.worldDead.push(message.spawnId);
     } catch { /* ไม่ใช่ JSON — ข้าม */ }
   });
 });
@@ -301,13 +308,41 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     }
     pvpDiag.gotHit = gotCombat();
   }
+
+  // S16 shared monsters: peer ตีมอนสเตอร์กลาง → หน้าเกม (page1) ต้องเห็น HP ลด + ตาย
+  // เหมือนกัน (มอนสเตอร์เป็นสิ่งเดียวในโลกกลาง — Server เป็นเจ้าของ HP/death)
+  const worldDiag = { gotSnapshot: 0, hitsSent: 0, sawDamage: false, sawDead: false };
+  if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true') {
+    const spawnId = 'starter-crab-1';
+    const sawDamage = () => wsEvents.worldDeltas.some((d) => d.spawnId === spawnId && d.hp < 70);
+    const sawDead = () => wsEvents.worldDead.includes(spawnId);
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline && !sawDead()) {
+      await pumpSelfMove(); // page1 คงมี presence → ได้ snapshot/delta ของเกาะ
+      if (peer.readyState === 1) {
+        peer.send(JSON.stringify({ type: 'world-monster-hit', spawnId, kind: 'skill' }));
+        worldDiag.hitsSent += 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    worldDiag.gotSnapshot = wsEvents.worldSnapshot;
+    worldDiag.sawDamage = sawDamage();
+    worldDiag.sawDead = sawDead();
+  }
+
   peer.close();
+  if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true'
+    && !(worldDiag.gotSnapshot > 0 && worldDiag.sawDamage && worldDiag.sawDead)) {
+    fail('shared world monster state did not reach the browser (snapshot/damage/death)', {
+      worldDiag, worldDeltas: wsEvents.worldDeltas.slice(0, 3), worldDead: wsEvents.worldDead, pumpDiag,
+    });
+  }
   if (process.env.SMOKE_EXPECT_PVP === 'true' && !pvpDiag.gotHit) {
     fail('did not receive a server-authoritative combat-hit from PvP', {
       pvpDiag, combat: wsEvents.combat.slice(0, 3), peerDiag, pumpDiag,
     });
   }
-  console.log('S13/S14/S15 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag }));
+  console.log('S13/S14/S15/S16 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag, worldDiag }));
 }
 
 console.log('SMOKE PASS');

@@ -9,6 +9,23 @@ import {
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
 import { CombatAuthority, type AttackKind } from './combatAuthority.js';
+import type { PlayerView } from '../world/monsterSimulation.js';
+
+/**
+ * S16 — สะพานไปยัง MonsterWorld: hub เรียกเพื่อส่ง snapshot ตอน join + ส่งต่อ hit
+ * (world sim เรียกกลับ hub เพื่อ broadcast delta/death/respawn)
+ */
+export interface WorldMonsterBridge {
+  snapshotMessageForIsland(islandId: string): RealtimeServerMessage;
+  handleHit(
+    characterId: string,
+    islandId: string,
+    x: number,
+    z: number,
+    spawnId: string,
+    kind: AttackKind,
+  ): void;
+}
 
 /** ส่วนของ WebSocket ที่ hub ใช้ — แคบพอให้เทสต์ด้วย fake ได้ */
 export interface RealtimeSocket {
@@ -100,6 +117,8 @@ export class RealtimeHub {
   private combatTicker: ReturnType<typeof setInterval> | null = null;
   /** S15: แหล่งความจริงของ HP PvP — Client ส่งได้แค่เจตนาโจมตี */
   private readonly combat = new CombatAuthority();
+  /** S16: สะพานไป MonsterWorld (null = ปิด shared world monsters) */
+  private worldMonsters: WorldMonsterBridge | null = null;
 
   constructor(
     private readonly logger: RealtimeHubLogger = silentLogger,
@@ -195,6 +214,10 @@ export class RealtimeHub {
       this.handleAttack(connection, message);
       return;
     }
+    if (message.type === 'world-monster-hit') {
+      this.handleWorldMonsterHit(connection, message);
+      return;
+    }
     this.drop(connection, 1008, 'unsupported message type');
   }
 
@@ -222,6 +245,10 @@ export class RealtimeHub {
         if (other === connection || !other.presence) continue;
         if (other.presence.islandId !== position.islandId) continue;
         this.sendTo(connection, presenceMessage(other));
+      }
+      // S16: และ seed มอนสเตอร์กลางของเกาะนี้ (full snapshot) ให้ผู้เล่นที่เพิ่งเข้ามา
+      if (this.worldMonsters) {
+        this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(position.islandId));
       }
     }
     // และ broadcast ตำแหน่งของคนนี้ให้คนอื่นบนเกาะเดียวกัน
@@ -323,6 +350,51 @@ export class RealtimeHub {
       if (this.combatTicker) clearInterval(this.combatTicker);
       this.combatTicker = null;
     };
+  }
+
+  /** S16: ต่อ MonsterWorld เข้า hub — เปิด shared world monsters */
+  attachWorldMonsters(bridge: WorldMonsterBridge): void {
+    this.worldMonsters = bridge;
+  }
+
+  /** S16: มุมมองผู้เล่นที่มีตำแหน่ง (ให้ world sim ใช้ขับ AI) */
+  worldPlayerViews(): PlayerView[] {
+    const views: PlayerView[] = [];
+    for (const connection of this.connections) {
+      if (!connection.presence) continue;
+      views.push({
+        characterId: connection.characterId,
+        islandId: connection.presence.islandId,
+        x: connection.presence.x,
+        z: connection.presence.z,
+      });
+    }
+    return views;
+  }
+
+  /** S16: broadcast ข้อความมอนสเตอร์ให้ผู้เล่นบนเกาะเดียวกัน (interest = ระดับเกาะ) */
+  broadcastWorldMonster(islandId: string, message: RealtimeServerMessage): void {
+    this.broadcastToIsland(islandId, message);
+  }
+
+  private handleWorldMonsterHit(connection: RealtimeConnection, message: Record<string, unknown>): void {
+    if (!this.worldMonsters) return; // ปิด flag = เพิกเฉย
+    const spawnId = message.spawnId;
+    if (typeof spawnId !== 'string' || spawnId.length === 0 || spawnId.length > 96) {
+      this.drop(connection, 1008, 'invalid world-monster-hit payload');
+      return;
+    }
+    const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
+    const presence = connection.presence;
+    if (!presence) return; // ต้องมีตำแหน่ง (Server วัดระยะเอง — ไม่เชื่อพิกัด client)
+    this.worldMonsters.handleHit(
+      connection.characterId,
+      presence.islandId,
+      presence.x,
+      presence.z,
+      spawnId,
+      kind,
+    );
   }
 
   /** economy tick/trade เขียนสำเร็จ → push ให้ทุก connection */

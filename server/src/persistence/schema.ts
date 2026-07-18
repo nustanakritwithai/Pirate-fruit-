@@ -11,6 +11,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  real,
   text,
   timestamp,
   unique,
@@ -450,6 +451,19 @@ export const monsterKillBatches = pgTable(
     ),
   ],
 );
+
+// S16 — สถานะมอนสเตอร์กลาง (restart recovery): HP/state/ตำแหน่ง/เวลาเกิดใหม่ต่อ spawn
+export const worldMonsterState = pgTable('world_monster_state', {
+  spawnId: varchar('spawn_id', { length: 96 }).primaryKey(),
+  islandId: varchar('island_id', { length: 96 }).notNull(),
+  monsterId: varchar('monster_id', { length: 96 }).notNull(),
+  hp: integer('hp').notNull(),
+  state: varchar('state', { length: 24 }).notNull(),
+  x: real('x').notNull(),
+  z: real('z').notNull(),
+  respawnAt: bigint('respawn_at', { mode: 'number' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const schemaMigrations = pgTable(
   'schema_migrations',
