@@ -87,3 +87,10 @@ copies; do not clear them as part of incident rollback.
 1. Rebuild Static Site โดยเอา `VITE_ENABLE_SHARED_WORLD_MONSTERS` ออก (client กลับไป spawn มอนสเตอร์ท้องถิ่นเอง + เลิกส่ง world-monster-hit)
 2. ตั้ง `ENABLE_SHARED_WORLD_MONSTERS=false` ที่ Web Service (Server หยุด tick + เพิกเฉย world-monster-hit)
 - ตาราง `world_monster_state` คงอยู่ได้ (ไม่ต้อง rollback schema) — เป็น state ephemeral ที่ไม่กระทบ save ผู้เล่น; ถ้าจำเป็นต้องถอย schema ใช้ `runRollback` ตามลำดับ migration ปกติ
+
+## S17 — Authoritative Boat World rollback
+1. Rebuild Static Site ด้วย `VITE_ENABLE_BOAT_WORLD=false` ก่อน เพื่อกลับไป S14/local boat + boat presence fallback
+2. ตั้ง `ENABLE_BOAT_WORLD=false` ที่ Web Service แล้ว redeploy; Realtime/Multiplayer/Shared Monsters ทำงานต่อได้
+3. ห้ามลบ `player_boats`, `player_cargo` หรือ local-save backup; เก็บ `world_boat_state` ไว้สำหรับ audit/recovery
+4. หากจำเป็นต้องถอน schema หลัง backup และตรวจว่า flag ปิดแล้วเท่านั้น ใช้ `server/drizzle/rollback/0006_s17_world_boat_state.down.sql`
+5. Stop condition: impossible transform/HP, duplicate cannon, passenger ghost, DB persist error ต่อเนื่อง, WS error spike หรือ cargo ownership mismatch

@@ -113,3 +113,11 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ตาราง `world_monster_state` เพิ่มโดย migration `0005_s16_world_monster_state` (รันอัตโนมัติผ่าน `npm run db:migrate`) — persist สถานะเพื่อกู้คืนหลัง restart
 - คุมต้นทุน: tick `WORLD_MONSTER_TICK_MS` (200ms), broadcast ระดับเกาะ, จำนวน spawn ต่อเกาะจำกัดใน `SHARED_WORLD_SPAWNS` (shared) — ปรับสมดุล/เพิ่มเกาะได้ที่นั่น
 - ปิด flag = กลับไปมอนสเตอร์ท้องถิ่นเดิม (client spawn เอง) ทันที ไม่มี state ค้าง
+
+## S17 — Authoritative Boat World
+- Gate: migration ledger ต้องเป็น version 7 / `0006_s17_world_boat_state` และ `to_regclass('public.world_boat_state')` ต้องไม่เป็น NULL
+- เปิดแบบ vertical slice: `ENABLE_BOAT_WORLD=true` ที่ Server → verify WS snapshot/intents → rebuild Static ด้วย `VITE_ENABLE_BOAT_WORLD=true`
+- Canary สอง browser: summon เรือเดียวกัน, board/input, ตำแหน่งตรงกัน, reconnect ได้ snapshot, ยิงกราบแล้ว HP/sunk/respawn ตรงกัน; ยืนยัน `ENABLE_PVP` ไม่เปลี่ยน
+- Metrics: ดู WS disconnect/error, `boat intent resolved` rejection rate, persist failure, tick/broadcast pressure และ DB errors; benchmark baseline = 200 boats × 20 ticks <500ms ใน unit gate
+- ตรวจ persistence: `select boat_id,owner_id,island_id,hp,state,updated_at from world_boat_state order by updated_at desc limit 20;`
+- ค่า default ของทั้งสอง flag ต้อง `false`; agent ห้ามเปิด production ก่อน backup, CI, review และอนุมัติ rollout แยก

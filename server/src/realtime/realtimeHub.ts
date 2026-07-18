@@ -7,6 +7,8 @@ import {
   type RealtimeAnnouncement,
   type RealtimeEconomyUpdate,
   type RealtimeServerMessage,
+  type RealtimeBoatIntent,
+  type BoatWorldSnapshot,
 } from '@pirate-fruit/shared';
 import { CombatAuthority, type AttackKind } from './combatAuthority.js';
 import type { PlayerView } from '../world/monsterSimulation.js';
@@ -25,6 +27,25 @@ export interface WorldMonsterBridge {
     spawnId: string,
     kind: AttackKind,
   ): void;
+}
+
+export interface BoatIntentResolution {
+  accepted: boolean;
+  reason?: string;
+  entityId?: string;
+}
+
+/** S17 bridge: hub authenticates the character; world service owns every boat mutation. */
+export interface BoatWorldBridge {
+  snapshotMessageForIsland(islandId: string): RealtimeServerMessage;
+  handleIntent(
+    characterId: string,
+    presence: PresencePosition | null,
+    intent: RealtimeBoatIntent,
+  ): Promise<BoatIntentResolution>;
+  isPassenger(characterId: string): boolean;
+  passengerBoat(characterId: string): BoatWorldSnapshot | null;
+  removePlayer(characterId: string): void;
 }
 
 /** ส่วนของ WebSocket ที่ hub ใช้ — แคบพอให้เทสต์ด้วย fake ได้ */
@@ -119,6 +140,8 @@ export class RealtimeHub {
   private readonly combat = new CombatAuthority();
   /** S16: สะพานไป MonsterWorld (null = ปิด shared world monsters) */
   private worldMonsters: WorldMonsterBridge | null = null;
+  /** S17: authoritative boat world; null preserves S14 boat presence fallback. */
+  private boatWorld: BoatWorldBridge | null = null;
 
   constructor(
     private readonly logger: RealtimeHubLogger = silentLogger,
@@ -177,6 +200,7 @@ export class RealtimeHub {
     if (this.pvpEnabled && !this.hasCharacter(connection.characterId)) {
       this.combat.remove(connection.characterId);
     }
+    if (!this.hasCharacter(connection.characterId)) this.boatWorld?.removePlayer(connection.characterId);
   }
 
   private hasCharacter(characterId: string): boolean {
@@ -218,16 +242,43 @@ export class RealtimeHub {
       this.handleWorldMonsterHit(connection, message);
       return;
     }
+    if (message.type === 'boat-intent') {
+      this.handleBoatIntent(connection, message);
+      return;
+    }
     this.drop(connection, 1008, 'unsupported message type');
   }
 
   /** S13: รับตำแหน่งจากผู้เล่น → relay presence ให้คนอื่นบนเกาะเดียวกัน */
   private handleMove(connection: RealtimeConnection, message: Record<string, unknown>): void {
     if (!this.presenceEnabled) return; // ปิด flag = เพิกเฉย (ไม่ถือเป็น violation)
+    // While aboard, seed/reconnect from the server boat transform and ignore client coordinates.
+    const aboard = this.boatWorld?.passengerBoat(connection.characterId);
+    if (aboard) {
+      const firstMove = connection.presence === null;
+      connection.presence = {
+        islandId: aboard.islandId, x: aboard.x, y: 0, z: aboard.z,
+        heading: aboard.heading, onBoat: true, boatId: aboard.definitionId,
+      };
+      if (firstMove) {
+        this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
+        for (const other of this.connections) {
+          if (other === connection || other.presence?.islandId !== aboard.islandId) continue;
+          this.sendTo(connection, presenceMessage(other));
+          this.sendTo(other, presenceMessage(connection));
+        }
+      }
+      return;
+    }
     const position = readPosition(message);
     if (!position) {
       this.drop(connection, 1008, 'invalid move payload');
       return;
+    }
+    if (this.boatWorld) {
+      // S17: a client cannot claim it is aboard or choose a boat id via legacy presence.
+      position.onBoat = false;
+      position.boatId = undefined;
     }
     // throttle: ส่งถี่เกินก็อัปเดตตำแหน่งแต่ไม่ relay (กัน broadcast ท่วม)
     const now = this.now();
@@ -249,6 +300,9 @@ export class RealtimeHub {
       // S16: และ seed มอนสเตอร์กลางของเกาะนี้ (full snapshot) ให้ผู้เล่นที่เพิ่งเข้ามา
       if (this.worldMonsters) {
         this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(position.islandId));
+      }
+      if (this.boatWorld) {
+        this.sendTo(connection, this.boatWorld.snapshotMessageForIsland(position.islandId));
       }
     }
     // และ broadcast ตำแหน่งของคนนี้ให้คนอื่นบนเกาะเดียวกัน
@@ -357,6 +411,62 @@ export class RealtimeHub {
     this.worldMonsters = bridge;
   }
 
+  attachBoatWorld(bridge: BoatWorldBridge): void {
+    this.boatWorld = bridge;
+  }
+
+  /** Server simulation updates passenger presence; client coordinates are ignored aboard. */
+  updateBoatPassengerPresence(
+    characterId: string,
+    islandId: string,
+    x: number,
+    z: number,
+    heading: number,
+    definitionId: string,
+  ): void {
+    for (const connection of this.connections) {
+      if (connection.characterId !== characterId) continue;
+      connection.presence = { islandId, x, y: 0, z, heading, onBoat: true, boatId: definitionId };
+      for (const other of this.connections) {
+        if (other === connection || other.presence?.islandId !== islandId) continue;
+        this.sendTo(other, presenceMessage(connection));
+      }
+    }
+  }
+
+  broadcastBoat(islandId: string, message: RealtimeServerMessage): void {
+    this.broadcastToIsland(islandId, message);
+  }
+
+  private handleBoatIntent(connection: RealtimeConnection, message: Record<string, unknown>): void {
+    if (!this.boatWorld) return;
+    const intentId = message.intentId;
+    const action = message.action;
+    const actions = new Set(['summon', 'board', 'disembark', 'input', 'fire']);
+    if (typeof intentId !== 'string' || intentId.length < 8 || intentId.length > 64
+      || typeof action !== 'string' || !actions.has(action)) {
+      this.drop(connection, 1008, 'invalid boat intent');
+      return;
+    }
+    const entityId = typeof message.entityId === 'string' && message.entityId.length <= 128
+      ? message.entityId : undefined;
+    const fireSide = message.fireSide === 'port' || message.fireSide === 'starboard'
+      ? message.fireSide : undefined;
+    const numberOrUndefined = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    const intent: RealtimeBoatIntent = {
+      type: 'boat-intent', intentId, action: action as RealtimeBoatIntent['action'], entityId,
+      throttle: numberOrUndefined(message.throttle),
+      steer: numberOrUndefined(message.steer),
+      anchor: typeof message.anchor === 'boolean' ? message.anchor : undefined,
+      fireSide,
+    };
+    void this.boatWorld.handleIntent(connection.characterId, connection.presence, intent)
+      .then((result) => this.sendTo(connection, {
+        type: 'boat-intent-result', seq: 0, intentId, ...result,
+      }))
+      .catch((error) => this.logger.warn({ err: error, characterId: connection.characterId }, 'boat intent failed'));
+  }
+
   /** S16: มุมมองผู้เล่นที่มีตำแหน่ง (ให้ world sim ใช้ขับ AI) */
   worldPlayerViews(): PlayerView[] {
     const views: PlayerView[] = [];
@@ -440,7 +550,7 @@ export class RealtimeHub {
   }
 
   private drop(connection: RealtimeConnection, code: number, reason: string): void {
-    this.connections.delete(connection);
+    this.unregister(connection);
     try {
       connection.socket.close(code, reason);
     } catch {
@@ -450,7 +560,7 @@ export class RealtimeHub {
 
   private sendTo(connection: RealtimeConnection, message: RealtimeServerMessage): void {
     if (connection.socket.readyState !== OPEN) {
-      this.connections.delete(connection);
+      this.unregister(connection);
       return;
     }
     connection.seq += 1;

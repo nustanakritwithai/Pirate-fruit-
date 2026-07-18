@@ -156,3 +156,11 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - AI ไม่ target ผู้เล่นที่หายจาก world (หลุด presence) — กัน target ค้างกับ ghost
 - contribution (ใครตีเท่าไร) เก็บฝั่ง Server มีหน้าต่างเวลา — ผู้เล่นนอกระยะ/ไม่ได้ตีไม่ถูกนับ (เตรียมแจก reward/loot phase ถัดไปแบบ authoritative)
 - player HP จากมอนสเตอร์ยังเป็น client-side ในเฟสนี้ (Server เป็นเจ้าของแค่ตัวมอนสเตอร์) — reward/loot authority = งานถัดไป; ปิดด้วย `ENABLE_SHARED_WORLD_MONSTERS=false` default
+
+## S17 — Boat/naval authority
+- Client ส่งเฉพาะ control intent; protocol ไม่มีพิกัดเรือ/ความเร็ว/HP/damage/target/reward ให้ปลอม
+- Server resolve active boat จาก `player_boats` ของ character ที่ auth แล้ว, spawn ที่ dock ของ Server, clamp input, tick movement/collision และ broadside hit เอง
+- `intentId` ให้ replay protection; cooldown ปืนอยู่ใน runtime Server; ผู้ที่ไม่ใช่ helm สั่งขับ/ยิงไม่ได้
+- board/disembark ตรวจ entity จริง เกาะ และระยะจาก authenticated presence; ระหว่างเป็น passenger จะไม่รับ legacy client move และ derive presence จาก boat transform
+- HP world persist กลับ `world_boat_state` และ `player_boats`; cargo ยังผูก FK กับ boat id เดียวกัน จึงไม่เปลี่ยน capacity ผ่าน Client
+- Server broadcast absolute snapshot/delta; prediction ฝั่ง Clientมีผลเฉพาะ rendering และถูก Server correction ทับเสมอ

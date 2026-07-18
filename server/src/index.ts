@@ -15,6 +15,8 @@ import { startGuestCleanup } from './auth/sessionCleanup.js';
 import { RealtimeHub } from './realtime/realtimeHub.js';
 import { MonsterWorldService } from './world/monsterWorldService.js';
 import { PostgresWorldMonsterRepository } from './world/worldMonsterRepository.js';
+import { BoatWorldService } from './world/boatWorldService.js';
+import { PostgresBoatWorldRepository } from './world/boatWorldRepository.js';
 import { PostgresTradeRepository } from './trade/tradeRepository.js';
 import { TradeService } from './trade/tradeService.js';
 import { PostgresQuestRepository } from './quest/questRepository.js';
@@ -104,6 +106,18 @@ async function start(): Promise<void> {
     await monsterWorld.load(); // restart recovery
     monsterWorld.start();
   }
+  // S17: persistent boat entities. S14 presence remains untouched while the flag is false.
+  const boatWorld = realtime && environment.ENABLE_BOAT_WORLD
+    ? new BoatWorldService(realtime, {
+        logger: app.log,
+        repository: pool ? new PostgresBoatWorldRepository(pool) : undefined,
+      })
+    : null;
+  if (boatWorld) {
+    realtime!.attachBoatWorld(boatWorld);
+    await boatWorld.load();
+    boatWorld.start();
+  }
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -116,6 +130,7 @@ async function start(): Promise<void> {
       stopRealtimeReaper?.();
       stopCombatTicker?.();
       if (monsterWorld) await monsterWorld.stop(); // persist สถานะก่อนปิด
+      if (boatWorld) await boatWorld.stop();
       await app.close();
       app.log.info('graceful shutdown completed');
     } catch (error) {

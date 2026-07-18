@@ -8,6 +8,7 @@
  */
 
 import type { WorldMonsterDelta, WorldMonsterSnapshot } from '../world/monsters.js';
+import type { BoatWorldSnapshot, RealtimeBoatIntent } from '../world/boats.js';
 
 export const REALTIME_PROTOCOL_VERSION = 1;
 
@@ -139,6 +140,55 @@ export interface RealtimeWorldMonsterRespawn {
   monster: WorldMonsterSnapshot;
 }
 
+/** S17 — full boat world seed, authoritative absolute deltas, naval events. */
+export interface RealtimeBoatSnapshot {
+  type: 'boat-snapshot';
+  seq: number;
+  islandId: string;
+  boats: BoatWorldSnapshot[];
+}
+
+export interface RealtimeBoatDelta {
+  type: 'boat-delta';
+  seq: number;
+  boat: BoatWorldSnapshot;
+}
+
+export interface RealtimeBoatCannon {
+  type: 'boat-cannon';
+  seq: number;
+  attackerId: string;
+  targetId?: string;
+  side: 'port' | 'starboard';
+  damage: number;
+  targetHp?: number;
+  x: number;
+  z: number;
+}
+
+export interface RealtimeBoatSunk {
+  type: 'boat-sunk';
+  seq: number;
+  entityId: string;
+  byEntityId?: string;
+  respawnAt: number;
+}
+
+export interface RealtimeBoatRespawn {
+  type: 'boat-respawn';
+  seq: number;
+  boat: BoatWorldSnapshot;
+}
+
+export interface RealtimeBoatIntentResult {
+  type: 'boat-intent-result';
+  seq: number;
+  intentId: string;
+  accepted: boolean;
+  reason?: string;
+  entityId?: string;
+}
+
 export type RealtimeServerMessage =
   | RealtimeWelcome
   | RealtimeEconomyUpdate
@@ -152,7 +202,13 @@ export type RealtimeServerMessage =
   | RealtimeWorldMonsterSnapshot
   | RealtimeWorldMonsterDelta
   | RealtimeWorldMonsterDead
-  | RealtimeWorldMonsterRespawn;
+  | RealtimeWorldMonsterRespawn
+  | RealtimeBoatSnapshot
+  | RealtimeBoatDelta
+  | RealtimeBoatCannon
+  | RealtimeBoatSunk
+  | RealtimeBoatRespawn
+  | RealtimeBoatIntentResult;
 
 export interface RealtimePing {
   type: 'ping';
@@ -194,7 +250,8 @@ export type RealtimeClientMessage =
   | RealtimePing
   | RealtimeMove
   | RealtimeAttack
-  | RealtimeWorldMonsterHit;
+  | RealtimeWorldMonsterHit
+  | RealtimeBoatIntent;
 
 /** ข้อความ client ใหญ่เกินนี้ = protocol violation → ปิด connection */
 export const REALTIME_MAX_CLIENT_MESSAGE_BYTES = 1_024;

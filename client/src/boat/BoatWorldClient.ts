@@ -1,0 +1,108 @@
+import * as THREE from 'three';
+import type { BoatWorldSnapshot } from '@pirate-fruit/shared';
+import type { GraphicsProfile } from '../engine/GraphicsQuality';
+import { getWaveHeight, WATER_LEVEL } from '../ocean/Ocean';
+import type { WorldTextures } from '../world/textures';
+import type { Effects } from '../effects/Effects';
+import { Boat } from './Boat';
+import { getBoatDefinition } from './BoatData';
+import type { BoatManager } from './BoatManager';
+
+interface RenderedBoat {
+  boat: Boat;
+  target: BoatWorldSnapshot;
+}
+
+/** Rendering/interpolation only. All state applied here originated from the Server. */
+export class BoatWorldClient {
+  private readonly rendered = new Map<string, RenderedBoat>();
+  private elapsed = 0;
+
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly selfCharacterId: string | null,
+    private readonly localBoats: BoatManager,
+    private readonly textures: WorldTextures,
+    private readonly graphics: GraphicsProfile,
+    private readonly effects: Effects,
+  ) {}
+
+  applySnapshot(islandId: string, boats: BoatWorldSnapshot[]): void {
+    const seen = new Set(boats.map((boat) => boat.entityId));
+    for (const [entityId, rendered] of this.rendered) {
+      if (rendered.target.islandId === islandId && !seen.has(entityId)) this.remove(entityId);
+    }
+    for (const boat of boats) this.applyDelta(boat);
+  }
+
+  applyDelta(snapshot: BoatWorldSnapshot): void {
+    if (snapshot.ownerId === this.selfCharacterId) {
+      const rider = snapshot.helmId === this.selfCharacterId
+        ? 'helm'
+        : snapshot.passengerIds.includes(this.selfCharacterId ?? '') ? 'deck' : 'off';
+      this.localBoats.applyAuthoritativeBoat(snapshot, rider);
+      return;
+    }
+    const existing = this.rendered.get(snapshot.entityId);
+    if (existing) {
+      existing.target = { ...snapshot, passengerIds: [...snapshot.passengerIds] };
+      existing.boat.hp = snapshot.hp;
+      existing.boat.group.visible = snapshot.state !== 'sunk' && snapshot.state !== 'respawning';
+      return;
+    }
+    const definition = getBoatDefinition(snapshot.definitionId);
+    if (!definition) return;
+    const boat = new Boat(definition, this.textures, this.graphics);
+    boat.group.position.set(snapshot.x, WATER_LEVEL + 0.2, snapshot.z);
+    boat.heading = snapshot.heading;
+    boat.hp = snapshot.hp;
+    boat.group.visible = snapshot.state !== 'sunk' && snapshot.state !== 'respawning';
+    this.scene.add(boat.group);
+    this.rendered.set(snapshot.entityId, { boat, target: { ...snapshot, passengerIds: [...snapshot.passengerIds] } });
+  }
+
+  markSunk(entityId: string): void {
+    const rendered = this.rendered.get(entityId);
+    if (!rendered) return;
+    rendered.boat.group.visible = false;
+    this.effects.spawnBoatImpact(rendered.boat.group.position, true);
+  }
+
+  applyRespawn(snapshot: BoatWorldSnapshot): void {
+    this.applyDelta(snapshot);
+  }
+
+  applyCannon(event: { targetId?: string; damage: number; x: number; z: number }): void {
+    const target = event.targetId ? this.rendered.get(event.targetId) : undefined;
+    const point = target?.boat.group.position ?? new THREE.Vector3(event.x, WATER_LEVEL, event.z);
+    this.effects.spawnBoatImpact(point, event.damage > 0);
+  }
+
+  update(dt: number): void {
+    this.elapsed += dt;
+    for (const { boat, target } of this.rendered.values()) {
+      boat.group.position.x = THREE.MathUtils.damp(boat.group.position.x, target.x, 12, dt);
+      boat.group.position.z = THREE.MathUtils.damp(boat.group.position.z, target.z, 12, dt);
+      let angle = target.heading - boat.heading;
+      angle = Math.atan2(Math.sin(angle), Math.cos(angle));
+      boat.heading += angle * Math.min(1, dt * 12);
+      boat.speed = target.speed;
+      boat.hp = target.hp;
+      boat.group.position.y = THREE.MathUtils.damp(
+        boat.group.position.y,
+        WATER_LEVEL + getWaveHeight(boat.group.position.x, boat.group.position.z, this.elapsed) + 0.2,
+        8,
+        dt,
+      );
+      boat.group.rotation.y = boat.heading;
+    }
+  }
+
+  private remove(entityId: string): void {
+    const rendered = this.rendered.get(entityId);
+    if (!rendered) return;
+    this.scene.remove(rendered.boat.group);
+    rendered.boat.dispose();
+    this.rendered.delete(entityId);
+  }
+}
