@@ -99,6 +99,8 @@ async function start(): Promise<void> {
       })
     : null;
   if (monsterWorld) {
+    // ให้ hub ส่งต่อ world-monster-hit ไปยัง Server simulation ก่อนเปิด tick/snapshot
+    realtime!.attachWorldMonsters(monsterWorld);
     await monsterWorld.load(); // restart recovery
     monsterWorld.start();
   }

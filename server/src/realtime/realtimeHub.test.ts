@@ -4,7 +4,7 @@ import {
   REALTIME_MAX_CLIENT_MESSAGE_BYTES,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
-import { RealtimeHub, type RealtimeSocket } from './realtimeHub.js';
+import { RealtimeHub, type RealtimeSocket, type WorldMonsterBridge } from './realtimeHub.js';
 
 class FakeSocket implements RealtimeSocket {
   readyState = 1;
@@ -304,5 +304,29 @@ describe('S15 PvP combat authority', () => {
     const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
     hub.handleClientMessage(connection, JSON.stringify({ type: 'attack', targetId: 42 }));
     expect(socket.closedWith?.code).toBe(1008);
+  });
+});
+
+describe('S16 shared monster bridge', () => {
+  it('forwards a validated world-monster-hit with the server-known presence', () => {
+    const hub = new RealtimeHub(undefined, () => 1_000, 200, true);
+    const hits: Parameters<WorldMonsterBridge['handleHit']>[] = [];
+    const bridge: WorldMonsterBridge = {
+      snapshotMessageForIsland: (islandId) => ({
+        type: 'world-monster-snapshot', seq: 0, islandId, monsters: [],
+      }),
+      handleHit: (...hit) => { hits.push(hit); },
+    };
+    hub.attachWorldMonsters(bridge);
+    const socket = new FakeSocket();
+    const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
+    hub.handleClientMessage(connection, JSON.stringify({
+      type: 'move', islandId: 'starter-island', x: 22, y: 0, z: -4, heading: 0, onBoat: false,
+    }));
+    hub.handleClientMessage(connection, JSON.stringify({
+      type: 'world-monster-hit', spawnId: 'starter-crab-1', kind: 'skill',
+    }));
+
+    expect(hits).toEqual([['char-a', 'starter-island', 22, -4, 'starter-crab-1', 'skill']]);
   });
 });
