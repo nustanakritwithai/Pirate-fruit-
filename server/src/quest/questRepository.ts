@@ -8,6 +8,7 @@ import {
   type QuestProgressEventPayload,
   type QuestRejectCode,
 } from '@pirate-fruit/shared';
+import { accrueServerExp } from '../progression/progressionAccrual.js';
 
 /** คำขอถูกปฏิเสธด้วยเหตุผลทางธุรกิจ (เลเวล/สถานะเควสต์/คีย์ซ้ำ) — ไม่ใช่ความผิดพลาดระบบ */
 export class QuestRejectedError extends Error {
@@ -87,8 +88,16 @@ function eventMatchesObjective(
  * เพื่อ serialize ทุกอย่างของผู้เล่นคนเดียวกัน (แนวเดียวกับ trade S8)
  * เลขรางวัลอ่านจาก shared databook เท่านั้น — ไม่มีเลขใดมาจาก Client
  */
+export interface QuestRepositoryOptions {
+  /** S12: เดินเลเวลจาก EXP ที่แจก (เปิดพร้อม ENABLE_PROGRESSION_SERVER) */
+  progressionAuthority?: boolean;
+}
+
 export class PostgresQuestRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly options: QuestRepositoryOptions = {},
+  ) {}
 
   async getState(characterId: string): Promise<QuestStateSnapshot> {
     const result = await this.pool.query<QuestRow>(
@@ -277,8 +286,8 @@ export class PostgresQuestRepository {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
-      const character = await client.query<{ coins: string }>(
-        'select coins::text as coins from characters where id = $1 for update',
+      const character = await client.query<{ coins: string; level: number }>(
+        'select coins::text as coins, level from characters where id = $1 for update',
         [input.characterId],
       );
       const characterRow = character.rows[0];
@@ -367,6 +376,9 @@ export class PostgresQuestRepository {
           String(coinsTotal),
         ],
       );
+      if (this.options.progressionAuthority) {
+        await accrueServerExp(client, input.characterId, characterRow.level, rewards.playerExp);
+      }
       await client.query('commit');
       return {
         questId: input.questId,

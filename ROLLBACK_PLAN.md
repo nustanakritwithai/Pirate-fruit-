@@ -55,3 +55,9 @@ copies; do not clear them as part of incident rollback.
 2. ตั้ง `ENABLE_MONSTER_SERVER=false` ที่ Web Service (endpoint ตอบ 503)
 3. ข้อมูลไม่ต้องกู้: `monster_kill_batches` เป็น audit log; เหรียญที่แจกไปแล้วอยู่ใน `characters.coins` ตาม transitional model
 4. ถอนตาราง (เฉพาะกรณีถอนทั้ง S11): `drizzle/rollback/0003_s11_monster_kill_batches.down.sql`
+
+
+## S12 — Progression Server rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_PROGRESSION_SERVER` ออก
+2. ตั้ง `ENABLE_PROGRESSION_SERVER=false` — save กลับไปเขียน level/exp แบบเดิม (ค่าล่าสุดจาก client ชนะ — level ที่ Server เดินไว้จะถูก save รอบถัดไปเขียนทับ ซึ่งตรงกับ local ของผู้เล่นอยู่แล้ว)
+3. ถอนคอลัมน์ (เฉพาะกรณีถอนทั้ง S12): `drizzle/rollback/0004_s12_kill_count.down.sql`

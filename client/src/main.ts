@@ -45,6 +45,7 @@ import { initializeRemoteQuest } from './quest/RemoteQuestClient';
 import { RemoteQuestSync } from './quest/RemoteQuestSync';
 import { initializeRemoteMonster } from './monster/RemoteMonsterClient';
 import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
+import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
@@ -215,6 +216,9 @@ async function main(): Promise<void> {
     progression.setRemoteEnemyRewarder((enemy, contribution) =>
       monsterSync.enqueueKill(enemy, contribution));
   }
+  // S12: level/exp ทางการมาจาก Server — บูตแล้วเทียบ ถ้า Server นำหน้าเติมส่วนต่างเข้า local
+  const remoteProgression = initializeRemoteProgression();
+  if (remoteProgression) void reconcileProgression(remoteProgression, progression);
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);

@@ -124,8 +124,16 @@ function equipmentState(rows: Array<{ slot: string; metadata_json: unknown }>): 
   };
 }
 
+export interface PlayerSaveRepositoryOptions {
+  /** S12: level/exp เป็นของ Server (เดินจาก EXP ที่ Server แจก) — save ห้ามเขียนทับ */
+  preserveServerProgression?: boolean;
+}
+
 export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly repositoryOptions: PlayerSaveRepositoryOptions = {},
+  ) {}
 
   async load(characterId: string): Promise<StoredRemotePlayerState> {
     const client = await this.pool.connect();
@@ -454,30 +462,60 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
     state: CanonicalPlayerState,
   ): Promise<void> {
     const progression = state.progression;
+    // S12: เมื่อ progression authority เปิด — level/exp เดินโดย Server เท่านั้น
+    // (save จาก client เขียนได้แค่ส่วนที่ยังเป็นของ client: เหรียญ transitional,
+    //  ตำแหน่ง, สเตต/mastery)
+    const preserve = this.repositoryOptions.preserveServerProgression === true;
+    if (preserve) {
+      await client.query(
+        `update characters
+            set coins = $2, current_island_id = $3, spawn_id = $4,
+                updated_at = now()
+          where id = $1`,
+        [
+          characterId,
+          String(progression.coins),
+          state.checkpoint.islandId,
+          state.checkpoint.spawnId,
+        ],
+      );
+    } else {
+      await client.query(
+        `update characters
+            set level = $2, coins = $3, current_island_id = $4, spawn_id = $5,
+                updated_at = now()
+          where id = $1`,
+        [
+          characterId,
+          progression.level,
+          String(progression.coins),
+          state.checkpoint.islandId,
+          state.checkpoint.spawnId,
+        ],
+      );
+    }
     await client.query(
-      `update characters
-          set level = $2, coins = $3, current_island_id = $4, spawn_id = $5,
-              updated_at = now()
-        where id = $1`,
-      [
-        characterId,
-        progression.level,
-        String(progression.coins),
-        state.checkpoint.islandId,
-        state.checkpoint.spawnId,
-      ],
-    );
-    await client.query(
-      `insert into player_progression
-        (character_id, exp, stat_points, combat, vitality, blade, ranged,
-         fruit_power, mana, mastery_json, updated_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,now())
-       on conflict (character_id) do update set
-         exp = excluded.exp, stat_points = excluded.stat_points,
-         combat = excluded.combat, vitality = excluded.vitality,
-         blade = excluded.blade, ranged = excluded.ranged,
-         fruit_power = excluded.fruit_power, mana = excluded.mana,
-         mastery_json = excluded.mastery_json, updated_at = now()`,
+      preserve
+        ? `insert into player_progression
+            (character_id, exp, stat_points, combat, vitality, blade, ranged,
+             fruit_power, mana, mastery_json, updated_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,now())
+           on conflict (character_id) do update set
+             stat_points = excluded.stat_points,
+             combat = excluded.combat, vitality = excluded.vitality,
+             blade = excluded.blade, ranged = excluded.ranged,
+             fruit_power = excluded.fruit_power, mana = excluded.mana,
+             mastery_json = excluded.mastery_json, updated_at = now()`
+        : `insert into player_progression
+            (character_id, exp, stat_points, combat, vitality, blade, ranged,
+             fruit_power, mana, mastery_json, updated_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,now())
+           on conflict (character_id) do update set
+             exp = excluded.exp, stat_points = excluded.stat_points,
+             combat = excluded.combat, vitality = excluded.vitality,
+             blade = excluded.blade, ranged = excluded.ranged,
+             fruit_power = excluded.fruit_power, mana = excluded.mana,
+             mastery_json = excluded.mastery_json, updated_at = now()`,
       [
         characterId,
         String(progression.exp),

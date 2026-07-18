@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 import { MONSTER_REWARD_TABLE, computeEnemyReward } from '@pirate-fruit/shared';
 import {
   CORE_MIGRATION_TAG,
+  KILL_COUNT_MIGRATION_TAG,
   MONSTER_KILLS_MIGRATION_TAG,
   PLAYER_SAVE_MIGRATION_TAG,
   QUEST_CLAIMS_MIGRATION_TAG,
@@ -31,6 +32,7 @@ async function applySchema(pool: Pool): Promise<void> {
     PLAYER_SAVE_MIGRATION_TAG,
     QUEST_CLAIMS_MIGRATION_TAG,
     MONSTER_KILLS_MIGRATION_TAG,
+    KILL_COUNT_MIGRATION_TAG,
   ];
   for (const tag of tags) {
     const sql = await readFile(join(directory, `${tag}.sql`), 'utf8');

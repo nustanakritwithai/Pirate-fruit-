@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {
+  KILL_RATE_MAX_PER_WINDOW,
+  KILL_RATE_WINDOW_MS,
   MONSTER_REWARD_TABLE,
   computeEnemyReward,
   type MonsterKillEntry,
   type MonsterKillRewardEntry,
   type MonsterRejectCode,
 } from '@pirate-fruit/shared';
+import { accrueServerExp } from '../progression/progressionAccrual.js';
 
 /** คำขอถูกปฏิเสธด้วยเหตุผลทางธุรกิจ — ไม่ใช่ความผิดพลาดระบบ */
 export class MonsterRejectedError extends Error {
@@ -41,8 +44,16 @@ function numberFromBigint(value: string | number | bigint): number {
  * ด้วย characters.level (ตัวคูณส่วนต่างเลเวลสูตรเดียวกับเกม) → เหรียญเข้า
  * characters.coins → บันทึก audit ลง monster_kill_batches
  */
+export interface MonsterRepositoryOptions {
+  /** S12: เดินเลเวลจาก EXP ที่แจก (เปิดพร้อม ENABLE_PROGRESSION_SERVER) */
+  progressionAuthority?: boolean;
+}
+
 export class PostgresMonsterRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly options: MonsterRepositoryOptions = {},
+  ) {}
 
   async grantKills(input: {
     characterId: string;
@@ -96,6 +107,22 @@ export class PostgresMonsterRepository {
         };
       }
 
+      // S12 plausibility: จำกัดจำนวนฆ่ารวมต่อหน้าต่างเวลา — เร็วกว่ามนุษย์เล่นจริง = ปฏิเสธ
+      const totalCount = input.kills.reduce((sum, kill) => sum + kill.count, 0);
+      const windowStart = new Date(Date.now() - KILL_RATE_WINDOW_MS).toISOString();
+      const recent = await client.query<{ total: string }>(
+        `select coalesce(sum(kill_count), 0)::text as total
+           from monster_kill_batches
+          where character_id = $1 and created_at > $2`,
+        [input.characterId, windowStart],
+      );
+      if (Number(recent.rows[0]?.total ?? '0') + totalCount > KILL_RATE_MAX_PER_WINDOW) {
+        throw new MonsterRejectedError(
+          'KILL_RATE_LIMITED',
+          'Too many kills reported in a short window — retry shortly',
+        );
+      }
+
       const rewards: MonsterKillRewardEntry[] = input.kills.map((kill) => {
         const entry = MONSTER_REWARD_TABLE[kill.monsterId]!;
         const perKill = computeEnemyReward(characterRow.level, entry);
@@ -123,21 +150,25 @@ export class PostgresMonsterRepository {
       );
       await client.query(
         `insert into monster_kill_batches
-           (id, character_id, idempotency_key, request_hash, kills_json,
+           (id, character_id, idempotency_key, request_hash, kills_json, kill_count,
             player_exp, mastery_exp, coins, coins_after)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           randomUUID(),
           input.characterId,
           input.idempotencyKey,
           input.requestHash,
           JSON.stringify({ rewards, totals } satisfies StoredBatch),
+          totalCount,
           totals.playerExp,
           totals.masteryExp,
           totals.coins,
           String(coinsTotal),
         ],
       );
+      if (this.options.progressionAuthority) {
+        await accrueServerExp(client, input.characterId, characterRow.level, totals.playerExp);
+      }
       await client.query('commit');
       return { rewards, totals, coinsTotal, idempotentReplay: false };
     } catch (error) {
