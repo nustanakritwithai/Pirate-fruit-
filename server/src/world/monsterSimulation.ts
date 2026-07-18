@@ -405,7 +405,14 @@ export class MonsterSimulation {
   }
 
   private emitIfDirty(monster: MonsterRuntime, dirtyByIsland: Map<string, WorldMonsterDelta[]>): void {
-    const moved = Math.hypot(monster.x - monster.sentX, monster.z - monster.sentZ) > 0.05;
+    // คุมต้นทุน: state ที่เกี่ยวกับการต่อสู้ sync ละเอียด; idle/patrol sync แบบหยาบ
+    // (ลดจำนวน delta broadcast ต่อ tick อย่างมากเมื่อไม่มีใครสู้อยู่)
+    const active = monster.state === 'aggro'
+      || monster.state === 'chase'
+      || monster.state === 'attack'
+      || monster.state === 'return';
+    const moveThreshold = active ? 0.05 : 0.6;
+    const moved = Math.hypot(monster.x - monster.sentX, monster.z - monster.sentZ) > moveThreshold;
     const changed = moved
       || Math.round(monster.hp) !== Math.round(monster.sentHp)
       || monster.state !== monster.sentState;

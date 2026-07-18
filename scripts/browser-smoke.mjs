@@ -241,14 +241,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   }));
   peer.on('open', () => {
     peerMove();
-    // ส่งซ้ำเป็นระยะ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก
-    const timer = setInterval(peerMove, 1_000);
+    // ส่งซ้ำถี่ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก (naval presence ให้หลายโอกาส)
+    const timer = setInterval(peerMove, 500);
     peer.on('close', () => clearInterval(timer));
   });
   peer.on('message', (data) => {
     try {
       const message = JSON.parse(String(data));
-      if (message?.type) peerDiag.frames.push(message.type);
+      // cap frames กัน log บวม (world-monster delta ไหลถี่) — ให้ SMOKE FAIL อ่านออก
+      if (message?.type && peerDiag.frames.length < 40) peerDiag.frames.push(message.type);
       // peer ได้ presence = page1 ลง presence สำเร็จ + relay ทำงาน (พิสูจน์คนละทางกับ page1)
       if (message?.type === 'presence') peerDiag.gotPage1Presence = true;
     } catch { /* ไม่ใช่ JSON */ }
