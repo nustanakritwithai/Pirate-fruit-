@@ -423,20 +423,52 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
 
   // S17 boat authority: browser sends summon/control intents only. Server chooses entity,
   // dock transform and movement; the independent peer must observe the same boat delta.
-  const boatDiag = { summonSent: false, accepted: false, entityId: null, inputSent: 0, peerMoved: false };
+  const boatDiag = {
+    starterBoatAcquired: false, saveStatus: null, intentId: null, summonSent: false,
+    accepted: false, reason: null, entityId: null, inputSent: 0, peerMoved: false,
+  };
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
+    // A new account intentionally owns no boat. Acquire the free starter through the real
+    // shop/storage path, then wait for the credentialed cross-origin save before summoning.
+    // This keeps the smoke subject to the same canonical player_boats gate as production.
+    const selectedBoat = await page.evaluate(() => window.__boat?.selectedBoatId ?? null);
+    if (selectedBoat !== 'training-dinghy') {
+      await page.evaluate(() => window.__boat?.openShop('starter-harbor'));
+      const starterButton = page.locator(
+        '.boat-shop button[data-action="purchase"][data-boat-id="training-dinghy"]',
+      );
+      await starterButton.waitFor({ state: 'visible', timeout: 10_000 });
+      const saveResponse = page.waitForResponse(
+        (response) => response.url().startsWith(API_URL)
+          && ['POST', 'PUT'].includes(response.request().method())
+          && response.url().includes('/api/player/')
+          && response.status() === 200,
+        { timeout: 30_000 },
+      );
+      await starterButton.click();
+      await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+      boatDiag.saveStatus = (await saveResponse).status();
+      await page.locator('.boat-shop-close').click();
+    }
+    boatDiag.starterBoatAcquired = await page.evaluate(
+      () => window.__boat?.selectedBoatId === 'training-dinghy',
+    );
     await page.evaluate(() => window.__realtime?.sendMove({
       islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
       onBoat: false,
     }));
-    boatDiag.summonSent = await page.evaluate(() => Boolean(window.__realtime?.sendBoatIntent('summon')));
+    boatDiag.intentId = await page.evaluate(() => window.__realtime?.sendBoatIntent('summon') ?? null);
+    boatDiag.summonSent = Boolean(boatDiag.intentId);
     const summonDeadline = Date.now() + 20_000;
-    while (Date.now() < summonDeadline && !boatDiag.accepted) {
+    while (Date.now() < summonDeadline && !boatDiag.accepted && !boatDiag.reason) {
       const browserBoat = await page.evaluate(() => window.__smokeRealtime ?? null);
-      const accepted = browserBoat?.boatResults.find((result) => result.accepted && result.entityId);
-      if (accepted) {
-        boatDiag.accepted = true;
-        boatDiag.entityId = accepted.entityId;
+      const resolution = browserBoat?.boatResults.find(
+        (result) => result.intentId === boatDiag.intentId,
+      );
+      if (resolution) {
+        boatDiag.accepted = resolution.accepted;
+        boatDiag.reason = resolution.reason ?? null;
+        boatDiag.entityId = resolution.entityId ?? null;
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 300));

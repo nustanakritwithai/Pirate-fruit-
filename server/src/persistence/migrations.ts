@@ -131,6 +131,14 @@ export async function rollbackS4Database(
   const rollbackSql = (
     await Promise.all([
       readFile(
+        join(migrationsFolder, 'rollback', `${WORLD_BOAT_STATE_MIGRATION_TAG}.down.sql`),
+        'utf8',
+      ),
+      readFile(
+        join(migrationsFolder, 'rollback', `${WORLD_MONSTER_STATE_MIGRATION_TAG}.down.sql`),
+        'utf8',
+      ),
+      readFile(
         join(migrationsFolder, 'rollback', `${KILL_COUNT_MIGRATION_TAG}.down.sql`),
         'utf8',
       ),

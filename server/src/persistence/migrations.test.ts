@@ -8,6 +8,7 @@ import {
   CORE_MIGRATION_TAG,
   databaseMigrationDirectory,
   PLAYER_SAVE_MIGRATION_TAG,
+  rollbackS4Database,
   verifyAndRecordSchemaMigration,
 } from './migrations.js';
 import { seedDatabase } from './seed.js';
@@ -85,6 +86,28 @@ describe('S4/S6 database migrations', () => {
     }
     expect(forward).toContain('trade_transactions_character_idempotency_uq');
     expect(forward).toContain('player_cargo_character_boat_commodity_uq');
+  });
+
+  it('rolls world-state dependants back before their core parent tables', async () => {
+    const queries: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        queries.push(sql);
+        return { rows: [] };
+      },
+      release: () => undefined,
+    };
+    const pool = {
+      connect: async () => client,
+    } as unknown as Pool;
+
+    await rollbackS4Database(pool);
+
+    const rollback = queries.find((query) => query.includes('world_boat_state')) ?? '';
+    expect(rollback).toContain('world_monster_state');
+    expect(rollback.indexOf('world_boat_state')).toBeLessThan(rollback.indexOf('player_boats'));
+    expect(queries[0]).toBe('begin');
+    expect(queries.at(-1)).toBe('commit');
   });
 
   it('migrates, records checksums, seeds idempotently, and rolls back in memory', async () => {
