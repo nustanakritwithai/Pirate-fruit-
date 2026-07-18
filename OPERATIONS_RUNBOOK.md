@@ -107,3 +107,9 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ลำดับเปิดใช้: ต้องเปิด `ENABLE_MULTIPLAYER` (S13) และ verify แล้ว → ตั้ง `ENABLE_PVP=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_PVP=true` → เปิดเกมสองเครื่องบนเกาะเดียวกัน เข้าใกล้กันแล้วโจมตี อีกคนต้องเลือดลด/แพ้/เกิดใหม่
 - ตรวจ: HP การต่อสู้เป็นของ Server (ephemeral) — ปิด flag แล้วโจมตีผู้เล่นไม่มีผล; ไม่มี migration/ตาราง/endpoint ใหม่ (เดินบนช่อง WebSocket เดิม)
 - ปรับสมดุลได้ที่ค่าคงที่ `PVP_*` ใน `shared` (ดาเมจ/ระยะ/คูลดาวน์/เวลาเกิดใหม่) โดยไม่แตะ schema
+
+## S16 — Shared Monster World
+- ลำดับเปิดใช้: ต้องเปิด `ENABLE_MULTIPLAYER` (S13) และ verify แล้ว → ตั้ง `ENABLE_SHARED_WORLD_MONSTERS=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_SHARED_WORLD_MONSTERS=true` → เปิดเกมสองเครื่องบนเกาะเริ่มต้น เข้าใกล้มอนสเตอร์ตัวเดียวกัน HP ต้องตรงกัน; คนหนึ่งฆ่า อีกคนเห็นตาย + เกิดใหม่พร้อมกัน
+- ตาราง `world_monster_state` เพิ่มโดย migration `0005_s16_world_monster_state` (รันอัตโนมัติผ่าน `npm run db:migrate`) — persist สถานะเพื่อกู้คืนหลัง restart
+- คุมต้นทุน: tick `WORLD_MONSTER_TICK_MS` (200ms), broadcast ระดับเกาะ, จำนวน spawn ต่อเกาะจำกัดใน `SHARED_WORLD_SPAWNS` (shared) — ปรับสมดุล/เพิ่มเกาะได้ที่นั่น
+- ปิด flag = กลับไปมอนสเตอร์ท้องถิ่นเดิม (client spawn เอง) ทันที ไม่มี state ค้าง

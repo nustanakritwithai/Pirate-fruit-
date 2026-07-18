@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_PROGRESSION_SERVER?: string;
   readonly VITE_ENABLE_MULTIPLAYER?: string;
   readonly VITE_ENABLE_PVP?: string;
+  readonly VITE_ENABLE_SHARED_WORLD_MONSTERS?: string;
   readonly VITE_ENABLE_REALTIME?: string;
 }
 

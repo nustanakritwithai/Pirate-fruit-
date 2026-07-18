@@ -78,22 +78,26 @@ export class MonsterManager {
     private effects: Effects,
     graphics: GraphicsProfile,
     private callbacks: MonsterCallbacks = {},
+    /** S16: ปิดการเกิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server แล้ว) — ยัง spawn ลูกเรือ Boarding ได้ */
+    suppressAmbientSpawns = false,
   ) {
     const scale = countScale(graphics.tier);
 
-    for (const camp of MONSTER_CAMPS) {
-      const type = MONSTER_TYPES[camp.typeId];
-      const count = Math.max(1, Math.round(camp.count * scale));
-      for (let i = 0; i < count; i++) {
-        const spot = this.findLand(camp.x, camp.z, camp.radius);
-        this.spawnMonster(type, spot.x, spot.z, 12);
+    if (!suppressAmbientSpawns) {
+      for (const camp of MONSTER_CAMPS) {
+        const type = MONSTER_TYPES[camp.typeId];
+        const count = Math.max(1, Math.round(camp.count * scale));
+        for (let i = 0; i < count; i++) {
+          const spot = this.findLand(camp.x, camp.z, camp.radius);
+          this.spawnMonster(type, spot.x, spot.z, 12);
+        }
       }
-    }
 
-    for (const spawn of BOSS_SPAWNS) {
-      const bossType = MONSTER_TYPES[spawn.typeId];
-      const bossSpot = this.findLand(spawn.x, spawn.z, 2);
-      this.bosses.add(this.spawnMonster(bossType, bossSpot.x, bossSpot.z, 40));
+      for (const spawn of BOSS_SPAWNS) {
+        const bossType = MONSTER_TYPES[spawn.typeId];
+        const bossSpot = this.findLand(spawn.x, spawn.z, 2);
+        this.bosses.add(this.spawnMonster(bossType, bossSpot.x, bossSpot.z, 40));
+      }
     }
   }
 

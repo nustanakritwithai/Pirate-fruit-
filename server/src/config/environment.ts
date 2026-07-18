@@ -36,6 +36,7 @@ const environmentSchema = z
     ENABLE_PROGRESSION_SERVER: booleanFromEnvironment.default(false),
     ENABLE_MULTIPLAYER: booleanFromEnvironment.default(false),
     ENABLE_PVP: booleanFromEnvironment.default(false),
+    ENABLE_SHARED_WORLD_MONSTERS: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -164,6 +165,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_MULTIPLAYER'],
         message: 'ENABLE_MULTIPLAYER must be enabled before ENABLE_PVP',
+      });
+    }
+
+    // Shared world monsters ต้องรู้ตำแหน่งผู้เล่นจาก presence (ขับ AI + วัดระยะตี)
+    if (environment.ENABLE_SHARED_WORLD_MONSTERS && !environment.ENABLE_MULTIPLAYER) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_MULTIPLAYER'],
+        message: 'ENABLE_MULTIPLAYER must be enabled before ENABLE_SHARED_WORLD_MONSTERS',
       });
     }
 

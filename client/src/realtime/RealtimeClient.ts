@@ -12,6 +12,8 @@ import {
   REALTIME_HEARTBEAT_INTERVAL_MS,
   REALTIME_PROTOCOL_VERSION,
   type RealtimeServerMessage,
+  type WorldMonsterSnapshot,
+  type WorldMonsterDelta,
 } from '@pirate-fruit/shared';
 import { getRemoteSession } from '../session/RemoteSession';
 
@@ -51,6 +53,11 @@ export interface RealtimeHandlers {
   onCombatHit?(hit: { attackerId: string; targetId: string; damage: number; hp: number; maxHp: number }): void;
   onCombatDefeat?(playerId: string, byId: string): void;
   onCombatRespawn?(playerId: string, hp: number, maxHp: number): void;
+  /** S16: มอนสเตอร์กลาง — snapshot/delta/dead/respawn (Server เป็นเจ้าของ) */
+  onWorldMonsterSnapshot?(islandId: string, monsters: WorldMonsterSnapshot[]): void;
+  onWorldMonsterDelta?(islandId: string, updates: WorldMonsterDelta[]): void;
+  onWorldMonsterDead?(spawnId: string, byId?: string): void;
+  onWorldMonsterRespawn?(monster: WorldMonsterSnapshot): void;
 }
 
 export interface RealtimeClientOptions {
@@ -194,6 +201,14 @@ export class RealtimeClient {
       this.handlers.onCombatDefeat?.(message.playerId, message.byId);
     } else if (message.type === 'combat-respawn') {
       this.handlers.onCombatRespawn?.(message.playerId, message.hp, message.maxHp);
+    } else if (message.type === 'world-monster-snapshot') {
+      this.handlers.onWorldMonsterSnapshot?.(message.islandId, message.monsters);
+    } else if (message.type === 'world-monster-delta') {
+      this.handlers.onWorldMonsterDelta?.(message.islandId, message.updates);
+    } else if (message.type === 'world-monster-dead') {
+      this.handlers.onWorldMonsterDead?.(message.spawnId, message.byId);
+    } else if (message.type === 'world-monster-respawn') {
+      this.handlers.onWorldMonsterRespawn?.(message.monster);
     }
     // pong: แค่รีเซ็ต idle watchdog (ทำไปแล้วต้นฟังก์ชัน)
   }
@@ -216,6 +231,12 @@ export class RealtimeClient {
   sendAttack(targetId: string, kind: 'melee' | 'skill', skillId?: string): void {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
     this.socket.send(JSON.stringify({ type: 'attack', targetId, kind, skillId }));
+  }
+
+  /** S16: รายงานเจตนาตีมอนสเตอร์กลาง — Server ตัดสินดาเมจ/ตาย/contribution เอง */
+  sendMonsterHit(spawnId: string, kind: 'melee' | 'skill'): void {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
+    this.socket.send(JSON.stringify({ type: 'world-monster-hit', spawnId, kind }));
   }
 
   private handleDisconnect(): void {

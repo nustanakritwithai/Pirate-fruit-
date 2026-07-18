@@ -82,3 +82,8 @@ copies; do not clear them as part of incident rollback.
 1. Rebuild Static Site โดยเอา `VITE_ENABLE_PVP` ออก (client เลิกส่ง `attack` + ไม่ผูก M1/สกิลเข้ากับ PvP)
 2. ตั้ง `ENABLE_PVP=false` ที่ Web Service (Server เพิกเฉย `attack` — ไม่ resolve การต่อสู้ระหว่างผู้เล่น)
 - HP PvP เป็น ephemeral ในหน่วยความจำ Server ล้วน — ไม่มี migration/ตาราง/ข้อมูล persist ให้ย้อน; ปิด flag = จบทันที (presence S13/S14 ยังทำงานต่อได้ปกติ)
+
+## S16 — Shared Monster World rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_SHARED_WORLD_MONSTERS` ออก (client กลับไป spawn มอนสเตอร์ท้องถิ่นเอง + เลิกส่ง world-monster-hit)
+2. ตั้ง `ENABLE_SHARED_WORLD_MONSTERS=false` ที่ Web Service (Server หยุด tick + เพิกเฉย world-monster-hit)
+- ตาราง `world_monster_state` คงอยู่ได้ (ไม่ต้อง rollback schema) — เป็น state ephemeral ที่ไม่กระทบ save ผู้เล่น; ถ้าจำเป็นต้องถอย schema ใช้ `runRollback` ตามลำดับ migration ปกติ

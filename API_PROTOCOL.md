@@ -264,3 +264,24 @@ Server เป็น**เจ้าของ HP/ดาเมจการต่อ�
 - `{type:'combat-defeat', seq, playerId, byId}` — เป้า HP หมด; Client ของเป้า → กลับจุดปลอดภัย, คนอื่น → ซ่อนผีชั่วคราว
 - `{type:'combat-respawn', seq, playerId, hp, maxHp}` — Server ตั้งเวลา `PVP_RESPAWN_MS` แล้วรีเซ็ต HP เต็ม + broadcast (มี combat ticker แยกจาก reaper)
 - HP PvP เป็น **ephemeral ต่อ session** (ไม่ persist ลง DB) — ตัดการเชื่อมต่อ = ลบทิ้ง
+
+## S16 — Shared Monster & NPC World State
+
+flag ใหม่ `ENABLE_SHARED_WORLD_MONSTERS` (server) + `VITE_ENABLE_SHARED_WORLD_MONSTERS` (client), default false — ต้องเปิด `ENABLE_MULTIPLAYER` ก่อน
+มอนสเตอร์เป็น**สิ่งมีชีวิตเดียวในโลกกลาง**: Server จำลอง spawn/AI/HP/death/respawn แล้ว push ให้ผู้เล่นบนเกาะเดียวกันเห็นตรงกัน (ไม่ใช่คนละตัวต่อผู้เล่น)
+
+### Server → Client
+- `{type:'world-monster-snapshot', seq, islandId, monsters[]}` — full state ตอนผู้เล่นเข้าเกาะ/resync (`{spawnId, monsterId, islandId, x, z, heading, hp, maxHp, state}`)
+- `{type:'world-monster-delta', seq, islandId, updates[]}` — เฉพาะตัวที่เปลี่ยนต่อ tick (`{spawnId, x, z, heading, hp, state}`)
+- `{type:'world-monster-dead', seq, spawnId, byId?}` — ตาย (ทุกคนบนเกาะเห็นพร้อมกัน)
+- `{type:'world-monster-respawn', seq, monster}` — เกิดใหม่ HP เต็มหลัง `respawnMs` (combat/world ticker)
+
+### Client → Server: `{type:'world-monster-hit', spawnId, kind:'melee'|'skill'}`
+- **ไม่มีฟิลด์ดาเมจ** — Server เลือกดาเมจจากตารางคงที่ (`WORLD_MONSTER_MELEE_DAMAGE`/`WORLD_MONSTER_SKILL_DAMAGE`) + วัดระยะจาก presence ผู้โจมตี (`WORLD_MONSTER_MELEE_RANGE`/`WORLD_MONSTER_SKILL_RANGE`) — นอกระยะ/ตายแล้ว = ปัดตกเงียบ; `spawnId` ผิดรูป → ปิด 1008
+
+### AI loop ฝั่ง Server (tick `WORLD_MONSTER_TICK_MS`)
+- state: `idle → patrol → aggro → chase → attack → return → dead/respawn`
+- target ผู้เล่นใกล้สุดบนเกาะเดียวกันในระยะ aggro; ปล่อยเป้าเมื่อผู้เล่นหายจาก world / คนละเกาะ / หนีไกล / ตัวเองไกลบ้าน (return)
+- damage contribution ต่อผู้เล่น (มีหน้าต่างเวลา) — เก็บไว้แจก reward/loot ใน phase ถัดไป
+- interest = ระดับเกาะ (broadcast เฉพาะผู้เล่นบนเกาะนั้น) + tick rate จำกัด — คุมต้นทุน
+- restart recovery: persist HP/state/ตำแหน่ง/respawn ลงตาราง `world_monster_state` เป็นระยะ + ตอน shutdown; โหลดกลับตอนบูต

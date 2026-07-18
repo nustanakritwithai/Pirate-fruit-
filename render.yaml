@@ -66,6 +66,9 @@ services:
       # S15 Multiplayer Combat Authority (PvP) — Server เป็นเจ้าของ HP/ดาเมจ (ต้องเปิด ENABLE_MULTIPLAYER ก่อน; client ต้อง build ด้วย VITE_ENABLE_PVP=true พร้อมกัน)
       - key: ENABLE_PVP
         value: 'false'
+      # S16 Shared Monster World — Server จำลองมอนสเตอร์กลาง (ต้องเปิด ENABLE_MULTIPLAYER ก่อน; client ต้อง build ด้วย VITE_ENABLE_SHARED_WORLD_MONSTERS=true พร้อมกัน)
+      - key: ENABLE_SHARED_WORLD_MONSTERS
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

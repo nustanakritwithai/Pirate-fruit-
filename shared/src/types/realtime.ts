@@ -7,6 +7,8 @@
  * Client ที่เห็น seq กระโดดต้อง resync (ดึง snapshot ทาง REST) แล้วนับต่อจาก seq ใหม่
  */
 
+import type { WorldMonsterDelta, WorldMonsterSnapshot } from '../world/monsters.js';
+
 export const REALTIME_PROTOCOL_VERSION = 1;
 
 /** Server ส่ง heartbeat interval ให้ตอน welcome — Client ping ตามรอบนี้ */
@@ -104,6 +106,39 @@ export interface RealtimeCombatRespawn {
   maxHp: number;
 }
 
+/**
+ * S16 — Shared Monster World State
+ * Server จำลองมอนสเตอร์กลาง แล้ว push snapshot (full) + delta (ต่อ tick) ให้ผู้เล่น
+ * ที่อยู่ในระยะสนใจ; death/respawn เป็น event แยกให้ทุกคนบนเกาะเห็นตรงกัน
+ */
+export interface RealtimeWorldMonsterSnapshot {
+  type: 'world-monster-snapshot';
+  seq: number;
+  islandId: string;
+  monsters: WorldMonsterSnapshot[];
+}
+
+export interface RealtimeWorldMonsterDelta {
+  type: 'world-monster-delta';
+  seq: number;
+  islandId: string;
+  updates: WorldMonsterDelta[];
+}
+
+export interface RealtimeWorldMonsterDead {
+  type: 'world-monster-dead';
+  seq: number;
+  spawnId: string;
+  /** ผู้เล่นที่ฟันหมัดสุดท้าย (ให้เครดิต/แสดงผล) */
+  byId?: string;
+}
+
+export interface RealtimeWorldMonsterRespawn {
+  type: 'world-monster-respawn';
+  seq: number;
+  monster: WorldMonsterSnapshot;
+}
+
 export type RealtimeServerMessage =
   | RealtimeWelcome
   | RealtimeEconomyUpdate
@@ -113,7 +148,11 @@ export type RealtimeServerMessage =
   | RealtimePresenceLeave
   | RealtimeCombatHit
   | RealtimeCombatDefeat
-  | RealtimeCombatRespawn;
+  | RealtimeCombatRespawn
+  | RealtimeWorldMonsterSnapshot
+  | RealtimeWorldMonsterDelta
+  | RealtimeWorldMonsterDead
+  | RealtimeWorldMonsterRespawn;
 
 export interface RealtimePing {
   type: 'ping';
@@ -144,7 +183,18 @@ export interface RealtimeAttack {
   skillId?: string;
 }
 
-export type RealtimeClientMessage = RealtimePing | RealtimeMove | RealtimeAttack;
+/** S16 — Client รายงานเจตนาตีมอนสเตอร์กลาง — Server ตัดสินดาเมจ/ตาย/contribution เอง */
+export interface RealtimeWorldMonsterHit {
+  type: 'world-monster-hit';
+  spawnId: string;
+  kind: 'melee' | 'skill';
+}
+
+export type RealtimeClientMessage =
+  | RealtimePing
+  | RealtimeMove
+  | RealtimeAttack
+  | RealtimeWorldMonsterHit;
 
 /** ข้อความ client ใหญ่เกินนี้ = protocol violation → ปิด connection */
 export const REALTIME_MAX_CLIENT_MESSAGE_BYTES = 1_024;

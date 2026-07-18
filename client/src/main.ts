@@ -48,6 +48,7 @@ import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
+import { SharedMonsterClient } from './monster/SharedMonsterClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -63,7 +64,13 @@ import {
   initializeRemoteSession,
   recoverRemoteSession,
 } from './session/RemoteSession';
-import { REMOTE_ECONOMY_TICK_INTERVAL_MS, PVP_MELEE_RANGE, PVP_SKILL_RANGE } from '@pirate-fruit/shared';
+import {
+  REMOTE_ECONOMY_TICK_INTERVAL_MS,
+  PVP_MELEE_RANGE,
+  PVP_SKILL_RANGE,
+  WORLD_MONSTER_MELEE_RANGE,
+  WORLD_MONSTER_SKILL_RANGE,
+} from '@pirate-fruit/shared';
 import { ServerStatusBadge } from './ui/ServerStatusBadge';
 
 async function main(): Promise<void> {
@@ -311,6 +318,36 @@ async function main(): Promise<void> {
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
+  // S16: มอนสเตอร์กลาง — Server จำลอง AI/HP/death/respawn (ต้องเปิด multiplayer ก่อน)
+  const sharedWorldMonstersEnabled = multiplayerEnabled
+    && (import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === 'true'
+      || import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === '1');
+  const sharedMonsters = sharedWorldMonstersEnabled
+    ? new SharedMonsterClient(game.scene, islandManager.activeIsland)
+    : null;
+  if (sharedMonsters) {
+    game.add(sharedMonsters);
+    // PvE: มอนสเตอร์กลางที่กำลัง 'attack' ประชิดผู้เล่น → กิน HP ฝั่ง client (Server เป็นเจ้าของตัวมอน)
+    game.add({
+      update: () => {
+        const damage = sharedMonsters.collectPlayerDamage(controller.position);
+        if (damage > 0) {
+          const taken = playerCombat?.modifyIncomingDamage({
+            amount: damage,
+            unblockable: false,
+            knockback: 0,
+            sourceX: controller.position.x,
+            sourceZ: controller.position.z,
+            tags: [],
+          }) ?? damage;
+          controller.hp = Math.max(0, controller.hp - taken);
+          playerCombat?.notifyDamaged();
+          hud.flashDamage();
+          if (taken > 0) effects.spawnDamageNumber(controller.position, Math.round(taken), '#ff6b6b');
+        }
+      },
+    });
+  }
   const selfCharacterId = getRemoteSession().session?.characterId ?? null;
   const realtime = initializeRealtime({
     onEconomy: (state) => {
@@ -358,6 +395,11 @@ async function main(): Promise<void> {
         remotePlayers?.markRespawn(playerId);
       }
     },
+    // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
+    onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
+    onWorldMonsterDelta: (islandId, updates) => sharedMonsters?.applyDelta(islandId, updates),
+    onWorldMonsterDead: (spawnId) => sharedMonsters?.markDead(spawnId),
+    onWorldMonsterRespawn: (monster) => sharedMonsters?.applyRespawn(monster),
   });
   realtime?.start();
   // debug/E2E hook (อ่าน+ส่ง move ตรง ๆ ได้) — ให้ browser-smoke ปั๊ม presence
@@ -370,6 +412,7 @@ async function main(): Promise<void> {
   if (realtime && multiplayerEnabled) {
     setInterval(() => {
       remotePlayers?.setIsland(islandManager.activeIsland);
+      sharedMonsters?.setIsland(islandManager.activeIsland);
       if (!realtime.connected) return;
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
@@ -518,6 +561,8 @@ async function main(): Promise<void> {
         });
       },
     },
+    // S16: เปิด shared world monsters → ปิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server)
+    sharedWorldMonstersEnabled,
   );
 
   // Naval Combat (เรือ Phase 2-3) — เรือโจรสลัด AI + ปืนใหญ่ + Boarding
@@ -566,12 +611,21 @@ async function main(): Promise<void> {
   hud.bindGuard(() => playerCombat.guardFraction, () => playerCombat.blocking);
   // S15: ต่อ M1/สกิลของผู้เล่นเข้ากับ PvP — หาผู้เล่นคนอื่นในกรวยหน้าแล้วส่ง "เจตนาโจมตี"
   // ให้ Server ตัดสิน (ระยะ/คูลดาวน์/ดาเมจ) — Client ไม่ส่งดาเมจ (กันโกง)
-  if (pvpEnabled && realtime && remotePlayers) {
+  // S16: และต่อ M1/สกิลเข้ากับมอนสเตอร์กลาง — หาตัวในกรวยหน้าแล้วส่ง "เจตนาตี" ให้ Server ตัดสิน
+  if (realtime && (pvpEnabled || sharedWorldMonstersEnabled)) {
     const CONE_HALF_ANGLE = Math.PI / 3; // ~120° กรวยหน้า
     playerCombat.onPvpAttack = ({ origin, forwardX, forwardZ, kind, skillId }) => {
-      const range = kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
-      for (const targetId of remotePlayers.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE)) {
-        realtime.sendAttack(targetId, kind, skillId);
+      if (pvpEnabled && remotePlayers) {
+        const range = kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
+        for (const targetId of remotePlayers.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE)) {
+          realtime.sendAttack(targetId, kind, skillId);
+        }
+      }
+      if (sharedMonsters) {
+        const range = kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE;
+        for (const spawnId of sharedMonsters.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE)) {
+          realtime.sendMonsterHit(spawnId, kind);
+        }
       }
     };
   }

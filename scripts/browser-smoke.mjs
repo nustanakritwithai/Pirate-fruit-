@@ -22,20 +22,58 @@ const browser = await chromium.launch({
   executablePath: process.env.SMOKE_CHROMIUM || undefined,
 });
 const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
+// จับ frame ภายใน browser process โดยตรง: Playwright page.on('websocket') อาจส่ง event
+// ผ่าน CDP ไม่ทันเมื่อ world delta ไหลต่อเนื่อง ทำให้ smoke false-negative ทั้งที่เกมรับแล้ว
+await page.addInitScript(() => {
+  window.__smokeRealtime = {
+    combat: [], worldSnapshot: 0, worldDeltas: [], worldDead: [],
+  };
+  const NativeWebSocket = window.WebSocket;
+  window.WebSocket = new Proxy(NativeWebSocket, {
+    construct(Target, args) {
+      const socket = Reflect.construct(Target, args, Target);
+      socket.addEventListener('message', (event) => {
+        try {
+          const message = JSON.parse(String(event.data));
+          const diag = window.__smokeRealtime;
+          if (message?.type === 'combat-hit') diag.combat.push(message);
+          if (message?.type === 'world-monster-snapshot') {
+            diag.worldSnapshot = message.monsters?.length ?? 0;
+          }
+          if (message?.type === 'world-monster-delta') {
+            diag.worldDeltas.push(...(message.updates ?? []));
+            if (diag.worldDeltas.length > 200) {
+              diag.worldDeltas.splice(0, diag.worldDeltas.length - 200);
+            }
+          }
+          if (message?.type === 'world-monster-dead') diag.worldDead.push(message.spawnId);
+        } catch { /* ไม่ใช่ JSON — ข้าม */ }
+      });
+      return socket;
+    },
+  });
+});
 const apiCalls = [];
 const pageErrors = [];
 // S9: จับ WebSocket จริงจากหน้าเกม — ยืนยัน handshake + เฟรม economy push
 // S14: เก็บ payload ของ presence ด้วย เพื่อยืนยัน boatId เดินทางถึงหน้าเกม
-const wsEvents = { opened: 0, frames: [], presence: [], combat: [] };
+const wsEvents = {
+  opened: 0, frames: [], presence: [], combat: [],
+  worldSnapshot: 0, worldDeltas: [], worldDead: [],
+};
 page.on('websocket', (socket) => {
   wsEvents.opened += 1;
   socket.on('framereceived', (frame) => {
     try {
       const message = JSON.parse(String(frame.payload));
-      if (message?.type) wsEvents.frames.push(message.type);
+      if (message?.type && wsEvents.frames.length < 60) wsEvents.frames.push(message.type);
       if (message?.type === 'presence') wsEvents.presence.push(message);
       // S15: เก็บเฟรม PvP ที่ Server ตัดสิน (โดนเราเอง) เพื่อยืนยัน authority ถึงหน้าเกม
       if (message?.type === 'combat-hit') wsEvents.combat.push(message);
+      // S16: มอนสเตอร์กลาง — snapshot ตอน join + delta/dead ที่ Server ตัดสิน
+      if (message?.type === 'world-monster-snapshot') wsEvents.worldSnapshot = message.monsters?.length ?? 0;
+      if (message?.type === 'world-monster-delta') wsEvents.worldDeltas.push(...(message.updates ?? []));
+      if (message?.type === 'world-monster-dead') wsEvents.worldDead.push(message.spawnId);
     } catch { /* ไม่ใช่ JSON — ข้าม */ }
   });
 });
@@ -221,8 +259,13 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     headers: { origin: GAME_URL, 'content-type': 'application/json' },
     body: '{}',
   });
+  const guestPayload = await guest.json().catch(() => null);
+  const peerCharacterId = guestPayload?.session?.characterId ?? null;
   // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
-  const peerDiag = { guestStatus: guest.status, frames: [], gotPage1Presence: false, error: null, closed: null };
+  const peerDiag = {
+    guestStatus: guest.status, peerCharacterId, frames: [], gotPage1Presence: false,
+    combat: [], worldDeltas: [], worldDead: [], error: null, closed: null,
+  };
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
@@ -234,16 +277,25 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   }));
   peer.on('open', () => {
     peerMove();
-    // ส่งซ้ำเป็นระยะ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก
-    const timer = setInterval(peerMove, 1_000);
+    // ส่งซ้ำถี่ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก (naval presence ให้หลายโอกาส)
+    const timer = setInterval(peerMove, 500);
     peer.on('close', () => clearInterval(timer));
   });
   peer.on('message', (data) => {
     try {
       const message = JSON.parse(String(data));
-      if (message?.type) peerDiag.frames.push(message.type);
+      // cap frames กัน log บวม (world-monster delta ไหลถี่) — ให้ SMOKE FAIL อ่านออก
+      if (message?.type && peerDiag.frames.length < 40) peerDiag.frames.push(message.type);
       // peer ได้ presence = page1 ลง presence สำเร็จ + relay ทำงาน (พิสูจน์คนละทางกับ page1)
       if (message?.type === 'presence') peerDiag.gotPage1Presence = true;
+      if (message?.type === 'combat-hit') peerDiag.combat.push(message);
+      if (message?.type === 'world-monster-delta') {
+        peerDiag.worldDeltas.push(...(message.updates ?? []));
+        if (peerDiag.worldDeltas.length > 200) {
+          peerDiag.worldDeltas.splice(0, peerDiag.worldDeltas.length - 200);
+        }
+      }
+      if (message?.type === 'world-monster-dead') peerDiag.worldDead.push(message.spawnId);
     } catch { /* ไม่ใช่ JSON */ }
   });
   peer.on('error', (err) => { peerDiag.error = String(err).slice(0, 200); });
@@ -271,43 +323,108 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       if (out.sent) pumpDiag.sent += 1;
     }
   }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
+  // ขับ peer move จาก main loop โดยตรง — setInterval(peerMove) ของ peer อาจถูก starve
+  // เมื่อ event loop ติด await page.evaluate นาน (browser อิ่มตัวจาก world-monster delta)
+  // ทำให้ peer หยุด re-broadcast presence → page1 ไม่ได้ presence (แต่ page1 → peer ยังได้)
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
+    if (peer.readyState === 1) peerMove();
     await pumpSelfMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!done()) {
     peer.close();
     fail('did not receive the expected presence frame from the second player', {
-      naval: NAVAL, presence: wsEvents.presence.slice(0, 3), wsEvents, peerDiag, pumpDiag, apiCalls,
+      naval: NAVAL,
+      opened: wsEvents.opened,
+      presenceCount: wsEvents.presence.length,
+      presenceSample: wsEvents.presence.slice(-4).map((p) => ({ onBoat: p.onBoat, boatId: p.boatId, islandId: p.islandId })),
+      worldSnapshot: wsEvents.worldSnapshot,
+      peerFramesTail: peerDiag.frames.slice(-8),
+      peerGotPage1Presence: peerDiag.gotPage1Presence,
+      pumpDiag,
+      pageErrors: pageErrors.slice(0, 5),
     });
   }
 
-  // S15 PvP: peer โจมตี page1 → page1 (เป้า) ต้องได้ combat-hit ที่ Server ตัดสินเอง
-  // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority เดินทางถึงเบราว์เซอร์จริง ไม่เชื่อ Client)
+  // S15 PvP: browser จริงโจมตี peer → peer ต้องได้ combat-hit ที่ Server ตัดสินเอง
+  // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority ข้าม client จริง ไม่เชื่อ Client)
   const pvpDiag = { hasTarget: false, attacksSent: 0, gotHit: false };
   if (process.env.SMOKE_EXPECT_PVP === 'true') {
-    const targetId = await page.evaluate(() => window.__characterId ?? null);
+    const targetId = peerCharacterId;
     pvpDiag.hasTarget = Boolean(targetId);
-    const gotCombat = () => wsEvents.combat.some((c) => c.targetId === targetId && c.hp < c.maxHp);
+    const gotCombat = () => peerDiag.combat.some(
+      (c) => c.targetId === targetId && c.hp < c.maxHp,
+    );
     const pvpDeadline = Date.now() + 20_000;
-    while (targetId && Date.now() < pvpDeadline && !gotCombat()) {
-      await pumpSelfMove(); // page1 คงมี presence เป็นเป้าให้ Server วัดระยะ
-      if (peer.readyState === 1) {
-        peer.send(JSON.stringify({ type: 'attack', targetId, kind: 'skill' }));
+    while (targetId && Date.now() < pvpDeadline && !pvpDiag.gotHit) {
+      if (peer.readyState === 1) peerMove();
+      const sent = await page.evaluate((id) => {
+        const rt = window.__realtime;
+        if (!rt || !rt.connected || typeof rt.sendAttack !== 'function') return false;
+        rt.sendMove({ islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0, onBoat: false });
+        rt.sendAttack(id, 'skill');
+        return true;
+      }, targetId);
+      if (sent) {
         pvpDiag.attacksSent += 1;
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
+      pvpDiag.gotHit = gotCombat();
     }
-    pvpDiag.gotHit = gotCombat();
   }
+
+  // S16 shared monsters: browser จริงที่ได้รับ snapshot ส่ง intent → peer ต้องเห็น HP ลด + ตาย
+  // (พิสูจน์ state เดียวกันข้าม client โดย Server เป็นเจ้าของ HP/death)
+  const worldDiag = {
+    gotSnapshot: 0, hitsSent: 0, sawDamage: false, sawDead: false,
+    peerSawDamage: false, peerSawDead: false,
+  };
+  if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true') {
+    const spawnId = 'starter-crab-1';
+    const peerSawDamage = () => peerDiag.worldDeltas.some((d) => d.spawnId === spawnId && d.hp < 70);
+    const peerSawDead = () => peerDiag.worldDead.includes(spawnId);
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline && !peerSawDead()) {
+      const sent = await page.evaluate((targetSpawnId) => {
+        const rt = window.__realtime;
+        if (!rt || !rt.connected || typeof rt.sendMonsterHit !== 'function') return false;
+        // move + intent อยู่บน socket เดียวกันและส่งติดกัน: Server จึงเห็นตำแหน่ง spawn
+        // ก่อนวัดระยะ โดยไม่พึ่ง timer/rAF ของ browser หรือ outbound queue ของ Node peer
+        rt.sendMove({ islandId: 'starter-island', x: 22, y: 0, z: -4, heading: 0, onBoat: false });
+        rt.sendMonsterHit(targetSpawnId, 'skill');
+        return true;
+      }, spawnId);
+      if (sent) {
+        worldDiag.hitsSent += 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const browserWorld = await page.evaluate(() => window.__smokeRealtime ?? null);
+      worldDiag.gotSnapshot = browserWorld?.worldSnapshot ?? 0;
+      worldDiag.sawDamage = browserWorld?.worldDeltas.some(
+        (d) => d.spawnId === 'starter-crab-1' && d.hp < 70,
+      ) ?? false;
+      worldDiag.sawDead = browserWorld?.worldDead.includes('starter-crab-1') ?? false;
+    }
+    worldDiag.peerSawDamage = peerSawDamage();
+    worldDiag.peerSawDead = peerSawDead();
+  }
+
   peer.close();
+  if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true'
+    && !(worldDiag.gotSnapshot > 0 && worldDiag.hitsSent > 0
+      && worldDiag.peerSawDamage && worldDiag.peerSawDead)) {
+    fail('shared world monster state did not cross browser and peer (snapshot/damage/death)', {
+      worldDiag, worldDeltas: wsEvents.worldDeltas.slice(0, 3), worldDead: wsEvents.worldDead,
+      pvpDiag, peerDiag, peerReadyState: peer.readyState, pumpDiag,
+    });
+  }
   if (process.env.SMOKE_EXPECT_PVP === 'true' && !pvpDiag.gotHit) {
     fail('did not receive a server-authoritative combat-hit from PvP', {
       pvpDiag, combat: wsEvents.combat.slice(0, 3), peerDiag, pumpDiag,
     });
   }
-  console.log('S13/S14/S15 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag }));
+  console.log('S13/S14/S15/S16 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag, worldDiag }));
 }
 
 console.log('SMOKE PASS');

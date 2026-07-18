@@ -147,3 +147,12 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - **ระยะ/ตำแหน่งวัดจากฝั่ง Server**: ใช้ presence ล่าสุดที่ auth แล้ว — client ยิงข้ามเกาะ/นอกระยะ/ใส่ตัวเองไม่ได้ (ปัดตกเงียบ); ตัวตนผู้โจมตี (`attackerId`) แนบจาก connection ของ Server
 - **กันสแปม/ออโต้**: throttle ต่อคู่ผู้โจมตี→เป้า (`PVP_ATTACK_MIN_INTERVAL_MS`) — ยิงถี่เกินถูกทิ้ง; ตาย/เกิดใหม่ Server เป็นคนตั้งเวลา (`PVP_RESPAWN_MS`)
 - ยังไม่มีผลต่อเศรษฐกิจ/รางวัล: แพ้ PvP ไม่เสียเหรียญ/ของ (ephemeral duel) — reward-on-kill เป็นงานอนาคต; ปิดด้วย `ENABLE_PVP=false` default ในโปรดักชัน
+
+## S16 — Shared monster world authority
+- **Server เป็นเจ้าของมอนสเตอร์**: spawn/AI/HP/death/respawn อยู่บน Server ล้วน — Client ส่งได้แค่ `world-monster-hit` (เจตนาตี) ไม่มีดาเมจ (กันโกง)
+- ดาเมจ + ระยะตัดสินฝั่ง Server (ตารางคงที่ + วัดระยะจาก presence ผู้โจมตี) — ตีข้ามเกาะ/นอกระยะ/ตัวที่ตายแล้ว = ปัดตก
+- HP/death shared: ทุกคนบนเกาะเห็นค่าเดียวกันจาก snapshot/delta ของ Server (ไม่มี local authority เมื่อเปิด flag — client ปิด ambient spawn ท้องถิ่น)
+- interest ระดับเกาะ + tick rate จำกัด (`WORLD_MONSTER_TICK_MS`) — คุมต้นทุน broadcast/CPU
+- AI ไม่ target ผู้เล่นที่หายจาก world (หลุด presence) — กัน target ค้างกับ ghost
+- contribution (ใครตีเท่าไร) เก็บฝั่ง Server มีหน้าต่างเวลา — ผู้เล่นนอกระยะ/ไม่ได้ตีไม่ถูกนับ (เตรียมแจก reward/loot phase ถัดไปแบบ authoritative)
+- player HP จากมอนสเตอร์ยังเป็น client-side ในเฟสนี้ (Server เป็นเจ้าของแค่ตัวมอนสเตอร์) — reward/loot authority = งานถัดไป; ปิดด้วย `ENABLE_SHARED_WORLD_MONSTERS=false` default
