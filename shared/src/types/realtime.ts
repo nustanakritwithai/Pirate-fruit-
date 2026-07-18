@@ -60,6 +60,8 @@ export interface RealtimePresence {
   heading: number;
   /** true = ผู้เล่นกำลังขับเรือ (client เลือกโมเดล ghost ให้ต่างออกไปได้) */
   onBoat: boolean;
+  /** S14: รุ่นเรือที่ขับอยู่ (BOAT_DEFINITIONS id) — client เรนเดอร์เรือให้ตรงรุ่น */
+  boatId?: string;
 }
 
 export interface RealtimePresenceLeave {
@@ -90,6 +92,8 @@ export interface RealtimeMove {
   z: number;
   heading: number;
   onBoat: boolean;
+  /** S14: รุ่นเรือที่ขับอยู่ (ส่งเมื่อ onBoat) */
+  boatId?: string;
 }
 
 export type RealtimeClientMessage = RealtimePing | RealtimeMove;

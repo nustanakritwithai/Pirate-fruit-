@@ -186,4 +186,34 @@ describe('S13 presence relay', () => {
     hub.handleClientMessage(connection, JSON.stringify({ type: 'move', islandId: 'x', x: 'nope' }));
     expect(socket.closedWith?.code).toBe(1008);
   });
+
+  it('relays the boat id when a player is sailing (S14)', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
+    clock += 100;
+    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: true, boatId: 'war-galleon' }));
+    const presence = b.sent.find((message) => message.type === 'presence') as { boatId?: string; onBoat?: boolean };
+    expect(presence).toMatchObject({ onBoat: true, boatId: 'war-galleon' });
+  });
+
+  it('drops the boat id when the player is on foot', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
+    clock += 100;
+    // onBoat:false แต่แนบ boatId มา → ต้องถูกทิ้ง
+    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: false, boatId: 'war-galleon' }));
+    const presence = b.sent.find((message) => message.type === 'presence') as { boatId?: string };
+    expect(presence.boatId).toBeUndefined();
+  });
+
 });

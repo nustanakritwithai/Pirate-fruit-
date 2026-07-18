@@ -73,3 +73,7 @@ copies; do not clear them as part of incident rollback.
 1. Rebuild Static Site โดยเอา `VITE_ENABLE_MULTIPLAYER` ออก (client เลิกส่ง move + ไม่เรนเดอร์ผู้เล่นอื่น)
 2. ตั้ง `ENABLE_MULTIPLAYER=false` ที่ Web Service (Server เพิกเฉย move — ผู้เล่นเห็นแต่ตัวเอง)
 3. ไม่มีข้อมูลต้องกู้ — presence เป็น memory ล้วน stateless; ช่อง WS (S9) ยังทำงานปกติ
+
+
+## S14 — Boat/Naval Multiplayer rollback
+- ไม่มีขั้นตอนแยก — ใช้ rollback ของ S13 (ปิด `ENABLE_MULTIPLAYER` / เอา `VITE_ENABLE_MULTIPLAYER` ออก); `boatId` เป็นฟิลด์เสริมบน presence เดิม ไม่มี state ค้าง

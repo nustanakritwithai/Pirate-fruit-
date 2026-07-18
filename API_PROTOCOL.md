@@ -238,3 +238,13 @@ Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อ
 - Server relay ตำแหน่งให้เฉพาะผู้เล่น**บนเกาะเดียวกัน**; ผู้เล่นที่เพิ่งปรากฏ/ย้ายเกาะจะได้ presence ของคนอื่นบนเกาะทันที (seed)
 - presence เป็น ephemeral: ใช้ seq stream เดียวกับ economy แต่ client apply ได้เลยแม้ seq กระโดด (ตำแหน่งสัมบูรณ์ทับของเก่า) — resync ยังทำงานให้ economy ตามปกติ
 - disconnect → broadcast presence-leave ให้ islanders
+
+
+## S14 — Boat/Naval Multiplayer (boat presence)
+
+ต่อยอด S13 บน flag เดิม `ENABLE_MULTIPLAYER` — **ไม่มี flag/ตาราง/endpoint ใหม่**
+
+- `move` และ `presence` เพิ่มฟิลด์ `boatId?` (BOAT_DEFINITIONS id) — ส่งเมื่อ `onBoat` เป็นจริง
+- Server: ถ้า `onBoat=false` จะทิ้ง `boatId` ทิ้ง (กันแนบมั่ว); `boatId` ยาว ≤128 เท่านั้น
+- Client: presence ที่ `onBoat=true` เรนเดอร์เป็น "เรือ proxy" (ตัวเรือ+ใบเรือ ขนาด/สีตามรุ่นจาก BOAT_DEFINITIONS) แทน ghost; ขึ้น/ลงเรือหรือเปลี่ยนรุ่น → สลับ avatar ที่ตำแหน่งเดิม; รุ่นที่ไม่รู้จัก → เรือ default
+- ยังเป็น presence ล้วน: เห็นเรือคนอื่นแล่นได้ แต่ไม่มี collision/ยิงกัน (naval combat authority เกินขอบเขต stateless presence — งานอนาคต)

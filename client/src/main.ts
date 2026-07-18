@@ -330,13 +330,15 @@ async function main(): Promise<void> {
       remotePlayers?.setIsland(islandManager.activeIsland);
       if (!realtime.connected) return;
       const position = controller.position;
+      const onBoat = boatManager.riderState !== 'off';
       realtime.sendMove({
         islandId: islandManager.activeIsland,
         x: position.x,
         y: position.y,
         z: position.z,
         heading: controller.heading,
-        onBoat: boatManager.riderState !== 'off',
+        onBoat,
+        boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
       });
     }, 100);
   }
