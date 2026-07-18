@@ -83,6 +83,8 @@ interface MonsterRuntime {
   patrolX: number;
   patrolZ: number;
   nextPatrolAt: number;
+  /** เวลาส่ง delta ครั้งล่าสุด — throttle การ sync ตำแหน่ง (state/hp เปลี่ยนไม่สน throttle) */
+  lastDeltaAt: number;
   contributions: Map<string, Contribution>;
   /** ค่าที่ส่งไปครั้งล่าสุด — ใช้ตัดสินว่าควรส่ง delta ใหม่ */
   sentX: number;
@@ -122,6 +124,7 @@ export class MonsterSimulation {
         patrolX: spawn.homeX,
         patrolZ: spawn.homeZ,
         nextPatrolAt: 0,
+        lastDeltaAt: 0,
         contributions: new Map(),
         sentX: spawn.homeX,
         sentZ: spawn.homeZ,
@@ -279,7 +282,7 @@ export class MonsterSimulation {
         continue;
       }
       this.stepAi(now, dt, monster, playersById, attacks);
-      this.emitIfDirty(monster, dirtyByIsland);
+      this.emitIfDirty(now, monster, dirtyByIsland);
     }
 
     return { dirtyByIsland, respawns, attacks };
@@ -404,19 +407,27 @@ export class MonsterSimulation {
     monster.heading = Math.atan2(tx - monster.x, tz - monster.z);
   }
 
-  private emitIfDirty(monster: MonsterRuntime, dirtyByIsland: Map<string, WorldMonsterDelta[]>): void {
-    // คุมต้นทุน: state ที่เกี่ยวกับการต่อสู้ sync ละเอียด; idle/patrol sync แบบหยาบ
-    // (ลดจำนวน delta broadcast ต่อ tick อย่างมากเมื่อไม่มีใครสู้อยู่)
+  private emitIfDirty(
+    now: number,
+    monster: MonsterRuntime,
+    dirtyByIsland: Map<string, WorldMonsterDelta[]>,
+  ): void {
+    // hp/state เปลี่ยน = สำคัญ ส่งทันที; ตำแหน่งล้วน = throttle (คุมต้นทุน broadcast)
+    const hpChanged = Math.round(monster.hp) !== Math.round(monster.sentHp);
+    const stateChanged = monster.state !== monster.sentState;
     const active = monster.state === 'aggro'
       || monster.state === 'chase'
       || monster.state === 'attack'
       || monster.state === 'return';
     const moveThreshold = active ? 0.05 : 0.6;
     const moved = Math.hypot(monster.x - monster.sentX, monster.z - monster.sentZ) > moveThreshold;
-    const changed = moved
-      || Math.round(monster.hp) !== Math.round(monster.sentHp)
-      || monster.state !== monster.sentState;
-    if (!changed) return;
+    if (!hpChanged && !stateChanged) {
+      // sync ตำแหน่งล้วนได้ไม่เกิน ~2 ครั้ง/วินาที ต่อตัว (กัน browser อิ่มตัว)
+      if (!moved || now - monster.lastDeltaAt < 450) return;
+    } else if (!moved && !hpChanged && !stateChanged) {
+      return;
+    }
+    monster.lastDeltaAt = now;
     monster.sentX = monster.x;
     monster.sentZ = monster.z;
     monster.sentHp = monster.hp;

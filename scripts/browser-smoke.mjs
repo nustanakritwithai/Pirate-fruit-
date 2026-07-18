@@ -35,7 +35,7 @@ page.on('websocket', (socket) => {
   socket.on('framereceived', (frame) => {
     try {
       const message = JSON.parse(String(frame.payload));
-      if (message?.type) wsEvents.frames.push(message.type);
+      if (message?.type && wsEvents.frames.length < 60) wsEvents.frames.push(message.type);
       if (message?.type === 'presence') wsEvents.presence.push(message);
       // S15: เก็บเฟรม PvP ที่ Server ตัดสิน (โดนเราเอง) เพื่อยืนยัน authority ถึงหน้าเกม
       if (message?.type === 'combat-hit') wsEvents.combat.push(message);
@@ -287,7 +287,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   if (!done()) {
     peer.close();
     fail('did not receive the expected presence frame from the second player', {
-      naval: NAVAL, presence: wsEvents.presence.slice(0, 3), wsEvents, peerDiag, pumpDiag, apiCalls,
+      naval: NAVAL,
+      opened: wsEvents.opened,
+      presenceCount: wsEvents.presence.length,
+      presenceSample: wsEvents.presence.slice(-4).map((p) => ({ onBoat: p.onBoat, boatId: p.boatId, islandId: p.islandId })),
+      worldSnapshot: wsEvents.worldSnapshot,
+      peerFramesTail: peerDiag.frames.slice(-8),
+      peerGotPage1Presence: peerDiag.gotPage1Presence,
+      pumpDiag,
+      pageErrors: pageErrors.slice(0, 5),
     });
   }
 
