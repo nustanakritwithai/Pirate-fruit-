@@ -217,3 +217,92 @@ describe('S13 presence relay', () => {
   });
 
 });
+
+describe('S15 PvP combat authority', () => {
+  function moved(island: string, x: number, z: number) {
+    return JSON.stringify({ type: 'move', islandId: island, x, y: 0, z, heading: 0, onBoat: false });
+  }
+  function attack(targetId: string, kind: 'melee' | 'skill' = 'melee') {
+    return JSON.stringify({ type: 'attack', targetId, kind });
+  }
+
+  it('ignores attack frames when pvp is disabled (default)', () => {
+    const hub = new RealtimeHub(undefined, () => 1_000, 200, true /* presence */);
+    const socket = new FakeSocket();
+    const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
+    hub.handleClientMessage(connection, attack('char-b'));
+    expect(socket.closedWith).toBeNull();
+    expect(socket.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+  });
+
+  it('resolves a hit and broadcasts combat-hit to islanders (server-side damage)', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 1, 1));
+
+    hub.handleClientMessage(ca, attack('char-b', 'melee'));
+    const hitToTarget = b.sent.find((message) => message.type === 'combat-hit') as
+      | { attackerId: string; targetId: string; hp: number; maxHp: number }
+      | undefined;
+    expect(hitToTarget).toMatchObject({ attackerId: 'char-a', targetId: 'char-b' });
+    expect(hitToTarget!.hp).toBeLessThan(hitToTarget!.maxHp);
+    // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
+    expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
+  });
+
+  it('does not resolve hits across islands or out of range', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('mist-jungle', 1, 1)); // คนละเกาะ
+    hub.handleClientMessage(ca, attack('char-b'));
+    expect(b.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+  });
+
+  it('broadcasts combat-defeat then combat-respawn on the ticker', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 1, 1));
+    // ตีจนตาย (เว้นคูลดาวน์) — หยุดทันทีที่เห็น defeat กัน clock เลยเวลาเกิดใหม่
+    for (let i = 0; i < 40; i += 1) {
+      hub.handleClientMessage(ca, attack('char-b', 'skill'));
+      if (b.sent.some((message) => message.type === 'combat-defeat')) break;
+      clock += 300;
+    }
+    expect(b.sent.some((message) => message.type === 'combat-defeat')).toBe(true);
+    // ยังไม่ถึงเวลาเกิดใหม่
+    hub.processCombatRespawns();
+    expect(b.sent.some((message) => message.type === 'combat-respawn')).toBe(false);
+    clock += 5_000;
+    hub.processCombatRespawns();
+    const respawn = b.sent.find((message) => message.type === 'combat-respawn') as
+      | { playerId: string; hp: number }
+      | undefined;
+    expect(respawn).toMatchObject({ playerId: 'char-b' });
+  });
+
+  it('drops the connection on an invalid attack payload', () => {
+    const hub = new RealtimeHub(undefined, () => 1_000, 200, true, true);
+    const socket = new FakeSocket();
+    const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
+    hub.handleClientMessage(connection, JSON.stringify({ type: 'attack', targetId: 42 }));
+    expect(socket.closedWith?.code).toBe(1008);
+  });
+});

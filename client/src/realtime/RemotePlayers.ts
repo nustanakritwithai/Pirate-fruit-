@@ -30,6 +30,8 @@ interface RemotePlayer {
   name: string;
   avatarKind: AvatarKind;
   lastSeenAt: number;
+  /** S15: แพ้ (ถูกซ่อนจนกว่าจะเกิดใหม่) */
+  defeated: boolean;
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -163,6 +165,7 @@ export class RemotePlayers implements Updatable {
         name: snapshot.name,
         avatarKind: kind,
         lastSeenAt: this.now(),
+        defeated: false,
       });
       return;
     }
@@ -224,6 +227,55 @@ export class RemotePlayers implements Updatable {
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       player.group.rotation.y = current + delta * factor;
     }
+  }
+
+  /** S15: ตำแหน่งปัจจุบันของผู้เล่นคนอื่น (สำหรับเด้งเลขดาเมจ) — null ถ้าไม่รู้จัก */
+  positionOf(playerId: string): THREE.Vector3 | null {
+    return this.players.get(playerId)?.group.position.clone() ?? null;
+  }
+
+  /**
+   * S15: ผู้เล่นคนอื่นที่อยู่ในกรวยโจมตีหน้าเรา (ไว้ส่งเจตนาโจมตีให้ Server ตัดสิน)
+   * forward = เวกเตอร์หน้า (x,z) ของผู้เล่นเรา; range/halfAngle = ระยะ/ครึ่งมุมกรวย (เรเดียน)
+   */
+  targetsInCone(
+    origin: THREE.Vector3,
+    forwardX: number,
+    forwardZ: number,
+    range: number,
+    halfAngle: number,
+  ): string[] {
+    const flen = Math.hypot(forwardX, forwardZ) || 1;
+    const fx = forwardX / flen;
+    const fz = forwardZ / flen;
+    const cosHalf = Math.cos(halfAngle);
+    const hits: string[] = [];
+    for (const [playerId, player] of this.players) {
+      if (player.defeated) continue;
+      const dx = player.group.position.x - origin.x;
+      const dz = player.group.position.z - origin.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > range || dist < 1e-3) continue;
+      if ((dx / dist) * fx + (dz / dist) * fz < cosHalf) continue; // นอกมุมกรวย
+      hits.push(playerId);
+    }
+    return hits;
+  }
+
+  /** S15: เป้าแพ้ → ซ่อนผีจนกว่าจะเกิดใหม่ (Server เป็นคนบอกเวลา) */
+  markDefeated(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    player.defeated = true;
+    player.group.visible = false;
+  }
+
+  markRespawn(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    player.defeated = false;
+    player.group.visible = true;
+    player.lastSeenAt = this.now();
   }
 
   dispose(): void {

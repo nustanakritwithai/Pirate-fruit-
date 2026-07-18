@@ -47,6 +47,10 @@ export interface RealtimeHandlers {
   /** S13: presence ของผู้เล่นคนอื่น (ตำแหน่งล่าสุด — apply ได้เลยไม่ต้องสน seq gap) */
   onPresence?(snapshot: RealtimePresenceSnapshot): void;
   onPresenceLeave?(playerId: string): void;
+  /** S15: PvP — Server แจ้งผลการโจมตี/แพ้/เกิดใหม่ (HP เป็น authority ของ Server) */
+  onCombatHit?(hit: { attackerId: string; targetId: string; damage: number; hp: number; maxHp: number }): void;
+  onCombatDefeat?(playerId: string, byId: string): void;
+  onCombatRespawn?(playerId: string, hp: number, maxHp: number): void;
 }
 
 export interface RealtimeClientOptions {
@@ -178,6 +182,18 @@ export class RealtimeClient {
       });
     } else if (message.type === 'presence-leave') {
       this.handlers.onPresenceLeave?.(message.playerId);
+    } else if (message.type === 'combat-hit') {
+      this.handlers.onCombatHit?.({
+        attackerId: message.attackerId,
+        targetId: message.targetId,
+        damage: message.damage,
+        hp: message.hp,
+        maxHp: message.maxHp,
+      });
+    } else if (message.type === 'combat-defeat') {
+      this.handlers.onCombatDefeat?.(message.playerId, message.byId);
+    } else if (message.type === 'combat-respawn') {
+      this.handlers.onCombatRespawn?.(message.playerId, message.hp, message.maxHp);
     }
     // pong: แค่รีเซ็ต idle watchdog (ทำไปแล้วต้นฟังก์ชัน)
   }
@@ -194,6 +210,12 @@ export class RealtimeClient {
   }): void {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
     this.socket.send(JSON.stringify({ type: 'move', ...position }));
+  }
+
+  /** S15: รายงานเจตนาโจมตีผู้เล่นอีกคน — Server ตัดสินดาเมจ/HP เอง (ไม่ส่งดาเมจ) */
+  sendAttack(targetId: string, kind: 'melee' | 'skill', skillId?: string): void {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
+    this.socket.send(JSON.stringify({ type: 'attack', targetId, kind, skillId }));
   }
 
   private handleDisconnect(): void {

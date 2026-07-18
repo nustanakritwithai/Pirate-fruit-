@@ -70,13 +70,50 @@ export interface RealtimePresenceLeave {
   playerId: string;
 }
 
+/**
+ * S15 — Multiplayer Combat Authority (PvP)
+ * Server เป็นเจ้าของ HP การต่อสู้ระหว่างผู้เล่นทั้งหมด: Client ส่งได้แค่ "เจตนาโจมตี"
+ * (attack intent) — ดาเมจ/HP/ตาย/เกิดใหม่ Server คิดเองล้วน ไม่เชื่อค่าจาก Client
+ * combat-hit/-defeat/-respawn เป็น absolute state เหมือน presence: ทับของเก่าได้เลย
+ */
+export interface RealtimeCombatHit {
+  type: 'combat-hit';
+  seq: number;
+  attackerId: string;
+  targetId: string;
+  /** ดาเมจที่ Server คิด (ค่าคงที่ตาม kind — Client ส่งค่ามาไม่ได้) */
+  damage: number;
+  /** HP ของเป้าหลังโดน (Server authority) + เพดาน เพื่อ map เป็นหลอดเลือดฝั่ง Client */
+  hp: number;
+  maxHp: number;
+}
+
+export interface RealtimeCombatDefeat {
+  type: 'combat-defeat';
+  seq: number;
+  playerId: string;
+  /** ผู้เล่นที่ทำให้แพ้ (ให้เครดิต/แสดงผล) */
+  byId: string;
+}
+
+export interface RealtimeCombatRespawn {
+  type: 'combat-respawn';
+  seq: number;
+  playerId: string;
+  hp: number;
+  maxHp: number;
+}
+
 export type RealtimeServerMessage =
   | RealtimeWelcome
   | RealtimeEconomyUpdate
   | RealtimeAnnouncement
   | RealtimePong
   | RealtimePresence
-  | RealtimePresenceLeave;
+  | RealtimePresenceLeave
+  | RealtimeCombatHit
+  | RealtimeCombatDefeat
+  | RealtimeCombatRespawn;
 
 export interface RealtimePing {
   type: 'ping';
@@ -96,10 +133,37 @@ export interface RealtimeMove {
   boatId?: string;
 }
 
-export type RealtimeClientMessage = RealtimePing | RealtimeMove;
+/** S15 — Client รายงาน "เจตนาโจมตี" ผู้เล่นอีกคน (PvP) — Server ตัดสินผลเอง */
+export interface RealtimeAttack {
+  type: 'attack';
+  /** characterId ของเป้า (Server ตรวจระยะ/เกาะ/คูลดาวน์เอง) */
+  targetId: string;
+  /** ชนิดการโจมตี — Server ใช้เลือกดาเมจจากตารางของตัวเอง (ไม่รับดาเมจจาก Client) */
+  kind: 'melee' | 'skill';
+  /** ข้อมูลประกอบ (log/telemetry) — ไม่มีผลต่อดาเมจ */
+  skillId?: string;
+}
+
+export type RealtimeClientMessage = RealtimePing | RealtimeMove | RealtimeAttack;
 
 /** ข้อความ client ใหญ่เกินนี้ = protocol violation → ปิด connection */
 export const REALTIME_MAX_CLIENT_MESSAGE_BYTES = 1_024;
 
 /** S13 — ผู้เล่นส่ง move ถี่กว่านี้ Server จะทิ้ง (throttle presence relay ~12.5/วิ) */
 export const REALTIME_MOVE_MIN_INTERVAL_MS = 80;
+
+/**
+ * S15 — ค่าคงที่ PvP (Server เป็นเจ้าของทั้งหมด — Client อ่านเพื่อ predict/แสดงผลได้
+ * แต่ไม่มีผลต่อ authority)
+ */
+export const PVP_MAX_HP = 100;
+/** ดาเมจต่อครั้งตามชนิด — คงที่ กัน Client ปั้นดาเมจ (จูนสมดุลภายหลังได้) */
+export const PVP_MELEE_DAMAGE = 7;
+export const PVP_SKILL_DAMAGE = 16;
+/** โจมตีโดนเป้าเดิมถี่กว่านี้ Server ทิ้ง (กันสแปม/ออโต้) */
+export const PVP_ATTACK_MIN_INTERVAL_MS = 300;
+/** ระยะสูงสุดที่นับว่าโจมตีถึง (world units) — วัดจาก presence ล่าสุดของทั้งคู่ */
+export const PVP_MELEE_RANGE = 4.5;
+export const PVP_SKILL_RANGE = 22;
+/** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
+export const PVP_RESPAWN_MS = 5_000;

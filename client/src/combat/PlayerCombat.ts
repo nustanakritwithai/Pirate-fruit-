@@ -223,6 +223,18 @@ export class PlayerCombat {
   private readonly skillPreviewArrow: THREE.Mesh;
   private visualAnchors: CombatVisualAnchorProvider | null = null;
 
+  /**
+   * S15: hook เจตนาโจมตี PvP — ถูกเรียกเมื่อ M1 ลง hitbox และเมื่อปล่อยสกิล
+   * main.ts ผูกให้หาผู้เล่นคนอื่นในกรวยแล้วส่ง attack intent ให้ Server ตัดสิน
+   */
+  onPvpAttack?: (info: {
+    origin: THREE.Vector3;
+    forwardX: number;
+    forwardZ: number;
+    kind: 'melee' | 'skill';
+    skillId?: string;
+  }) => void;
+
   constructor(
     private scene: THREE.Scene,
     private input: Input,
@@ -649,6 +661,8 @@ export class PlayerCombat {
           nearestHit.y += monster.type.kind === 'crab' ? 0.65 : 1.05 * monster.type.scale;
         },
       });
+      // S15: แจ้งเจตนาโจมตี PvP (Server ตัดสินว่าโดนผู้เล่นคนอื่นไหม/ดาเมจเท่าไร)
+      this.onPvpAttack?.({ origin: position.clone(), forwardX: forward.x, forwardZ: forward.z, kind: 'melee' });
 
       if (this.set.weaponCategory === 'sword') {
         const blade = this.visualAnchors?.getSwordBladeWorldSegment();
@@ -822,6 +836,8 @@ export class PlayerCombat {
     if (hasForcedDirection) this.controller.heading = Math.atan2(dirX, dirZ);
     const source = this.skillSource();
     const scaledDamage = skill.damage * this.damageMultiplier(skill.category);
+    // S15: แจ้งเจตนาโจมตี PvP ด้วยสกิล (Server ตัดสินผล — ดาเมจฝั่ง PvP เป็นค่าคงที่ของ Server)
+    this.onPvpAttack?.({ origin: position.clone(), forwardX: dirX, forwardZ: dirZ, kind: 'skill', skillId: skill.id });
 
     switch (skill.renderType) {
       case 'projectile':

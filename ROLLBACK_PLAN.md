@@ -77,3 +77,8 @@ copies; do not clear them as part of incident rollback.
 
 ## S14 — Boat/Naval Multiplayer rollback
 - ไม่มีขั้นตอนแยก — ใช้ rollback ของ S13 (ปิด `ENABLE_MULTIPLAYER` / เอา `VITE_ENABLE_MULTIPLAYER` ออก); `boatId` เป็นฟิลด์เสริมบน presence เดิม ไม่มี state ค้าง
+
+## S15 — Multiplayer Combat Authority (PvP) rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_PVP` ออก (client เลิกส่ง `attack` + ไม่ผูก M1/สกิลเข้ากับ PvP)
+2. ตั้ง `ENABLE_PVP=false` ที่ Web Service (Server เพิกเฉย `attack` — ไม่ resolve การต่อสู้ระหว่างผู้เล่น)
+- HP PvP เป็น ephemeral ในหน่วยความจำ Server ล้วน — ไม่มี migration/ตาราง/ข้อมูล persist ให้ย้อน; ปิด flag = จบทันที (presence S13/S14 ยังทำงานต่อได้ปกติ)

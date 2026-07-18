@@ -248,3 +248,19 @@ Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อ
 - Server: ถ้า `onBoat=false` จะทิ้ง `boatId` ทิ้ง (กันแนบมั่ว); `boatId` ยาว ≤128 เท่านั้น
 - Client: presence ที่ `onBoat=true` เรนเดอร์เป็น "เรือ proxy" (ตัวเรือ+ใบเรือ ขนาด/สีตามรุ่นจาก BOAT_DEFINITIONS) แทน ghost; ขึ้น/ลงเรือหรือเปลี่ยนรุ่น → สลับ avatar ที่ตำแหน่งเดิม; รุ่นที่ไม่รู้จัก → เรือ default
 - ยังเป็น presence ล้วน: เห็นเรือคนอื่นแล่นได้ แต่ไม่มี collision/ยิงกัน (naval combat authority เกินขอบเขต stateless presence — งานอนาคต)
+
+## S15 — Multiplayer Combat Authority (PvP)
+
+flag ใหม่ `ENABLE_PVP` (server) + `VITE_ENABLE_PVP` (client), default false — ต้องเปิด `ENABLE_MULTIPLAYER` ก่อน
+Server เป็น**เจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่นทั้งหมด**: Client ส่งได้แค่ "เจตนาโจมตี" — ดาเมจ/HP/ตาย/เกิดใหม่ Server คิดเองล้วน
+
+### Client → Server: `{type:'attack', targetId, kind:'melee'|'skill', skillId?}`
+- **ไม่มีฟิลด์ดาเมจ** — Client ส่งดาเมจมาไม่ได้ (กันโกง); `kind` แค่เลือกดาเมจจาก**ตารางคงที่ของ Server** (`PVP_MELEE_DAMAGE`/`PVP_SKILL_DAMAGE`)
+- Server ตรวจเอง: อยู่เกาะเดียวกัน (จาก presence), ระยะ ≤ `PVP_MELEE_RANGE`/`PVP_SKILL_RANGE` (วัดจาก presence ล่าสุดของทั้งคู่ — Server เป็นคนรู้ตำแหน่ง), คูลดาวน์ต่อเป้า ≥ `PVP_ATTACK_MIN_INTERVAL_MS`, เป้า/ผู้โจมตียังไม่ตาย, ไม่ใช่ตัวเอง — ปัดตกเงียบ ๆ ถ้าไม่ผ่าน (ไม่ปิด connection); `targetId` ผิดรูป → ปิด 1008
+- `skillId` เป็นแค่ metadata (log) — ไม่มีผลต่อดาเมจ
+
+### Server → Client: `combat-hit` / `combat-defeat` / `combat-respawn`
+- `{type:'combat-hit', seq, attackerId, targetId, damage, hp, maxHp}` — broadcast ให้ผู้เล่นบนเกาะเดียวกัน (เป้าปรับหลอดเลือดตาม `hp/maxHp` = authority; คนอื่นเด้งเลขดาเมจเหนือหัวเป้า)
+- `{type:'combat-defeat', seq, playerId, byId}` — เป้า HP หมด; Client ของเป้า → กลับจุดปลอดภัย, คนอื่น → ซ่อนผีชั่วคราว
+- `{type:'combat-respawn', seq, playerId, hp, maxHp}` — Server ตั้งเวลา `PVP_RESPAWN_MS` แล้วรีเซ็ต HP เต็ม + broadcast (มี combat ticker แยกจาก reaper)
+- HP PvP เป็น **ephemeral ต่อ session** (ไม่ persist ลง DB) — ตัดการเชื่อมต่อ = ลบทิ้ง

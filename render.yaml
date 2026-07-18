@@ -63,6 +63,9 @@ services:
       # S13 Multiplayer Movement — presence relay บน WebSocket (ต้องเปิด ENABLE_REALTIME ก่อน; client ต้อง build ด้วย VITE_ENABLE_MULTIPLAYER=true พร้อมกัน)
       - key: ENABLE_MULTIPLAYER
         value: 'false'
+      # S15 Multiplayer Combat Authority (PvP) — Server เป็นเจ้าของ HP/ดาเมจ (ต้องเปิด ENABLE_MULTIPLAYER ก่อน; client ต้อง build ด้วย VITE_ENABLE_PVP=true พร้อมกัน)
+      - key: ENABLE_PVP
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

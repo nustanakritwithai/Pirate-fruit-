@@ -52,6 +52,7 @@ async function start(): Promise<void> {
         () => Date.now(),
         200,
         environment.ENABLE_MULTIPLAYER,
+        environment.ENABLE_PVP,
       )
     : undefined;
   const economy = pool && environment.ENABLE_ECONOMY_SERVER
@@ -84,6 +85,10 @@ async function start(): Promise<void> {
     ? startGuestCleanup(pool, app.log)
     : null;
   const stopRealtimeReaper = realtime?.startReaper() ?? null;
+  // S15: รอบเกิดใหม่ PvP (แยกจาก reaper เพราะต้องละเอียดกว่ารอบ heartbeat)
+  const stopCombatTicker = realtime && environment.ENABLE_PVP
+    ? realtime.startCombatTicker()
+    : null;
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -94,6 +99,7 @@ async function start(): Promise<void> {
     try {
       stopGuestCleanup?.();
       stopRealtimeReaper?.();
+      stopCombatTicker?.();
       await app.close();
       app.log.info('graceful shutdown completed');
     } catch (error) {

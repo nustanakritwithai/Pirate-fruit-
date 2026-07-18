@@ -102,3 +102,8 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - ใช้ flag เดิม `ENABLE_MULTIPLAYER` + `VITE_ENABLE_MULTIPLAYER` (S13) — เปิดแล้วได้ทั้งเดินเท้าและเรืออัตโนมัติ ไม่มีขั้นตอนเปิดเพิ่ม
 - ตรวจ: เปิดเกมสองเครื่องบนเกาะเดียวกัน ให้คนหนึ่งเรียกเรือแล้วขับ อีกคนต้องเห็น "เรือ" แล่น (ไม่ใช่ ghost) ตามรุ่นที่ขับ
 - ไม่มี migration/ตาราง/endpoint ใหม่
+
+## S15 — Multiplayer Combat Authority (PvP)
+- ลำดับเปิดใช้: ต้องเปิด `ENABLE_MULTIPLAYER` (S13) และ verify แล้ว → ตั้ง `ENABLE_PVP=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_PVP=true` → เปิดเกมสองเครื่องบนเกาะเดียวกัน เข้าใกล้กันแล้วโจมตี อีกคนต้องเลือดลด/แพ้/เกิดใหม่
+- ตรวจ: HP การต่อสู้เป็นของ Server (ephemeral) — ปิด flag แล้วโจมตีผู้เล่นไม่มีผล; ไม่มี migration/ตาราง/endpoint ใหม่ (เดินบนช่อง WebSocket เดิม)
+- ปรับสมดุลได้ที่ค่าคงที่ `PVP_*` ใน `shared` (ดาเมจ/ระยะ/คูลดาวน์/เวลาเกิดใหม่) โดยไม่แตะ schema
