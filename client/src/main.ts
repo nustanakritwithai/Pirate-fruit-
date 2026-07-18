@@ -65,6 +65,7 @@ import {
 } from './session/RemoteSession';
 import { REMOTE_ECONOMY_TICK_INTERVAL_MS, PVP_MELEE_RANGE, PVP_SKILL_RANGE } from '@pirate-fruit/shared';
 import { ServerStatusBadge } from './ui/ServerStatusBadge';
+import { SailingMusic } from './audio/SailingMusic';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -191,6 +192,10 @@ async function main(): Promise<void> {
     progression,
     persistence.storage,
   );
+  // เพลงเดินเรือเป็น client-only และต้องเปิด flag ตอน build ก่อนเสมอ
+  const sailingMusicEnabled = import.meta.env.VITE_ENABLE_SAILING_MUSIC === 'true'
+    || import.meta.env.VITE_ENABLE_SAILING_MUSIC === '1';
+  const sailingMusic = sailingMusicEnabled ? new SailingMusic() : null;
   const tradeManager = new TradeManager(
     progression,
     boatManager.selectedBoatId ?? 'training-dinghy',
@@ -660,6 +665,17 @@ async function main(): Promise<void> {
     const boatId = boatManager.selectedBoatId;
     if (boatId) tradeManager.setBoat(boatId);
   } });
+  game.add({ update: (dt: number) => {
+    // บนเกาะใช้เพลง ambient; คุมหางเสือใช้เพลงเดินเรือ; ยืนบนดาดฟ้าไม่เล่นเพลงซ้อน
+    sailingMusic?.setContext(
+      boatManager.riderState === 'off'
+        ? 'island'
+        : boatManager.riderState === 'helm'
+          ? 'sailing'
+          : 'none',
+    );
+    sailingMusic?.update(dt);
+  } });
   game.add({ update: () => hud.update() });
   game.add({ update: () => minimap.update() });
   if (touchControls) {
@@ -671,6 +687,7 @@ async function main(): Promise<void> {
   // Local mirrors are updated first, so a browser that cannot finish network I/O still
   // retains the latest recoverable save.
   window.addEventListener('pagehide', () => {
+    sailingMusic?.dispose();
     saveSystem.save();
     progression.save();
     itemInventory.save();
