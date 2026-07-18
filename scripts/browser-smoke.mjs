@@ -279,8 +279,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       if (out.sent) pumpDiag.sent += 1;
     }
   }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
+  // ขับ peer move จาก main loop โดยตรง — setInterval(peerMove) ของ peer อาจถูก starve
+  // เมื่อ event loop ติด await page.evaluate นาน (browser อิ่มตัวจาก world-monster delta)
+  // ทำให้ peer หยุด re-broadcast presence → page1 ไม่ได้ presence (แต่ page1 → peer ยังได้)
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
+    if (peer.readyState === 1) peerMove();
     await pumpSelfMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
