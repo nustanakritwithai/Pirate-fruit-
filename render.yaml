@@ -72,6 +72,9 @@ services:
       # S17 Authoritative Boat World — Server owns boat movement/HP/cannon/passengers.
       - key: ENABLE_BOAT_WORLD
         value: 'false'
+      # S18 Character Select — หน้า login แขก + เลือก/สร้าง/ลบตัวละคร (ต้องเปิด ENABLE_REMOTE_SESSION; client ต้อง build ด้วย VITE_ENABLE_CHARACTER_SELECT=true พร้อมกัน)
+      - key: ENABLE_CHARACTER_SELECT
+        value: 'false'
 
 databases:
   - name: pirate-fruit-db

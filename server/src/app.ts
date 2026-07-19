@@ -13,6 +13,8 @@ import { RuntimeMetrics } from './observability/runtimeMetrics.js';
 import type { DatabaseProbe } from './persistence/database.js';
 import { registerSessionRoutes } from './auth/sessionRoutes.js';
 import type { SessionService } from './auth/sessionService.js';
+import { registerCharacterRoutes } from './player/characterRoutes.js';
+import type { PostgresCharacterRepository } from './player/characterRepository.js';
 import { registerPlayerSaveRoutes } from './player/playerSaveRoutes.js';
 import type { PlayerSaveService } from './player/playerSaveService.js';
 import { registerEconomyRoutes } from './economy/economyRoutes.js';
@@ -32,6 +34,7 @@ export interface BuildServerOptions {
   environment: ServerEnvironment;
   database: DatabaseProbe;
   sessions?: SessionService;
+  characters?: PostgresCharacterRepository;
   playerSaves?: PlayerSaveService;
   economy?: EconomyRuntime;
   trade?: TradeService;
@@ -147,6 +150,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     metrics,
     sessions: options.sessions,
+  });
+  await registerCharacterRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    characters: options.characters,
   });
   await registerPlayerSaveRoutes(app, {
     environment,

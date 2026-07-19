@@ -121,3 +121,10 @@ the Static Site economy flag first and follow `ROLLBACK_PLAN.md`; do not reseed 
 - Metrics: ดู WS disconnect/error, `boat intent resolved` rejection rate, persist failure, tick/broadcast pressure และ DB errors; benchmark baseline = 200 boats × 20 ticks <500ms ใน unit gate
 - ตรวจ persistence: `select boat_id,owner_id,island_id,hp,state,updated_at from world_boat_state order by updated_at desc limit 20;`
 - ค่า default ของทั้งสอง flag ต้อง `false`; agent ห้ามเปิด production ก่อน backup, CI, review และอนุมัติ rollout แยก
+
+## S18 — Character Select
+- ลำดับเปิดใช้: migrate อัตโนมัติตอน deploy (คอลัมน์ `sessions.active_character_id`) → CI เขียว → ตั้ง `ENABLE_CHARACTER_SELECT=true` ที่ Web Service → rebuild Static Site ด้วย `VITE_ENABLE_CHARACTER_SELECT=true` → เปิดเกมเห็นหน้าตั้งชื่อ/เลือกตัวละครก่อนเข้าเกม
+- บัญชีแขกผูก cookie (`__Host-pf_session`, 30 วัน) — เบราว์เซอร์เดิมกลับมาเจอตัวละครครบ; ล้าง cookie = เริ่มบัญชีใหม่ (ยอมรับแล้วโดยดีไซน์ cookie-only)
+- โควตา 3 ตัว/บัญชี ชื่อไม่ซ้ำในบัญชี (ตัดสินที่ Server); ลบตัวสุดท้าย = เพิกถอน session กลับหน้าสร้างตัวละคร
+- ตรวจย้อนหลัง: `select id, name, level from characters where user_id = $1 order by created_at`
+- ข้อควรระวัง: local mirror ใน localStorage เป็นของเบราว์เซอร์ (ไม่แยกต่อตัวละคร) — โหมด character select จึงควรเปิดคู่ `ENABLE_REMOTE_SAVE` (เปิดอยู่แล้วบน production) ให้ Server เป็น source of truth ต่อตัวละคร

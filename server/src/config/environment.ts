@@ -38,6 +38,7 @@ const environmentSchema = z
     ENABLE_PVP: booleanFromEnvironment.default(false),
     ENABLE_SHARED_WORLD_MONSTERS: booleanFromEnvironment.default(false),
     ENABLE_BOAT_WORLD: booleanFromEnvironment.default(false),
+    ENABLE_CHARACTER_SELECT: booleanFromEnvironment.default(false),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -175,6 +176,15 @@ const environmentSchema = z
         code: 'custom',
         path: ['ENABLE_MULTIPLAYER'],
         message: 'ENABLE_MULTIPLAYER must be enabled before ENABLE_SHARED_WORLD_MONSTERS',
+      });
+    }
+
+    // S18: หน้าเลือกตัวละครต้องมีระบบ session ก่อน (บัญชี/ตัวละครอยู่บน PostgreSQL)
+    if (environment.ENABLE_CHARACTER_SELECT && !environment.ENABLE_REMOTE_SESSION) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_REMOTE_SESSION'],
+        message: 'ENABLE_REMOTE_SESSION must be enabled before ENABLE_CHARACTER_SELECT',
       });
     }
 

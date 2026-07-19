@@ -113,7 +113,8 @@ export class PostgresSessionRepository implements SessionRepository {
         and s.revoked_at is null
         and s.expires_at > $2
         and u.status = 'active'
-      order by c.created_at asc, c.id asc
+      -- S18: ตัวที่ session เลือก (active_character_id) มาก่อน — ไม่ได้เลือก/ถูกลบ → ตัวเก่าสุดตามเดิม
+      order by (c.id = s.active_character_id) desc nulls last, c.created_at asc, c.id asc
       limit 1`,
       [tokenHash, now],
     );

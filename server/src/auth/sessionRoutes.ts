@@ -1,7 +1,8 @@
-import type {
-  ApiErrorResponse,
-  SessionLogoutResponse,
-  SessionResponse,
+import {
+  sanitizeCharacterName,
+  type ApiErrorResponse,
+  type SessionLogoutResponse,
+  type SessionResponse,
 } from '@pirate-fruit/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
@@ -59,7 +60,12 @@ export async function registerSessionRoutes(
     {
       config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
       schema: {
-        body: { type: 'object', maxProperties: 0, additionalProperties: false },
+        // S18: หน้า Landing ตั้งชื่อตัวละครแรกได้ (optional — ไม่ส่ง = Guest-xxxx เดิม)
+        body: {
+          type: 'object',
+          properties: { name: { type: 'string', minLength: 1, maxLength: 64 } },
+          additionalProperties: false,
+        },
       },
     },
     async (request, reply) => {
@@ -87,7 +93,10 @@ export async function registerSessionRoutes(
         return sessionResponse(existing, false);
       }
 
-      const created = await sessions.createGuest();
+      const requestedName = sanitizeCharacterName(
+        (request.body as { name?: string } | undefined)?.name,
+      );
+      const created = await sessions.createGuest(requestedName ?? undefined);
       metrics.recordSessionCreated();
       reply.setCookie(
         cookieName,

@@ -115,6 +115,23 @@ describe('server foundation', () => {
       .toContain('x-csrf-token');
   });
 
+  it('keeps character select dark while the flag is off', async () => {
+    const { server } = await testServer();
+    for (const [method, url] of [
+      ['GET', '/api/characters'],
+      ['POST', '/api/characters'],
+      ['DELETE', `/api/characters/${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}`],
+    ] as const) {
+      const response = await server.inject({
+        method,
+        url,
+        ...(method === 'POST' ? { payload: { name: 'ทดสอบ' } } : {}),
+      });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ error: { code: 'FEATURE_DISABLED' } });
+    }
+  });
+
   it('protects internal status in production', async () => {
     const { server } = await testServer(databaseProbe(), {
       NODE_ENV: 'production',

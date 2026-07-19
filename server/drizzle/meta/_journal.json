@@ -50,6 +50,13 @@
       "when": 1784386800000,
       "tag": "0006_s17_world_boat_state",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784448000000,
+      "tag": "0007_s18_session_active_character",
+      "breakpoints": true
     }
   ]
 }

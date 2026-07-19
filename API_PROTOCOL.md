@@ -301,3 +301,11 @@ Flags `ENABLE_BOAT_WORLD` / `VITE_ENABLE_BOAT_WORLD` default `false`; ต้อ�
 - `boat-cannon`, `boat-sunk`, `boat-respawn` เป็นผล naval ที่ Server ตัดสิน
 - `boat-intent-result {intentId,accepted,reason?,entityId?}` เป็น acknowledgement แบบ idempotent
 - เมื่ออยู่บนเรือ Server สร้าง passenger presence จาก boat transform และเพิกเฉย legacy move ของ Client
+
+## S18 — Character Select API (หลัง `ENABLE_CHARACTER_SELECT`)
+- `POST /api/session/guest` รับ `{ name? }` — ตั้งชื่อตัวละครแรกตอนสร้างบัญชีแขก (sanitize: 2-20 ตัวอักษร ไทย/ละติน/ตัวเลข/เว้นวรรค/ขีด); ฟิลด์อื่นถูก strip
+- `GET /api/characters` → `{ characters: [{id,name,level,coins,currentIslandId,createdAt,active}], maxSlots: 3 }` (ต้องมี session)
+- `POST /api/characters {name}` → 201 สร้าง + ตั้งเป็น active | 409 `CHARACTER_SLOTS_FULL` / `CHARACTER_NAME_TAKEN` | 422 `INVALID_CHARACTER_NAME` (mutation ทุกตัวต้องผ่าน Origin allowlist + `x-csrf-token`)
+- `POST /api/characters/:id/select` → ตั้ง `sessions.active_character_id` (ownership ตรวจที่ Server; ข้ามบัญชี = 404)
+- `DELETE /api/characters/:id` → cascade ลบ progression/stats/inventory/save; ลบตัวสุดท้าย → `sessionRevoked: true` + ล้าง cookie
+- Session resolution: ตัวที่เลือกมาก่อน → fallback ตัวเก่าสุด (พฤติกรรมเดิม) เมื่อ pointer ว่าง/ตัวถูกลบ
