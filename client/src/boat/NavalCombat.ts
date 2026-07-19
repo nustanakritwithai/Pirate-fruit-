@@ -135,6 +135,8 @@ export class NavalCombat {
   private readonly aimRim: THREE.MeshBasicMaterial;
   private nextShipInstanceId = 1;
   onCannonArmed?: (side: 0 | 1 | 2) => void;
+  /** Presentation-only hook; never participates in naval damage or authority decisions. */
+  onAudioEvent?: (event: 'cannon' | 'hit' | 'sinking', position: THREE.Vector3) => void;
 
   constructor(
     private scene: THREE.Scene,
@@ -219,6 +221,9 @@ export class NavalCombat {
       target.speed = 0;
       this.rewards.addCoins(target.defn.reward.coins, 'naval:skill-sink');
       this.rewards.addPlayerExp(target.defn.reward.exp, 'naval:skill-sink');
+      this.onAudioEvent?.('sinking', target.group.position);
+    } else {
+      this.onAudioEvent?.('hit', target.group.position);
     }
     return true;
   }
@@ -559,6 +564,7 @@ export class NavalCombat {
   // ------------------------------------------------------------------
 
   private fireCannonball(ship: EnemyShip, targetX: number, targetZ: number): void {
+    this.onAudioEvent?.('cannon', ship.group.position);
     const count = Math.max(1, Math.min(5, ship.defn.cannonsPerSide));
     for (let i = 0; i < count; i++) {
       const lateral = count === 1 ? 0 : (i - (count - 1) / 2) * Math.min(1.25, ship.defn.width * 0.3);
@@ -631,6 +637,7 @@ export class NavalCombat {
     }
     if (this.playerFireCooldown > 0) return;
     this.playerFireCooldown = PLAYER_FIRE_COOLDOWN;
+    this.onAudioEvent?.('cannon', boat.group.position);
     const side = this.armedSide;
     const target = this.nearestShipTo(bx, bz, side, leftX, leftZ);
 
@@ -750,6 +757,7 @@ export class NavalCombat {
     if (Math.hypot(dx, dz) < 3 && ball.y < playerBoatPosition.y + 3) {
       this.boats.damageActiveBoat(ball.damage);
       this.effects.spawnBoatImpact(this.tempVector.set(ball.x, ball.y, ball.z), true);
+      this.onAudioEvent?.('hit', this.tempVector);
       return true;
     }
     return false;
@@ -762,13 +770,17 @@ export class NavalCombat {
     material.emissive.setHex(0x7a160d);
     material.emissiveIntensity = 1.4;
     this.effects.spawnBoatImpact(ship.group.position, true);
-    if (ship.hp > 0) return;
+    if (ship.hp > 0) {
+      this.onAudioEvent?.('hit', ship.group.position);
+      return;
+    }
 
     // จมเรือ → รางวัล + ตั้งเวลาจม/เกิดใหม่
     ship.alive = false;
     ship.sinkTimer = 2.4;
     this.effects.spawnBoatImpact(ship.group.position, true);
     this.effects.spawnShockwave(ship.group.position, 5, 0xff9a5c);
+    this.onAudioEvent?.('sinking', ship.group.position);
     this.rewards.addCoins(ship.defn.reward.coins, 'naval:sink');
     this.rewards.addPlayerExp(ship.defn.reward.exp, 'naval:sink');
     this.notify?.(`🏴‍☠️ จม${ship.defn.name}! +${ship.defn.reward.coins} 🪙 +${ship.defn.reward.exp} EXP`);

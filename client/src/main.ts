@@ -73,9 +73,27 @@ import {
   WORLD_MONSTER_SKILL_RANGE,
 } from '@pirate-fruit/shared';
 import { ServerStatusBadge } from './ui/ServerStatusBadge';
+import {
+  AudioRuntimeBridge,
+  AudioSettingsUI,
+  createAudioManager,
+} from './audio';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
+
+  // A1 audio is presentation-only and defaults off. Even when enabled this construction is
+  // inert: AudioContext and music requests begin only after the first explicit player gesture.
+  const audio = createAudioManager();
+  let audioBridge: AudioRuntimeBridge | null = null;
+  if (audio.enabled) {
+    audio.bindAutoplayUnlock(document);
+    audio.bindUiSounds(document);
+    new AudioSettingsUI(audio);
+    document.addEventListener('visibilitychange', () => {
+      void audio.handleVisibility(document.hidden);
+    });
+  }
 
   // เบราว์เซอร์อนุญาต fullscreen หลัง gesture เท่านั้น; gesture แรกของเกมจะขอให้อัตโนมัติ
   new FullscreenManager();
@@ -254,7 +272,12 @@ async function main(): Promise<void> {
   cargoHud.refresh();
   tradeRouteHint.bindTradeManager(tradeManager);
   tradeManager.onTransaction((result) => {
-    if (!result.ok || !result.action || !result.islandId || !result.commodityId) return;
+    if (!result.ok) {
+      audio.play('ui.reject');
+      return;
+    }
+    audio.play('ui.confirm');
+    if (!result.action || !result.islandId || !result.commodityId) return;
     progression.events.emit('trade:completed', {
       action: result.action,
       islandId: result.islandId,
@@ -355,7 +378,11 @@ async function main(): Promise<void> {
           if (resolution.taken > 0) {
             effects.spawnDamageNumber(controller.position, Math.round(resolution.taken), '#ff6b6b');
           }
-          if (resolution.defeated) spawnManager.respawn();
+          if (resolution.defeated) {
+            audioBridge?.notifyDeath();
+            spawnManager.respawn();
+            globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
+          }
         }
       },
     });
@@ -365,6 +392,7 @@ async function main(): Promise<void> {
     && (import.meta.env.VITE_ENABLE_BOAT_WORLD === 'true'
       || import.meta.env.VITE_ENABLE_BOAT_WORLD === '1');
   const selfCharacterId = getRemoteSession().session?.characterId ?? null;
+  let selfAudioLifeCycle = 0;
   const boatWorldClient = boatWorldEnabled
     ? new BoatWorldClient(game.scene, selfCharacterId, boatManager, worldTextures, graphics, effects)
     : null;
@@ -379,22 +407,34 @@ async function main(): Promise<void> {
       refreshEconomyViews();
     },
     onResync: () => pollRemoteEconomy(),
-    onAnnouncement: (message, level) => economyHud.notifyStatus(message, level === 'warning'),
+    onAnnouncement: (message, level) => {
+      economyHud.notifyStatus(message, level === 'warning');
+      audio.play(level === 'warning' ? 'ui.reject' : 'ui.notification');
+    },
     onPresence: (snapshot) => remotePlayers?.applyPresence(snapshot),
     onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
     // S15: ผล PvP จาก Server (authority) — โดนเราเอง = ปรับหลอดเลือดตาม Server
     onCombatHit: ({ attackerId, targetId, damage, hp, maxHp }) => {
+      audioBridge?.markCombat();
       if (targetId === selfCharacterId) {
         const fraction = maxHp > 0 ? hp / maxHp : 0;
         controller.hp = Math.max(0, Math.round(fraction * controller.hpMax));
         hud.flashDamage();
         playerCombat?.notifyDamaged();
         effects.spawnDamageNumber(controller.position, damage, '#ff6b6b');
+        audio.play('combat.hit', {
+          eventId: `pvp-hit:${attackerId}:${targetId}:${hp}:${damage}`,
+          position: controller.position,
+        });
       } else {
         const at = remotePlayers?.positionOf(targetId);
         if (at) {
           at.y += 2.2;
           effects.spawnDamageNumber(at, damage, attackerId === selfCharacterId ? '#ffe28a' : '#ff8a8a');
+          audio.play('combat.hit', {
+            eventId: `pvp-hit:${attackerId}:${targetId}:${hp}:${damage}`,
+            position: at,
+          });
         }
       }
     },
@@ -404,6 +444,7 @@ async function main(): Promise<void> {
         controller.hp = Math.max(1, Math.round(controller.hpMax * 0.1));
         spawnManager.teleportToCheckpoint();
         hud.flashDamage();
+        audioBridge?.notifyDeath(`pvp-defeat:${playerId}:${selfAudioLifeCycle}`);
       } else {
         remotePlayers?.markDefeated(playerId);
       }
@@ -411,6 +452,8 @@ async function main(): Promise<void> {
     onCombatRespawn: (playerId) => {
       if (playerId === selfCharacterId) {
         controller.hp = controller.hpMax;
+        selfAudioLifeCycle += 1;
+        audioBridge?.notifyRespawn(`pvp-respawn:${playerId}:${selfAudioLifeCycle}`);
       } else {
         remotePlayers?.markRespawn(playerId);
       }
@@ -418,12 +461,36 @@ async function main(): Promise<void> {
     // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
     onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
     onWorldMonsterDelta: (islandId, updates) => sharedMonsters?.applyDelta(islandId, updates),
-    onWorldMonsterDead: (spawnId) => sharedMonsters?.markDead(spawnId),
-    onWorldMonsterRespawn: (monster) => sharedMonsters?.applyRespawn(monster),
+    onWorldMonsterDead: (spawnId) => {
+      const position = sharedMonsters?.positionOf(spawnId);
+      sharedMonsters?.markDead(spawnId);
+      audio.play('monster.death', { eventId: `world-monster-dead:${spawnId}`, position });
+    },
+    onWorldMonsterRespawn: (monster) => {
+      sharedMonsters?.applyRespawn(monster);
+      audio.play('monster.respawn', {
+        eventId: `world-monster-respawn:${monster.spawnId}`,
+        position: { x: monster.x, y: world.collision.heightAt(monster.x, monster.z), z: monster.z },
+      });
+    },
     onBoatSnapshot: (islandId, boats) => boatWorldClient?.applySnapshot(islandId, boats),
     onBoatDelta: (boat) => boatWorldClient?.applyDelta(boat),
-    onBoatCannon: (event) => boatWorldClient?.applyCannon(event),
-    onBoatSunk: (entityId) => boatWorldClient?.markSunk(entityId),
+    onBoatCannon: (event) => {
+      boatWorldClient?.applyCannon(event);
+      audio.play('boat.cannon', {
+        eventId: `boat-cannon:${event.attackerId}:${event.targetId ?? 'miss'}:${event.x}:${event.z}`,
+        position: { x: event.x, y: 0.5, z: event.z },
+      });
+      if (event.damage > 0) audio.play('boat.hit', {
+        eventId: `boat-hit:${event.attackerId}:${event.targetId ?? 'unknown'}:${event.targetHp ?? 'x'}`,
+        position: { x: event.x, y: 0.5, z: event.z },
+      });
+    },
+    onBoatSunk: (entityId) => {
+      const position = boatWorldClient?.positionOf(entityId);
+      boatWorldClient?.markSunk(entityId);
+      audio.play('boat.sinking', { eventId: `boat-sunk:${entityId}`, position });
+    },
     onBoatRespawn: (boat) => boatWorldClient?.applyRespawn(boat),
     onBoatIntentResult: (result) => {
       if (!result.accepted) touchControls?.notify(`คำสั่งเรือถูกปฏิเสธ: ${result.reason ?? 'invalid'}`);
@@ -554,6 +621,7 @@ async function main(): Promise<void> {
     graphics,
     {
       onPlayerHit: (amount) => {
+        audioBridge?.markCombat();
         playerCombat?.notifyDamaged();
         hud.flashDamage();
         // ตัวเลขดาเมจแดงเด้งเหนือหัวผู้เล่น (แยกสีจากเลขทำมอนสเตอร์ที่เป็นเหลือง)
@@ -561,11 +629,21 @@ async function main(): Promise<void> {
       },
       modifyIncomingDamage: (attack) =>
         playerCombat?.modifyIncomingDamage(attack) ?? attack.amount,
-      onMonsterDamaged: (monster, amount) =>
-        effects.spawnDamageNumber(monster.group.position, amount),
+      onMonsterDamaged: (monster, amount) => {
+        effects.spawnDamageNumber(monster.group.position, amount);
+        audioBridge?.markCombat();
+        audio.play('monster.hit', { position: monster.group.position });
+      },
+      onMonsterAudioEvent: (event, monster) => {
+        audio.play(`monster.${event}`, { position: monster.group.position });
+        if (event === 'aggro' || event === 'attack') audioBridge?.markCombat();
+      },
+      onBossAudioState: (active) => audioBridge?.setBossActive(active),
       onPlayerDefeated: () => {
         spawnManager.respawn();
         hud.flashDamage();
+        audioBridge?.notifyDeath();
+        globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
       },
       onRewardContribution: (monster, damage, killed, source) => {
         const type = monster.type;
@@ -594,6 +672,7 @@ async function main(): Promise<void> {
           position: { x: position.x, y: position.y, z: position.z },
           contribution,
         });
+        audio.play('monster.death', { position });
       },
     },
     // S16: เปิด shared world monsters → ปิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server)
@@ -693,7 +772,14 @@ async function main(): Promise<void> {
   );
   progression.events.on('player:level-up', () => {
     effects.spawnShockwave(controller.position, 3.5, 0xffdf74);
+    audio.play('reward.level-up');
   });
+  progression.events.on('player:exp-gained', () => audio.play('reward.exp'));
+  progression.events.on('coins:changed', ({ amount }) => {
+    if (amount > 0) audio.play('reward.coins');
+  });
+  progression.events.on('quest:progress', () => audio.play('ui.quest-update'));
+  progression.events.on('quest:completed', () => audio.play('reward.quest-complete'));
 
   // Mastery ต่อชิ้นขึ้นเลเวล → ถ้าเป็นไอเทมที่ติดตั้งอยู่ รีเฟรชชุดสกิล (อาจปลดท่าใหม่)
   progression.events.on('mastery:level-up', ({ itemId }) => {
@@ -718,11 +804,21 @@ async function main(): Promise<void> {
   );
   touchControls?.bindCannonCooldown(() => navalCombat.playerFireCooldownFraction);
   navalCombat.onCannonArmed = (side) => touchControls?.setCannonArmed(side);
+  navalCombat.onAudioEvent = (event, position) => {
+    audio.play(`boat.${event}`, { position });
+  };
 
   // ตกทะเล → กลับ Safe Zone ของหมู่บ้าน ไม่วนเกิดซ้ำในตำแหน่งอันตราย
   controller.onDrown = () => {
+    audio.play('player.drowning');
+    audioBridge?.notifyDeath();
     spawnManager.respawn();
+    globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
   };
+
+  audioBridge = new AudioRuntimeBridge({ audio, controller, boats: boatManager, combat: playerCombat });
+  game.add(audioBridge);
+  (window as unknown as { __audio?: typeof audio }).__audio = audio;
 
   game.add(world);
   game.add(islandManager);
@@ -765,6 +861,7 @@ async function main(): Promise<void> {
     progression.save();
     itemInventory.save();
     void persistence.flush();
+    void audio.handleVisibility(true);
   });
 
   // A sleeping Render Free instance must not leave this browser permanently Local.
