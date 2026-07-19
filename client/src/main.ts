@@ -65,7 +65,6 @@ import {
   initializeRemoteSession,
   recoverRemoteSession,
 } from './session/RemoteSession';
-import { runCharacterGate } from './session/CharacterGate';
 import {
   REMOTE_ECONOMY_TICK_INTERVAL_MS,
   PVP_MELEE_RANGE,
@@ -108,8 +107,6 @@ async function main(): Promise<void> {
   loading.textContent = 'กำลังโหลดเกม...';
   document.body.appendChild(loading);
 
-  // S18: หน้าเลือก/สร้างตัวละคร (MMORPG login) — resolve เมื่อเลือกแล้ว; flag ปิด = ข้ามทันที
-  await runCharacterGate();
   // Establish identity first when staged remote sessions are enabled. Failure remains non-blocking.
   const initialSession = await initializeRemoteSession();
   // Hydrate save repositories once before gameplay objects read their synchronous storage view.
@@ -424,7 +421,12 @@ async function main(): Promise<void> {
       economyHud.notifyStatus(message, level === 'warning');
       audio.play(level === 'warning' ? 'ui.reject' : 'ui.notification');
     },
-    onPresence: (snapshot) => remotePlayers?.applyPresence(snapshot),
+    onPresence: (snapshot) => {
+      // Island transitions can happen between the 100 ms movement ticks. Synchronise
+      // the renderer before filtering the incoming authoritative presence frame.
+      remotePlayers?.setIsland(islandManager.activeIsland);
+      remotePlayers?.applyPresence(snapshot);
+    },
     onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
     // S15: ผล PvP จาก Server (authority) — โดนเราเอง = ปรับหลอดเลือดตาม Server
     onCombatHit: ({ attackerId, targetId, damage, hp, maxHp }) => {

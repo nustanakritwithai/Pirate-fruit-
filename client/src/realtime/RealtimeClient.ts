@@ -206,6 +206,9 @@ export class RealtimeClient {
         heading: message.heading,
         onBoat: message.onBoat,
         boatId: message.boatId,
+        appearance: message.appearance,
+        locomotion: message.locomotion,
+        animation: message.animation,
       });
     } else if (message.type === 'presence-leave') {
       this.handlers.onPresenceLeave?.(message.playerId);
