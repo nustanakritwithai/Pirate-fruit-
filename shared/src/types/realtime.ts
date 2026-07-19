@@ -107,6 +107,26 @@ export interface RealtimeCombatRespawn {
   maxHp: number;
 }
 
+export type RealtimeCombatRejectReason =
+  | 'pvp-disabled'
+  | 'self-target'
+  | 'presence-required'
+  | 'target-unavailable'
+  | 'different-island'
+  | 'defeated'
+  | 'cooldown'
+  | 'out-of-range';
+
+/** Acknowledgement for one attack intent; only combat-hit changes authoritative HP. */
+export interface RealtimeCombatResult {
+  type: 'combat-result';
+  seq: number;
+  intentId: string;
+  targetId: string;
+  accepted: boolean;
+  reason?: RealtimeCombatRejectReason;
+}
+
 /**
  * S16 — Shared Monster World State
  * Server จำลองมอนสเตอร์กลาง แล้ว push snapshot (full) + delta (ต่อ tick) ให้ผู้เล่น
@@ -199,6 +219,7 @@ export type RealtimeServerMessage =
   | RealtimeCombatHit
   | RealtimeCombatDefeat
   | RealtimeCombatRespawn
+  | RealtimeCombatResult
   | RealtimeWorldMonsterSnapshot
   | RealtimeWorldMonsterDelta
   | RealtimeWorldMonsterDead
@@ -231,6 +252,8 @@ export interface RealtimeMove {
 /** S15 — Client รายงาน "เจตนาโจมตี" ผู้เล่นอีกคน (PvP) — Server ตัดสินผลเอง */
 export interface RealtimeAttack {
   type: 'attack';
+  /** Client correlation only; never affects damage or authority. */
+  intentId: string;
   /** characterId ของเป้า (Server ตรวจระยะ/เกาะ/คูลดาวน์เอง) */
   targetId: string;
   /** ชนิดการโจมตี — Server ใช้เลือกดาเมจจากตารางของตัวเอง (ไม่รับดาเมจจาก Client) */

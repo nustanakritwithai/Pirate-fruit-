@@ -7,6 +7,7 @@ import {
   PVP_SKILL_DAMAGE,
   PVP_SKILL_RANGE,
 } from '@pirate-fruit/shared';
+import type { RealtimeCombatRejectReason } from '@pirate-fruit/shared';
 
 /**
  * S15 — Multiplayer Combat Authority (PvP)
@@ -41,6 +42,11 @@ export interface AttackResolution {
   /** true = เป้า HP หมด (แพ้) — ตั้งเวลาเกิดใหม่ไว้แล้ว */
   defeated: boolean;
 }
+
+export type AttackDecision =
+  | { accepted: true; resolution: AttackResolution }
+  | { accepted: false; reason: Extract<RealtimeCombatRejectReason,
+      'self-target' | 'presence-required' | 'defeated' | 'cooldown' | 'out-of-range'> };
 
 export interface RespawnEvent {
   playerId: string;
@@ -98,32 +104,46 @@ export class CombatAuthority {
     targetPos: CombatPosition | null,
     kind: AttackKind,
   ): AttackResolution | null {
-    if (attackerId === targetId) return null;
-    if (!attackerPos || !targetPos) return null;
+    const decision = this.resolveAttackDetailed(now, attackerId, attackerPos, targetId, targetPos, kind);
+    return decision.accepted ? decision.resolution : null;
+  }
+
+  resolveAttackDetailed(
+    now: number,
+    attackerId: string,
+    attackerPos: CombatPosition | null,
+    targetId: string,
+    targetPos: CombatPosition | null,
+    kind: AttackKind,
+  ): AttackDecision {
+    if (attackerId === targetId) return { accepted: false, reason: 'self-target' };
+    if (!attackerPos || !targetPos) return { accepted: false, reason: 'presence-required' };
     this.ensure(attackerId);
     this.ensure(targetId);
     const attacker = this.states.get(attackerId)!;
     const target = this.states.get(targetId)!;
     // ผู้โจมตีต้องยังไม่ตาย และเป้าต้องยังไม่ตาย
-    if (attacker.respawnAt !== null || target.respawnAt !== null) return null;
+    if (attacker.respawnAt !== null || target.respawnAt !== null) {
+      return { accepted: false, reason: 'defeated' };
+    }
 
     // throttle: โจมตีเป้าเดิมถี่เกินไป = ทิ้ง (กันออโต้)
     const lastAt = attacker.lastAttackAt.get(targetId) ?? -Infinity;
-    if (now - lastAt < PVP_ATTACK_MIN_INTERVAL_MS) return null;
+    if (now - lastAt < PVP_ATTACK_MIN_INTERVAL_MS) return { accepted: false, reason: 'cooldown' };
 
     // ระยะ: วัดจาก presence ล่าสุดของทั้งคู่ (Server เป็นคนรู้ตำแหน่ง ไม่ใช่ Client)
     const dx = attackerPos.x - targetPos.x;
     const dy = attackerPos.y - targetPos.y;
     const dz = attackerPos.z - targetPos.z;
     const range = rangeFor(kind);
-    if (dx * dx + dy * dy + dz * dz > range * range) return null;
+    if (dx * dx + dy * dy + dz * dz > range * range) return { accepted: false, reason: 'out-of-range' };
 
     attacker.lastAttackAt.set(targetId, now);
     const damage = damageFor(kind);
     target.hp = Math.max(0, target.hp - damage);
     const defeated = target.hp <= 0;
     if (defeated) target.respawnAt = now + PVP_RESPAWN_MS;
-    return { damage, hp: target.hp, maxHp: PVP_MAX_HP, defeated };
+    return { accepted: true, resolution: { damage, hp: target.hp, maxHp: PVP_MAX_HP, defeated } };
   }
 
   /** ถึงเวลาเกิดใหม่ของใครบ้าง → รีเซ็ต HP เต็มแล้วคืนรายการเพื่อ broadcast */
