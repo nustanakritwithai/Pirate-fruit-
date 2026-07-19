@@ -405,7 +405,6 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // browser's server-authored presence frame. Naval keeps the stricter browser
   // assertion because it must inspect the authoritative boat fields.
   const done = () => {
-    if (process.env.SMOKE_EXPECT_PVP === 'true') return browserHasPvpTarget();
     return NAVAL ? gotNaval() : allPresence().length > 0 || peerDiag.gotPage1Presence;
   };
   // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
