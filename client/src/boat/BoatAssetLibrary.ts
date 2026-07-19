@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import type { BoatDefinition } from './BoatData';
 
