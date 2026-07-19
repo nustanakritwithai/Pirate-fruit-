@@ -109,6 +109,23 @@ describe('S13 RemotePlayers', () => {
     expect(hits).toEqual(['front']);
   });
 
+  it('targets from latest server-relayed presence instead of the lagging render interpolation', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ playerId: 'runner', x: 0, z: 3 }));
+    players.applyPresence(snapshot({ playerId: 'runner', x: 0, z: 12 }));
+    // The ghost is still visually near z=3, but the server already knows z=12.
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 5, Math.PI / 2)).toEqual([]);
+  });
+
+  it('selects one nearest in-range target for touch auto-target fallback', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ playerId: 'behind-near', x: 0, z: -2 }));
+    players.applyPresence(snapshot({ playerId: 'front-far', x: 0, z: 4 }));
+    expect(players.nearestTargetInRange(new THREE.Vector3(), 5)).toBe('behind-near');
+  });
+
   it('hides a defeated player and shows them again on respawn (S15)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

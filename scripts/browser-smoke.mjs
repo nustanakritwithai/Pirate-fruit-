@@ -354,11 +354,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
+  let peerX = 12;
+  let peerY = 0;
+  let peerZ = 8;
   let peerMoveSequence = 0;
   const peerMove = () => peer.send(JSON.stringify({
-    // Alternate a tiny presentation-safe offset so the server cannot coalesce every retry
-    // as an unchanged snapshot when page1 registers just after the peer's first move.
-    type: 'move', islandId: 'starter-island', x: (peerMoveSequence++ % 2) * 0.05, y: 0, z: 0, heading: 0,
+    // Alternate a tiny offset so retries remain observable after the browser
+    // registers its presence, while keeping the peer inside melee range.
+    type: 'move', islandId: 'starter-island', x: peerX + (peerMoveSequence++ % 2) * 0.05,
+    y: peerY, z: peerZ, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
   peer.on('open', () => {
@@ -397,12 +401,16 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   let browserPresence = [];
   const allPresence = () => [...wsEvents.presence, ...browserPresence];
   const gotNaval = () => allPresence().some((p) => p.onBoat === true && p.boatId === 'war-galleon');
+  const browserHasPvpTarget = () => browserPresence.some((p) => p.playerId === peerCharacterId);
   // Either relay direction proves that two authenticated connections share the
   // authoritative island presence channel. Headless Chromium can occasionally
   // miss its inbound diagnostic tap while the Node peer still receives the
   // browser's server-authored presence frame. Naval keeps the stricter browser
   // assertion because it must inspect the authoritative boat fields.
-  const done = () => (NAVAL ? gotNaval() : allPresence().length > 0 || peerDiag.gotPage1Presence);
+  const done = () => {
+    if (process.env.SMOKE_EXPECT_PVP === 'true') return browserHasPvpTarget();
+    return NAVAL ? gotNaval() : allPresence().length > 0 || peerDiag.gotPage1Presence;
+  };
   // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
   // (relay ข้าม connection ที่ยังไม่เคยขยับ) — ปั๊ม move จากฝั่ง Node ทุกรอบผ่าน
   // __realtime.sendMove โดยตรง ไม่พึ่ง setInterval ในหน้าเว็บที่ headless CI throttle
@@ -452,27 +460,44 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
 
   // S15 PvP: browser จริงโจมตี peer → peer ต้องได้ combat-hit ที่ Server ตัดสินเอง
   // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority ข้าม client จริง ไม่เชื่อ Client)
-  const pvpDiag = { hasTarget: false, attacksSent: 0, gotHit: false };
+  const pvpDiag = { hasTarget: false, gameplayAttacks: 0, gotHit: false, browserSawTarget: false };
   if (process.env.SMOKE_EXPECT_PVP === 'true') {
     const targetId = peerCharacterId;
     pvpDiag.hasTarget = Boolean(targetId);
     const gotCombat = () => peerDiag.combat.some(
       (c) => c.targetId === targetId && c.hp < c.maxHp,
     );
+    // Put the independent peer beside the actual controlled avatar. Dispatching
+    // pointerdown on the real control exercises Input -> PlayerCombat -> target
+    // selection without Playwright waiting on the app's fullscreen gesture promise.
+    const localPosition = await page.evaluate(() => {
+      const position = window.__combat?.controller?.position;
+      return position ? { x: position.x, y: position.y, z: position.z } : null;
+    });
+    if (localPosition) {
+      peerX = localPosition.x + 1;
+      peerY = localPosition.y;
+      peerZ = localPosition.z;
+      if (peer.readyState === 1) peerMove();
+      await page.evaluate((position) => {
+        if (window.__combat?.controller) window.__combat.controller.heading = Math.PI / 2;
+        window.__realtime?.sendMove({
+          islandId: 'starter-island', x: position.x, y: position.y, z: position.z,
+          heading: Math.PI / 2, onBoat: false,
+        });
+      }, localPosition);
+    }
     const pvpDeadline = Date.now() + 20_000;
     while (targetId && Date.now() < pvpDeadline && !pvpDiag.gotHit) {
       if (peer.readyState === 1) peerMove();
-      const sent = await page.evaluate((id) => {
-        const rt = window.__realtime;
-        if (!rt || !rt.connected || typeof rt.sendAttack !== 'function') return false;
-        rt.sendMove({ islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0, onBoat: false });
-        rt.sendAttack(id, 'skill');
-        return true;
-      }, targetId);
-      if (sent) {
-        pvpDiag.attacksSent += 1;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      pvpDiag.browserSawTarget ||= await page.evaluate(
+        (id) => (window.__smokeRealtime?.presence ?? []).some((presence) => presence.playerId === id),
+        targetId,
+      );
+      await page.locator('.tc-attack').dispatchEvent('pointerdown', { pointerId: 71 });
+      pvpDiag.gameplayAttacks += 1;
+      await new Promise((resolve) => setTimeout(resolve, 400));
       pvpDiag.gotHit = gotCombat();
     }
   }

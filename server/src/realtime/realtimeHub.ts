@@ -9,6 +9,7 @@ import {
   type RealtimeServerMessage,
   type RealtimeBoatIntent,
   type BoatWorldSnapshot,
+  type RealtimeCombatRejectReason,
 } from '@pirate-fruit/shared';
 import { CombatAuthority, type AttackKind } from './combatAuthority.js';
 import type { PlayerView } from '../world/monsterSimulation.js';
@@ -323,18 +324,32 @@ export class RealtimeHub {
 
   /** S15: รับเจตนาโจมตี → Server ตัดสินระยะ/คูลดาวน์/ดาเมจเอง แล้ว broadcast ผล */
   private handleAttack(connection: RealtimeConnection, message: Record<string, unknown>): void {
-    if (!this.pvpEnabled) return; // ปิด flag = เพิกเฉย (ไม่ถือเป็น violation)
     const targetId = message.targetId;
     if (typeof targetId !== 'string' || targetId.length === 0 || targetId.length > 128) {
       this.drop(connection, 1008, 'invalid attack payload');
+      return;
+    }
+    // Missing intentId remains compatible with clients deployed before this acknowledgement.
+    const intentId = typeof message.intentId === 'string' && message.intentId.length <= 128
+      ? message.intentId
+      : 'legacy';
+    const reject = (reason: RealtimeCombatRejectReason) => {
+      this.sendTo(connection, {
+        type: 'combat-result', seq: 0, intentId, targetId, accepted: false, reason,
+      });
+    };
+    if (!this.pvpEnabled) {
+      reject('pvp-disabled');
       return;
     }
     const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
     const attackerPos = connection.presence;
     const targetPos = this.presenceOfCharacter(targetId);
     // ต้องอยู่เกาะเดียวกัน (range check เป็นเรขาคณิตล้วน — กันพิกัดชนกันข้ามเกาะ)
-    if (!attackerPos || !targetPos || attackerPos.islandId !== targetPos.islandId) return;
-    const resolution = this.combat.resolveAttack(
+    if (!attackerPos) return reject('presence-required');
+    if (!targetPos) return reject('target-unavailable');
+    if (attackerPos.islandId !== targetPos.islandId) return reject('different-island');
+    const decision = this.combat.resolveAttackDetailed(
       this.now(),
       connection.characterId,
       attackerPos,
@@ -342,7 +357,11 @@ export class RealtimeHub {
       targetPos,
       kind,
     );
-    if (!resolution) return;
+    if (!decision.accepted) return reject(decision.reason);
+    const resolution = decision.resolution;
+    this.sendTo(connection, {
+      type: 'combat-result', seq: 0, intentId, targetId, accepted: true,
+    });
     const islandId = targetPos.islandId;
     this.broadcastToIsland(islandId, {
       type: 'combat-hit',

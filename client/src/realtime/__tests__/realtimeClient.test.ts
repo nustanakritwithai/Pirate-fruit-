@@ -175,6 +175,34 @@ describe('S9 realtime client', () => {
     client.stop();
   });
 
+  it('correlates attack intents and dispatches authoritative combat results', () => {
+    const sockets: FakeSocket[] = [];
+    const results: string[] = [];
+    const client = new RealtimeClient('ws://test/ws', {
+      onEconomy: () => undefined,
+      onResync: () => undefined,
+      onCombatResult: (result) => results.push(`${result.intentId}:${result.accepted}:${result.reason ?? 'ok'}`),
+    }, {
+      webSocketFactory: () => {
+        const socket = new FakeSocket(); sockets.push(socket); return socket;
+      },
+    });
+    client.start();
+    const socket = sockets[0];
+    socket.welcome();
+    const intentId = client.sendAttack('char-b', 'melee');
+    expect(intentId).toEqual(expect.any(String));
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({
+      type: 'attack', intentId, targetId: 'char-b', kind: 'melee',
+    });
+    socket.push({
+      type: 'combat-result', seq: 2, intentId: intentId!, targetId: 'char-b',
+      accepted: false, reason: 'out-of-range',
+    });
+    expect(results).toEqual([`${intentId}:false:out-of-range`]);
+    client.stop();
+  });
+
   it('dispatches authoritative boat state and sends intent without position, HP, or damage', () => {
     const sockets: FakeSocket[] = [];
     const deltas: string[] = [];
