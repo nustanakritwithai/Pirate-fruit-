@@ -35,7 +35,7 @@ export class QuestTracker {
   constructor(private quests: QuestManager) {
     const style = document.createElement('style');
     style.textContent = `
-      .quest-tracker { position:fixed; z-index:19; right:16px; top:136px; width:190px; box-sizing:border-box;
+      .quest-tracker { position:fixed; z-index:19; right:60px; top:136px; width:190px; box-sizing:border-box;
         padding:10px 12px; pointer-events:none; color:#f2fbfc; background:rgba(6,24,34,.76);
         border:1px solid rgba(255,215,112,.32); border-radius:11px; box-shadow:0 4px 14px rgba(0,0,0,.3);
         font:700 11px 'Segoe UI',Tahoma,sans-serif; text-shadow:0 1px 2px #000; display:none; }

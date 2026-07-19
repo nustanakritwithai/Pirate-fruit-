@@ -184,7 +184,7 @@ export class StatsPanel {
   private injectStyles(): void {
     const style = document.createElement('style');
     style.textContent = `
-      .stats-open-button { position:fixed; z-index:31; right:16px; top:86px; width:38px; height:38px;
+      .stats-open-button { position:fixed; z-index:31; right:16px; top:100px; width:38px; height:38px;
         border:1px solid rgba(255,222,135,.5); border-radius:50%; color:#fff; background:rgba(5,30,42,.76);
         box-shadow:0 3px 12px rgba(0,0,0,.35); cursor:pointer; font-size:17px; touch-action:manipulation; }
       .stats-panel-root { position:fixed; inset:0; z-index:78; display:flex; align-items:center; justify-content:center;

@@ -23,7 +23,7 @@ export class ProgressionHUD {
   ) {
     const style = document.createElement('style');
     style.textContent = `
-      .progression-hud { position:fixed; z-index:20; left:16px; top:168px; width:170px;
+      .progression-hud { position:fixed; z-index:20; left:16px; top:208px; width:170px;
         box-sizing:border-box; padding:8px 10px; pointer-events:none; color:#f5fbff;
         background:linear-gradient(145deg,rgba(5,24,34,.8),rgba(12,48,58,.72));
         border:1px solid rgba(127,218,231,.36); border-radius:11px; box-shadow:0 4px 14px rgba(0,0,0,.3);

@@ -13,7 +13,7 @@ export class MasteryPanel {
   ) {
     const style = document.createElement('style');
     style.textContent = `
-      .mastery-panel { position:fixed; z-index:17; left:16px; top:238px; width:146px; box-sizing:border-box;
+      .mastery-panel { position:fixed; z-index:17; left:16px; top:286px; width:146px; box-sizing:border-box;
         padding:7px 9px; pointer-events:none; color:#eefbff; background:rgba(5,23,33,.72);
         border:1px solid rgba(169,126,239,.34); border-radius:10px; box-shadow:0 3px 12px rgba(0,0,0,.25);
         font:700 9px 'Segoe UI',Tahoma,sans-serif; text-shadow:0 1px 2px #000; }
