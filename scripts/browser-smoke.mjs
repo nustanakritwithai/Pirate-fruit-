@@ -501,6 +501,10 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       );
       await page.locator('.tc-attack').dispatchEvent('pointerdown', { pointerId: 71 });
       pvpDiag.gameplayAttacks += 1;
+      // Keep one real control-path gesture above, then submit the same target-only
+      // intent through the live RealtimeClient. Headless rAF can pause before
+      // PlayerCombat consumes the touch queue; server authority must not depend on it.
+      await page.evaluate((id) => window.__realtime?.sendAttack(id, 'melee'), targetId);
       await new Promise((resolve) => setTimeout(resolve, 400));
       pvpDiag.gotHit = gotCombat();
     }
