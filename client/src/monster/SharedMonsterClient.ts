@@ -109,9 +109,11 @@ export class SharedMonsterClient implements Updatable {
       }
       monster.target.set(update.x, this.heightAt(update.x, update.z), update.z);
       monster.targetHeading = update.heading;
+      const wasHit = update.hp < monster.hp && update.state !== 'dead';
       monster.hp = update.hp;
       monster.state = update.state;
       monster.visual.applyAuthoritativeState(update.hp, monster.maxHp, renderState(update.state));
+      if (wasHit) monster.visual.playHitReaction();
     }
   }
 
