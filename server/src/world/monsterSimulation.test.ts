@@ -47,6 +47,25 @@ describe('S16 MonsterSimulation', () => {
     expect(sim.stateOf('s-crab')).toBe('attack');
   });
 
+  it('holds position for one recovery beat after an attack before chasing again', () => {
+    let now = 1_000;
+    const sim = new MonsterSimulation(() => now, SPAWNS);
+    const first = sim.tick(now, 200, [player('p1', 'starter-island', 0, 0)]);
+    expect(first.attacks).toHaveLength(1);
+    const atImpact = sim.snapshotForIsland('starter-island')[0];
+
+    now += 200;
+    sim.tick(now, 200, [player('p1', 'starter-island', 5, 0)]);
+    const duringRecovery = sim.snapshotForIsland('starter-island')[0];
+    expect(duringRecovery.x).toBeCloseTo(atImpact.x);
+    expect(duringRecovery.z).toBeCloseTo(atImpact.z);
+
+    now += 200;
+    sim.tick(now, 200, [player('p1', 'starter-island', 5, 0)]);
+    const afterRecovery = sim.snapshotForIsland('starter-island')[0];
+    expect(afterRecovery.x).toBeGreaterThan(duringRecovery.x);
+  });
+
   it('drops a target that disappears from the world and returns home', () => {
     let now = 1_000;
     const sim = new MonsterSimulation(() => now, SPAWNS);

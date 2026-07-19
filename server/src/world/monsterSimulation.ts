@@ -79,6 +79,8 @@ interface MonsterRuntime {
   state: WorldMonsterState;
   targetId: string | null;
   attackReadyAt: number;
+  /** Brief post-hit recovery; Server keeps movement cadence authoritative. */
+  attackRecoverUntil: number;
   respawnAt: number | null;
   patrolX: number;
   patrolZ: number;
@@ -98,6 +100,7 @@ const DEAGGRO_MULTIPLIER = 1.3; // เป้าหนีไกลเกินน
 // เพดานระยะไล่สูงสุดจากบ้าน (หน่วยโลก) — กันบอส aggro สูงไล่ผู้เล่นออกทะเลไกลเกิน
 // ให้แต่ละตัว "รักษาพื้นที่" ของมัน หนีพ้นเขตนี้ = ปลอดภัย
 const MAX_LEASH_DISTANCE = 26;
+const ATTACK_RECOVERY_MS = 280;
 
 function distance(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(ax - bx, az - bz);
@@ -123,6 +126,7 @@ export class MonsterSimulation {
         state: 'idle',
         targetId: null,
         attackReadyAt: 0,
+        attackRecoverUntil: 0,
         respawnAt: null,
         patrolX: spawn.homeX,
         patrolZ: spawn.homeZ,
@@ -298,6 +302,7 @@ export class MonsterSimulation {
     monster.z = monster.spawn.homeZ;
     monster.targetId = null;
     monster.respawnAt = null;
+    monster.attackRecoverUntil = 0;
     monster.contributions.clear();
     monster.sentX = monster.x;
     monster.sentZ = monster.z;
@@ -353,11 +358,17 @@ export class MonsterSimulation {
 
     if (target) {
       const targetDist = distance(monster.x, monster.z, target.x, target.z);
+      if (now < monster.attackRecoverUntil) {
+        monster.state = 'attack';
+        this.faceToward(monster, target.x, target.z);
+        return;
+      }
       if (targetDist <= type.attackRange) {
         monster.state = 'attack';
         this.faceToward(monster, target.x, target.z);
         if (now >= monster.attackReadyAt) {
           monster.attackReadyAt = now + type.attackCooldown * 1000;
+          monster.attackRecoverUntil = now + ATTACK_RECOVERY_MS;
           attacks.push({
             spawnId: monster.spawn.spawnId,
             monsterId: type.id,

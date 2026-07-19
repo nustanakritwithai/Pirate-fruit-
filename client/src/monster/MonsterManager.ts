@@ -225,7 +225,7 @@ export class MonsterManager {
     source?: CombatRewardSource,
   ): void {
     const hpBefore = monster.hp;
-    const died = monster.takeDamage(damage);
+    const died = monster.takeDamage(damage, srcX, srcZ);
     const actualDamage = Math.max(0, hpBefore - monster.hp);
     this.effects.spawnHitSpark(monster.group.position);
     this.callbacks.onMonsterDamaged?.(monster, damage);
@@ -373,6 +373,9 @@ export class MonsterManager {
               monster.attackCount++;
               monster.playAttackAnimation(false);
               this.callbacks.onMonsterAudioEvent?.('attack', monster);
+              // A short recovery beat keeps enemies from immediately sliding through
+              // the player after their active hit frame.
+              monster.staggerTimer = Math.max(monster.staggerTimer, 0.22);
               this.damagePlayer({
                 amount: type.damage,
                 unblockable: false,
