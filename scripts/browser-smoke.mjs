@@ -380,16 +380,16 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
 
   // S15 PvP: browser จริงโจมตี peer → peer ต้องได้ combat-hit ที่ Server ตัดสินเอง
   // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority ข้าม client จริง ไม่เชื่อ Client)
-  const pvpDiag = { hasTarget: false, gameplayAttacks: 0, gotHit: false };
+  const pvpDiag = { hasTarget: false, gameplayAttacks: 0, gotHit: false, browserSawTarget: false };
   if (process.env.SMOKE_EXPECT_PVP === 'true') {
     const targetId = peerCharacterId;
     pvpDiag.hasTarget = Boolean(targetId);
     const gotCombat = () => peerDiag.combat.some(
       (c) => c.targetId === targetId && c.hp < c.maxHp,
     );
-    // Put the independent peer beside the actual controlled avatar. Clicking the
-    // real attack control must traverse Input -> PlayerCombat -> target selection
-    // -> attack intent; calling RealtimeClient.sendAttack directly would miss that path.
+    // Put the independent peer beside the actual controlled avatar. Dispatching
+    // pointerdown on the real control exercises Input -> PlayerCombat -> target
+    // selection without Playwright waiting on the app's fullscreen gesture promise.
     const localPosition = await page.evaluate(() => {
       const position = window.__combat?.controller?.position;
       return position ? { x: position.x, y: position.y, z: position.z } : null;
@@ -410,9 +410,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     const pvpDeadline = Date.now() + 20_000;
     while (targetId && Date.now() < pvpDeadline && !pvpDiag.gotHit) {
       if (peer.readyState === 1) peerMove();
-      await page.locator('.tc-attack').click({ force: true });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      pvpDiag.browserSawTarget ||= await page.evaluate(
+        (id) => (window.__smokeRealtime?.presence ?? []).some((presence) => presence.playerId === id),
+        targetId,
+      );
+      await page.locator('.tc-attack').dispatchEvent('pointerdown', { pointerId: 71 });
       pvpDiag.gameplayAttacks += 1;
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 400));
       pvpDiag.gotHit = gotCombat();
     }
   }
