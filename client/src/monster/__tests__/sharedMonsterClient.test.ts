@@ -59,7 +59,7 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     }]);
     client.update(1 / 60);
     const visualRoot = rendered!.children[0] as THREE.Group;
-    expect(Math.hypot(visualRoot.position.x, visualRoot.position.z)).toBeGreaterThan(0.05);
+    expect(Math.hypot(visualRoot.position.x, visualRoot.position.z)).toBeGreaterThan(0.2);
     client.update(1);
     expect(rendered!.position.y).toBeCloseTo(heightAt(30, 5), 2);
 
