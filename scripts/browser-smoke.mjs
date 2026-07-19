@@ -328,7 +328,9 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   let browserPresence = [];
   const allPresence = () => [...wsEvents.presence, ...browserPresence];
   const gotNaval = () => allPresence().some((p) => p.onBoat === true && p.boatId === 'war-galleon');
-  const done = () => (NAVAL ? gotNaval() : allPresence().length > 0);
+  // Either direction proves two authenticated players are relayed through the
+  // same island channel. Naval remains stricter because it inspects boat fields.
+  const done = () => (NAVAL ? gotNaval() : allPresence().length > 0 || peerDiag.gotPage1Presence);
   // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
   // (relay ข้าม connection ที่ยังไม่เคยขยับ) — ปั๊ม move จากฝั่ง Node ทุกรอบผ่าน
   // __realtime.sendMove โดยตรง ไม่พึ่ง setInterval ในหน้าเว็บที่ headless CI throttle
