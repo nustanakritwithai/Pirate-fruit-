@@ -330,6 +330,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // ผู้เล่นคนที่สอง = client WebSocket จริง (node ws) — ไม่ถูก rAF/timer throttle
   // ให้ผลนิ่งใน headless CI: เปิด session ของตัวเอง ต่อ /ws แล้วส่ง move บนเกาะเดียวกัน
   // page1 (เบราว์เซอร์จริง, มี presence อยู่แล้ว) ต้องได้เฟรม presence ของผู้เล่นคนที่สอง
+  await page.evaluate(() => {
+    window.__realtime?.sendMove?.({
+      islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false,
+    });
+  });
+  await new Promise((resolve) => setTimeout(resolve, 250));
   const { default: NodeWebSocket } = await import('ws');
   const guest = await fetch(`${API_URL}/api/session/guest`, {
     method: 'POST',
