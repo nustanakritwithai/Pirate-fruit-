@@ -94,3 +94,9 @@ copies; do not clear them as part of incident rollback.
 3. ห้ามลบ `player_boats`, `player_cargo` หรือ local-save backup; เก็บ `world_boat_state` ไว้สำหรับ audit/recovery
 4. หากจำเป็นต้องถอน schema หลัง backup และตรวจว่า flag ปิดแล้วเท่านั้น ใช้ `server/drizzle/rollback/0006_s17_world_boat_state.down.sql`
 5. Stop condition: impossible transform/HP, duplicate cannon, passenger ghost, DB persist error ต่อเนื่อง, WS error spike หรือ cargo ownership mismatch
+
+## S18 — Character Select rollback
+1. Rebuild Static Site โดยเอา `VITE_ENABLE_CHARACTER_SELECT` ออก (client ข้ามหน้าเลือกตัวละคร → auto-guest เดิม)
+2. ตั้ง `ENABLE_CHARACTER_SELECT=false` ที่ Web Service (endpoint /api/characters ตอบ 503)
+3. ข้อมูลไม่ต้องกู้: `sessions.active_character_id` เป็น pointer เสริม — session resolution ถอยไปใช้ตัวเก่าสุดอัตโนมัติ; ตัวละคร/เซฟทุกตัวคงอยู่ครบ
+4. ถอนคอลัมน์ (เฉพาะกรณีถอนทั้ง S18): `drizzle/rollback/0007_s18_session_active_character.down.sql`

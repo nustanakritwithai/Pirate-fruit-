@@ -32,6 +32,14 @@ export interface RemoteSessionRecoveryOptions extends RemoteSessionOptions {
   sleep?: (delayMs: number) => Promise<void>;
 }
 
+/** S18: ให้ CharacterGate ใช้ endpoint เดียวกับระบบ session (คืน null = ปิด/ตั้งค่าไม่ครบ) */
+export function resolveRemoteApiUrl(): string | null {
+  const shouldConnect =
+    enabled(import.meta.env.VITE_ENABLE_REMOTE_SESSION) || productionRemoteEnabled();
+  if (!shouldConnect) return null;
+  return normalizeApiUrl(import.meta.env.VITE_API_URL || productionRemoteApiUrl());
+}
+
 const DISABLED_SESSION: RemoteSessionHandle = {
   mode: 'disabled',
   session: null,

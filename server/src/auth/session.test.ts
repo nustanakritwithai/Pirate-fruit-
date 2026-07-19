@@ -249,13 +249,26 @@ describe('guest session API', () => {
     expect(rejected.statusCode).toBe(403);
     expect(rejected.json()).toMatchObject({ error: { code: 'UNTRUSTED_ORIGIN' } });
 
+    // S18: schema เปิดรับได้เฉพาะ name — ฟิลด์ identity แปลกปลอมถูก strip ทิ้ง
+    // (ผลลัพธ์ด้านความปลอดภัยเท่าเดิม: Client เลือก userId เองไม่ได้)
     const suppliedIdentity = await enabled.inject({
       method: 'POST',
       url: '/api/session/guest',
       headers: { origin: 'https://game.example' },
       payload: { userId: 'client-chosen-user' },
     });
-    expect(suppliedIdentity.statusCode).toBe(400);
+    expect(suppliedIdentity.statusCode).toBe(201);
+    expect(suppliedIdentity.json().session.userId).not.toBe('client-chosen-user');
+
+    // S18: ตั้งชื่อตัวละครแรกจากหน้า Landing ได้
+    const named = await enabled.inject({
+      method: 'POST',
+      url: '/api/session/guest',
+      headers: { origin: 'https://game.example' },
+      payload: { name: 'กัปตันทดสอบ' },
+    });
+    expect(named.statusCode).toBe(201);
+    expect(named.json().session.characterName).toBe('กัปตันทดสอบ');
 
     const unavailable = await disabled.inject({ method: 'GET', url: '/api/session/me' });
     expect(unavailable.statusCode).toBe(503);

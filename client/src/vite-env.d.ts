@@ -16,6 +16,7 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_BOAT_WORLD?: string;
   readonly VITE_ENABLE_REALTIME?: string;
   readonly VITE_ENABLE_AUDIO_SYSTEM?: string;
+  readonly VITE_ENABLE_CHARACTER_SELECT?: string;
 }
 
 interface ImportMeta {

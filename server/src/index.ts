@@ -7,6 +7,7 @@ import {
 } from './persistence/database.js';
 import { PostgresSessionRepository } from './auth/sessionRepository.js';
 import { SessionService } from './auth/sessionService.js';
+import { PostgresCharacterRepository } from './player/characterRepository.js';
 import { PostgresPlayerSaveRepository } from './player/playerSaveRepository.js';
 import { PlayerSaveService } from './player/playerSaveService.js';
 import { PostgresEconomyWorldRepository } from './economy/economyWorldRepository.js';
@@ -41,6 +42,8 @@ async function start(): Promise<void> {
   const playerSaves = pool
     ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool, { preserveServerProgression: environment.ENABLE_PROGRESSION_SERVER }))
     : undefined;
+  // S18: character select CRUD (เปิดใช้จริงเมื่อ ENABLE_CHARACTER_SELECT — route ตรวจ flag เอง)
+  const characters = pool ? new PostgresCharacterRepository(pool) : undefined;
   let runtimeLogger: EconomyRuntimeLogger | null = null;
   const deferredEconomyLogger: EconomyRuntimeLogger = {
     info: (fields, message) => runtimeLogger?.info(fields, message),
@@ -82,7 +85,7 @@ async function start(): Promise<void> {
   const progression = pool && progressionAuthority
     ? new ProgressionService(pool)
     : undefined;
-  const app = await buildServer({ environment, database, sessions, playerSaves, economy, trade, quests, monsters, progression, realtime });
+  const app = await buildServer({ environment, database, sessions, characters, playerSaves, economy, trade, quests, monsters, progression, realtime });
   runtimeLogger = app.log;
   // S8 ops: เก็บกวาด session หมดอายุ + guest กำพร้าเป็นรอบ (ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ)
   const stopGuestCleanup = pool && environment.ENABLE_REMOTE_SESSION

@@ -48,11 +48,18 @@ export const sessions = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     ipHash: varchar('ip_hash', { length: 128 }),
     userAgent: varchar('user_agent', { length: 512 }),
+    /**
+     * S18 — ตัวละครที่ session นี้เลือกอยู่ (null = ใช้ตัวเก่าสุดตามเดิม)
+     * จงใจไม่ใส่ FK เพื่อให้ pg-mem รัน migration ได้ — โค้ดลบตัวละครจะเคลียร์
+     * pointer เอง และ lookup ตรวจ ownership ก่อนใช้เสมอ (id ค้างจึงไร้ผล)
+     */
+    activeCharacterId: uuid('active_character_id'),
   },
   (table) => [
     uniqueIndex('sessions_token_hash_uq').on(table.tokenHash),
     index('sessions_user_id_idx').on(table.userId),
     index('sessions_expires_at_idx').on(table.expiresAt),
+    index('sessions_active_character_idx').on(table.activeCharacterId),
   ],
 );
 

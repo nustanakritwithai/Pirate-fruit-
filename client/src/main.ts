@@ -65,6 +65,7 @@ import {
   initializeRemoteSession,
   recoverRemoteSession,
 } from './session/RemoteSession';
+import { runCharacterGate } from './session/CharacterGate';
 import {
   REMOTE_ECONOMY_TICK_INTERVAL_MS,
   PVP_MELEE_RANGE,
@@ -107,6 +108,8 @@ async function main(): Promise<void> {
   loading.textContent = 'กำลังโหลดเกม...';
   document.body.appendChild(loading);
 
+  // S18: หน้าเลือก/สร้างตัวละคร (MMORPG login) — resolve เมื่อเลือกแล้ว; flag ปิด = ข้ามทันที
+  await runCharacterGate();
   // Establish identity first when staged remote sessions are enabled. Failure remains non-blocking.
   const initialSession = await initializeRemoteSession();
   // Hydrate save repositories once before gameplay objects read their synchronous storage view.

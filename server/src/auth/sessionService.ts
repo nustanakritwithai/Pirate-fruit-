@@ -33,7 +33,8 @@ export class SessionService {
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
-  async createGuest(): Promise<IssuedGuestSession> {
+  /** S18: ตั้งชื่อตัวละครแรกได้จากหน้า Landing — ไม่ส่งมา = ชื่อ Guest เดิม */
+  async createGuest(characterName?: string): Promise<IssuedGuestSession> {
     const now = this.clock();
     const userId = randomUUID();
     const characterId = randomUUID();
@@ -42,7 +43,7 @@ export class SessionService {
     const record = await this.repository.createGuest({
       userId,
       characterId,
-      characterName: `Guest-${characterId.slice(0, 8)}`,
+      characterName: characterName ?? `Guest-${characterId.slice(0, 8)}`,
       sessionId: randomUUID(),
       tokenHash,
       expiresAt: new Date(now.getTime() + this.ttlDays * DAY_MS),
