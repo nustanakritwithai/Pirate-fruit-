@@ -144,6 +144,8 @@ export class Monster {
   telegraphTimer = 0;
   pendingHeavy = false;
   private hitFlash = 0;
+  /** Presentation-only recoil. Never changes the authoritative group transform. */
+  private readonly hitOffset = new THREE.Vector2();
   private deathTimer = 0;
 
   constructor(
@@ -232,21 +234,46 @@ export class Monster {
   }
 
   /** รับดาเมจ คืน true ถ้าตายจากครั้งนี้ */
-  takeDamage(amount: number): boolean {
+  takeDamage(amount: number, sourceX?: number, sourceZ?: number): boolean {
     if (this.state === 'dead') return false;
     this.hp = Math.max(0, this.hp - amount);
     this.healthBar.draw(this.hpFraction);
+    this.playHitReaction(sourceX, sourceZ);
+    if (this.hp <= 0) {
+      this.die();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Read-only combat presentation: flash, hit animation and a short model-only recoil.
+   * The root transform remains controlled by local collision or the Server snapshot.
+   */
+  playHitReaction(sourceX?: number, sourceZ?: number, strength = 0.24): void {
+    if (this.state === 'dead') return;
     this.hitFlash = 0.18;
     this.animator.triggerHit();
     for (const material of this.flashMaterials) {
       material.emissive.setHex(0xff3a20);
       material.emissiveIntensity = 1.4;
     }
-    if (this.hp <= 0) {
-      this.die();
-      return true;
+    let dx: number;
+    let dz: number;
+    if (Number.isFinite(sourceX) && Number.isFinite(sourceZ)) {
+      dx = this.group.position.x - sourceX!;
+      dz = this.group.position.z - sourceZ!;
+    } else {
+      // A shared delta does not yet carry the attacker position. Recoil opposite facing
+      // so every observer still gets one deterministic impact beat.
+      dx = -Math.sin(this.group.rotation.y);
+      dz = -Math.cos(this.group.rotation.y);
     }
-    return false;
+    const length = Math.hypot(dx, dz) || 1;
+    const resistance = this.type.kind === 'boss' ? 0.35 : 1;
+    const amount = Math.min(0.42, Math.max(0.08, strength) * resistance);
+    this.hitOffset.x = (dx / length) * amount;
+    this.hitOffset.y = (dz / length) * amount;
   }
 
   private die(): void {
@@ -272,6 +299,9 @@ export class Monster {
     this.kbX = 0;
     this.kbZ = 0;
     this.staggerTimer = 0;
+    this.hitOffset.set(0, 0);
+    this.visualRoot.position.x = 0;
+    this.visualRoot.position.z = 0;
     this.group.position.set(this.home.x, y, this.home.y);
     this.group.scale.set(1, 1, 1);
     this.group.rotation.x = 0;
@@ -284,6 +314,11 @@ export class Monster {
 
   /** อนิเมชัน/แฟลช/บ๊อบ คืน true เมื่ออนิเมชันตายจบ (ให้ manager ซ่อน) */
   updateVisual(dt: number): boolean {
+    const recoilDamp = Math.exp(-15 * Math.min(dt, 0.05));
+    this.hitOffset.multiplyScalar(recoilDamp);
+    if (this.hitOffset.lengthSq() < 1e-5) this.hitOffset.set(0, 0);
+    this.visualRoot.position.x = this.hitOffset.x;
+    this.visualRoot.position.z = this.hitOffset.y;
     if (this.hitFlash > 0) {
       this.hitFlash -= dt;
       for (const material of this.flashMaterials) {
