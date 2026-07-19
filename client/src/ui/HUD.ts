@@ -28,7 +28,7 @@ export class HUD {
       .guard-fill { height: 100%; background: linear-gradient(90deg, #6fc2ff, #a5dcff);
                     transition: width .1s linear; }
       .hud-info { right: 16px; top: 16px; text-align: right; font-size: 13px; }
-      .hud-help { left: 16px; top: 310px; font-size: 13px; background: rgba(0,0,0,.4);
+      .hud-help { left: 16px; top: 350px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
       .hud-help b { color: #ffd76b; }
       .hud-combat-hint { color:#9fd4ff; }
@@ -38,6 +38,7 @@ export class HUD {
       .hud-damage.hit { opacity:1; transition:opacity .04s; }
       @media(max-width:700px){
         .hud-bars { bottom:74px; width:160px; }
+        .hud-help { top:310px; }
       }
     `;
     document.head.appendChild(style);

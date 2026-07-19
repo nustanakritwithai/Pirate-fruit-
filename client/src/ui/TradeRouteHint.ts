@@ -14,7 +14,7 @@ export class TradeRouteHint {
   constructor() {
     const style = document.createElement('style');
     style.textContent = `
-      .trade-route-hint{position:fixed;z-index:20;right:14px;top:98px;pointer-events:auto;
+      .trade-route-hint{position:fixed;z-index:20;right:60px;top:98px;pointer-events:auto;
         touch-action:manipulation;max-width:200px}
       .trade-route-toggle{width:100%;border:1px solid rgba(120,200,170,.35);border-radius:10px;
         padding:6px 10px;background:rgba(6,28,32,.85);color:#dff7ee;cursor:pointer;

@@ -174,7 +174,7 @@ export class InventoryUI {
   private injectStyles(): void {
     const style = document.createElement('style');
     style.textContent = `
-      .inv-open-button { position:fixed; z-index:31; right:16px; top:130px; width:38px; height:38px;
+      .inv-open-button { position:fixed; z-index:31; right:16px; top:144px; width:38px; height:38px;
         border:1px solid rgba(120,235,150,.5); border-radius:50%; color:#fff; background:rgba(6,34,20,.78);
         box-shadow:0 3px 12px rgba(0,0,0,.35); cursor:pointer; font-size:17px; touch-action:manipulation; }
       .inv-root { position:fixed; inset:0; z-index:79; display:flex; align-items:center; justify-content:center;
