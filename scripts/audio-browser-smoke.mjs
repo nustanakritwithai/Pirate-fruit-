@@ -76,8 +76,12 @@ try {
     fail('no lazy music request started after unlock', { transitions, pageErrors });
   }
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  const mobileLayout = await page.evaluate(() => {
+  // The game's existing first-gesture fullscreen behavior makes the desktop page's
+  // window bounds immutable in Chromium. Use an independent portrait page instead.
+  const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await mobilePage.goto(gameUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await mobilePage.waitForFunction(() => Boolean(window.__boat && window.__audio), null, { timeout: 120_000 });
+  const mobileLayout = await mobilePage.evaluate(() => {
     const toggleRect = document.querySelector('.audio-toggle')?.getBoundingClientRect();
     if (!toggleRect) return { ok: false, reason: 'missing toggle' };
     const hudRects = [...document.querySelectorAll(
@@ -99,6 +103,7 @@ try {
       overlaps,
     };
   });
+  await mobilePage.close();
   if (!mobileLayout.ok) fail('mobile audio control overlaps the gameplay HUD', { mobileLayout });
 
   if (!process.exitCode) {
