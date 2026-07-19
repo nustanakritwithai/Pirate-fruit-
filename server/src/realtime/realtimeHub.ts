@@ -68,6 +68,7 @@ export interface PresencePosition {
   /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
   boatId?: string;
   locomotion?: 'idle' | 'walk' | 'run' | 'swim';
+  animation?: import('@pirate-fruit/shared').RealtimePlayerAnimation;
 }
 
 export interface RealtimeConnection {
@@ -111,7 +112,49 @@ function readPosition(message: Record<string, unknown>): PresencePosition | null
     : undefined;
   const locomotion = message.locomotion === 'walk' || message.locomotion === 'run'
     || message.locomotion === 'swim' ? message.locomotion : 'idle';
-  return { islandId, x, y, z, heading, onBoat, boatId, locomotion };
+  const animation = readPlayerAnimation(message.animation);
+  return { islandId, x, y, z, heading, onBoat, boatId, locomotion, animation };
+}
+
+function readPlayerAnimation(value: unknown): import('@pirate-fruit/shared').RealtimePlayerAnimation | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const input = value as Record<string, unknown>;
+  const combatStates = new Set(['idle', 'attack1', 'attack2', 'attack3', 'attack4', 'casting',
+    'blocking', 'stunned', 'knockback', 'knockdown', 'dead']);
+  const categories = new Set(['style', 'sword', 'gun', 'fruit', 'utility']);
+  const skillTypes = new Set(['projectile', 'beam', 'aoe', 'ground', 'dash', 'flurry', 'buff',
+    'summon', 'homing', 'teleport']);
+  if (typeof input.combatState !== 'string' || !combatStates.has(input.combatState)
+    || typeof input.category !== 'string' || !categories.has(input.category)) return undefined;
+  const finite = (field: string, fallback = 0) => {
+    const number = input[field];
+    return typeof number === 'number' && Number.isFinite(number) ? number : fallback;
+  };
+  const progress = (field: string) => THREEClamp(finite(field, 1), 0, 1);
+  const skillAnimationType = typeof input.skillAnimationType === 'string'
+    && skillTypes.has(input.skillAnimationType) ? input.skillAnimationType : undefined;
+  const skillAnimationCategory = typeof input.skillAnimationCategory === 'string'
+    && categories.has(input.skillAnimationCategory) ? input.skillAnimationCategory : undefined;
+  return {
+    combatState: input.combatState as import('@pirate-fruit/shared').RealtimePlayerAnimation['combatState'],
+    category: input.category as import('@pirate-fruit/shared').RealtimePlayerAnimation['category'],
+    onGround: input.onGround === true,
+    dashing: input.dashing === true,
+    verticalVelocity: Math.max(-100, Math.min(100, finite('verticalVelocity'))),
+    attackProgress: progress('attackProgress'),
+    hitReactionId: Math.max(0, Math.floor(finite('hitReactionId'))),
+    hitReactionAngle: Math.max(-Math.PI, Math.min(Math.PI, finite('hitReactionAngle'))),
+    skillAnimationProgress: progress('skillAnimationProgress'),
+    skillAnimationReleaseProgress: progress('skillAnimationReleaseProgress'),
+    skillAnimationType: skillAnimationType as import('@pirate-fruit/shared').RealtimePlayerAnimation['skillAnimationType'],
+    skillAnimationVariant: Math.max(0, Math.min(16, Math.floor(finite('skillAnimationVariant')))),
+    skillAnimationUltimate: input.skillAnimationUltimate === true,
+    skillAnimationCategory: skillAnimationCategory as import('@pirate-fruit/shared').RealtimePlayerAnimation['skillAnimationCategory'],
+  };
+}
+
+function THREEClamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage {
@@ -129,6 +172,7 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
     onBoat: presence.onBoat,
     boatId: presence.boatId,
     locomotion: presence.onBoat ? 'idle' : presence.locomotion ?? 'idle',
+    animation: presence.onBoat ? undefined : presence.animation,
     // Presentation-only default. A future profile/loadout service can replace
     // these fields without changing movement or combat authority.
     appearance: {

@@ -36,6 +36,11 @@ interface RemotePlayer {
   defeated: boolean;
   animator: PlayerActionAnimator | null;
   locomotion: 'idle' | 'walk' | 'run' | 'swim';
+  animation: NonNullable<RealtimePresenceSnapshot['animation']>;
+}
+
+function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
+  return { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 };
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -164,6 +169,7 @@ export class RemotePlayers implements Updatable {
         defeated: false,
         animator: avatar.animator,
         locomotion: snapshot.locomotion ?? 'idle',
+        animation: snapshot.animation ?? defaultAnimation(),
       });
       return;
     }
@@ -185,6 +191,7 @@ export class RemotePlayers implements Updatable {
     player.targetHeading = snapshot.heading;
     player.onBoat = snapshot.onBoat;
     player.locomotion = snapshot.locomotion ?? 'idle';
+    player.animation = snapshot.animation ?? player.animation;
     player.lastSeenAt = this.now();
   }
 
@@ -228,10 +235,8 @@ export class RemotePlayers implements Updatable {
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       player.group.rotation.y = current + delta * factor;
       player.animator?.update(dt, {
-        combatState: 'idle',
-        category: 'style',
+        ...player.animation,
         locomotion: player.locomotion,
-        onGround: player.locomotion !== 'swim',
       });
     }
   }

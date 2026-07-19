@@ -82,6 +82,40 @@ describe('S13 RemotePlayers', () => {
     expect(leg!.quaternion.equals(before)).toBe(false);
   });
 
+  it('applies remote attack, jump and dash animation snapshots', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    const baseAnimation = {
+      combatState: 'attack2' as const,
+      category: 'sword' as const,
+      onGround: true,
+      dashing: false,
+      verticalVelocity: 0,
+      attackProgress: 0.55,
+    };
+    players.applyPresence(snapshot({ animation: baseAnimation }));
+    const arm = scene.getObjectByName('player-rig:right-arm')!;
+    const bindArm = arm.quaternion.clone();
+    players.update(0.05);
+    expect(arm.quaternion.equals(bindArm)).toBe(false);
+
+    players.applyPresence(snapshot({ animation: {
+      ...baseAnimation, combatState: 'idle', onGround: false, verticalVelocity: 7,
+    } }));
+    const leg = scene.getObjectByName('player-rig:left-leg')!;
+    const attackLeg = leg.quaternion.clone();
+    players.update(0.05);
+    expect(leg.quaternion.equals(attackLeg)).toBe(false);
+
+    players.applyPresence(snapshot({ animation: {
+      ...baseAnimation, combatState: 'idle', dashing: true,
+    } }));
+    const chest = scene.getObjectByName('player-rig:chest')!;
+    const jumpChest = chest.quaternion.clone();
+    players.update(0.05);
+    expect(chest.quaternion.equals(jumpChest)).toBe(false);
+  });
+
   it('renders a boat proxy when onBoat and swaps back to the player visual on foot (S14)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

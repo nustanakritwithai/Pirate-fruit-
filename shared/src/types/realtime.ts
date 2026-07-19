@@ -69,6 +69,27 @@ export interface RealtimePresence {
   appearance?: RealtimeCharacterAppearance;
   /** Presentation-only locomotion; never used for movement/combat authority. */
   locomotion?: 'idle' | 'walk' | 'run' | 'swim';
+  /** Complete visual animation snapshot. It is never trusted for gameplay. */
+  animation?: RealtimePlayerAnimation;
+}
+
+export interface RealtimePlayerAnimation {
+  combatState: 'idle' | 'attack1' | 'attack2' | 'attack3' | 'attack4'
+    | 'casting' | 'blocking' | 'stunned' | 'knockback' | 'knockdown' | 'dead';
+  category: 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
+  onGround: boolean;
+  dashing: boolean;
+  verticalVelocity: number;
+  attackProgress?: number;
+  hitReactionId?: number;
+  hitReactionAngle?: number;
+  skillAnimationProgress?: number;
+  skillAnimationReleaseProgress?: number;
+  skillAnimationType?: 'projectile' | 'beam' | 'aoe' | 'ground' | 'dash'
+    | 'flurry' | 'buff' | 'summon' | 'homing' | 'teleport';
+  skillAnimationVariant?: number;
+  skillAnimationUltimate?: boolean;
+  skillAnimationCategory?: 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
 }
 
 /** Versioned so future character models, clothing and equipped-item visuals can evolve safely. */
@@ -261,6 +282,7 @@ export interface RealtimeMove {
   boatId?: string;
   /** Presentation-only animation hint. */
   locomotion?: 'idle' | 'walk' | 'run' | 'swim';
+  animation?: RealtimePlayerAnimation;
 }
 
 /** S15 — Client รายงาน "เจตนาโจมตี" ผู้เล่นอีกคน (PvP) — Server ตัดสินผลเอง */

@@ -221,6 +221,35 @@ describe('S13 presence relay', () => {
     expect(presence.boatId).toBeUndefined();
   });
 
+  it('validates and relays complete presentation-only animation state', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
+    clock += 100;
+    hub.handleClientMessage(ca, JSON.stringify({
+      type: 'move', islandId: 'starter-island', x: 1, y: 2, z: 3, heading: 0, onBoat: false,
+      locomotion: 'run',
+      animation: {
+        combatState: 'attack3', category: 'sword', onGround: false, dashing: true,
+        verticalVelocity: 999, attackProgress: 2, hitReactionId: 4, hitReactionAngle: 9,
+        skillAnimationProgress: -1, skillAnimationType: 'dash', skillAnimationVariant: 2,
+      },
+    }));
+    const presence = b.sent.find((message) => message.type === 'presence' && message.playerId === 'char-a');
+    expect(presence).toMatchObject({
+      locomotion: 'run',
+      animation: {
+        combatState: 'attack3', category: 'sword', onGround: false, dashing: true,
+        verticalVelocity: 100, attackProgress: 1, hitReactionId: 4,
+        hitReactionAngle: Math.PI, skillAnimationProgress: 0, skillAnimationType: 'dash',
+      },
+    });
+  });
+
 });
 
 describe('S15 PvP combat authority', () => {
