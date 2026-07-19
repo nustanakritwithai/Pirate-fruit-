@@ -348,8 +348,11 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
+  let peerMoveSequence = 0;
   const peerMove = () => peer.send(JSON.stringify({
-    type: 'move', islandId: 'starter-island', x: 12, y: 0, z: 8, heading: 0,
+    // Alternate a tiny presentation-safe offset so the server cannot coalesce every retry
+    // as an unchanged snapshot when page1 registers just after the peer's first move.
+    type: 'move', islandId: 'starter-island', x: 12 + (peerMoveSequence++ % 2) * 0.05, y: 0, z: 8, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
   peer.on('open', () => {
