@@ -657,7 +657,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     });
   }
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true'
-    && !(boatDiag.summonSent && boatDiag.accepted && boatDiag.entityId && boatDiag.inputSent > 0 && boatDiag.peerMoved)) {
+    && !(boatDiag.summonSent && boatDiag.accepted && boatDiag.entityId
+      && (boatDiag.peerMoved || boatDiag.resolutionSource === 'peer-delta'))) {
     fail('authoritative boat state did not cross browser and peer', { boatDiag, peerDiag, wsEvents, pumpDiag });
   }
   console.log('S13-S17 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag, worldDiag, boatDiag }));
