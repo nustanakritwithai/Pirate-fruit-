@@ -1,6 +1,4 @@
-import * as THREE from 'three';
-import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import type * as THREE from 'three';
 import type { MonsterType } from '../monster/MonsterData';
 
 /**
@@ -35,79 +33,9 @@ export type PirateAssetId =
   | 'orc-enemy'
   | 'tribal';
 
-const ASSET_FILES: Record<PirateAssetId, string> = {
-  henry: 'quaternius-pirate-kit/henry.glb',
-  anne: 'quaternius-pirate-kit/anne.glb',
-  mako: 'quaternius-pirate-kit/mako.glb',
-  'pirate-captain': 'quaternius-pirate-kit/pirate-captain.glb',
-  sharky: 'quaternius-pirate-kit/sharky.glb',
-  skeleton: 'quaternius-pirate-kit/skeleton.glb',
-  spider: 'quaternius-easy-enemies/spider.glb',
-  goleling: 'quaternius-ultimate-monsters/goleling.glb',
-  'goleling-evolved': 'quaternius-ultimate-monsters/goleling-evolved.glb',
-  yeti: 'quaternius-ultimate-monsters/yeti.glb',
-  hywirl: 'quaternius-ultimate-monsters/hywirl.glb',
-  demon: 'quaternius-ultimate-monsters/demon.glb',
-  alien: 'quaternius-ultimate-monsters/alien.glb',
-  alpaking: 'quaternius-ultimate-monsters/alpaking.glb',
-  armabee: 'quaternius-ultimate-monsters/armabee.glb',
-  'armabee-evolved': 'quaternius-ultimate-monsters/armabee-evolved.glb',
-  'blue-demon': 'quaternius-ultimate-monsters/blue-demon.glb',
-  cactoro: 'quaternius-ultimate-monsters/cactoro.glb',
-  dragon: 'quaternius-ultimate-monsters/dragon.glb',
-  ghost: 'quaternius-ultimate-monsters/ghost.glb',
-  'ghost-skull': 'quaternius-ultimate-monsters/ghost-skull.glb',
-  glub: 'quaternius-ultimate-monsters/glub.glb',
-  'mushroom-king': 'quaternius-ultimate-monsters/mushroom-king.glb',
-  ninja: 'quaternius-ultimate-monsters/ninja.glb',
-  'orc-enemy': 'quaternius-ultimate-monsters/orc-enemy.glb',
-  tribal: 'quaternius-ultimate-monsters/tribal.glb',
-};
-
-// Procedural-only mode: keep the catalogue for deterministic fallback selection,
-// but never preload an external model.
-const GAMEPLAY_ASSETS: PirateAssetId[] = [];
-const loader = new GLTFLoader();
-const pending = new Map<PirateAssetId, Promise<GLTF>>();
-const loaded = new Map<PirateAssetId, GLTF>();
-let preloadPromise: Promise<void> | null = null;
-
-function assetUrl(id: PirateAssetId): string {
-  return `${import.meta.env.BASE_URL}assets/third-party/${ASSET_FILES[id]}`;
-}
-
-function loadSource(id: PirateAssetId): Promise<GLTF> {
-  const ready = loaded.get(id);
-  if (ready) return Promise.resolve(ready);
-  const inFlight = pending.get(id);
-  if (inFlight) return inFlight;
-
-  const request = loader.loadAsync(assetUrl(id))
-    .then((gltf) => {
-      loaded.set(id, gltf);
-      pending.delete(id);
-      return gltf;
-    })
-    .catch((error: unknown) => {
-      pending.delete(id);
-      throw error;
-    });
-  pending.set(id, request);
-  return request;
-}
-
-/** โหลด asset ที่ใช้งานจริงระหว่าง loading screen; asset ใดเสียจะ fallback procedural เฉพาะตัวนั้น */
+/** Compatibility no-op: demo mode never requests an external character model. */
 export function preloadPirateGameAssets(): Promise<void> {
-  if (preloadPromise) return preloadPromise;
-  preloadPromise = Promise.allSettled(GAMEPLAY_ASSETS.map((id) => loadSource(id)))
-    .then((results) => {
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.warn(`[PirateAssetLibrary] ใช้ procedural fallback สำหรับ ${GAMEPLAY_ASSETS[index]}`, result.reason);
-        }
-      });
-    });
-  return preloadPromise;
+  return Promise.resolve();
 }
 
 export interface PirateAssetInstance {
@@ -127,79 +55,12 @@ export interface PirateAssetInstanceOptions {
   tintStrength?: number;
 }
 
-function cloneInstanceMaterials(
-  root: THREE.Object3D,
-  options: PirateAssetInstanceOptions,
-): THREE.Material[] {
-  const owned: THREE.Material[] = [];
-  const tint = options.tint === undefined ? null : new THREE.Color(options.tint);
-  const tintStrength = THREE.MathUtils.clamp(options.tintStrength ?? 0.2, 0, 0.65);
-  root.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    const clones = source.map((material) => {
-      const clone = material.clone();
-      const colorMaterial = clone as THREE.Material & { color?: THREE.Color };
-      if (tint && colorMaterial.color) colorMaterial.color.lerp(tint, tintStrength);
-      owned.push(clone);
-      return clone;
-    });
-    mesh.material = Array.isArray(mesh.material) ? clones : clones[0];
-    mesh.castShadow = true;
-    mesh.receiveShadow = false;
-    mesh.frustumCulled = true;
-  });
-  return owned;
-}
-
-/**
- * SkeletonUtils.clone() rebinds cloned SkinnedMesh instances and, with some
- * GLB exports, rebuilds bindMatrixInverse from the identity bind matrix. The
- * source asset still has the correct inverse armature transform, so preserve
- * both matrices before measuring/scaling the instance.
- */
-function restoreSkinnedBindMatrices(source: THREE.Object3D, clone: THREE.Object3D): void {
-  const sourceMeshes: THREE.SkinnedMesh[] = [];
-  const clonedMeshes: THREE.SkinnedMesh[] = [];
-  source.traverse((object) => {
-    const mesh = object as THREE.SkinnedMesh;
-    if (mesh.isSkinnedMesh) sourceMeshes.push(mesh);
-  });
-  clone.traverse((object) => {
-    const mesh = object as THREE.SkinnedMesh;
-    if (mesh.isSkinnedMesh) clonedMeshes.push(mesh);
-  });
-
-  clonedMeshes.forEach((mesh, index) => {
-    const sourceMesh = sourceMeshes[index];
-    if (!sourceMesh) return;
-    mesh.bindMatrix.copy(sourceMesh.bindMatrix);
-    mesh.bindMatrixInverse.copy(sourceMesh.bindMatrixInverse);
-  });
-}
-
-/** clone skeleton อย่างถูกต้อง เพื่อให้มอนสเตอร์หลายตัวเล่น animation แยกกันได้ */
+/** Always select the existing code-generated visual in demo mode. */
 export function instantiatePirateAsset(
-  id: PirateAssetId,
-  options: PirateAssetInstanceOptions = {},
+  _id: PirateAssetId,
+  _options: PirateAssetInstanceOptions = {},
 ): PirateAssetInstance | null {
-  const source = loaded.get(id);
-  if (!source) return null;
-  const root = SkeletonUtils.clone(source.scene) as THREE.Group;
-  restoreSkinnedBindMatrices(source.scene, root);
-  root.name = `quaternius:${id}`;
-  const materials = cloneInstanceMaterials(root, options);
-  const box = new THREE.Box3().setFromObject(root);
-  const measuredHeight = box.max.y - box.min.y;
-  const height = Number.isFinite(measuredHeight) && measuredHeight > 0.01 ? measuredHeight : 1.5;
-  const minY = Number.isFinite(box.min.y) ? box.min.y : 0;
-  return {
-    root,
-    animations: source.animations,
-    bounds: { height, minY },
-    disposeMaterials: () => materials.forEach((material) => material.dispose()),
-  };
+  return null;
 }
 
 /** โมเดลมีอาวุธตัวอย่างติด rig มา ผู้เล่นใช้ EquipmentVisuals ของเกมจึงต้องซ่อนของเดิม */

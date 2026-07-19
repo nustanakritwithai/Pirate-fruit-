@@ -163,14 +163,6 @@ export class World {
       starterIsland.nightMaterial,
       starterIsland.nightLights,
     );
-
-    const nightSkyUrl = `${import.meta.env.BASE_URL}assets/third-party/ambientcg-night-sky/night-sky-1k.jpg`;
-    new THREE.TextureLoader().load(
-      nightSkyUrl,
-      (texture) => this.dayNight.setNightBackground(texture),
-      undefined,
-      (error) => console.warn('[World] ใช้ fallback night sky เพราะโหลด asset ไม่สำเร็จ', error),
-    );
   }
 
   get timeOfDay(): number {
@@ -232,27 +224,10 @@ export class World {
 
     const t = this.textures;
     for (const tex of [t.grassColor, t.grassNormal]) tex.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
-    const desert = island.id === 'sunscar-desert';
-    const frost = island.id === 'azure-frost';
-    const skyIsland = island.id === 'tempest-sky';
-    const volcano = island.id === 'ember-volcano';
-    const specialGround = desert || frost || skyIsland || volcano;
-    const rockyGround = skyIsland || volcano;
-    const groundMap = rockyGround ? t.rockColor.clone() : specialGround ? t.sandColor.clone() : t.grassColor;
-    const groundNormal = rockyGround ? t.rockNormal.clone() : specialGround ? t.sandNormal.clone() : t.grassNormal;
-    if (specialGround) {
-      groundMap.wrapS = groundMap.wrapT = THREE.RepeatWrapping;
-      groundNormal.wrapS = groundNormal.wrapT = THREE.RepeatWrapping;
-      groundMap.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
-      groundNormal.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
-      groundMap.needsUpdate = true;
-      groundNormal.needsUpdate = true;
-    }
-
     const mat = new THREE.MeshStandardMaterial({
-      color: island.id === 'mist-jungle' ? 0x789b72 : desert ? 0xe2c28e : frost ? 0xdcebef : skyIsland ? 0xc8d7d2 : volcano ? 0x66524b : 0xffffff,
-      map: groundMap,
-      normalMap: groundNormal,
+      color: 0xffffff,
+      map: t.grassColor,
+      normalMap: t.grassNormal,
       roughness: 1,
       metalness: 0,
       normalScale: new THREE.Vector2(0.72, 0.72),

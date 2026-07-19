@@ -58,7 +58,6 @@ import { EconomyPanel } from './ui/EconomyPanel';
 import { subscribePlayerEconomyEvents, classifyPlayerEventPriority } from './trade/living/PlayerEconomyEvents';
 import type { ClassifiedEconomyEvent } from './trade/living/EconomyEventClassifier';
 import { CargoHUD } from './ui/CargoHUD';
-import { preloadPirateGameAssets } from './art/PirateAssetLibrary';
 import { initializeGamePersistence } from './persistence/GamePersistence';
 import {
   getRemoteSession,
@@ -99,7 +98,7 @@ async function main(): Promise<void> {
   // เบราว์เซอร์อนุญาต fullscreen หลัง gesture เท่านั้น; gesture แรกของเกมจะขอให้อัตโนมัติ
   new FullscreenManager();
 
-  // หน้าจอโหลดชั่วคราวระหว่างรอโมเดล
+  // หน้าจอโหลดชั่วคราวระหว่างเตรียมโลก
   const loading = document.createElement('div');
   loading.className = 'game-loading';
   loading.style.cssText =
@@ -133,12 +132,9 @@ async function main(): Promise<void> {
   const graphics = loadGraphicsProfile();
   const game = new Game(container, graphics);
   const input = new Input(game.renderer.domElement);
-  const [worldTextures] = await Promise.all([
-    loadWorldTextures(
-      Math.min(graphics.textureAnisotropy, game.renderer.capabilities.getMaxAnisotropy()),
-    ),
-    preloadPirateGameAssets(),
-  ]);
+  const worldTextures = await loadWorldTextures(
+    Math.min(graphics.textureAnisotropy, game.renderer.capabilities.getMaxAnisotropy()),
+  );
   const world = new World(game.scene, game.renderer, worldTextures, graphics);
 
   const camera: ThirdPersonCamera = new ThirdPersonCamera(

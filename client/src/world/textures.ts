@@ -30,43 +30,26 @@ export async function loadWorldTextures(anisotropy = 4): Promise<WorldTextures> 
     return tex;
   };
 
-  const [
-    grassColor,
-    grassNormal,
-    sandColor,
-    sandNormal,
-    rockColor,
-    rockNormal,
-    barkColor,
-    barkNormal,
-    planksColor,
-    planksNormal,
-    waterNormal,
-  ] = await Promise.all([
+  // Demo bandwidth profile: one grass PBR set is shared by every island and prop.
+  // Keep the legacy keys so world builders stay data-compatible without fetching
+  // the old sand/rock/bark/planks images.
+  const [grassColor, grassNormal, waterNormal] = await Promise.all([
     load('grass_color.jpg', true),
     load('grass_normal.jpg', false),
-    load('sand_color.jpg', true),
-    load('sand_normal.jpg', false),
-    load('rock_color.jpg', true),
-    load('rock_normal.jpg', false),
-    load('bark_color.jpg', true),
-    load('bark_normal.jpg', false),
-    load('planks_color.jpg', true),
-    load('planks_normal.jpg', false),
     load('waternormals.jpg', false),
   ]);
 
   return {
     grassColor,
     grassNormal,
-    sandColor,
-    sandNormal,
-    rockColor,
-    rockNormal,
-    barkColor,
-    barkNormal,
-    planksColor,
-    planksNormal,
+    sandColor: grassColor,
+    sandNormal: grassNormal,
+    rockColor: grassColor,
+    rockNormal: grassNormal,
+    barkColor: grassColor,
+    barkNormal: grassNormal,
+    planksColor: grassColor,
+    planksNormal: grassNormal,
     waterNormal,
   };
 }
