@@ -352,6 +352,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
+  let resolvePeerOpen;
+  const peerOpen = new Promise((resolve) => { resolvePeerOpen = resolve; });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
   let peerX = 12;
@@ -365,12 +367,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     y: peerY, z: peerZ, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
-  peer.on('open', () => {
-    peerMove();
-    // ส่งซ้ำถี่ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก (naval presence ให้หลายโอกาส)
-    const timer = setInterval(peerMove, 500);
-    peer.on('close', () => clearInterval(timer));
-  });
+  peer.on('open', () => resolvePeerOpen());
   peer.on('message', (data) => {
     try {
       const message = JSON.parse(String(data));
@@ -434,9 +431,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       browserPresence = out.presence;
     }
   }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
-  // ขับ peer move จาก main loop โดยตรง — setInterval(peerMove) ของ peer อาจถูก starve
-  // เมื่อ event loop ติด await page.evaluate นาน (browser อิ่มตัวจาก world-monster delta)
-  // ทำให้ peer หยุด re-broadcast presence → page1 ไม่ได้ presence (แต่ page1 → peer ยังได้)
+  // Make the peer's first authoritative move deterministic. A first move seeds
+  // both directions, but only when the browser already has same-island presence.
+  await peerOpen;
+  await pumpSelfMove();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  peerMove();
+  // ขับ peer move จาก main loop โดยตรง เพื่อไม่มี timer ชุดที่สองมาชน server throttle
+  // และให้ทุก retry รักษาลำดับ browser-presence → peer-presence แบบเดิม
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
     // Register the browser on the deterministic smoke island first. Its normal
