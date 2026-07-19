@@ -435,7 +435,6 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // both directions, but only when the browser already has same-island presence.
   await peerOpen;
   await pumpSelfMove();
-  await new Promise((resolve) => setTimeout(resolve, 150));
   peerMove();
   // ขับ peer move จาก main loop โดยตรง เพื่อไม่มี timer ชุดที่สองมาชน server throttle
   // และให้ทุก retry รักษาลำดับ browser-presence → peer-presence แบบเดิม
@@ -445,7 +444,6 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     // gameplay timer can otherwise restore the live active island between these
     // two sends, producing a one-way relay (peer sees page, page never sees peer).
     await pumpSelfMove();
-    await new Promise((resolve) => setTimeout(resolve, 50));
     if (peer.readyState === 1) peerMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
