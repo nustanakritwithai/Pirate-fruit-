@@ -250,6 +250,19 @@ describe('S13 presence relay', () => {
     });
   });
 
+  it('does not relay remote presentation outside the presence interest range', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
+    clock += 300;
+    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 500, y: 0, z: 0, heading: 0, onBoat: false }));
+    expect(b.sent.some((message) => message.type === 'presence' && message.playerId === 'char-a')).toBe(false);
+  });
+
 });
 
 describe('S15 PvP combat authority', () => {

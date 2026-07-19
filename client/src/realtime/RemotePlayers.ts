@@ -14,9 +14,16 @@ import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
 import { PlayerActionAnimator } from '../animation/PlayerActionAnimator';
+import type { GraphicsTier } from '../engine/GraphicsQuality';
 
 const LERP_PER_SECOND = 9; // ความเร็วไถลเข้าหาเป้า (สูง = ตามติดขึ้น)
 const STALE_MS = 20_000; // ไม่ได้ยิน presence เกินนี้ = ถือว่าหลุด เอาออก
+
+type RemoteLod = 'full' | 'low' | 'hidden';
+interface RemoteRenderOptions {
+  focus?: () => THREE.Vector3;
+  tier?: GraphicsTier;
+}
 
 const BOAT_BY_ID = new Map(BOAT_DEFINITIONS.map((definition) => [definition.id, definition]));
 
@@ -37,6 +44,8 @@ interface RemotePlayer {
   animator: PlayerActionAnimator | null;
   locomotion: 'idle' | 'walk' | 'run' | 'swim';
   animation: NonNullable<RealtimePresenceSnapshot['animation']>;
+  lod: RemoteLod;
+  snapshot: RealtimePresenceSnapshot;
 }
 
 function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
@@ -82,6 +91,23 @@ function makePlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Grou
   return { group: visual.group, animator: new PlayerActionAnimator(visual.rig) };
 }
 
+/** Three-mesh silhouette for mid-distance players; same Pirate V1 palette, no rig cost. */
+function makeLowPlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: null } {
+  const group = new THREE.Group();
+  group.name = `remote-player-low:${snapshot.appearance?.avatarId ?? 'pirate-v1'}`;
+  const cloth = new THREE.MeshStandardMaterial({ color: 0x17364b, roughness: 0.84 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xb97950, roughness: 0.6 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x7d2632, roughness: 0.86 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.85, 3, 7), cloth);
+  body.position.y = 1.08;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), skin);
+  head.position.y = 1.95;
+  const bandana = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.26, 0.12, 8), accent);
+  bandana.position.y = 2.12;
+  group.add(body, head, bandana);
+  return { group, animator: null };
+}
+
 /** S14: เรือ proxy แบบเบา (ตัวเรือ + ใบเรือ) ขนาด/สีตามรุ่น — ไม่ใช้ BoatModel เต็ม */
 function makeBoatProxy(boatId: string | undefined): THREE.Group {
   const group = new THREE.Group();
@@ -112,12 +138,12 @@ function avatarKindOf(snapshot: RealtimePresenceSnapshot): AvatarKind {
   return snapshot.onBoat ? `boat:${snapshot.boatId ?? 'default'}` : 'foot';
 }
 
-function buildAvatar(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: PlayerActionAnimator | null } {
+function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { group: THREE.Group; animator: PlayerActionAnimator | null } {
   const avatar = snapshot.onBoat
     ? { group: makeBoatProxy(snapshot.boatId), animator: null }
-    : makePlayerBody(snapshot);
+    : lod === 'full' ? makePlayerBody(snapshot) : makeLowPlayerBody(snapshot);
   const { group } = avatar;
-  group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
+  if (lod !== 'hidden') group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
   return avatar;
 }
 
@@ -129,6 +155,7 @@ export class RemotePlayers implements Updatable {
     private readonly scene: THREE.Scene,
     islandId: string,
     private readonly now: () => number = () => Date.now(),
+    private readonly renderOptions: RemoteRenderOptions = {},
   ) {
     this.currentIslandId = islandId;
   }
@@ -152,7 +179,8 @@ export class RemotePlayers implements Updatable {
     const kind = avatarKindOf(snapshot);
     let player = this.players.get(snapshot.playerId);
     if (!player) {
-      const avatar = buildAvatar(snapshot);
+      const lod = this.initialLod(snapshot);
+      const avatar = buildAvatar(snapshot, lod);
       const { group } = avatar;
       group.position.set(snapshot.x, snapshot.y, snapshot.z);
       group.rotation.y = snapshot.heading;
@@ -170,6 +198,8 @@ export class RemotePlayers implements Updatable {
         animator: avatar.animator,
         locomotion: snapshot.locomotion ?? 'idle',
         animation: snapshot.animation ?? defaultAnimation(),
+        lod,
+        snapshot,
       });
       return;
     }
@@ -178,7 +208,8 @@ export class RemotePlayers implements Updatable {
       const position = player.group.position.clone();
       const rotationY = player.group.rotation.y;
       this.disposeGroup(player.group);
-      const avatar = buildAvatar(snapshot);
+      const nextLod = this.initialLod(snapshot);
+      const avatar = buildAvatar(snapshot, nextLod);
       const { group } = avatar;
       group.position.copy(position);
       group.rotation.y = rotationY;
@@ -186,18 +217,69 @@ export class RemotePlayers implements Updatable {
       player.group = group;
       player.avatarKind = kind;
       player.animator = avatar.animator;
+      player.lod = nextLod;
     }
     player.target.set(snapshot.x, snapshot.y, snapshot.z);
     player.targetHeading = snapshot.heading;
     player.onBoat = snapshot.onBoat;
     player.locomotion = snapshot.locomotion ?? 'idle';
     player.animation = snapshot.animation ?? player.animation;
+    player.snapshot = snapshot;
     player.lastSeenAt = this.now();
+  }
+
+  private limits(): { full: number; visible: number; boat: number; maxFull: number } {
+    if (this.renderOptions.tier === 'low') return { full: 24, visible: 65, boat: 120, maxFull: 2 };
+    if (this.renderOptions.tier === 'medium') return { full: 38, visible: 90, boat: 170, maxFull: 4 };
+    return { full: 55, visible: 130, boat: 230, maxFull: 8 };
+  }
+
+  private distanceSq(player: Pick<RemotePlayer, 'target'> | RealtimePresenceSnapshot): number {
+    const focus = this.renderOptions.focus?.();
+    if (!focus) return 0;
+    const x = 'target' in player ? player.target.x : player.x;
+    const y = 'target' in player ? player.target.y : player.y;
+    const z = 'target' in player ? player.target.z : player.z;
+    const dx = focus.x - x;
+    const dy = focus.y - y;
+    const dz = focus.z - z;
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  private initialLod(snapshot: RealtimePresenceSnapshot): RemoteLod {
+    const limits = this.limits();
+    const distance = Math.sqrt(this.distanceSq(snapshot));
+    if (snapshot.onBoat) return distance <= limits.boat ? 'low' : 'hidden';
+    if (distance <= limits.full) return 'full';
+    return distance <= limits.visible ? 'low' : 'hidden';
+  }
+
+  private setLod(player: RemotePlayer, lod: RemoteLod): void {
+    if (lod === player.lod) {
+      player.group.visible = !player.defeated && lod !== 'hidden';
+      return;
+    }
+    const position = player.group.position.clone();
+    const rotationY = player.group.rotation.y;
+    this.disposeGroup(player.group);
+    const avatar = buildAvatar(player.snapshot, lod);
+    avatar.group.position.copy(position);
+    avatar.group.rotation.y = rotationY;
+    avatar.group.visible = !player.defeated && lod !== 'hidden';
+    this.scene.add(avatar.group);
+    player.group = avatar.group;
+    player.animator = avatar.animator;
+    player.lod = lod;
   }
 
   /** ชนิด avatar ปัจจุบันของผู้เล่น ('foot' | `boat:<id>`) — ใช้ในเทสต์ */
   avatarKindFor(playerId: string): string | null {
     return this.players.get(playerId)?.avatarKind ?? null;
+  }
+
+  /** Presentation diagnostics/tests only. */
+  lodFor(playerId: string): RemoteLod | null {
+    return this.players.get(playerId)?.lod ?? null;
   }
 
   private disposeGroup(group: THREE.Group): void {
@@ -223,18 +305,35 @@ export class RemotePlayers implements Updatable {
   update(dt: number): void {
     const factor = 1 - Math.exp(-LERP_PER_SECOND * dt); // frame-rate independent lerp
     const cutoff = this.now() - STALE_MS;
+    const limits = this.limits();
+    const fullCandidates = [...this.players.entries()]
+      .filter(([, player]) => {
+        const threshold = player.lod === 'full' ? limits.full * 1.15 : limits.full;
+        return !player.onBoat && Math.sqrt(this.distanceSq(player)) <= threshold;
+      })
+      .sort((a, b) => this.distanceSq(a[1]) - this.distanceSq(b[1]))
+      .slice(0, limits.maxFull)
+      .map(([playerId]) => playerId);
+    const fullIds = new Set(fullCandidates);
     for (const [playerId, player] of [...this.players]) {
       if (player.lastSeenAt < cutoff) {
         this.remove(playerId);
         continue;
       }
+      const distance = Math.sqrt(this.distanceSq(player));
+      const visibleLimit = player.lod === 'hidden' ? limits.visible * 0.9 : limits.visible * 1.1;
+      const boatLimit = player.lod === 'hidden' ? limits.boat * 0.9 : limits.boat * 1.1;
+      const desiredLod: RemoteLod = player.onBoat
+        ? distance <= boatLimit ? 'low' : 'hidden'
+        : fullIds.has(playerId) ? 'full' : distance <= visibleLimit ? 'low' : 'hidden';
+      this.setLod(player, desiredLod);
       player.group.position.lerp(player.target, factor);
       // หมุนตัวเข้าหา heading เป้าหมายแบบสั้นสุด (กันหมุนรอบเกิน)
       const current = player.group.rotation.y;
       let delta = player.targetHeading - current;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       player.group.rotation.y = current + delta * factor;
-      player.animator?.update(dt, {
+      if (player.lod === 'full') player.animator?.update(dt, {
         ...player.animation,
         locomotion: player.locomotion,
       });
@@ -312,7 +411,7 @@ export class RemotePlayers implements Updatable {
     const player = this.players.get(playerId);
     if (!player) return;
     player.defeated = false;
-    player.group.visible = true;
+    player.group.visible = player.lod !== 'hidden';
     player.lastSeenAt = this.now();
   }
 
