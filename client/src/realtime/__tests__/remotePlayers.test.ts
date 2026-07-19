@@ -60,6 +60,21 @@ describe('S13 RemotePlayers', () => {
     expect(players.count).toBe(0);
   });
 
+  it('does not delete a visible player when a delayed old-island frame arrives', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ islandId: 'starter-island' }));
+    players.applyPresence(snapshot({ islandId: 'mist-jungle', x: 99 }));
+    expect(players.count).toBe(1);
+    expect(players.diagnostics).toMatchObject({
+      receivedPresence: 2,
+      acceptedPresence: 1,
+      ignoredIslandPresence: 1,
+      renderedPlayers: 1,
+      lastPresence: { islandId: 'mist-jungle', accepted: false },
+    });
+  });
+
   it('reaps ghosts that go stale (no presence for too long)', () => {
     let clock = 1_000;
     const scene = new THREE.Scene();

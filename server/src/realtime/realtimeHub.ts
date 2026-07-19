@@ -83,6 +83,8 @@ export interface RealtimeConnection {
   /** S13: ตำแหน่งล่าสุดที่ผู้เล่นรายงาน (null = ยังไม่เคยส่ง move) */
   presence: PresencePosition | null;
   lastMoveAt: number;
+  /** Peers already seeded to this connection while inside presentation interest. */
+  visiblePeerIds: Set<string>;
 }
 
 export interface RealtimeHubLogger {
@@ -244,6 +246,7 @@ export class RealtimeHub {
       lastSeenAt: this.now(),
       presence: null,
       lastMoveAt: 0,
+      visiblePeerIds: new Set(),
     };
     this.connections.add(connection);
     if (this.pvpEnabled) this.combat.ensure(characterId);
@@ -268,6 +271,7 @@ export class RealtimeHub {
       this.combat.remove(connection.characterId);
     }
     if (!this.hasCharacter(connection.characterId)) this.boatWorld?.removePlayer(connection.characterId);
+    for (const other of this.connections) other.visiblePeerIds.delete(connection.characterId);
   }
 
   private hasCharacter(characterId: string): boolean {
@@ -329,11 +333,7 @@ export class RealtimeHub {
       };
       if (firstMove) {
         this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
-        for (const other of this.connections) {
-          if (other === connection || !other.presence || !presenceWithinInterest(connection.presence, other.presence)) continue;
-          this.sendTo(connection, presenceMessage(other));
-          this.sendTo(other, presenceMessage(connection));
-        }
+        this.relayPresence(connection);
       }
       return;
     }
@@ -359,11 +359,6 @@ export class RealtimeHub {
 
     // ผู้เล่นคนนี้เพิ่งปรากฏ/เพิ่งย้ายเกาะ → ส่ง presence ของคนอื่นบนเกาะให้เห็นทันที
     if (firstMove || islandChanged) {
-      for (const other of this.connections) {
-        if (other === connection || !other.presence) continue;
-        if (!presenceWithinInterest(position, other.presence)) continue;
-        this.sendTo(connection, presenceMessage(other));
-      }
       // S16: และ seed มอนสเตอร์กลางของเกาะนี้ (full snapshot) ให้ผู้เล่นที่เพิ่งเข้ามา
       if (this.worldMonsters) {
         this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(position.islandId));
@@ -372,11 +367,33 @@ export class RealtimeHub {
         this.sendTo(connection, this.boatWorld.snapshotMessageForIsland(position.islandId));
       }
     }
-    // และ broadcast ตำแหน่งของคนนี้ให้คนอื่นบนเกาะเดียวกัน
+    this.relayPresence(connection);
+  }
+
+  /**
+   * Broadcast the mover and seed the reverse direction once when a pair enters
+   * interest. Without the reverse seed, a stationary player can see the mover
+   * while the mover never sees the stationary player until another island sync.
+   */
+  private relayPresence(connection: RealtimeConnection): void {
+    if (!connection.presence) return;
     for (const other of this.connections) {
       if (other === connection || !other.presence) continue;
-      if (!presenceWithinInterest(position, other.presence)) continue;
+      if (!presenceWithinInterest(connection.presence, other.presence)) {
+        if (connection.visiblePeerIds.delete(other.characterId)) {
+          this.sendTo(connection, { type: 'presence-leave', seq: 0, playerId: other.characterId });
+        }
+        if (other.visiblePeerIds.delete(connection.characterId)) {
+          this.sendTo(other, { type: 'presence-leave', seq: 0, playerId: connection.characterId });
+        }
+        continue;
+      }
+      if (!connection.visiblePeerIds.has(other.characterId)) {
+        this.sendTo(connection, presenceMessage(other));
+        connection.visiblePeerIds.add(other.characterId);
+      }
       this.sendTo(other, presenceMessage(connection));
+      other.visiblePeerIds.add(connection.characterId);
     }
   }
 

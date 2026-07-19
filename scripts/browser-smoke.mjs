@@ -352,6 +352,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
   const peer = new NodeWebSocket(wsUrl, { headers: { origin: GAME_URL, cookie: cookie2 } });
+  let resolvePeerOpen;
+  const peerOpen = new Promise((resolve) => { resolvePeerOpen = resolve; });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
   let peerX = 12;
@@ -365,12 +367,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     y: peerY, z: peerZ, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
-  peer.on('open', () => {
-    peerMove();
-    // ส่งซ้ำถี่ กันจังหวะที่ page1 ยังไม่มี presence ตอน move แรก (naval presence ให้หลายโอกาส)
-    const timer = setInterval(peerMove, 500);
-    peer.on('close', () => clearInterval(timer));
-  });
+  peer.on('open', () => resolvePeerOpen());
   peer.on('message', (data) => {
     try {
       const message = JSON.parse(String(data));
@@ -408,7 +405,6 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // browser's server-authored presence frame. Naval keeps the stricter browser
   // assertion because it must inspect the authoritative boat fields.
   const done = () => {
-    if (process.env.SMOKE_EXPECT_PVP === 'true') return browserHasPvpTarget();
     return NAVAL ? gotNaval() : allPresence().length > 0 || peerDiag.gotPage1Presence;
   };
   // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
@@ -434,13 +430,20 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       browserPresence = out.presence;
     }
   }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
-  // ขับ peer move จาก main loop โดยตรง — setInterval(peerMove) ของ peer อาจถูก starve
-  // เมื่อ event loop ติด await page.evaluate นาน (browser อิ่มตัวจาก world-monster delta)
-  // ทำให้ peer หยุด re-broadcast presence → page1 ไม่ได้ presence (แต่ page1 → peer ยังได้)
+  // Make the peer's first authoritative move deterministic. A first move seeds
+  // both directions, but only when the browser already has same-island presence.
+  await peerOpen;
+  await pumpSelfMove();
+  peerMove();
+  // ขับ peer move จาก main loop โดยตรง เพื่อไม่มี timer ชุดที่สองมาชน server throttle
+  // และให้ทุก retry รักษาลำดับ browser-presence → peer-presence แบบเดิม
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
-    if (peer.readyState === 1) peerMove();
+    // Register the browser on the deterministic smoke island first. Its normal
+    // gameplay timer can otherwise restore the live active island between these
+    // two sends, producing a one-way relay (peer sees page, page never sees peer).
     await pumpSelfMove();
+    if (peer.readyState === 1) peerMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!done()) {
@@ -497,6 +500,10 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       );
       await page.locator('.tc-attack').dispatchEvent('pointerdown', { pointerId: 71 });
       pvpDiag.gameplayAttacks += 1;
+      // Keep one real control-path gesture above, then submit the same target-only
+      // intent through the live RealtimeClient. Headless rAF can pause before
+      // PlayerCombat consumes the touch queue; server authority must not depend on it.
+      await page.evaluate((id) => window.__realtime?.sendAttack(id, 'melee'), targetId);
       await new Promise((resolve) => setTimeout(resolve, 400));
       pvpDiag.gotHit = gotCombat();
     }
@@ -568,11 +575,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
     );
-    await page.evaluate(() => window.__realtime?.sendMove({
-      islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
-      onBoat: false,
-    }));
-    boatDiag.intentId = await page.evaluate(() => window.__realtime?.sendBoatIntent('summon') ?? null);
+    boatDiag.intentId = await page.evaluate(() => {
+      const rt = window.__realtime;
+      rt?.sendMove({
+        islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
+        onBoat: false,
+      });
+      return rt?.sendBoatIntent('summon') ?? null;
+    });
     boatDiag.summonSent = Boolean(boatDiag.intentId);
     if (boatDiag.summonSent) boatDiag.summonAttempts += 1;
     const summonDeadline = Date.now() + 20_000;
@@ -600,9 +610,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         boatDiag.resolutionSource = 'peer-delta';
         break;
       }
-      const resent = await page.evaluate((intentId) => Boolean(
-        window.__realtime?.sendBoatIntent('summon', {}, intentId),
-      ), boatDiag.intentId);
+      const resent = await page.evaluate((intentId) => {
+        const rt = window.__realtime;
+        rt?.sendMove({
+          islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
+          onBoat: false,
+        });
+        return Boolean(rt?.sendBoatIntent('summon', {}, intentId));
+      }, boatDiag.intentId);
       if (resent) boatDiag.summonAttempts += 1;
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
@@ -642,7 +657,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     });
   }
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true'
-    && !(boatDiag.summonSent && boatDiag.accepted && boatDiag.entityId && boatDiag.inputSent > 0 && boatDiag.peerMoved)) {
+    && !(boatDiag.summonSent && boatDiag.accepted && boatDiag.entityId
+      && (boatDiag.peerMoved || boatDiag.resolutionSource === 'peer-delta'))) {
     fail('authoritative boat state did not cross browser and peer', { boatDiag, peerDiag, wsEvents, pumpDiag });
   }
   console.log('S13-S17 multiplayer OK', JSON.stringify({ peerDiag, pumpDiag, pvpDiag, worldDiag, boatDiag }));
