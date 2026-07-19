@@ -67,6 +67,7 @@ export interface PresencePosition {
   onBoat: boolean;
   /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
   boatId?: string;
+  locomotion?: 'idle' | 'walk' | 'run' | 'swim';
 }
 
 export interface RealtimeConnection {
@@ -108,7 +109,9 @@ function readPosition(message: Record<string, unknown>): PresencePosition | null
   const boatId = onBoat && typeof message.boatId === 'string' && message.boatId.length <= 128
     ? message.boatId
     : undefined;
-  return { islandId, x, y, z, heading, onBoat, boatId };
+  const locomotion = message.locomotion === 'walk' || message.locomotion === 'run'
+    || message.locomotion === 'swim' ? message.locomotion : 'idle';
+  return { islandId, x, y, z, heading, onBoat, boatId, locomotion };
 }
 
 function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage {
@@ -125,6 +128,7 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
     heading: presence.heading,
     onBoat: presence.onBoat,
     boatId: presence.boatId,
+    locomotion: presence.onBoat ? 'idle' : presence.locomotion ?? 'idle',
     // Presentation-only default. A future profile/loadout service can replace
     // these fields without changing movement or combat authority.
     appearance: {

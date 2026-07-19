@@ -196,12 +196,13 @@ describe('S13 presence relay', () => {
     const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
     hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
     clock += 100;
-    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: true, boatId: 'war-galleon' }));
+    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: true, boatId: 'war-galleon', locomotion: 'run' }));
     const presence = b.sent.find((message) => message.type === 'presence') as { boatId?: string; onBoat?: boolean };
     expect(presence).toMatchObject({
       onBoat: true,
       boatId: 'war-galleon',
       appearance: { schemaVersion: 1, avatarId: 'pirate-v1', clothingIds: [], equipmentIds: [] },
+      locomotion: 'idle',
     });
   });
 

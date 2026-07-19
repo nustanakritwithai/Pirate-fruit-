@@ -67,6 +67,8 @@ export interface RealtimePresence {
   boatId?: string;
   /** Presentation-only appearance contract. Never participates in gameplay authority. */
   appearance?: RealtimeCharacterAppearance;
+  /** Presentation-only locomotion; never used for movement/combat authority. */
+  locomotion?: 'idle' | 'walk' | 'run' | 'swim';
 }
 
 /** Versioned so future character models, clothing and equipped-item visuals can evolve safely. */
@@ -257,6 +259,8 @@ export interface RealtimeMove {
   onBoat: boolean;
   /** S14: รุ่นเรือที่ขับอยู่ (ส่งเมื่อ onBoat) */
   boatId?: string;
+  /** Presentation-only animation hint. */
+  locomotion?: 'idle' | 'walk' | 'run' | 'swim';
 }
 
 /** S15 — Client รายงาน "เจตนาโจมตี" ผู้เล่นอีกคน (PvP) — Server ตัดสินผลเอง */

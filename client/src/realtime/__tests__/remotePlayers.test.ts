@@ -71,6 +71,17 @@ describe('S13 RemotePlayers', () => {
     expect(players.count).toBe(0);
   });
 
+  it('animates remote locomotion instead of sliding a rigid pose', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ locomotion: 'run' }));
+    const leg = scene.getObjectByName('player-rig:left-leg');
+    expect(leg).toBeTruthy();
+    const before = leg!.quaternion.clone();
+    players.update(0.2);
+    expect(leg!.quaternion.equals(before)).toBe(false);
+  });
+
   it('renders a boat proxy when onBoat and swaps back to the player visual on foot (S14)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

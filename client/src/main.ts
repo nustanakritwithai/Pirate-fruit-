@@ -538,6 +538,11 @@ async function main(): Promise<void> {
       if (boatWorldEnabled && boatManager.riderState !== 'off') return;
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
+      const locomotion = controller.moveState.swimming
+        ? 'swim'
+        : controller.moveState.speed > 5
+          ? 'run'
+          : controller.moveState.speed > 0.1 ? 'walk' : 'idle';
       realtime.sendMove({
         islandId: islandManager.activeIsland,
         x: position.x,
@@ -546,6 +551,7 @@ async function main(): Promise<void> {
         heading: controller.heading,
         onBoat,
         boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
+        locomotion,
       });
     }, 100);
   }
