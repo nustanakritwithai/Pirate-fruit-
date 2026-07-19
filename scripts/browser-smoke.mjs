@@ -526,21 +526,19 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     // This keeps the smoke subject to the same canonical player_boats gate as production.
     const selectedBoat = await page.evaluate(() => window.__boat?.selectedBoatId ?? null);
     if (selectedBoat !== 'training-dinghy') {
-      await page.evaluate(() => window.__boat?.openShop('starter-harbor'));
-      const starterButton = page.locator(
-        '.boat-shop button[data-action="purchase"][data-boat-id="training-dinghy"]',
-      );
-      await starterButton.waitFor({ state: 'visible', timeout: 10_000 });
       const saveResponse = page.waitForResponse(
         (response) => new URL(response.url()).pathname === '/api/player/save'
           && response.request().method() === 'POST'
           && response.status() === 200,
         { timeout: 30_000 },
       );
-      await starterButton.click();
+      // Exercise the real progression purchase path directly. The shop overlay is
+      // presentation-only and may be suppressed when the headless avatar is briefly
+      // mounted by an authoritative boat snapshot from the preceding scenario.
+      const purchase = await page.evaluate(() => window.__boat?.progress?.purchase('training-dinghy') ?? null);
+      if (!purchase?.ok) fail('could not acquire starter boat through progression', { purchase });
       await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
       boatDiag.saveStatus = (await saveResponse).status();
-      await page.locator('.boat-shop-close').click();
     }
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
