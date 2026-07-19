@@ -12,7 +12,7 @@ const browser = await chromium.launch({
   executablePath: process.env.SMOKE_CHROMIUM || undefined,
 });
 const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
-const audioRequests = [];
+const binaryRequests = [];
 const pageErrors = [];
 
 await page.addInitScript(() => {
@@ -31,7 +31,7 @@ await page.addInitScript(() => {
 });
 page.on('pageerror', (error) => pageErrors.push(String(error).slice(0, 240)));
 page.on('request', (request) => {
-  if (/\.mp3(?:\?|$)/i.test(request.url())) audioRequests.push(request.url());
+  if (/\.(?:mp3|glb)(?:\?|$)/i.test(request.url())) binaryRequests.push(request.url());
 });
 
 try {
@@ -41,8 +41,8 @@ try {
     status: window.__audio?.status,
     contexts: window.__audioContextConstructed,
   }));
-  if (beforeGesture.status !== 'locked' || beforeGesture.contexts !== 0 || audioRequests.length !== 0) {
-    fail('audio was not inert before the first gesture', { beforeGesture, audioRequests, pageErrors });
+  if (beforeGesture.status !== 'locked' || beforeGesture.contexts !== 0 || binaryRequests.length !== 0) {
+    fail('procedural runtime was not inert before the first gesture', { beforeGesture, binaryRequests, pageErrors });
   }
 
   const toggle = page.locator('.audio-toggle');
@@ -72,8 +72,8 @@ try {
       || transitions.replay) {
     fail('music transition or authoritative-event dedupe failed', { transitions, pageErrors });
   }
-  if (audioRequests.length === 0) {
-    fail('no lazy music request started after unlock', { transitions, pageErrors });
+  if (binaryRequests.length !== 0) {
+    fail('procedural runtime unexpectedly transferred MP3/GLB media', { binaryRequests, pageErrors });
   }
 
   // The game's existing first-gesture fullscreen behavior makes the desktop page's
@@ -111,7 +111,7 @@ try {
       ok: true,
       beforeGesture,
       transitions,
-      mp3RequestsAfterUnlock: audioRequests.length,
+      binaryAssetRequests: binaryRequests.length,
       mobileLayout,
       localFallback: true,
     }));

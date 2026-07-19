@@ -64,7 +64,9 @@ const ASSET_FILES: Record<PirateAssetId, string> = {
   tribal: 'quaternius-ultimate-monsters/tribal.glb',
 };
 
-const GAMEPLAY_ASSETS = Object.keys(ASSET_FILES) as PirateAssetId[];
+// Procedural-only mode: keep the catalogue for deterministic fallback selection,
+// but never preload an external model.
+const GAMEPLAY_ASSETS: PirateAssetId[] = [];
 const loader = new GLTFLoader();
 const pending = new Map<PirateAssetId, Promise<GLTF>>();
 const loaded = new Map<PirateAssetId, GLTF>();

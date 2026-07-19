@@ -1,21 +1,23 @@
 import type { MusicTrack } from './types';
 
-// Static URL expressions make Vite emit content-hashed assets. The browser does not fetch
-// any of these URLs until BrowserAudioBackend assigns one after an explicit user gesture.
+// Procedural score definitions: no media file, URL, preload or network transfer.
 export const MUSIC_TRACKS: Readonly<Record<MusicTrack['id'], MusicTrack>> = {
   'sailing-a': {
     id: 'sailing-a',
-    url: new URL('../assets/audio/music/sailing-moon-treasure-a.mp3', import.meta.url).href,
+    frequencies: [110, 164.81],
+    durationSeconds: 96,
     loop: false,
   },
   'sailing-b': {
     id: 'sailing-b',
-    url: new URL('../assets/audio/music/sailing-moon-treasure-b.mp3', import.meta.url).href,
+    frequencies: [98, 146.83],
+    durationSeconds: 112,
     loop: false,
   },
   island: {
     id: 'island',
-    url: new URL('../assets/audio/music/island-devil-fruit-fury.mp3', import.meta.url).href,
+    frequencies: [130.81, 196],
+    durationSeconds: 120,
     loop: true,
   },
 };

@@ -118,7 +118,7 @@ npm run dev
   พื้นเกาะ texture splatting 3 ชั้น (ทราย/หญ้า/หิน พร้อม normal map),
   น้ำทะเลคลื่นเคลื่อนไหวสะท้อนแสงอาทิตย์, ต้นปาล์ม/หิน/ลังใช้ texture จริง
 - ปรับแต่งให้มือถือ: texture JPG 1K (~2.4MB), จำกัด pixel ratio, ลดความละเอียดเงาอัตโนมัติ
-- ตัวละคร 3D (`Soldier.glb` จาก three.js examples) พร้อม animation Idle / Walk / Run
+- ตัวละคร 3D procedural จาก geometry/material ของ Three.js พร้อม animation Idle / Walk / Run
 - กล้อง Third Person
 - ระบบชน: พื้นเกาะ + สิ่งกีดขวาง
 - HUD: มินิแมพ (มุมซ้ายบน แสดงเกาะ + ลูกศรทิศผู้เล่น), แถบ HP/Energy ขนาดกะทัดรัดกลางล่าง, พิกัด, FPS
@@ -195,7 +195,7 @@ npm run dev
 ## เครดิต Asset (CC0)
 
 - Texture PBR (หญ้า Grass004, ทราย Ground033, หิน Rock023, เปลือกไม้ Bark012, ไม้กระดาน Planks012) จาก [ambientCG](https://ambientcg.com) — CC0
-- `waternormals.jpg` และโมเดล `Soldier.glb` จาก [three.js examples](https://github.com/mrdoob/three.js)
+- `waternormals.jpg` จาก [three.js examples](https://github.com/mrdoob/three.js)
 
 ## คำสั่งอื่น
 
@@ -213,7 +213,7 @@ npm run preview   # เสิร์ฟไฟล์ที่ build แล้ว
 VITE_ENABLE_AUDIO_SYSTEM=false
 ```
 
-เมื่อเปิดใน staging ระบบจะรอ gesture แรกก่อนสร้าง `AudioContext` หรือโหลดเพลง, สลับเพลงเกาะ/เดินเรือแบบ crossfade, ใช้ procedural SFX fallback และเก็บ volume/mute แยกใน localStorage โดยไม่แตะ local/remote gameplay save ดูสถาปัตยกรรมและขั้นตอนทดสอบที่ `docs/AUDIO_SYSTEM.md` และ `docs/OPERATIONS_RUNBOOK.md` ห้ามเปิด flag บน Render production โดยไม่มีการอนุมัติ
+เมื่อเปิดใน staging ระบบจะรอ gesture แรกก่อนสร้าง `AudioContext`, สังเคราะห์เพลงเกาะ/เดินเรือและ SFX ด้วย Web Audio โดยไม่โหลดไฟล์ MP3, และเก็บ volume/mute แยกใน localStorage โดยไม่แตะ local/remote gameplay save ตัวละคร มอนสเตอร์ เรือ อาคาร และเอฟเฟกต์ใช้ Three.js procedural visuals โดยไม่มี GLB ดูสถาปัตยกรรมและขั้นตอนทดสอบที่ `docs/AUDIO_SYSTEM.md` และ `docs/OPERATIONS_RUNBOOK.md` ห้ามเปิด flag บน Render production โดยไม่มีการอนุมัติ
 
 ## Deploy ขึ้น Render
 

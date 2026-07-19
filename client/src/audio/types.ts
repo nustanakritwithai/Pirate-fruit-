@@ -70,7 +70,8 @@ export interface MusicObservation {
 
 export interface MusicTrack {
   id: 'sailing-a' | 'sailing-b' | 'island';
-  url: string;
+  frequencies: readonly [number, number];
+  durationSeconds: number;
   loop: boolean;
 }
 

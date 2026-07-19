@@ -19,11 +19,11 @@ export interface AudioBackend {
   dispose(): void;
 }
 
-interface MusicDeck {
-  element: HTMLAudioElement;
+interface ProceduralMusicLayer {
   gain: GainNode;
-  trackId: MusicTrack['id'] | null;
-  generation: number;
+  oscillators: OscillatorNode[];
+  trackId: MusicTrack['id'];
+  timer: ReturnType<typeof globalThis.setTimeout> | null;
 }
 
 interface ActiveVoice {
@@ -46,9 +46,7 @@ export class BrowserAudioBackend implements AudioBackend {
   private master: GainNode | null = null;
   private buses = new Map<AudioBus, GainNode>();
   private musicDuck: GainNode | null = null;
-  private decks: MusicDeck[] = [];
-  private currentDeck = -1;
-  private musicGeneration = 0;
+  private musicLayer: ProceduralMusicLayer | null = null;
   private voices = new Set<ActiveVoice>();
   private tension: { oscillator: OscillatorNode; gain: GainNode } | null = null;
   private listener: AudioPosition = { x: 0, y: 0, z: 0 };
@@ -72,7 +70,7 @@ export class BrowserAudioBackend implements AudioBackend {
 
   private createGraph(): void {
     const Constructor = contextConstructor();
-    if (!Constructor || typeof Audio === 'undefined') return;
+    if (!Constructor) return;
     const context = new Constructor();
     const master = context.createGain();
     master.connect(context.destination);
@@ -89,17 +87,6 @@ export class BrowserAudioBackend implements AudioBackend {
     this.musicDuck = context.createGain();
     this.musicDuck.connect(this.buses.get('music')!);
 
-    this.decks = [0, 1].map(() => {
-      const element = new Audio();
-      element.preload = 'none';
-      element.crossOrigin = 'anonymous';
-      const source = context.createMediaElementSource(element);
-      const gain = context.createGain();
-      gain.gain.value = 0;
-      source.connect(gain);
-      gain.connect(this.musicDuck!);
-      return { element, gain, trackId: null, generation: 0 };
-    });
   }
 
   setBusVolume(bus: AudioBus | 'master', value: number): void {
@@ -111,83 +98,54 @@ export class BrowserAudioBackend implements AudioBackend {
   }
 
   async playMusic(track: MusicTrack, fadeMs: number, onEnded: () => void): Promise<void> {
-    if (!this.context || this.context.state !== 'running' || this.decks.length !== 2) return;
-    const current = this.decks[this.currentDeck];
-    if (current?.trackId === track.id && !current.element.paused) return;
-    const generation = ++this.musicGeneration;
-
-    const nextIndex = this.currentDeck === 0 ? 1 : 0;
-    const next = this.decks[nextIndex];
-    const now = this.context.currentTime;
+    if (!this.context || this.context.state !== 'running' || !this.musicDuck) return;
+    if (this.musicLayer?.trackId === track.id) return;
+    const context = this.context;
+    const now = context.currentTime;
     const fadeSeconds = Math.max(0.05, fadeMs / 1000);
-    next.element.pause();
-    next.element.src = track.url;
-    next.element.loop = track.loop;
-    next.element.currentTime = 0;
-    next.trackId = track.id;
-    next.generation = generation;
-    next.element.onended = () => {
-      if (this.currentDeck === nextIndex && next.trackId === track.id) onEnded();
-    };
-    next.gain.gain.cancelScheduledValues(now);
-    next.gain.gain.setValueAtTime(0, now);
-    next.gain.gain.linearRampToValueAtTime(1, now + fadeSeconds);
-    try {
-      await next.element.play();
-      if (generation !== this.musicGeneration) {
-        if (next.generation === generation) {
-          next.element.pause();
-          next.element.onended = null;
-          next.element.removeAttribute('src');
-          next.element.load();
-          next.trackId = null;
-        }
-        return;
-      }
-    } catch (error) {
-      if (generation === this.musicGeneration) {
-        next.trackId = null;
-        next.element.removeAttribute('src');
-      }
-      console.warn('[audio] music playback failed', error);
-      return;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.032, now + fadeSeconds);
+    gain.connect(this.musicDuck);
+    const oscillators = track.frequencies.map((frequency, index) => {
+      const oscillator = context.createOscillator();
+      oscillator.type = index === 0 ? 'sine' : 'triangle';
+      oscillator.frequency.value = frequency;
+      oscillator.detune.value = index === 0 ? 0 : -7;
+      oscillator.connect(gain);
+      oscillator.start(now);
+      return oscillator;
+    });
+    const next: ProceduralMusicLayer = { gain, oscillators, trackId: track.id, timer: null };
+    const old = this.musicLayer;
+    this.musicLayer = next;
+    if (!track.loop) {
+      next.timer = globalThis.setTimeout(() => {
+        if (this.musicLayer === next) onEnded();
+      }, track.durationSeconds * 1000);
     }
-
-    const oldIndex = this.currentDeck;
-    this.currentDeck = nextIndex;
-    if (oldIndex >= 0) {
-      const old = this.decks[oldIndex];
-      old.gain.gain.cancelScheduledValues(now);
-      old.gain.gain.setValueAtTime(old.gain.gain.value, now);
-      old.gain.gain.linearRampToValueAtTime(0, now + fadeSeconds);
-      globalThis.setTimeout(() => {
-        if (this.currentDeck === oldIndex) return;
-        old.element.pause();
-        old.element.onended = null;
-        old.element.removeAttribute('src');
-        old.element.load();
-        old.trackId = null;
-      }, fadeMs + 120);
-    }
+    if (old) this.fadeOutMusicLayer(old, fadeMs);
   }
 
   stopMusic(fadeMs: number): void {
-    this.musicGeneration += 1;
-    if (!this.context || this.currentDeck < 0) return;
-    const deckIndex = this.currentDeck;
-    const deck = this.decks[deckIndex];
+    const layer = this.musicLayer;
+    if (!layer) return;
+    this.musicLayer = null;
+    this.fadeOutMusicLayer(layer, fadeMs);
+  }
+
+  private fadeOutMusicLayer(layer: ProceduralMusicLayer, fadeMs: number): void {
+    if (!this.context) return;
+    if (layer.timer !== null) globalThis.clearTimeout(layer.timer);
     const now = this.context.currentTime;
-    deck.gain.gain.cancelScheduledValues(now);
-    deck.gain.gain.setValueAtTime(deck.gain.gain.value, now);
-    deck.gain.gain.linearRampToValueAtTime(0, now + Math.max(0.05, fadeMs / 1000));
-    this.currentDeck = -1;
+    layer.gain.gain.cancelScheduledValues(now);
+    layer.gain.gain.setValueAtTime(Math.max(0.0001, layer.gain.gain.value), now);
+    layer.gain.gain.linearRampToValueAtTime(0.0001, now + Math.max(0.05, fadeMs / 1000));
     globalThis.setTimeout(() => {
-      if (this.currentDeck === deckIndex) return;
-      deck.element.pause();
-      deck.element.onended = null;
-      deck.element.removeAttribute('src');
-      deck.element.load();
-      deck.trackId = null;
+      for (const oscillator of layer.oscillators) {
+        try { oscillator.stop(); } catch { /* already stopped */ }
+      }
+      layer.gain.disconnect();
     }, fadeMs + 120);
   }
 
@@ -311,18 +269,19 @@ export class BrowserAudioBackend implements AudioBackend {
   }
 
   dispose(): void {
+    if (this.musicLayer) {
+      if (this.musicLayer.timer !== null) globalThis.clearTimeout(this.musicLayer.timer);
+      for (const oscillator of this.musicLayer.oscillators) {
+        try { oscillator.stop(); } catch { /* already stopped */ }
+      }
+      this.musicLayer = null;
+    }
     this.setTension(0);
     for (const voice of this.voices) {
       try { voice.source.stop(); } catch { /* already ended */ }
     }
     this.voices.clear();
-    for (const deck of this.decks) {
-      deck.element.pause();
-      deck.element.removeAttribute('src');
-      deck.element.load();
-    }
     void this.context?.close().catch(() => undefined);
     this.context = null;
-    this.decks = [];
   }
 }

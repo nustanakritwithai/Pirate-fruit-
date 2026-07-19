@@ -44,15 +44,12 @@ Monster, cannon, boat impact/sinking, projectile and world cues are spatial. Mus
 
 Authoritative realtime callbacks pass a stable event identity to `AudioManager`. Seen identities are retained for 15 seconds with a bounded 512-entry cache, preventing reconnect/replay from producing duplicate sound. Local mode uses the same manager and does not depend on HTTP or WebSocket availability.
 
-## Adding a real SFX file
+## Procedural-only asset policy
 
-1. Confirm redistribution rights. Do not download an unverified asset.
-2. Store the optimized production copy under `client/src/assets/audio/` with an ASCII name.
-3. Add its source and license to `docs/AUDIO_ASSET_LICENSES.md`.
-4. Add a static `new URL(..., import.meta.url)` entry so Vite emits a content hash.
-5. Keep the procedural recipe as the error/offline fallback.
-6. Run `npm run build && npm run verify:audio-assets && npm test`.
+Production must not add MP3, GLB or base64-embedded audio. New score layers, SFX, characters, monsters, boats, buildings and effects should be authored from Web Audio or Three.js primitives. The build gate rejects MP3 and GLB output.
+
+The procedural conversion reduced the production directory from 25,559,187 bytes to 4,465,313 bytes: 21,093,874 bytes (82.5%) removed. The remaining transfer is primarily the 2.80 MB JPG texture set plus roughly 0.42 MB of gzipped JavaScript on a cold load.
 
 ## Test surface
 
-Unit tests cover state priority, stable transitions, gesture unlock, island/sailing crossfade requests, replay dedupe, local settings persistence, visibility suspend/resume, death/respawn and the false-flag inert path. Browser smoke checks zero pre-gesture MP3 requests, unlock, island/sailing/island states, dedupe and a 390×844 UI collision probe. The build gate verifies exactly three ASCII, content-hashed MP3 outputs and rejects base64 audio in JavaScript.
+Unit tests cover state priority, stable transitions, gesture unlock, island/sailing crossfades, replay dedupe, local settings persistence, visibility suspend/resume, death/respawn and the false-flag inert path. Music and SFX are synthesized with Web Audio nodes; there are no media URLs. Browser smoke checks zero MP3 requests both before and after unlock, island/sailing/island states, dedupe and a 390×844 UI collision probe. The build gate requires zero MP3, zero GLB and rejects base64 audio in JavaScript.
