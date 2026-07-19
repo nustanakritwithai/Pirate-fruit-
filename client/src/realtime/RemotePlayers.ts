@@ -252,14 +252,40 @@ export class RemotePlayers implements Updatable {
     const hits: string[] = [];
     for (const [playerId, player] of this.players) {
       if (player.defeated) continue;
-      const dx = player.group.position.x - origin.x;
-      const dz = player.group.position.z - origin.z;
+      // Target selection must use the latest server-relayed presence, not the
+      // interpolated render ghost which deliberately trails a moving player.
+      const dx = player.target.x - origin.x;
+      const dy = player.target.y - origin.y;
+      const dz = player.target.z - origin.z;
       const dist = Math.hypot(dx, dz);
-      if (dist > range || dist < 1e-3) continue;
+      const distance3d = Math.hypot(dx, dy, dz);
+      if (distance3d > range || dist < 1e-3) continue;
       if ((dx / dist) * fx + (dz / dist) * fz < cosHalf) continue; // นอกมุมกรวย
       hits.push(playerId);
     }
-    return hits;
+    return hits.sort((a, b) => {
+      const pa = this.players.get(a)!.target;
+      const pb = this.players.get(b)!.target;
+      return pa.distanceToSquared(origin) - pb.distanceToSquared(origin);
+    });
+  }
+
+  /** Mobile fallback: nearest living player in true server-side 3D range. */
+  nearestTargetInRange(origin: THREE.Vector3, range: number): string | null {
+    let bestId: string | null = null;
+    let bestDistanceSq = range * range;
+    for (const [playerId, player] of this.players) {
+      if (player.defeated) continue;
+      const distanceSq = player.target.distanceToSquared(origin);
+      if (distanceSq > bestDistanceSq) continue;
+      bestDistanceSq = distanceSq;
+      bestId = playerId;
+    }
+    return bestId;
+  }
+
+  latestPositionOf(playerId: string): THREE.Vector3 | null {
+    return this.players.get(playerId)?.target.clone() ?? null;
   }
 
   /** S15: เป้าแพ้ → ซ่อนผีจนกว่าจะเกิดใหม่ (Server เป็นคนบอกเวลา) */

@@ -319,6 +319,13 @@ async function main(): Promise<void> {
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
+  let lastPvpNoticeAt = 0;
+  const notifyPvp = (message: string) => {
+    const now = Date.now();
+    if (now - lastPvpNoticeAt < 1_500) return;
+    lastPvpNoticeAt = now;
+    touchControls?.notify(message);
+  };
   // S16: มอนสเตอร์กลาง — Server จำลอง AI/HP/death/respawn (ต้องเปิด multiplayer ก่อน)
   const sharedWorldMonstersEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === 'true'
@@ -414,6 +421,19 @@ async function main(): Promise<void> {
       } else {
         remotePlayers?.markRespawn(playerId);
       }
+    },
+    onCombatResult: (result) => {
+      if (result.accepted || result.reason === 'cooldown') return;
+      const messages: Record<string, string> = {
+        'pvp-disabled': '⚔️ PK ยังไม่เปิดบนเซิร์ฟเวอร์',
+        'presence-required': '⚔️ กำลังซิงก์ตำแหน่ง ลองโจมตีอีกครั้ง',
+        'target-unavailable': '⚔️ เป้าหมายหลุดการเชื่อมต่อแล้ว',
+        'different-island': '⚔️ เป้าหมายอยู่คนละเกาะ',
+        'out-of-range': '⚔️ เป้าหมายอยู่นอกระยะ',
+        defeated: '⚔️ ผู้เล่นนี้กำลังรอเกิดใหม่',
+        'self-target': '⚔️ ไม่สามารถโจมตีตัวเองได้',
+      };
+      notifyPvp(messages[result.reason ?? ''] ?? '⚔️ Server ปฏิเสธการโจมตี');
     },
     // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
     onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
@@ -648,14 +668,25 @@ async function main(): Promise<void> {
   // S15: ต่อ M1/สกิลของผู้เล่นเข้ากับ PvP — หาผู้เล่นคนอื่นในกรวยหน้าแล้วส่ง "เจตนาโจมตี"
   // ให้ Server ตัดสิน (ระยะ/คูลดาวน์/ดาเมจ) — Client ไม่ส่งดาเมจ (กันโกง)
   // S16: และต่อ M1/สกิลเข้ากับมอนสเตอร์กลาง — หาตัวในกรวยหน้าแล้วส่ง "เจตนาตี" ให้ Server ตัดสิน
-  if (realtime && (pvpEnabled || sharedWorldMonstersEnabled)) {
+  if (realtime && (multiplayerEnabled || sharedWorldMonstersEnabled)) {
     const CONE_HALF_ANGLE = Math.PI / 3; // ~120° กรวยหน้า
     playerCombat.onPvpAttack = ({ origin, forwardX, forwardZ, kind, skillId }) => {
       if (pvpEnabled && remotePlayers) {
         const range = kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
-        for (const targetId of remotePlayers.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE)) {
+        const targets = remotePlayers.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE);
+        // Touch users cannot turn as precisely while pressing attack. If nobody
+        // is in the forward cone, lock the nearest in-range player and face them.
+        const targetId = targets[0]
+          ?? (touchControls.usesTouchLayout ? remotePlayers.nearestTargetInRange(origin, range) : null);
+        if (targetId) {
+          const target = remotePlayers.latestPositionOf(targetId);
+          if (target && targets.length === 0) {
+            controller.heading = Math.atan2(target.x - origin.x, target.z - origin.z);
+          }
           realtime.sendAttack(targetId, kind, skillId);
         }
+      } else if (multiplayerEnabled && !pvpEnabled) {
+        notifyPvp('⚔️ PK ยังไม่เปิดใน build นี้');
       }
       if (sharedMonsters) {
         const range = kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE;

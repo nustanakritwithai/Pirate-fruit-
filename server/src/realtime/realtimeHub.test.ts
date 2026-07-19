@@ -233,6 +233,9 @@ describe('S15 PvP combat authority', () => {
     hub.handleClientMessage(connection, attack('char-b'));
     expect(socket.closedWith).toBeNull();
     expect(socket.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+    expect(socket.sent.find((message) => message.type === 'combat-result')).toMatchObject({
+      accepted: false, reason: 'pvp-disabled', targetId: 'char-b',
+    });
   });
 
   it('resolves a hit and broadcasts combat-hit to islanders (server-side damage)', () => {
@@ -254,6 +257,7 @@ describe('S15 PvP combat authority', () => {
     expect(hitToTarget!.hp).toBeLessThan(hitToTarget!.maxHp);
     // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
     expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
+    expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
   });
 
   it('does not resolve hits across islands or out of range', () => {
@@ -268,6 +272,9 @@ describe('S15 PvP combat authority', () => {
     hub.handleClientMessage(cb, moved('mist-jungle', 1, 1)); // คนละเกาะ
     hub.handleClientMessage(ca, attack('char-b'));
     expect(b.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+    expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({
+      accepted: false, reason: 'different-island',
+    });
   });
 
   it('broadcasts combat-defeat then combat-respawn on the ticker', () => {
