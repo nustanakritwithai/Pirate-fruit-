@@ -439,8 +439,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // ทำให้ peer หยุด re-broadcast presence → page1 ไม่ได้ presence (แต่ page1 → peer ยังได้)
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !done()) {
-    if (peer.readyState === 1) peerMove();
+    // Register the browser on the deterministic smoke island first. Its normal
+    // gameplay timer can otherwise restore the live active island between these
+    // two sends, producing a one-way relay (peer sees page, page never sees peer).
     await pumpSelfMove();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (peer.readyState === 1) peerMove();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!done()) {
