@@ -21,6 +21,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run build:shared
       - name: Build opt-in audio bundle
         run: npm run build:client
         env:
