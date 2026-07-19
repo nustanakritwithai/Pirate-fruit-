@@ -24,11 +24,12 @@ function snapshot(overrides: Partial<RealtimePresenceSnapshot> = {}): RealtimePr
 }
 
 describe('S13 RemotePlayers', () => {
-  it('spawns a ghost on first presence and interpolates toward the target', () => {
+  it('spawns the canonical current player visual and interpolates toward the target', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
     players.applyPresence(snapshot({ x: 10, z: 20 }));
     expect(players.count).toBe(1);
+    expect(scene.getObjectByName('remote-player:pirate-v1')).toBeTruthy();
 
     // เฟรมถัดมาเป้าเลื่อน — ตำแหน่งไถลเข้าหา (ไม่กระโดดทันที)
     players.applyPresence(snapshot({ x: 30, z: 20 }));
@@ -70,7 +71,7 @@ describe('S13 RemotePlayers', () => {
     expect(players.count).toBe(0);
   });
 
-  it('renders a boat proxy when onBoat and swaps back to a ghost on foot (S14)', () => {
+  it('renders a boat proxy when onBoat and swaps back to the player visual on foot (S14)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
 
@@ -82,6 +83,7 @@ describe('S13 RemotePlayers', () => {
     // ลงจากเรือ → กลับเป็น ghost (avatar ถูกสร้างใหม่ที่ตำแหน่งเดิม)
     players.applyPresence(snapshot({ onBoat: false }));
     expect(players.avatarKindFor('char-b')).toBe('foot');
+    expect(scene.getObjectByName('remote-player:pirate-v1')).toBeTruthy();
     expect(players.count).toBe(1);
 
     // เปลี่ยนรุ่นเรือ → avatar ใหม่ตามรุ่น

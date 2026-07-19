@@ -198,7 +198,11 @@ describe('S13 presence relay', () => {
     clock += 100;
     hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: true, boatId: 'war-galleon' }));
     const presence = b.sent.find((message) => message.type === 'presence') as { boatId?: string; onBoat?: boolean };
-    expect(presence).toMatchObject({ onBoat: true, boatId: 'war-galleon' });
+    expect(presence).toMatchObject({
+      onBoat: true,
+      boatId: 'war-galleon',
+      appearance: { schemaVersion: 1, avatarId: 'pirate-v1', clothingIds: [], equipmentIds: [] },
+    });
   });
 
   it('drops the boat id when the player is on foot', () => {

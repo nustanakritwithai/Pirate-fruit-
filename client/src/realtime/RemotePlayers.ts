@@ -1,7 +1,7 @@
 /**
  * S13/S14 — Multiplayer Movement + Naval (ฝั่งภาพ)
  * รับ presence ของผู้เล่นคนอื่นจาก RealtimeClient แล้วเรนเดอร์:
- * - เดินเท้า → "ผี" (ghost) โทนฟ้าโปร่งแสง
+ * - เดินเท้า → Pirate V1 แบบเดียวกับผู้เล่นปัจจุบัน
  * - S14 ขับเรือ → เรือ proxy ขนาด/สีตามรุ่น (BOAT_DEFINITIONS)
  * ไถลเข้าหาตำแหน่งล่าสุดแบบนุ่ม (interpolate) เพื่อกลบ jitter ของเน็ต
  * - presence เป็นข้อมูลแสดงผลล้วน: ไม่มีผล gameplay/collision (เฟสนี้ทะลุกันได้)
@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
 import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
+import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
 
 const LERP_PER_SECOND = 9; // ความเร็วไถลเข้าหาเป้า (สูง = ตามติดขึ้น)
 const STALE_MS = 20_000; // ไม่ได้ยิน presence เกินนี้ = ถือว่าหลุด เอาออก
@@ -66,23 +67,11 @@ function makeNameSprite(name: string): THREE.Sprite {
   return sprite;
 }
 
-/** ตัวละครผี low-poly (แยกสีจากผู้เล่นเรา — โทนฟ้าโปร่งแสง) */
-function makeGhostBody(): THREE.Group {
-  const group = new THREE.Group();
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x5aa9e6,
-    transparent: true,
-    opacity: 0.82,
-    roughness: 0.6,
-    emissive: 0x14364f,
-    emissiveIntensity: 0.4,
-  });
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.9, 4, 10), material);
-  torso.position.y = 1.15;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 12), material);
-  head.position.y = 2.0;
-  group.add(torso, head);
-  return group;
+/** Current canonical on-foot visual; appearance fields are ready for future variants. */
+function makePlayerBody(snapshot: RealtimePresenceSnapshot): THREE.Group {
+  const visual = createPiratePlayerVisual();
+  visual.group.name = `remote-player:${snapshot.appearance?.avatarId ?? 'pirate-v1'}`;
+  return visual.group;
 }
 
 /** S14: เรือ proxy แบบเบา (ตัวเรือ + ใบเรือ) ขนาด/สีตามรุ่น — ไม่ใช้ BoatModel เต็ม */
@@ -116,7 +105,7 @@ function avatarKindOf(snapshot: RealtimePresenceSnapshot): AvatarKind {
 }
 
 function buildAvatar(snapshot: RealtimePresenceSnapshot): THREE.Group {
-  const group = snapshot.onBoat ? makeBoatProxy(snapshot.boatId) : makeGhostBody();
+  const group = snapshot.onBoat ? makeBoatProxy(snapshot.boatId) : makePlayerBody(snapshot);
   group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
   return group;
 }

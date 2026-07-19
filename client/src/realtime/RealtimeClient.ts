@@ -41,6 +41,7 @@ export interface RealtimePresenceSnapshot {
   onBoat: boolean;
   /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
   boatId?: string;
+  appearance?: import('@pirate-fruit/shared').RealtimeCharacterAppearance;
 }
 
 export interface RealtimeHandlers {

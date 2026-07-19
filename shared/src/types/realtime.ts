@@ -65,6 +65,16 @@ export interface RealtimePresence {
   onBoat: boolean;
   /** S14: รุ่นเรือที่ขับอยู่ (BOAT_DEFINITIONS id) — client เรนเดอร์เรือให้ตรงรุ่น */
   boatId?: string;
+  /** Presentation-only appearance contract. Never participates in gameplay authority. */
+  appearance?: RealtimeCharacterAppearance;
+}
+
+/** Versioned so future character models, clothing and equipped-item visuals can evolve safely. */
+export interface RealtimeCharacterAppearance {
+  schemaVersion: 1;
+  avatarId: 'pirate-v1';
+  clothingIds: string[];
+  equipmentIds: string[];
 }
 
 export interface RealtimePresenceLeave {
