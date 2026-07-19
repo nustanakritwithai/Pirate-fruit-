@@ -49,7 +49,7 @@ import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
-import { SharedMonsterClient } from './monster/SharedMonsterClient';
+import { SharedMonsterClient, resolveSharedMonsterPlayerDamage } from './monster/SharedMonsterClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -324,7 +324,11 @@ async function main(): Promise<void> {
     && (import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === 'true'
       || import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === '1');
   const sharedMonsters = sharedWorldMonstersEnabled
-    ? new SharedMonsterClient(game.scene, islandManager.activeIsland)
+    ? new SharedMonsterClient(
+        game.scene,
+        islandManager.activeIsland,
+        (x, z) => world.collision.heightAt(x, z),
+      )
     : null;
   if (sharedMonsters) {
     game.add(sharedMonsters);
@@ -333,18 +337,25 @@ async function main(): Promise<void> {
       update: () => {
         const damage = sharedMonsters.collectPlayerDamage(controller.position);
         if (damage > 0) {
-          const taken = playerCombat?.modifyIncomingDamage({
-            amount: damage,
-            unblockable: false,
-            knockback: 0,
-            sourceX: controller.position.x,
-            sourceZ: controller.position.z,
-            tags: [],
-          }) ?? damage;
-          controller.hp = Math.max(0, controller.hp - taken);
+          const resolution = resolveSharedMonsterPlayerDamage(
+            controller.hp,
+            damage,
+            (amount) => playerCombat?.modifyIncomingDamage({
+              amount,
+              unblockable: false,
+              knockback: 0,
+              sourceX: controller.position.x,
+              sourceZ: controller.position.z,
+              tags: [],
+            }) ?? amount,
+          );
+          controller.hp = resolution.hp;
           playerCombat?.notifyDamaged();
           hud.flashDamage();
-          if (taken > 0) effects.spawnDamageNumber(controller.position, Math.round(taken), '#ff6b6b');
+          if (resolution.taken > 0) {
+            effects.spawnDamageNumber(controller.position, Math.round(resolution.taken), '#ff6b6b');
+          }
+          if (resolution.defeated) spawnManager.respawn();
         }
       },
     });

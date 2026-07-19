@@ -9,11 +9,13 @@
 import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
 import { MONSTER_TYPES } from './MonsterData';
+import { Monster, type MonsterState } from './Monster';
 import type { WorldMonsterSnapshot, WorldMonsterDelta, WorldMonsterState } from '@pirate-fruit/shared';
 
 const LERP_PER_SECOND = 8;
 
 interface SharedMonster {
+  visual: Monster;
   group: THREE.Group;
   target: THREE.Vector3;
   targetHeading: number;
@@ -24,19 +26,34 @@ interface SharedMonster {
   attackReadyAt: number;
 }
 
-function makeBody(monsterId: string): THREE.Group {
-  const group = new THREE.Group();
-  const type = MONSTER_TYPES[monsterId];
-  const color = type?.color ?? 0xcf5a38;
-  const scale = type?.scale ?? 1;
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.75, emissive: 0x120a05, emissiveIntensity: 0.25 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5 * scale, 0.9 * scale, 4, 10), material);
-  body.position.y = 0.9 * scale;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34 * scale, 12, 10), material);
-  head.position.y = 1.7 * scale;
-  group.add(body, head);
-  group.userData.material = material;
-  return group;
+function renderState(state: WorldMonsterState): MonsterState {
+  if (state === 'dead') return 'dead';
+  if (state === 'attack') return 'attack';
+  if (state === 'chase' || state === 'aggro') return 'chase';
+  if (state === 'return' || state === 'patrol') return 'return';
+  return 'idle';
+}
+
+export interface SharedMonsterDamageResolution {
+  hp: number;
+  taken: number;
+  defeated: boolean;
+}
+
+/** Pure damage transition used by main so shared-monster death cannot miss respawn. */
+export function resolveSharedMonsterPlayerDamage(
+  currentHp: number,
+  rawDamage: number,
+  mitigate: (amount: number) => number,
+): SharedMonsterDamageResolution {
+  const hp = Math.max(0, Number.isFinite(currentHp) ? currentHp : 0);
+  if (hp <= 0 || rawDamage <= 0 || !Number.isFinite(rawDamage)) {
+    return { hp, taken: 0, defeated: false };
+  }
+  const mitigated = mitigate(rawDamage);
+  const taken = Math.max(0, Number.isFinite(mitigated) ? mitigated : 0);
+  const nextHp = Math.max(0, hp - taken);
+  return { hp: nextHp, taken, defeated: hp > 0 && nextHp <= 0 };
 }
 
 export class SharedMonsterClient implements Updatable {
@@ -46,6 +63,7 @@ export class SharedMonsterClient implements Updatable {
   constructor(
     private readonly scene: THREE.Scene,
     islandId: string,
+    private readonly heightAt: (x: number, z: number) => number = () => 0,
     private readonly now: () => number = () => Date.now(),
   ) {
     this.currentIslandId = islandId;
@@ -80,15 +98,14 @@ export class SharedMonsterClient implements Updatable {
     for (const update of updates) {
       const monster = this.monsters.get(update.spawnId);
       if (!monster) continue;
-      if (update.state === 'dead') {
-        monster.group.visible = false;
-      } else if (!monster.group.visible) {
+      if (update.state !== 'dead' && !monster.group.visible) {
         monster.group.visible = true;
       }
-      monster.target.set(update.x, monster.target.y, update.z);
+      monster.target.set(update.x, this.heightAt(update.x, update.z), update.z);
       monster.targetHeading = update.heading;
       monster.hp = update.hp;
       monster.state = update.state;
+      monster.visual.applyAuthoritativeState(update.hp, monster.maxHp, renderState(update.state));
     }
   }
 
@@ -97,7 +114,7 @@ export class SharedMonsterClient implements Updatable {
     if (!monster) return;
     monster.state = 'dead';
     monster.hp = 0;
-    monster.group.visible = false;
+    monster.visual.applyAuthoritativeState(0, monster.maxHp, 'dead');
   }
 
   applyRespawn(snapshot: WorldMonsterSnapshot): void {
@@ -109,15 +126,23 @@ export class SharedMonsterClient implements Updatable {
 
   private upsert(snapshot: WorldMonsterSnapshot): void {
     let monster = this.monsters.get(snapshot.spawnId);
+    if (monster && monster.monsterId !== snapshot.monsterId) {
+      this.remove(snapshot.spawnId);
+      monster = undefined;
+    }
     if (!monster) {
-      const group = makeBody(snapshot.monsterId);
-      group.position.set(snapshot.x, 0, snapshot.z);
+      const type = MONSTER_TYPES[snapshot.monsterId];
+      if (!type) return;
+      const groundY = this.heightAt(snapshot.x, snapshot.z);
+      const visual = new Monster(type, snapshot.x, snapshot.z, groundY, Number.MAX_SAFE_INTEGER);
+      const group = visual.group;
       group.rotation.y = snapshot.heading;
-      group.visible = snapshot.state !== 'dead';
+      visual.applyAuthoritativeState(snapshot.hp, snapshot.maxHp, renderState(snapshot.state));
       this.scene.add(group);
       monster = {
+        visual,
         group,
-        target: new THREE.Vector3(snapshot.x, 0, snapshot.z),
+        target: new THREE.Vector3(snapshot.x, groundY, snapshot.z),
         targetHeading: snapshot.heading,
         hp: snapshot.hp,
         maxHp: snapshot.maxHp,
@@ -128,24 +153,19 @@ export class SharedMonsterClient implements Updatable {
       this.monsters.set(snapshot.spawnId, monster);
       return;
     }
-    monster.target.set(snapshot.x, monster.target.y, snapshot.z);
+    monster.target.set(snapshot.x, this.heightAt(snapshot.x, snapshot.z), snapshot.z);
     monster.targetHeading = snapshot.heading;
     monster.hp = snapshot.hp;
     monster.maxHp = snapshot.maxHp;
     monster.state = snapshot.state;
-    monster.group.visible = snapshot.state !== 'dead';
+    monster.visual.applyAuthoritativeState(snapshot.hp, snapshot.maxHp, renderState(snapshot.state));
   }
 
   private remove(spawnId: string): void {
     const monster = this.monsters.get(spawnId);
     if (!monster) return;
     this.scene.remove(monster.group);
-    monster.group.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        (object.material as THREE.Material).dispose();
-      }
-    });
+    monster.visual.dispose();
     this.monsters.delete(spawnId);
   }
 
@@ -203,6 +223,7 @@ export class SharedMonsterClient implements Updatable {
       let delta = monster.targetHeading - current;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       monster.group.rotation.y = current + delta * factor;
+      monster.visual.updateVisual(dt);
     }
   }
 

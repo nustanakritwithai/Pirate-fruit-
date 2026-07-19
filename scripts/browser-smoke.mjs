@@ -26,7 +26,7 @@ const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
 // ผ่าน CDP ไม่ทันเมื่อ world delta ไหลต่อเนื่อง ทำให้ smoke false-negative ทั้งที่เกมรับแล้ว
 await page.addInitScript(() => {
   window.__smokeRealtime = {
-    combat: [], worldSnapshot: 0, worldDeltas: [], worldDead: [],
+    presence: [], combat: [], worldSnapshot: 0, worldDeltas: [], worldDead: [],
     boatSnapshots: [], boatDeltas: [], boatResults: [], boatCannon: [],
   };
   const NativeWebSocket = window.WebSocket;
@@ -37,6 +37,10 @@ await page.addInitScript(() => {
         try {
           const message = JSON.parse(String(event.data));
           const diag = window.__smokeRealtime;
+          if (message?.type === 'presence') {
+            diag.presence.push(message);
+            if (diag.presence.length > 20) diag.presence.shift();
+          }
           if (message?.type === 'combat-hit') diag.combat.push(message);
           if (message?.type === 'world-monster-snapshot') {
             diag.worldSnapshot = message.monsters?.length ?? 0;
@@ -318,15 +322,20 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   peer.on('unexpected-response', (_req, res) => { peerDiag.error = `unexpected-response ${res.statusCode}`; });
   peer.on('close', (code) => { peerDiag.closed = code; });
 
-  const gotNaval = () => wsEvents.presence.some((p) => p.onBoat === true && p.boatId === 'war-galleon');
-  const done = () => (NAVAL ? gotNaval() : wsEvents.frames.includes('presence'));
+  let browserPresence = [];
+  const allPresence = () => [...wsEvents.presence, ...browserPresence];
+  const gotNaval = () => allPresence().some((p) => p.onBoat === true && p.boatId === 'war-galleon');
+  const done = () => (NAVAL ? gotNaval() : allPresence().length > 0);
   // page1 ต้องมี presence ของตัวเองก่อน Server ถึงจะ relay presence ของ peer มาให้
   // (relay ข้าม connection ที่ยังไม่เคยขยับ) — ปั๊ม move จากฝั่ง Node ทุกรอบผ่าน
   // __realtime.sendMove โดยตรง ไม่พึ่ง setInterval ในหน้าเว็บที่ headless CI throttle
   let pumpDiag = { hasRealtime: false, connected: false, sent: 0 };
   const pumpSelfMove = () => page.evaluate(() => {
     const rt = window.__realtime;
-    const out = { hasRealtime: Boolean(rt), connected: Boolean(rt && rt.connected), sent: false };
+    const out = {
+      hasRealtime: Boolean(rt), connected: Boolean(rt && rt.connected), sent: false,
+      presence: (window.__smokeRealtime?.presence ?? []).slice(-10),
+    };
     if (rt && typeof rt.sendMove === 'function') {
       rt.sendMove({ islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false });
       out.sent = true;
@@ -337,6 +346,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       pumpDiag.hasRealtime = out.hasRealtime;
       pumpDiag.connected = out.connected;
       if (out.sent) pumpDiag.sent += 1;
+      browserPresence = out.presence;
     }
   }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
   // ขับ peer move จาก main loop โดยตรง — setInterval(peerMove) ของ peer อาจถูก starve
@@ -353,8 +363,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     fail('did not receive the expected presence frame from the second player', {
       naval: NAVAL,
       opened: wsEvents.opened,
-      presenceCount: wsEvents.presence.length,
-      presenceSample: wsEvents.presence.slice(-4).map((p) => ({ onBoat: p.onBoat, boatId: p.boatId, islandId: p.islandId })),
+      presenceCount: allPresence().length,
+      presenceSample: allPresence().slice(-4).map((p) => ({ onBoat: p.onBoat, boatId: p.boatId, islandId: p.islandId })),
       worldSnapshot: wsEvents.worldSnapshot,
       peerFramesTail: peerDiag.frames.slice(-8),
       peerGotPage1Presence: peerDiag.gotPage1Presence,
