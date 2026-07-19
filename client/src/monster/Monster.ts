@@ -250,7 +250,7 @@ export class Monster {
    * Read-only combat presentation: flash, hit animation and a short model-only recoil.
    * The root transform remains controlled by local collision or the Server snapshot.
    */
-  playHitReaction(sourceX?: number, sourceZ?: number, strength = 0.24): void {
+  playHitReaction(sourceX?: number, sourceZ?: number, strength = 0.52): void {
     if (this.state === 'dead') return;
     this.hitFlash = 0.18;
     this.animator.triggerHit();
@@ -271,7 +271,7 @@ export class Monster {
     }
     const length = Math.hypot(dx, dz) || 1;
     const resistance = this.type.kind === 'boss' ? 0.35 : 1;
-    const amount = Math.min(0.42, Math.max(0.08, strength) * resistance);
+    const amount = Math.min(0.8, Math.max(0.15, strength) * resistance);
     this.hitOffset.x = (dx / length) * amount;
     this.hitOffset.y = (dz / length) * amount;
   }
@@ -314,11 +314,9 @@ export class Monster {
 
   /** อนิเมชัน/แฟลช/บ๊อบ คืน true เมื่ออนิเมชันตายจบ (ให้ manager ซ่อน) */
   updateVisual(dt: number): boolean {
-    const recoilDamp = Math.exp(-15 * Math.min(dt, 0.05));
+    const recoilDamp = Math.exp(-10 * Math.min(dt, 0.05));
     this.hitOffset.multiplyScalar(recoilDamp);
     if (this.hitOffset.lengthSq() < 1e-5) this.hitOffset.set(0, 0);
-    this.visualRoot.position.x = this.hitOffset.x;
-    this.visualRoot.position.z = this.hitOffset.y;
     if (this.hitFlash > 0) {
       this.hitFlash -= dt;
       for (const material of this.flashMaterials) {
@@ -351,6 +349,10 @@ export class Monster {
           ? 'walk'
           : 'idle';
     this.animator.update(dt, action, deathProgress);
+    // GLTF animation tracks can write root translation. Apply presentation recoil last
+    // so imported and procedural enemies both visibly react on the rendered frame.
+    this.visualRoot.position.x = this.hitOffset.x;
+    this.visualRoot.position.z = this.hitOffset.y;
 
     if (this.state === 'dead') {
       if (this.deathTimer <= 0) {
