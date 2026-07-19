@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RealtimeClient, type RealtimeSocketLike } from '../RealtimeClient';
+import { RealtimeClient, type RealtimePresenceSnapshot, type RealtimeSocketLike } from '../RealtimeClient';
 
 class FakeSocket implements RealtimeSocketLike {
   readyState = 1;
@@ -172,6 +172,40 @@ describe('S9 realtime client', () => {
     client.sendMove({ islandId: 'starter-island', x: 1, y: 0, z: 2, heading: 0.5, onBoat: false });
     const moveFrame = socket.sent.map((raw) => JSON.parse(raw)).find((m) => m.type === 'move');
     expect(moveFrame).toMatchObject({ type: 'move', islandId: 'starter-island', x: 1, z: 2 });
+    client.stop();
+  });
+
+  it('forwards remote appearance and animation metadata from presence frames', () => {
+    const sockets: FakeSocket[] = [];
+    const received: RealtimePresenceSnapshot[] = [];
+    const client = new RealtimeClient('ws://test/ws', {
+      onEconomy: () => undefined,
+      onResync: () => undefined,
+      onPresence: (snapshot) => received.push(snapshot),
+    }, {
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    client.start();
+    sockets[0].welcome();
+    sockets[0].push({
+      type: 'presence', seq: 2, playerId: 'char-b', name: 'Bob',
+      islandId: 'starter-island', x: 5, y: 0, z: 6, heading: 0, onBoat: false,
+      appearance: { avatarId: 'pirate-v1' },
+      locomotion: 'run',
+      animation: {
+        combatState: 'attack1', category: 'sword', onGround: true,
+        dashing: false, verticalVelocity: 0, attackProgress: 0.4,
+      },
+    });
+    expect(received[0]).toMatchObject({
+      appearance: { avatarId: 'pirate-v1' },
+      locomotion: 'run',
+      animation: { combatState: 'attack1', category: 'sword' },
+    });
     client.stop();
   });
 

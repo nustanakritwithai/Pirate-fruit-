@@ -150,6 +150,10 @@ function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { grou
 export class RemotePlayers implements Updatable {
   private readonly players = new Map<string, RemotePlayer>();
   private currentIslandId: string;
+  private receivedPresence = 0;
+  private acceptedPresence = 0;
+  private ignoredIslandPresence = 0;
+  private lastPresence: { playerId: string; islandId: string; accepted: boolean } | null = null;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -164,6 +168,29 @@ export class RemotePlayers implements Updatable {
     return this.players.size;
   }
 
+  /** Read-only runtime counters for production multiplayer diagnosis. */
+  get diagnostics(): {
+    currentIslandId: string;
+    receivedPresence: number;
+    acceptedPresence: number;
+    ignoredIslandPresence: number;
+    renderedPlayers: number;
+    lod: Record<RemoteLod, number>;
+    lastPresence: { playerId: string; islandId: string; accepted: boolean } | null;
+  } {
+    const lod: Record<RemoteLod, number> = { full: 0, low: 0, hidden: 0 };
+    for (const player of this.players.values()) lod[player.lod] += 1;
+    return {
+      currentIslandId: this.currentIslandId,
+      receivedPresence: this.receivedPresence,
+      acceptedPresence: this.acceptedPresence,
+      ignoredIslandPresence: this.ignoredIslandPresence,
+      renderedPlayers: this.players.size,
+      lod,
+      lastPresence: this.lastPresence ? { ...this.lastPresence } : null,
+    };
+  }
+
   /** ผู้เล่นเราย้ายเกาะ → ล้างผีทั้งหมด (Server จะ seed ชุดใหม่ของเกาะใหม่เอง) */
   setIsland(islandId: string): void {
     if (islandId === this.currentIslandId) return;
@@ -172,10 +199,16 @@ export class RemotePlayers implements Updatable {
   }
 
   applyPresence(snapshot: RealtimePresenceSnapshot): void {
+    this.receivedPresence += 1;
     if (snapshot.islandId !== this.currentIslandId) {
-      this.remove(snapshot.playerId);
+      this.ignoredIslandPresence += 1;
+      this.lastPresence = { playerId: snapshot.playerId, islandId: snapshot.islandId, accepted: false };
+      // A delayed frame from the previous island must not delete a newer visible avatar.
+      // Explicit presence-leave and setIsland remain the only removal paths.
       return;
     }
+    this.acceptedPresence += 1;
+    this.lastPresence = { playerId: snapshot.playerId, islandId: snapshot.islandId, accepted: true };
     const kind = avatarKindOf(snapshot);
     let player = this.players.get(snapshot.playerId);
     if (!player) {
