@@ -125,6 +125,14 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
     heading: presence.heading,
     onBoat: presence.onBoat,
     boatId: presence.boatId,
+    // Presentation-only default. A future profile/loadout service can replace
+    // these fields without changing movement or combat authority.
+    appearance: {
+      schemaVersion: 1,
+      avatarId: 'pirate-v1',
+      clothingIds: [],
+      equipmentIds: [],
+    },
   };
 }
 
