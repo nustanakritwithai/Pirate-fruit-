@@ -352,7 +352,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const peerMove = () => peer.send(JSON.stringify({
     // Alternate a tiny presentation-safe offset so the server cannot coalesce every retry
     // as an unchanged snapshot when page1 registers just after the peer's first move.
-    type: 'move', islandId: 'starter-island', x: 12 + (peerMoveSequence++ % 2) * 0.05, y: 0, z: 8, heading: 0,
+    type: 'move', islandId: 'starter-island', x: (peerMoveSequence++ % 2) * 0.05, y: 0, z: 0, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
   peer.on('open', () => {
