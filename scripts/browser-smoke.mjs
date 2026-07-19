@@ -575,11 +575,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
     );
-    await page.evaluate(() => window.__realtime?.sendMove({
-      islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
-      onBoat: false,
-    }));
-    boatDiag.intentId = await page.evaluate(() => window.__realtime?.sendBoatIntent('summon') ?? null);
+    boatDiag.intentId = await page.evaluate(() => {
+      const rt = window.__realtime;
+      rt?.sendMove({
+        islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
+        onBoat: false,
+      });
+      return rt?.sendBoatIntent('summon') ?? null;
+    });
     boatDiag.summonSent = Boolean(boatDiag.intentId);
     if (boatDiag.summonSent) boatDiag.summonAttempts += 1;
     const summonDeadline = Date.now() + 20_000;
@@ -607,9 +610,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         boatDiag.resolutionSource = 'peer-delta';
         break;
       }
-      const resent = await page.evaluate((intentId) => Boolean(
-        window.__realtime?.sendBoatIntent('summon', {}, intentId),
-      ), boatDiag.intentId);
+      const resent = await page.evaluate((intentId) => {
+        const rt = window.__realtime;
+        rt?.sendMove({
+          islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: Math.PI,
+          onBoat: false,
+        });
+        return Boolean(rt?.sendBoatIntent('summon', {}, intentId));
+      }, boatDiag.intentId);
       if (resent) boatDiag.summonAttempts += 1;
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
