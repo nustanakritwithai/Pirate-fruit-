@@ -93,8 +93,11 @@ interface MonsterRuntime {
   sentState: WorldMonsterState;
 }
 
-const RETURN_MULTIPLIER = 2.4; // ไกลจากบ้านเกินนี้ (× aggroRange) → เลิกไล่ กลับบ้าน
-const DEAGGRO_MULTIPLIER = 1.7; // เป้าหนีไกลเกินนี้ (× aggroRange) → ปล่อยเป้า
+const RETURN_MULTIPLIER = 1.5; // ไกลจากบ้านเกินนี้ (× aggroRange) → เลิกไล่ กลับบ้าน
+const DEAGGRO_MULTIPLIER = 1.3; // เป้าหนีไกลเกินนี้ (× aggroRange) → ปล่อยเป้า
+// เพดานระยะไล่สูงสุดจากบ้าน (หน่วยโลก) — กันบอส aggro สูงไล่ผู้เล่นออกทะเลไกลเกิน
+// ให้แต่ละตัว "รักษาพื้นที่" ของมัน หนีพ้นเขตนี้ = ปลอดภัย
+const MAX_LEASH_DISTANCE = 26;
 
 function distance(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(ax - bx, az - bz);
@@ -317,7 +320,8 @@ export class MonsterSimulation {
     if (target && target.islandId !== monster.spawn.islandId) target = null;
     if (target) {
       const targetDist = distance(monster.x, monster.z, target.x, target.z);
-      if (targetDist > type.aggroRange * DEAGGRO_MULTIPLIER || homeDist > type.aggroRange * RETURN_MULTIPLIER) {
+      const leash = Math.min(type.aggroRange * RETURN_MULTIPLIER, MAX_LEASH_DISTANCE);
+      if (targetDist > type.aggroRange * DEAGGRO_MULTIPLIER || homeDist > leash) {
         target = null;
       }
     }
