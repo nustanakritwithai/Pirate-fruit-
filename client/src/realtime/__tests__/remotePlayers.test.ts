@@ -144,6 +144,28 @@ describe('S13 RemotePlayers', () => {
     expect(players.count).toBe(1);
   });
 
+  it('uses distance LOD and hides remote avatars outside the mobile interest range', () => {
+    const scene = new THREE.Scene();
+    const focus = new THREE.Vector3();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000, {
+      focus: () => focus,
+      tier: 'low',
+    });
+    players.applyPresence(snapshot({ x: 5, z: 0 }));
+    expect(players.lodFor('char-b')).toBe('full');
+
+    players.applyPresence(snapshot({ x: 40, z: 0 }));
+    players.update(0.016);
+    expect(players.lodFor('char-b')).toBe('low');
+    expect(scene.getObjectByName('remote-player-low:pirate-v1')).toBeTruthy();
+
+    players.applyPresence(snapshot({ x: 90, z: 0 }));
+    players.update(0.016);
+    expect(players.lodFor('char-b')).toBe('hidden');
+    const remoteRoot = scene.children.find((child) => child instanceof THREE.Group);
+    expect(remoteRoot?.visible).toBe(false);
+  });
+
   it('finds only players inside the forward attack cone and in range (S15)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

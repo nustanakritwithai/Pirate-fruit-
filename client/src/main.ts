@@ -339,7 +339,10 @@ async function main(): Promise<void> {
   const multiplayerEnabled = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true'
     || import.meta.env.VITE_ENABLE_MULTIPLAYER === '1';
   const remotePlayers = multiplayerEnabled
-    ? new RemotePlayers(game.scene, islandManager.activeIsland)
+    ? new RemotePlayers(game.scene, islandManager.activeIsland, () => Date.now(), {
+      focus: () => controller.position,
+      tier: graphics.tier,
+    })
     : null;
   if (remotePlayers) game.add(remotePlayers);
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
@@ -534,6 +537,7 @@ async function main(): Promise<void> {
   // S13: รายงานตำแหน่งตัวเองให้ Server relay ทุก 100ms ผ่าน setInterval —
   // จงใจไม่ผูกกับ game loop (rAF) เพราะแท็บพื้นหลังโดน throttle จน presence ไม่ไหล
   if (realtime && multiplayerEnabled) {
+    let presenceTick = 0;
     setInterval(() => {
       remotePlayers?.setIsland(islandManager.activeIsland);
       sharedMonsters?.setIsland(islandManager.activeIsland);
@@ -546,6 +550,10 @@ async function main(): Promise<void> {
         : controller.moveState.speed > 5
           ? 'run'
           : controller.moveState.speed > 0.1 ? 'walk' : 'idle';
+      presenceTick += 1;
+      const combatState = playerCombat?.state ?? 'idle';
+      const sendAnimation = presenceTick % 2 === 0 || combatState !== 'idle'
+        || controller.moveState.dashing || !controller.moveState.onGround;
       realtime.sendMove({
         islandId: islandManager.activeIsland,
         x: position.x,
@@ -555,8 +563,8 @@ async function main(): Promise<void> {
         onBoat,
         boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
         locomotion,
-        animation: {
-          combatState: playerCombat?.state ?? 'idle',
+        animation: sendAnimation ? {
+          combatState,
           category: playerCombat?.activeItem.category ?? 'style',
           onGround: controller.moveState.onGround,
           dashing: controller.moveState.dashing,
@@ -570,7 +578,7 @@ async function main(): Promise<void> {
           skillAnimationVariant: playerCombat?.skillAnimationVariant ?? 0,
           skillAnimationUltimate: playerCombat?.skillAnimationUltimate ?? false,
           skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
-        },
+        } : undefined,
       });
     }, 100);
   }

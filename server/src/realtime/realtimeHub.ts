@@ -57,6 +57,8 @@ export interface RealtimeSocket {
 }
 
 const OPEN = 1;
+/** Presentation interest only; PK/boat/world authority keeps its own server-side ranges. */
+const PRESENCE_INTEREST_RANGE = 240;
 
 export interface PresencePosition {
   islandId: string;
@@ -182,6 +184,14 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
       equipmentIds: [],
     },
   };
+}
+
+function presenceWithinInterest(a: PresencePosition, b: PresencePosition): boolean {
+  if (a.islandId !== b.islandId) return false;
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz <= PRESENCE_INTEREST_RANGE * PRESENCE_INTEREST_RANGE;
 }
 
 /**
@@ -320,7 +330,7 @@ export class RealtimeHub {
       if (firstMove) {
         this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
         for (const other of this.connections) {
-          if (other === connection || other.presence?.islandId !== aboard.islandId) continue;
+          if (other === connection || !other.presence || !presenceWithinInterest(connection.presence, other.presence)) continue;
           this.sendTo(connection, presenceMessage(other));
           this.sendTo(other, presenceMessage(connection));
         }
@@ -351,7 +361,7 @@ export class RealtimeHub {
     if (firstMove || islandChanged) {
       for (const other of this.connections) {
         if (other === connection || !other.presence) continue;
-        if (other.presence.islandId !== position.islandId) continue;
+        if (!presenceWithinInterest(position, other.presence)) continue;
         this.sendTo(connection, presenceMessage(other));
       }
       // S16: และ seed มอนสเตอร์กลางของเกาะนี้ (full snapshot) ให้ผู้เล่นที่เพิ่งเข้ามา
@@ -365,7 +375,7 @@ export class RealtimeHub {
     // และ broadcast ตำแหน่งของคนนี้ให้คนอื่นบนเกาะเดียวกัน
     for (const other of this.connections) {
       if (other === connection || !other.presence) continue;
-      if (other.presence.islandId !== position.islandId) continue;
+      if (!presenceWithinInterest(position, other.presence)) continue;
       this.sendTo(other, presenceMessage(connection));
     }
   }
@@ -503,7 +513,7 @@ export class RealtimeHub {
       if (connection.characterId !== characterId) continue;
       connection.presence = { islandId, x, y: 0, z, heading, onBoat: true, boatId: definitionId };
       for (const other of this.connections) {
-        if (other === connection || other.presence?.islandId !== islandId) continue;
+        if (other === connection || !other.presence || !presenceWithinInterest(connection.presence, other.presence)) continue;
         this.sendTo(other, presenceMessage(connection));
       }
     }
