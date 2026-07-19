@@ -357,8 +357,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   let peerX = 12;
   let peerY = 0;
   let peerZ = 8;
+  let peerMoveSequence = 0;
   const peerMove = () => peer.send(JSON.stringify({
-    type: 'move', islandId: 'starter-island', x: peerX, y: peerY, z: peerZ, heading: 0,
+    // Alternate a tiny offset so retries remain observable after the browser
+    // registers its presence, while keeping the peer inside melee range.
+    type: 'move', islandId: 'starter-island', x: peerX + (peerMoveSequence++ % 2) * 0.05,
+    y: peerY, z: peerZ, heading: 0,
     onBoat: NAVAL, boatId: NAVAL ? 'war-galleon' : undefined,
   }));
   peer.on('open', () => {
