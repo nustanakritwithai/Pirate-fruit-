@@ -46,7 +46,10 @@ try {
   }
 
   const toggle = page.locator('.audio-toggle');
-  await toggle.click();
+  const toggleBox = await toggle.boundingBox();
+  if (!toggleBox) throw new Error('audio toggle has no clickable bounds');
+  // A direct mouse gesture remains trusted but does not wait on the game's fullscreen promise.
+  await page.mouse.click(toggleBox.x + toggleBox.width / 2, toggleBox.y + toggleBox.height / 2);
   await page.waitForFunction(() => window.__audio?.status === 'running', null, { timeout: 10_000 });
   const transitions = await page.evaluate(async () => {
     const audio = window.__audio;
