@@ -143,6 +143,31 @@ describe('S13 presence relay', () => {
     expect(b.sent.some((message) => message.type === 'presence')).toBe(false);
   });
 
+  it('symmetrically seeds both players when one mover enters interest range', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+
+    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 500, 0));
+    expect(a.sent.some((message) => message.type === 'presence')).toBe(false);
+    expect(b.sent.some((message) => message.type === 'presence')).toBe(false);
+
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 10, 0));
+    expect(a.sent.find((message) => message.type === 'presence')).toMatchObject({ playerId: 'char-b' });
+    expect(b.sent.find((message) => message.type === 'presence')).toMatchObject({ playerId: 'char-a' });
+
+    const seedsBefore = b.sent.filter((message) => message.type === 'presence').length;
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 11, 0));
+    expect(b.sent.filter((message) => message.type === 'presence')).toHaveLength(seedsBefore);
+  });
+
   it('throttles rapid moves but always keeps the latest position', () => {
     let clock = 1_000;
     const hub = new RealtimeHub(undefined, () => clock, 200, true);
