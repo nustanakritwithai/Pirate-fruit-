@@ -42,6 +42,8 @@ export interface RealtimePresenceSnapshot {
   /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
   boatId?: string;
   appearance?: import('@pirate-fruit/shared').RealtimeCharacterAppearance;
+  locomotion?: 'idle' | 'walk' | 'run' | 'swim';
+  animation?: import('@pirate-fruit/shared').RealtimePlayerAnimation;
 }
 
 export interface RealtimeHandlers {
@@ -254,6 +256,8 @@ export class RealtimeClient {
     heading: number;
     onBoat: boolean;
     boatId?: string;
+    locomotion?: 'idle' | 'walk' | 'run' | 'swim';
+    animation?: import('@pirate-fruit/shared').RealtimePlayerAnimation;
   }): void {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
     this.socket.send(JSON.stringify({ type: 'move', ...position }));

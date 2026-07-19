@@ -13,6 +13,7 @@ import type { Updatable } from '../engine/Game';
 import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
+import { PlayerActionAnimator } from '../animation/PlayerActionAnimator';
 
 const LERP_PER_SECOND = 9; // ความเร็วไถลเข้าหาเป้า (สูง = ตามติดขึ้น)
 const STALE_MS = 20_000; // ไม่ได้ยิน presence เกินนี้ = ถือว่าหลุด เอาออก
@@ -33,6 +34,13 @@ interface RemotePlayer {
   lastSeenAt: number;
   /** S15: แพ้ (ถูกซ่อนจนกว่าจะเกิดใหม่) */
   defeated: boolean;
+  animator: PlayerActionAnimator | null;
+  locomotion: 'idle' | 'walk' | 'run' | 'swim';
+  animation: NonNullable<RealtimePresenceSnapshot['animation']>;
+}
+
+function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
+  return { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 };
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -68,10 +76,10 @@ function makeNameSprite(name: string): THREE.Sprite {
 }
 
 /** Current canonical on-foot visual; appearance fields are ready for future variants. */
-function makePlayerBody(snapshot: RealtimePresenceSnapshot): THREE.Group {
+function makePlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: PlayerActionAnimator } {
   const visual = createPiratePlayerVisual();
   visual.group.name = `remote-player:${snapshot.appearance?.avatarId ?? 'pirate-v1'}`;
-  return visual.group;
+  return { group: visual.group, animator: new PlayerActionAnimator(visual.rig) };
 }
 
 /** S14: เรือ proxy แบบเบา (ตัวเรือ + ใบเรือ) ขนาด/สีตามรุ่น — ไม่ใช้ BoatModel เต็ม */
@@ -104,10 +112,13 @@ function avatarKindOf(snapshot: RealtimePresenceSnapshot): AvatarKind {
   return snapshot.onBoat ? `boat:${snapshot.boatId ?? 'default'}` : 'foot';
 }
 
-function buildAvatar(snapshot: RealtimePresenceSnapshot): THREE.Group {
-  const group = snapshot.onBoat ? makeBoatProxy(snapshot.boatId) : makePlayerBody(snapshot);
+function buildAvatar(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: PlayerActionAnimator | null } {
+  const avatar = snapshot.onBoat
+    ? { group: makeBoatProxy(snapshot.boatId), animator: null }
+    : makePlayerBody(snapshot);
+  const { group } = avatar;
   group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
-  return group;
+  return avatar;
 }
 
 export class RemotePlayers implements Updatable {
@@ -141,7 +152,8 @@ export class RemotePlayers implements Updatable {
     const kind = avatarKindOf(snapshot);
     let player = this.players.get(snapshot.playerId);
     if (!player) {
-      const group = buildAvatar(snapshot);
+      const avatar = buildAvatar(snapshot);
+      const { group } = avatar;
       group.position.set(snapshot.x, snapshot.y, snapshot.z);
       group.rotation.y = snapshot.heading;
       this.scene.add(group);
@@ -155,6 +167,9 @@ export class RemotePlayers implements Updatable {
         avatarKind: kind,
         lastSeenAt: this.now(),
         defeated: false,
+        animator: avatar.animator,
+        locomotion: snapshot.locomotion ?? 'idle',
+        animation: snapshot.animation ?? defaultAnimation(),
       });
       return;
     }
@@ -163,16 +178,20 @@ export class RemotePlayers implements Updatable {
       const position = player.group.position.clone();
       const rotationY = player.group.rotation.y;
       this.disposeGroup(player.group);
-      const group = buildAvatar(snapshot);
+      const avatar = buildAvatar(snapshot);
+      const { group } = avatar;
       group.position.copy(position);
       group.rotation.y = rotationY;
       this.scene.add(group);
       player.group = group;
       player.avatarKind = kind;
+      player.animator = avatar.animator;
     }
     player.target.set(snapshot.x, snapshot.y, snapshot.z);
     player.targetHeading = snapshot.heading;
     player.onBoat = snapshot.onBoat;
+    player.locomotion = snapshot.locomotion ?? 'idle';
+    player.animation = snapshot.animation ?? player.animation;
     player.lastSeenAt = this.now();
   }
 
@@ -215,6 +234,10 @@ export class RemotePlayers implements Updatable {
       let delta = player.targetHeading - current;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       player.group.rotation.y = current + delta * factor;
+      player.animator?.update(dt, {
+        ...player.animation,
+        locomotion: player.locomotion,
+      });
     }
   }
 

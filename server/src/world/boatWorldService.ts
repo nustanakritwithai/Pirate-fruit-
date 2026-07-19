@@ -121,6 +121,12 @@ export class BoatWorldService implements BoatWorldBridge {
     const boat = this.sim.board(entityId, characterId, presence.islandId, presence.x, presence.z);
     if (!boat) return { accepted: false, reason: 'board-range-or-state' };
     this.broadcastDelta(boat);
+    // Boarding can happen while an anchored boat produces no simulation tick.
+    // Publish authoritative passenger presence immediately so peers swap the
+    // on-foot avatar for the boat visual instead of leaving it on the water.
+    this.hub.updateBoatPassengerPresence(
+      characterId, boat.islandId, boat.x, boat.z, boat.heading, boat.definitionId,
+    );
     return { accepted: true, entityId };
   }
 

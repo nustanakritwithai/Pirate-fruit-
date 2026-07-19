@@ -538,6 +538,11 @@ async function main(): Promise<void> {
       if (boatWorldEnabled && boatManager.riderState !== 'off') return;
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
+      const locomotion = controller.moveState.swimming
+        ? 'swim'
+        : controller.moveState.speed > 5
+          ? 'run'
+          : controller.moveState.speed > 0.1 ? 'walk' : 'idle';
       realtime.sendMove({
         islandId: islandManager.activeIsland,
         x: position.x,
@@ -546,6 +551,23 @@ async function main(): Promise<void> {
         heading: controller.heading,
         onBoat,
         boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
+        locomotion,
+        animation: {
+          combatState: playerCombat?.state ?? 'idle',
+          category: playerCombat?.activeItem.category ?? 'style',
+          onGround: controller.moveState.onGround,
+          dashing: controller.moveState.dashing,
+          verticalVelocity: controller.verticalSpeed,
+          attackProgress: playerCombat ? 1 - playerCombat.attackCooldownFraction : 0,
+          hitReactionId: playerCombat?.hitReactionId ?? 0,
+          hitReactionAngle: playerCombat?.hitReactionAngle ?? 0,
+          skillAnimationProgress: playerCombat?.skillAnimationProgress ?? 1,
+          skillAnimationReleaseProgress: playerCombat?.skillAnimationReleaseProgress ?? 0.3,
+          skillAnimationType: playerCombat?.skillAnimationType,
+          skillAnimationVariant: playerCombat?.skillAnimationVariant ?? 0,
+          skillAnimationUltimate: playerCombat?.skillAnimationUltimate ?? false,
+          skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
+        },
       });
     }, 100);
   }
