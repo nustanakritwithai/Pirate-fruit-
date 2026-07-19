@@ -319,7 +319,8 @@ export const MONSTER_CAMPS: MonsterCamp[] = LEGACY_MONSTER_CAMPS.map((camp) => (
 }));
 
 /** บอสประจำเกาะ ยืนเฝ้าเนินตะวันออก */
-export const BOSS_SPAWN = { typeId: 'boss', x: 24, z: 4 };
+// บอสเกาะเริ่มต้นอยู่ฝั่งเหนือ (ห่างหมู่บ้านค้าขาย + คนละฝั่งกับกองปู/grunt ทางตะวันออก)
+export const BOSS_SPAWN = { typeId: 'boss', x: -14, z: 30 };
 
 export interface BossSpawn {
   islandId: IslandId;
