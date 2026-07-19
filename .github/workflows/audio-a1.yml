@@ -1,0 +1,38 @@
+name: Audio A1 browser smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - claude/blox-fruits-three-js-roadmap-1f2f5u
+
+concurrency:
+  group: audio-a1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build opt-in audio bundle
+        run: npm run build:client
+        env:
+          VITE_ENABLE_AUDIO_SYSTEM: 'true'
+      - run: npm run verify:audio-assets
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Start local-fallback preview
+        run: |
+          npx --workspace=pirate-fruit-client vite preview --port 4173 --strictPort --host 127.0.0.1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4173/ > /dev/null && break
+            sleep 1
+          done
+      - run: node scripts/audio-browser-smoke.mjs

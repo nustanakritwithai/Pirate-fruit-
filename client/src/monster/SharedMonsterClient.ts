@@ -73,6 +73,12 @@ export class SharedMonsterClient implements Updatable {
     return this.monsters.size;
   }
 
+  /** Read-only presentation hook for spatial audio/effects; never exposes a mutable group. */
+  positionOf(spawnId: string): { x: number; y: number; z: number } | undefined {
+    const position = this.monsters.get(spawnId)?.group.position;
+    return position ? { x: position.x, y: position.y, z: position.z } : undefined;
+  }
+
   /** ผู้เล่นเราย้ายเกาะ → ล้างมอนสเตอร์เกาะเก่า (Server จะ seed snapshot เกาะใหม่) */
   setIsland(islandId: string): void {
     if (islandId === this.currentIslandId) return;

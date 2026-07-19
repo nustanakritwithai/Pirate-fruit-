@@ -205,6 +205,16 @@ npm test          # logic + progression/quest integration tests
 npm run preview   # เสิร์ฟไฟล์ที่ build แล้ว
 ```
 
+## Audio Phase A1 (opt-in)
+
+ระบบเสียงกลางอยู่หลัง client feature flag และค่าเริ่มต้นต้องปิดเสมอ:
+
+```bash
+VITE_ENABLE_AUDIO_SYSTEM=false
+```
+
+เมื่อเปิดใน staging ระบบจะรอ gesture แรกก่อนสร้าง `AudioContext` หรือโหลดเพลง, สลับเพลงเกาะ/เดินเรือแบบ crossfade, ใช้ procedural SFX fallback และเก็บ volume/mute แยกใน localStorage โดยไม่แตะ local/remote gameplay save ดูสถาปัตยกรรมและขั้นตอนทดสอบที่ `docs/AUDIO_SYSTEM.md` และ `docs/OPERATIONS_RUNBOOK.md` ห้ามเปิด flag บน Render production โดยไม่มีการอนุมัติ
+
 ## Deploy ขึ้น Render
 
 เกมเดิมทำงานเป็น Static Site แยกที่

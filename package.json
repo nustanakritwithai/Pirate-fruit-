@@ -31,7 +31,8 @@
     "test:database": "npm run test --workspace=pirate-fruit-server -- src/persistence/postgres.integration.test.ts",
     "test:server": "npm run test --workspace=pirate-fruit-server",
     "test:shared": "npm run build --workspace=@pirate-fruit/shared && npm run typecheck --workspace=@pirate-fruit/shared",
-    "test:extended": "npm run test:extended --workspace=pirate-fruit-client"
+    "test:extended": "npm run test:extended --workspace=pirate-fruit-client",
+    "verify:audio-assets": "node scripts/verify-audio-assets.mjs"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

@@ -48,6 +48,10 @@ export interface MonsterCallbacks {
   modifyIncomingDamage?: (attack: IncomingAttack) => number;
   /** แจ้งเมื่อมอนสเตอร์โดนดาเมจ (ไว้โชว์ตัวเลขดาเมจ) */
   onMonsterDamaged?: (monster: Monster, amount: number) => void;
+  /** Presentation-only hook. Consumers may play audio but must not mutate authority state. */
+  onMonsterAudioEvent?: (event: 'aggro' | 'attack' | 'respawn', monster: Monster) => void;
+  /** Read-only boss music hook derived from the existing boss engagement decision. */
+  onBossAudioState?: (active: boolean) => void;
   /** hook สำหรับระบบรางวัล (EXP/เงิน) ใน Phase 6 */
   onRewardContribution?: (
     monster: Monster,
@@ -70,6 +74,7 @@ export class MonsterManager {
   private readonly bossBar = new BossBar();
   private readonly rand = mulberry32(20260712);
   private readonly tmp = new THREE.Vector2();
+  private bossAudioActive = false;
 
   constructor(
     private scene: THREE.Scene,
@@ -263,6 +268,7 @@ export class MonsterManager {
           monster.respawnTimer -= dt;
           if (monster.respawnTimer <= 0) {
             monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
+            this.callbacks.onMonsterAudioEvent?.('respawn', monster);
             monster.group.visible = false;
           }
         }
@@ -280,6 +286,7 @@ export class MonsterManager {
         monster.respawnTimer -= dt;
         if (finishedDeath && monster.respawnTimer <= 0) {
           monster.respawn(this.collision.heightAt(monster.home.x, monster.home.y));
+          this.callbacks.onMonsterAudioEvent?.('respawn', monster);
         }
         continue;
       }
@@ -332,6 +339,7 @@ export class MonsterManager {
           monster.attackCooldown = type.attackCooldown * 1.25;
           const heavy = type.heavyAttack!;
           monster.playAttackAnimation(true);
+          this.callbacks.onMonsterAudioEvent?.('attack', monster);
           // ปล่อยท่า: โดนเฉพาะถ้าผู้เล่นยังอยู่ในระยะ (หลบทัน = พลาด)
           if (engageable && distToPlayer <= type.attackRange * 1.6) {
             this.damagePlayer({
@@ -349,6 +357,8 @@ export class MonsterManager {
 
       if (engageable && distToPlayer < type.aggroRange && !monster.returningHome) {
         // ---------- ไล่/โจมตีผู้เล่น ----------
+        const newlyAggro = monster.state !== 'attack' && monster.state !== 'chase';
+        if (newlyAggro) this.callbacks.onMonsterAudioEvent?.('aggro', monster);
         this.faceTo(monster, dx, dz, dt);
         if (distToPlayer <= type.attackRange) {
           monster.state = 'attack';
@@ -362,6 +372,7 @@ export class MonsterManager {
               monster.attackCooldown = type.attackCooldown;
               monster.attackCount++;
               monster.playAttackAnimation(false);
+              this.callbacks.onMonsterAudioEvent?.('attack', monster);
               this.damagePlayer({
                 amount: type.damage,
                 unblockable: false,
@@ -399,7 +410,12 @@ export class MonsterManager {
 
     if (expiredCrew.length > 0) this.despawnCrew(expiredCrew);
 
-    if (!engagedBoss || !engagedBoss.alive) this.bossBar.hide();
+    const nextBossAudioActive = Boolean(engagedBoss?.alive);
+    if (nextBossAudioActive !== this.bossAudioActive) {
+      this.bossAudioActive = nextBossAudioActive;
+      this.callbacks.onBossAudioState?.(nextBossAudioActive);
+    }
+    if (!nextBossAudioActive) this.bossBar.hide();
   }
 
   private damagePlayer(attack: IncomingAttack): void {

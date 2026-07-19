@@ -61,6 +61,12 @@ export class BoatWorldClient {
     this.rendered.set(snapshot.entityId, { boat, target: { ...snapshot, passengerIds: [...snapshot.passengerIds] } });
   }
 
+  /** Read-only presentation hook for spatial audio/effects. */
+  positionOf(entityId: string): { x: number; y: number; z: number } | undefined {
+    const position = this.rendered.get(entityId)?.boat.group.position;
+    return position ? { x: position.x, y: position.y, z: position.z } : undefined;
+  }
+
   markSunk(entityId: string): void {
     const rendered = this.rendered.get(entityId);
     if (!rendered) return;

@@ -63,6 +63,7 @@ await page.addInitScript(() => {
   });
 });
 const apiCalls = [];
+const audioRequests = [];
 const pageErrors = [];
 // S9: จับ WebSocket จริงจากหน้าเกม — ยืนยัน handshake + เฟรม economy push
 // S14: เก็บ payload ของ presence ด้วย เพื่อยืนยัน boatId เดินทางถึงหน้าเกม
@@ -97,6 +98,9 @@ page.on('response', (response) => {
     apiCalls.push(`${response.request().method()} ${new URL(response.url()).pathname} -> ${response.status()}`);
   }
 });
+page.on('request', (request) => {
+  if (/\.mp3(?:\?|$)/i.test(request.url())) audioRequests.push(request.url());
+});
 
 await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
@@ -117,6 +121,65 @@ await page
 
 // 2) รอเกมพร้อม แล้วบังคับ save จริงข้าม origin (POST save หรือ PUT checkpoint/cargo)
 await page.waitForFunction(() => Boolean(window.__boat), null, { timeout: 120_000 });
+
+// A1 audio: no music transfer before a gesture; gesture unlocks; state changes are
+// island -> sailing -> island without creating a second manager or replaying one event.
+if (process.env.SMOKE_EXPECT_AUDIO === 'true') {
+  if (audioRequests.length !== 0) {
+    fail('audio transferred before the first player gesture', { audioRequests });
+  }
+  const toggle = page.locator('.audio-toggle');
+  await toggle.waitFor({ state: 'visible', timeout: 10_000 });
+  await toggle.click();
+  await page.waitForFunction(() => window.__audio?.status === 'running', null, { timeout: 10_000 });
+  const audioDiag = await page.evaluate(async () => {
+    const audio = window.__audio;
+    if (!audio) return null;
+    const island = { dead: false, boss: false, combat: false, onBoat: false, onFoot: true, loading: false };
+    audio.setMusicObservation(island);
+    const first = audio.music.state;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    audio.setMusicObservation({ ...island, onBoat: true, onFoot: false });
+    const sailing = audio.music.state;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const firstEvent = audio.play('boat.cannon', { eventId: 'smoke-authoritative-event-1' });
+    const replay = audio.play('boat.cannon', { eventId: 'smoke-authoritative-event-1' });
+    audio.setMusicObservation(island);
+    const returned = audio.music.state;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { first, sailing, returned, firstEvent, replay, status: audio.status };
+  });
+  if (!audioDiag
+      || audioDiag.first !== 'island'
+      || audioDiag.sailing !== 'sailing'
+      || audioDiag.returned !== 'island'
+      || !audioDiag.firstEvent
+      || audioDiag.replay) {
+    fail('audio state transition or replay dedupe failed', { audioDiag, audioRequests, pageErrors });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileLayout = await page.evaluate(() => {
+    const toggle = document.querySelector('.audio-toggle')?.getBoundingClientRect();
+    if (!toggle) return { ok: false, reason: 'missing toggle' };
+    const visible = [...document.querySelectorAll(
+      '.tc-attack,.quest-tracker,.stats-open-button,.stats-panel-root,.inv-open-button,.inv-root,.hud',
+    )]
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const overlaps = visible.some((rect) => !(
+      toggle.right <= rect.left || toggle.left >= rect.right || toggle.bottom <= rect.top || toggle.top >= rect.bottom
+    ));
+    return {
+      ok: toggle.left >= 0 && toggle.top >= 0 && toggle.right <= innerWidth && toggle.bottom <= innerHeight && !overlaps,
+      toggle: { left: toggle.left, top: toggle.top, right: toggle.right, bottom: toggle.bottom },
+      overlaps,
+    };
+  });
+  if (!mobileLayout.ok) fail('mobile audio settings toggle overlaps gameplay HUD', { mobileLayout });
+  await page.setViewportSize({ width: 900, height: 480 });
+  await toggle.click();
+}
+
 await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
 try {
   await page.waitForResponse(
