@@ -190,7 +190,9 @@ export const SHARED_WORLD_SPAWNS: readonly SharedSpawnPoint[] = [
   { spawnId: 'starter-grunt-1', islandId: 'starter-island', monsterId: 'grunt', homeX: 24, homeZ: 8, patrolRadius: 5 },
   { spawnId: 'starter-grunt-2', islandId: 'starter-island', monsterId: 'grunt', homeX: 26, homeZ: 10, patrolRadius: 5 },
   { spawnId: 'starter-grunt-3', islandId: 'starter-island', monsterId: 'grunt', homeX: 22, homeZ: 12, patrolRadius: 5 },
-  { spawnId: 'starter-boss', islandId: 'starter-island', monsterId: 'boss', homeX: 24, homeZ: 4, patrolRadius: 3 },
+  // ย้ายบอสไปฝั่งเหนือของเกาะ (ห่างหมู่บ้านค้าขาย + คนละฝั่งกับกองปู/grunt ทางตะวันออก)
+  // เปลี่ยน spawnId เพื่อ seed ใหม่ที่จุดนี้ (ไม่ให้ restore ดึงตำแหน่งเดิม 24,4 กลับ)
+  { spawnId: 'starter-boss-north', islandId: 'starter-island', monsterId: 'boss', homeX: -14, homeZ: 30, patrolRadius: 3 },
   ...expandOuterIslandSpawns(),
 ];
 
