@@ -114,9 +114,11 @@ export class SharedMonsterClient implements Updatable {
       }
       monster.target.set(update.x, this.heightAt(update.x, update.z), update.z);
       monster.targetHeading = update.heading;
+      const wasHit = update.hp < monster.hp && update.state !== 'dead';
       monster.hp = update.hp;
       monster.state = update.state;
       monster.visual.applyAuthoritativeState(update.hp, monster.maxHp, renderState(update.state));
+      if (wasHit) monster.visual.playHitReaction();
     }
   }
 
@@ -211,7 +213,7 @@ export class SharedMonsterClient implements Updatable {
    * (player HP ยังเป็น client-side ในเฟสนี้ — Server เป็นเจ้าของแค่ตัวมอนสเตอร์)
    */
   collectPlayerDamage(playerPos: THREE.Vector3): number {
-    // Client-side final safety boundary: stale/replayed attack deltas can never hurt a shopper.
+    // Final client boundary: stale/replayed attack deltas cannot hurt a shopper.
     if (isWorldSafeZone(this.currentIslandId, playerPos.x, playerPos.z)) return 0;
     const now = this.now();
     let total = 0;
