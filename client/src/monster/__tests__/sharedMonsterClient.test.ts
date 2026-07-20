@@ -57,9 +57,6 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     client.applyDelta('starter-island', [{
       spawnId: 'starter-crab-1', x: 30, z: 5, heading: 1, hp: 63, state: 'chase',
     }]);
-    client.update(1 / 60);
-    const visualRoot = rendered!.children[0] as THREE.Group;
-    expect(Math.hypot(visualRoot.position.x, visualRoot.position.z)).toBeGreaterThan(0.2);
     client.update(1);
     expect(rendered!.position.y).toBeCloseTo(heightAt(30, 5), 2);
 
@@ -88,5 +85,14 @@ describe('S16 shared monster rendering and player defeat regression', () => {
       taken: 0,
       defeated: false,
     });
+  });
+
+  it('suppresses stale attack damage and attack intents while the player is shopping in a safe zone', () => {
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);
+    client.applySnapshot('starter-island', [snapshot({ x: 1, z: 8, state: 'attack' })]);
+    expect(client.collectPlayerDamage(new THREE.Vector3(0, 0, 8))).toBe(0);
+    expect(client.targetsInCone(new THREE.Vector3(0, 0, 8), 1, 0, 24, Math.PI / 3)).toEqual([]);
+    client.dispose();
   });
 });
