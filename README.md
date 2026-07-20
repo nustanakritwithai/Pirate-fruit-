@@ -215,6 +215,17 @@ VITE_ENABLE_AUDIO_SYSTEM=false
 
 เมื่อเปิดใน staging ระบบจะรอ gesture แรกก่อนสร้าง `AudioContext`, สังเคราะห์เพลงเกาะ/เดินเรือและ SFX ด้วย Web Audio โดยไม่โหลดไฟล์ MP3, และเก็บ volume/mute แยกใน localStorage โดยไม่แตะ local/remote gameplay save ตัวละคร มอนสเตอร์ เรือ อาคาร และเอฟเฟกต์ใช้ Three.js procedural visuals โดยไม่มี GLB ดูสถาปัตยกรรมและขั้นตอนทดสอบที่ `docs/AUDIO_SYSTEM.md` และ `docs/OPERATIONS_RUNBOOK.md` ห้ามเปิด flag บน Render production โดยไม่มีการอนุมัติ
 
+## O1 Guided Adventure (opt-in)
+
+ระบบนำทางผู้เล่นใหม่อยู่หลัง client feature flag และค่าเริ่มต้นปิด:
+
+```bash
+VITE_ENABLE_ONBOARDING=false
+```
+
+เมื่อเปิด ระบบจะโหลด JavaScript chunk ของบทสอนแบบ lazy หลังเข้าเกม แล้วแสดงบทสอน 18 ขั้นพร้อม waypoint ที่สร้างด้วย Three.js geometry, ปุ่มคู่มือ และหัวข้ออธิบายทุกระบบ ไม่มีไฟล์ภาพ เสียง texture หรือ GLB เพิ่ม และไม่แก้ combat/quest/economy/monster/boat authority ผู้เล่นใหม่หรือ Level 1–3 จะเริ่มอัตโนมัติ ส่วนผู้เล่นเดิมเปิดได้จากปุ่ม `❔ คู่มือ` ความคืบหน้าเก็บใน localStorage แยกจาก gameplay save ดูรายละเอียดที่ `docs/ONBOARDING_SYSTEM.md`
+
+
 ## Deploy ขึ้น Render
 
 เกมเดิมทำงานเป็น Static Site แยกที่
