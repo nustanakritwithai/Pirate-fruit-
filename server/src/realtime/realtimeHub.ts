@@ -10,6 +10,7 @@ import {
   type RealtimeBoatIntent,
   type BoatWorldSnapshot,
   isWorldSafeZone,
+  type RealtimeCombatRejectReason,
 } from '@pirate-fruit/shared';
 import { CombatAuthority, type AttackKind } from './combatAuthority.js';
 import type { PlayerView } from '../world/monsterSimulation.js';
@@ -57,6 +58,8 @@ export interface RealtimeSocket {
 }
 
 const OPEN = 1;
+/** Presentation interest only; PK/boat/world authority keeps its own server-side ranges. */
+const PRESENCE_INTEREST_RANGE = 240;
 
 export interface PresencePosition {
   islandId: string;
@@ -67,6 +70,8 @@ export interface PresencePosition {
   onBoat: boolean;
   /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
   boatId?: string;
+  locomotion?: 'idle' | 'walk' | 'run' | 'swim';
+  animation?: import('@pirate-fruit/shared').RealtimePlayerAnimation;
 }
 
 export interface RealtimeConnection {
@@ -79,6 +84,8 @@ export interface RealtimeConnection {
   /** S13: ตำแหน่งล่าสุดที่ผู้เล่นรายงาน (null = ยังไม่เคยส่ง move) */
   presence: PresencePosition | null;
   lastMoveAt: number;
+  /** Peers already seeded to this connection while inside presentation interest. */
+  visiblePeerIds: Set<string>;
 }
 
 export interface RealtimeHubLogger {
@@ -108,7 +115,51 @@ function readPosition(message: Record<string, unknown>): PresencePosition | null
   const boatId = onBoat && typeof message.boatId === 'string' && message.boatId.length <= 128
     ? message.boatId
     : undefined;
-  return { islandId, x, y, z, heading, onBoat, boatId };
+  const locomotion = message.locomotion === 'walk' || message.locomotion === 'run'
+    || message.locomotion === 'swim' ? message.locomotion : 'idle';
+  const animation = readPlayerAnimation(message.animation);
+  return { islandId, x, y, z, heading, onBoat, boatId, locomotion, animation };
+}
+
+function readPlayerAnimation(value: unknown): import('@pirate-fruit/shared').RealtimePlayerAnimation | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const input = value as Record<string, unknown>;
+  const combatStates = new Set(['idle', 'attack1', 'attack2', 'attack3', 'attack4', 'casting',
+    'blocking', 'stunned', 'knockback', 'knockdown', 'dead']);
+  const categories = new Set(['style', 'sword', 'gun', 'fruit', 'utility']);
+  const skillTypes = new Set(['projectile', 'beam', 'aoe', 'ground', 'dash', 'flurry', 'buff',
+    'summon', 'homing', 'teleport']);
+  if (typeof input.combatState !== 'string' || !combatStates.has(input.combatState)
+    || typeof input.category !== 'string' || !categories.has(input.category)) return undefined;
+  const finite = (field: string, fallback = 0) => {
+    const number = input[field];
+    return typeof number === 'number' && Number.isFinite(number) ? number : fallback;
+  };
+  const progress = (field: string) => THREEClamp(finite(field, 1), 0, 1);
+  const skillAnimationType = typeof input.skillAnimationType === 'string'
+    && skillTypes.has(input.skillAnimationType) ? input.skillAnimationType : undefined;
+  const skillAnimationCategory = typeof input.skillAnimationCategory === 'string'
+    && categories.has(input.skillAnimationCategory) ? input.skillAnimationCategory : undefined;
+  return {
+    combatState: input.combatState as import('@pirate-fruit/shared').RealtimePlayerAnimation['combatState'],
+    category: input.category as import('@pirate-fruit/shared').RealtimePlayerAnimation['category'],
+    onGround: input.onGround === true,
+    dashing: input.dashing === true,
+    verticalVelocity: Math.max(-100, Math.min(100, finite('verticalVelocity'))),
+    attackProgress: progress('attackProgress'),
+    hitReactionId: Math.max(0, Math.floor(finite('hitReactionId'))),
+    hitReactionAngle: Math.max(-Math.PI, Math.min(Math.PI, finite('hitReactionAngle'))),
+    skillAnimationProgress: progress('skillAnimationProgress'),
+    skillAnimationReleaseProgress: progress('skillAnimationReleaseProgress'),
+    skillAnimationType: skillAnimationType as import('@pirate-fruit/shared').RealtimePlayerAnimation['skillAnimationType'],
+    skillAnimationVariant: Math.max(0, Math.min(16, Math.floor(finite('skillAnimationVariant')))),
+    skillAnimationUltimate: input.skillAnimationUltimate === true,
+    skillAnimationCategory: skillAnimationCategory as import('@pirate-fruit/shared').RealtimePlayerAnimation['skillAnimationCategory'],
+  };
+}
+
+function THREEClamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage {
@@ -125,7 +176,25 @@ function presenceMessage(connection: RealtimeConnection): RealtimeServerMessage 
     heading: presence.heading,
     onBoat: presence.onBoat,
     boatId: presence.boatId,
+    locomotion: presence.onBoat ? 'idle' : presence.locomotion ?? 'idle',
+    animation: presence.onBoat ? undefined : presence.animation,
+    // Presentation-only default. A future profile/loadout service can replace
+    // these fields without changing movement or combat authority.
+    appearance: {
+      schemaVersion: 1,
+      avatarId: 'pirate-v1',
+      clothingIds: [],
+      equipmentIds: [],
+    },
   };
+}
+
+function presenceWithinInterest(a: PresencePosition, b: PresencePosition): boolean {
+  if (a.islandId !== b.islandId) return false;
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz <= PRESENCE_INTEREST_RANGE * PRESENCE_INTEREST_RANGE;
 }
 
 /**
@@ -178,6 +247,7 @@ export class RealtimeHub {
       lastSeenAt: this.now(),
       presence: null,
       lastMoveAt: 0,
+      visiblePeerIds: new Set(),
     };
     this.connections.add(connection);
     if (this.pvpEnabled) this.combat.ensure(characterId);
@@ -202,6 +272,7 @@ export class RealtimeHub {
       this.combat.remove(connection.characterId);
     }
     if (!this.hasCharacter(connection.characterId)) this.boatWorld?.removePlayer(connection.characterId);
+    for (const other of this.connections) other.visiblePeerIds.delete(connection.characterId);
   }
 
   private hasCharacter(characterId: string): boolean {
@@ -263,11 +334,7 @@ export class RealtimeHub {
       };
       if (firstMove) {
         this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
-        for (const other of this.connections) {
-          if (other === connection || other.presence?.islandId !== aboard.islandId) continue;
-          this.sendTo(connection, presenceMessage(other));
-          this.sendTo(other, presenceMessage(connection));
-        }
+        this.relayPresence(connection);
       }
       return;
     }
@@ -293,11 +360,6 @@ export class RealtimeHub {
 
     // ผู้เล่นคนนี้เพิ่งปรากฏ/เพิ่งย้ายเกาะ → ส่ง presence ของคนอื่นบนเกาะให้เห็นทันที
     if (firstMove || islandChanged) {
-      for (const other of this.connections) {
-        if (other === connection || !other.presence) continue;
-        if (other.presence.islandId !== position.islandId) continue;
-        this.sendTo(connection, presenceMessage(other));
-      }
       // S16: และ seed มอนสเตอร์กลางของเกาะนี้ (full snapshot) ให้ผู้เล่นที่เพิ่งเข้ามา
       if (this.worldMonsters) {
         this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(position.islandId));
@@ -306,11 +368,33 @@ export class RealtimeHub {
         this.sendTo(connection, this.boatWorld.snapshotMessageForIsland(position.islandId));
       }
     }
-    // และ broadcast ตำแหน่งของคนนี้ให้คนอื่นบนเกาะเดียวกัน
+    this.relayPresence(connection);
+  }
+
+  /**
+   * Broadcast the mover and seed the reverse direction once when a pair enters
+   * interest. Without the reverse seed, a stationary player can see the mover
+   * while the mover never sees the stationary player until another island sync.
+   */
+  private relayPresence(connection: RealtimeConnection): void {
+    if (!connection.presence) return;
     for (const other of this.connections) {
       if (other === connection || !other.presence) continue;
-      if (other.presence.islandId !== position.islandId) continue;
+      if (!presenceWithinInterest(connection.presence, other.presence)) {
+        if (connection.visiblePeerIds.delete(other.characterId)) {
+          this.sendTo(connection, { type: 'presence-leave', seq: 0, playerId: other.characterId });
+        }
+        if (other.visiblePeerIds.delete(connection.characterId)) {
+          this.sendTo(other, { type: 'presence-leave', seq: 0, playerId: connection.characterId });
+        }
+        continue;
+      }
+      if (!connection.visiblePeerIds.has(other.characterId)) {
+        this.sendTo(connection, presenceMessage(other));
+        connection.visiblePeerIds.add(other.characterId);
+      }
       this.sendTo(other, presenceMessage(connection));
+      other.visiblePeerIds.add(connection.characterId);
     }
   }
 
@@ -324,21 +408,36 @@ export class RealtimeHub {
 
   /** S15: รับเจตนาโจมตี → Server ตัดสินระยะ/คูลดาวน์/ดาเมจเอง แล้ว broadcast ผล */
   private handleAttack(connection: RealtimeConnection, message: Record<string, unknown>): void {
-    if (!this.pvpEnabled) return; // ปิด flag = เพิกเฉย (ไม่ถือเป็น violation)
     const targetId = message.targetId;
     if (typeof targetId !== 'string' || targetId.length === 0 || targetId.length > 128) {
       this.drop(connection, 1008, 'invalid attack payload');
+      return;
+    }
+    // Missing intentId remains compatible with clients deployed before this acknowledgement.
+    const intentId = typeof message.intentId === 'string' && message.intentId.length <= 128
+      ? message.intentId
+      : 'legacy';
+    const reject = (reason: RealtimeCombatRejectReason) => {
+      this.sendTo(connection, {
+        type: 'combat-result', seq: 0, intentId, targetId, accepted: false, reason,
+      });
+    };
+    if (!this.pvpEnabled) {
+      reject('pvp-disabled');
       return;
     }
     const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
     const attackerPos = connection.presence;
     const targetPos = this.presenceOfCharacter(targetId);
     // ต้องอยู่เกาะเดียวกัน (range check เป็นเรขาคณิตล้วน — กันพิกัดชนกันข้ามเกาะ)
-    if (!attackerPos || !targetPos || attackerPos.islandId !== targetPos.islandId) return;
-    // เมือง/จุดเกิด/ร้านค้าเป็นเขตพักจริง: ป้องกันทั้งคนข้างในและห้ามยิงออกจากเขต
-    if (isWorldSafeZone(attackerPos.islandId, attackerPos.x, attackerPos.z)
-      || isWorldSafeZone(targetPos.islandId, targetPos.x, targetPos.z)) return;
-    const resolution = this.combat.resolveAttack(
+    if (!attackerPos) return reject('presence-required');
+    if (!targetPos) return reject('target-unavailable');
+    if (attackerPos.islandId !== targetPos.islandId) return reject('different-island');
+    if (
+      isWorldSafeZone(attackerPos.islandId, attackerPos.x, attackerPos.z)
+      || isWorldSafeZone(targetPos.islandId, targetPos.x, targetPos.z)
+    ) return reject('target-unavailable');
+    const decision = this.combat.resolveAttackDetailed(
       this.now(),
       connection.characterId,
       attackerPos,
@@ -346,7 +445,11 @@ export class RealtimeHub {
       targetPos,
       kind,
     );
-    if (!resolution) return;
+    if (!decision.accepted) return reject(decision.reason);
+    const resolution = decision.resolution;
+    this.sendTo(connection, {
+      type: 'combat-result', seq: 0, intentId, targetId, accepted: true,
+    });
     const islandId = targetPos.islandId;
     this.broadcastToIsland(islandId, {
       type: 'combat-hit',
@@ -432,7 +535,7 @@ export class RealtimeHub {
       if (connection.characterId !== characterId) continue;
       connection.presence = { islandId, x, y: 0, z, heading, onBoat: true, boatId: definitionId };
       for (const other of this.connections) {
-        if (other === connection || other.presence?.islandId !== islandId) continue;
+        if (other === connection || !other.presence || !presenceWithinInterest(connection.presence, other.presence)) continue;
         this.sendTo(other, presenceMessage(connection));
       }
     }
