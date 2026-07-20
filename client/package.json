@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/verify-procedural-budget.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:extended": "LIVING_ECONOMY_EXTENDED=1 vitest run src/trade/living/__tests__/livingEconomyCoreExtended.test.ts",

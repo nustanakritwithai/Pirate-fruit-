@@ -13,6 +13,7 @@ export class IslandManager {
   private bannerTimer = 0;
   private readonly banner: HTMLDivElement;
   private readonly detailProgress = new Map<IslandId, number>();
+  private readonly detailRootIdentity = new Map<IslandId, Object3D>();
 
   constructor(
     private controller: CharacterController,
@@ -24,6 +25,7 @@ export class IslandManager {
       root.visible = false;
       root.children.forEach((child) => { child.visible = false; });
       this.detailProgress.set(islandId, 0);
+      this.detailRootIdentity.set(islandId, root);
     }
     this.banner = document.createElement('div');
     this.banner.className = 'island-arrival-banner';
@@ -43,7 +45,17 @@ export class IslandManager {
     const position = this.controller.position;
     for (const island of ISLANDS) {
       const root = this.detailRoots.get(island.id);
-      if (!root) continue;
+      if (!root) {
+        this.detailProgress.delete(island.id);
+        this.detailRootIdentity.delete(island.id);
+        continue;
+      }
+      if (this.detailRootIdentity.get(island.id) !== root) {
+        root.visible = false;
+        root.children.forEach((child) => { child.visible = false; });
+        this.detailProgress.set(island.id, 0);
+        this.detailRootIdentity.set(island.id, root);
+      }
       const nearIsland = Math.hypot(position.x - island.center.x, position.z - island.center.z)
         <= DETAIL_VISIBLE_DISTANCE;
       if (!nearIsland) {

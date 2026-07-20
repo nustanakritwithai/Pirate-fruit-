@@ -31,18 +31,35 @@ export type DynamicGroundProvider = (x: number, z: number) => number | null;
  * - พื้นเคลื่อนที่: provider แบบถอดเข้า-ออกได้ (ดาดฟ้าเรือขณะแล่น)
  */
 export class CollisionSystem {
-  private colliders: CircleCollider[] = [];
-  private platforms: PlatformCollider[] = [];
+  private colliders: Array<{ value: CircleCollider; scope: string | null }> = [];
+  private platforms: Array<{ value: PlatformCollider; scope: string | null }> = [];
   private dynamicGrounds: DynamicGroundProvider[] = [];
+  private activeScope: string | null = null;
 
   constructor(private readonly terrainHeightAt: (x: number, z: number) => number) {}
 
   addCollider(c: CircleCollider): void {
-    this.colliders.push(c);
+    this.colliders.push({ value: c, scope: this.activeScope });
   }
 
   addPlatform(platform: PlatformCollider): void {
-    this.platforms.push(platform);
+    this.platforms.push({ value: platform, scope: this.activeScope });
+  }
+
+  /** Group static colliders created by a streamed island so they can be removed together. */
+  runInScope<T>(scope: string, build: () => T): T {
+    const previous = this.activeScope;
+    this.activeScope = scope;
+    try {
+      return build();
+    } finally {
+      this.activeScope = previous;
+    }
+  }
+
+  removeScope(scope: string): void {
+    this.colliders = this.colliders.filter((entry) => entry.scope !== scope);
+    this.platforms = this.platforms.filter((entry) => entry.scope !== scope);
   }
 
   addDynamicGround(provider: DynamicGroundProvider): void {
@@ -57,7 +74,8 @@ export class CollisionSystem {
   /** คืนพื้นสูงสุด ณ จุดนั้น รวมพื้นเกาะ สิ่งปลูกสร้าง และพื้นเคลื่อนที่ (ดาดฟ้าเรือ) */
   heightAt(x: number, z: number): number {
     let height = this.terrainHeightAt(x, z);
-    for (const platform of this.platforms) {
+    for (const entry of this.platforms) {
+      const platform = entry.value;
       if (
         x >= platform.minX &&
         x <= platform.maxX &&
@@ -76,7 +94,8 @@ export class CollisionSystem {
 
   /** ดันตำแหน่งผู้เล่นออกจากสิ่งกีดขวางทั้งหมด (แก้ไข position ตรงๆ) */
   resolveObstacles(position: THREE.Vector3): void {
-    for (const c of this.colliders) {
+    for (const entry of this.colliders) {
+      const c = entry.value;
       // ไม่ชนถ้าอยู่คนละช่วงความสูง (เช่นกระโดดข้ามหินเตี้ยๆ)
       if (position.y >= c.maxY || position.y + PLAYER_HEIGHT <= c.minY) continue;
 

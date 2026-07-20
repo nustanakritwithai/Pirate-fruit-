@@ -5,11 +5,6 @@ import { scatterProps } from './props';
 import type { WorldTextures } from './textures';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { buildStarterIsland } from '../island/StarterIsland';
-import { buildMistJungleIsland } from '../island/MistJungleIsland';
-import { buildSunscarDesertIsland } from '../island/SunscarDesertIsland';
-import { buildAzureFrostIsland } from '../island/AzureFrostIsland';
-import { buildTempestSkyIsland } from '../island/TempestSkyIsland';
-import { buildEmberVolcanoIsland } from '../island/EmberVolcanoIsland';
 import {
   ISLANDS,
   STARTER_ISLAND_RADIUS,
@@ -19,12 +14,36 @@ import type { IslandDefinition, IslandId } from '../island/IslandTypes';
 import { Ocean, SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 import { CloudLayer } from './CloudLayer';
 import { DayNightCycle } from './DayNightCycle';
+import { islandStreamingAction } from './IslandStreamingPolicy';
 
 export const ISLAND_RADIUS = STARTER_ISLAND_RADIUS;
 export { WATER_LEVEL };
 
-/** จำนวนรอบ tiling ของ texture พื้นบนเกาะ */
+/** จำนวนรอบ tiling ของ procedural micro-surface บนเกาะ */
 const TERRAIN_TILE = 34;
+type StreamedIslandId = Exclude<IslandId, 'starter-island'>;
+type IslandBuilder = (
+  scene: THREE.Scene,
+  collision: CollisionSystem,
+  textures: WorldTextures,
+  graphics: GraphicsProfile,
+  nightMaterial: THREE.MeshStandardMaterial,
+  nightLights: THREE.PointLight[],
+) => { root: THREE.Group };
+
+const STREAMED_ISLAND_BUILDERS: Record<StreamedIslandId, () => Promise<IslandBuilder>> = {
+  'mist-jungle': () => import('../island/MistJungleIsland').then((module) => module.buildMistJungleIsland),
+  'sunscar-desert': () => import('../island/SunscarDesertIsland').then((module) => module.buildSunscarDesertIsland),
+  'azure-frost': () => import('../island/AzureFrostIsland').then((module) => module.buildAzureFrostIsland),
+  'tempest-sky': () => import('../island/TempestSkyIsland').then((module) => module.buildTempestSkyIsland),
+  'ember-volcano': () => import('../island/EmberVolcanoIsland').then((module) => module.buildEmberVolcanoIsland),
+};
+
+interface StreamedIsland {
+  terrain: THREE.Mesh;
+  root: THREE.Group;
+  nightLights: THREE.PointLight[];
+}
 
 /**
  * ความสูงของพื้นเกาะที่จุด (x, z) — เป็นสูตรล้วนๆ จึงใช้ร่วมกัน
@@ -46,10 +65,14 @@ export class World {
   readonly islandDetailRoots = new Map<IslandId, THREE.Object3D>();
   private readonly ocean: Ocean;
   private readonly clouds: CloudLayer;
+  private readonly streamedIslands = new Map<StreamedIslandId, StreamedIsland>();
+  private readonly pendingIslands = new Set<StreamedIslandId>();
+  private readonly nightMaterial: THREE.MeshStandardMaterial;
+  private readonly nightLights: THREE.PointLight[];
   private focusProvider: (() => { x: number; z: number }) | null = null;
 
   constructor(
-    scene: THREE.Scene,
+    private readonly scene: THREE.Scene,
     renderer: THREE.WebGLRenderer,
     private textures: WorldTextures,
     private graphics: GraphicsProfile,
@@ -111,46 +134,19 @@ export class World {
     scene.add(hemisphere);
 
     // ---------- พื้นเกาะ + ทะเล ----------
-    for (const island of ISLANDS) scene.add(this.buildTerrain(island));
+    // เกาะเริ่มต้นพร้อมทันที ส่วนเกาะอื่นจะโหลด code/geometry เมื่อผู้เล่นเข้าใกล้
+    const starterDefinition = ISLANDS.find((island) => island.id === 'starter-island')!;
+    scene.add(this.buildTerrain(starterDefinition));
     this.ocean = new Ocean(textures.waterNormal, graphics);
     scene.add(this.ocean.mesh);
 
     // ---------- สถานที่หลัก หมู่บ้าน ท่าเรือ หาดฝึก ----------
     const starterIsland = buildStarterIsland(scene, this.collision, textures, graphics);
+    this.nightMaterial = starterIsland.nightMaterial;
+    this.nightLights = starterIsland.nightLights;
 
     // ---------- ธรรมชาติแบบ instancing ----------
     scatterProps(scene, this.collision, heightAt, ISLAND_RADIUS, textures, graphics);
-
-    // ---------- เกาะที่สอง: ป่าดิบชื้น ซากวิหาร และท่าเรือฝั่งตะวันตก ----------
-    const mistJungle = buildMistJungleIsland(
-      scene,
-      this.collision,
-      textures,
-      graphics,
-      starterIsland.nightMaterial,
-      starterIsland.nightLights,
-    );
-    this.islandDetailRoots.set('mist-jungle', mistJungle.root);
-
-    // ---------- เกาะที่สาม: ทะเลทราย เมืองคาราวาน โอเอซิส และพีระมิด ----------
-    const sunscarDesert = buildSunscarDesertIsland(
-      scene,
-      this.collision,
-      textures,
-      graphics,
-      starterIsland.nightMaterial,
-      starterIsland.nightLights,
-    );
-    this.islandDetailRoots.set('sunscar-desert', sunscarDesert.root);
-
-    const azureFrost = buildAzureFrostIsland(scene, this.collision, textures, graphics, starterIsland.nightMaterial, starterIsland.nightLights);
-    this.islandDetailRoots.set('azure-frost', azureFrost.root);
-
-    const tempestSky = buildTempestSkyIsland(scene, this.collision, textures, graphics, starterIsland.nightMaterial, starterIsland.nightLights);
-    this.islandDetailRoots.set('tempest-sky', tempestSky.root);
-
-    const emberVolcano = buildEmberVolcanoIsland(scene, this.collision, textures, graphics, starterIsland.nightMaterial, starterIsland.nightLights);
-    this.islandDetailRoots.set('ember-volcano', emberVolcano.root);
 
     this.clouds = new CloudLayer(graphics);
     scene.add(this.clouds.mesh);
@@ -163,6 +159,7 @@ export class World {
       starterIsland.nightMaterial,
       starterIsland.nightLights,
     );
+
   }
 
   get timeOfDay(): number {
@@ -181,8 +178,93 @@ export class World {
     this.ocean.update(dt);
     this.clouds.update(dt);
     const focus = this.focusProvider?.();
-    if (focus) this.dayNight.setFocus(focus.x, focus.z);
+    if (focus) {
+      this.dayNight.setFocus(focus.x, focus.z);
+      this.updateIslandStreaming(focus.x, focus.z);
+    }
     this.dayNight.update(dt);
+  }
+
+  private updateIslandStreaming(x: number, z: number): void {
+    for (const island of ISLANDS) {
+      if (island.id === 'starter-island') continue;
+      const id = island.id as StreamedIslandId;
+      const distance = Math.hypot(x - island.center.x, z - island.center.z);
+      const action = islandStreamingAction(
+        distance,
+        this.streamedIslands.has(id),
+        this.pendingIslands.has(id),
+      );
+      if (action === 'load') {
+        this.loadIsland(id, island);
+      } else if (action === 'unload') {
+        this.unloadIsland(id);
+      }
+    }
+  }
+
+  private loadIsland(id: StreamedIslandId, definition: IslandDefinition): void {
+    if (this.streamedIslands.has(id) || this.pendingIslands.has(id)) return;
+    this.pendingIslands.add(id);
+    const collisionScope = `island:${id}`;
+
+    void STREAMED_ISLAND_BUILDERS[id]().then((build) => {
+      const terrain = this.buildTerrain(definition);
+      this.scene.add(terrain);
+      const lightStart = this.nightLights.length;
+      const result = this.collision.runInScope(collisionScope, () => build(
+        this.scene,
+        this.collision,
+        this.textures,
+        this.graphics,
+        this.nightMaterial,
+        this.nightLights,
+      ));
+      const addedLights = this.nightLights.slice(lightStart);
+      result.root.visible = false;
+      result.root.children.forEach((child) => { child.visible = false; });
+      this.islandDetailRoots.set(id, result.root);
+      this.streamedIslands.set(id, { terrain, root: result.root, nightLights: addedLights });
+    }).catch((error: unknown) => {
+      this.collision.removeScope(collisionScope);
+      console.warn(`[World] procedural island ${id} failed to load`, error);
+    }).finally(() => {
+      this.pendingIslands.delete(id);
+    });
+  }
+
+  private unloadIsland(id: StreamedIslandId): void {
+    const loaded = this.streamedIslands.get(id);
+    if (!loaded) return;
+    loaded.root.removeFromParent();
+    loaded.terrain.removeFromParent();
+    this.disposeObjectTree(loaded.root);
+    loaded.terrain.geometry.dispose();
+    (loaded.terrain.material as THREE.Material).dispose();
+    for (const light of loaded.nightLights) {
+      const index = this.nightLights.indexOf(light);
+      if (index >= 0) this.nightLights.splice(index, 1);
+    }
+    this.collision.removeScope(`island:${id}`);
+    this.islandDetailRoots.delete(id);
+    this.streamedIslands.delete(id);
+  }
+
+  private disposeObjectTree(root: THREE.Object3D): void {
+    const sharedTextures = new Set<THREE.Texture>(Object.values(this.textures));
+    root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        if (!material || material === this.nightMaterial) continue;
+        for (const value of Object.values(material)) {
+          if (value instanceof THREE.Texture && !sharedTextures.has(value)) value.dispose();
+        }
+        material.dispose();
+      }
+    });
   }
 
   // ------------------------------------------------------------------
@@ -225,7 +307,7 @@ export class World {
     const t = this.textures;
     for (const tex of [t.grassColor, t.grassNormal]) tex.repeat.set(TERRAIN_TILE, TERRAIN_TILE);
     const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
+      color: 0x66a45b,
       map: t.grassColor,
       normalMap: t.grassNormal,
       roughness: 1,
