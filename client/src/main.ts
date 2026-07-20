@@ -78,6 +78,7 @@ import {
   AudioSettingsUI,
   createAudioManager,
 } from './audio';
+import type { OnboardingDirector } from './onboarding/OnboardingDirector';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -86,6 +87,7 @@ async function main(): Promise<void> {
   // inert: AudioContext and music requests begin only after the first explicit player gesture.
   const audio = createAudioManager();
   let audioBridge: AudioRuntimeBridge | null = null;
+  let onboarding: OnboardingDirector | null = null;
   if (audio.enabled) {
     audio.bindAutoplayUnlock(document);
     audio.bindUiSounds(document);
@@ -884,6 +886,42 @@ async function main(): Promise<void> {
   audioBridge = new AudioRuntimeBridge({ audio, controller, boats: boatManager, combat: playerCombat });
   game.add(audioBridge);
   (window as unknown as { __audio?: typeof audio }).__audio = audio;
+
+  const onboardingEnabled = import.meta.env.VITE_ENABLE_ONBOARDING === 'true'
+    || import.meta.env.VITE_ENABLE_ONBOARDING === '1';
+  if (onboardingEnabled) {
+    // Keep the guide out of the initial bundle/request path when the production flag is off.
+    const { OnboardingDirector } = await import('./onboarding/OnboardingDirector');
+    onboarding = new OnboardingDirector({
+      scene: game.scene,
+      storage: persistence.storage,
+      autoStart: progression.level <= 3,
+      heightAt: (x, z) => world.collision.heightAt(x, z),
+      snapshot: () => {
+        const boat = boatManager.activeBoat;
+        return {
+          x: controller.position.x,
+          y: controller.position.y,
+          z: controller.position.z,
+          groundY: world.collision.heightAt(controller.position.x, controller.position.z),
+          cameraYaw: camera.yaw,
+          dashCooldownFraction: controller.dashCooldownFraction,
+          islandId: islandManager.activeIsland,
+          activeQuest: questManager.getActiveQuest() !== null,
+          boatActive: boat !== null,
+          boatRiderState: boatManager.riderState,
+          boatX: boat?.group.position.x ?? null,
+          boatZ: boat?.group.position.z ?? null,
+        };
+      },
+    });
+    progression.events.on('monster:killed', () => onboarding?.signal('monster-killed'));
+    progression.events.on('quest:accepted', () => onboarding?.signal('quest-accepted'));
+    progression.events.on('quest:completed', () => onboarding?.signal('quest-completed'));
+    progression.events.on('trade:completed', () => onboarding?.signal('trade-completed'));
+    game.add(onboarding);
+    (window as unknown as { __onboarding?: OnboardingDirector }).__onboarding = onboarding;
+  }
 
   game.add(world);
   game.add(islandManager);
