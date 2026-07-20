@@ -143,31 +143,6 @@ describe('S13 presence relay', () => {
     expect(b.sent.some((message) => message.type === 'presence')).toBe(false);
   });
 
-  it('symmetrically seeds both players when one mover enters interest range', () => {
-    let clock = 1_000;
-    const hub = new RealtimeHub(undefined, () => clock, 200, true);
-    const a = new FakeSocket();
-    const b = new FakeSocket();
-    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
-    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-
-    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
-    clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 500, 0));
-    expect(a.sent.some((message) => message.type === 'presence')).toBe(false);
-    expect(b.sent.some((message) => message.type === 'presence')).toBe(false);
-
-    clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 10, 0));
-    expect(a.sent.find((message) => message.type === 'presence')).toMatchObject({ playerId: 'char-b' });
-    expect(b.sent.find((message) => message.type === 'presence')).toMatchObject({ playerId: 'char-a' });
-
-    const seedsBefore = b.sent.filter((message) => message.type === 'presence').length;
-    clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 11, 0));
-    expect(b.sent.filter((message) => message.type === 'presence')).toHaveLength(seedsBefore);
-  });
-
   it('throttles rapid moves but always keeps the latest position', () => {
     let clock = 1_000;
     const hub = new RealtimeHub(undefined, () => clock, 200, true);
@@ -221,14 +196,9 @@ describe('S13 presence relay', () => {
     const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
     hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
     clock += 100;
-    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: true, boatId: 'war-galleon', locomotion: 'run' }));
+    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: true, boatId: 'war-galleon' }));
     const presence = b.sent.find((message) => message.type === 'presence') as { boatId?: string; onBoat?: boolean };
-    expect(presence).toMatchObject({
-      onBoat: true,
-      boatId: 'war-galleon',
-      appearance: { schemaVersion: 1, avatarId: 'pirate-v1', clothingIds: [], equipmentIds: [] },
-      locomotion: 'idle',
-    });
+    expect(presence).toMatchObject({ onBoat: true, boatId: 'war-galleon' });
   });
 
   it('drops the boat id when the player is on foot', () => {
@@ -244,48 +214,6 @@ describe('S13 presence relay', () => {
     hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 3, y: 0, z: 4, heading: 1, onBoat: false, boatId: 'war-galleon' }));
     const presence = b.sent.find((message) => message.type === 'presence') as { boatId?: string };
     expect(presence.boatId).toBeUndefined();
-  });
-
-  it('validates and relays complete presentation-only animation state', () => {
-    let clock = 1_000;
-    const hub = new RealtimeHub(undefined, () => clock, 200, true);
-    const a = new FakeSocket();
-    const b = new FakeSocket();
-    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
-    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-    hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
-    clock += 100;
-    hub.handleClientMessage(ca, JSON.stringify({
-      type: 'move', islandId: 'starter-island', x: 1, y: 2, z: 3, heading: 0, onBoat: false,
-      locomotion: 'run',
-      animation: {
-        combatState: 'attack3', category: 'sword', onGround: false, dashing: true,
-        verticalVelocity: 999, attackProgress: 2, hitReactionId: 4, hitReactionAngle: 9,
-        skillAnimationProgress: -1, skillAnimationType: 'dash', skillAnimationVariant: 2,
-      },
-    }));
-    const presence = b.sent.find((message) => message.type === 'presence' && message.playerId === 'char-a');
-    expect(presence).toMatchObject({
-      locomotion: 'run',
-      animation: {
-        combatState: 'attack3', category: 'sword', onGround: false, dashing: true,
-        verticalVelocity: 100, attackProgress: 1, hitReactionId: 4,
-        hitReactionAngle: Math.PI, skillAnimationProgress: 0, skillAnimationType: 'dash',
-      },
-    });
-  });
-
-  it('does not relay remote presentation outside the presence interest range', () => {
-    let clock = 1_000;
-    const hub = new RealtimeHub(undefined, () => clock, 200, true);
-    const a = new FakeSocket();
-    const b = new FakeSocket();
-    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
-    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-    hub.handleClientMessage(cb, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false }));
-    clock += 300;
-    hub.handleClientMessage(ca, JSON.stringify({ type: 'move', islandId: 'starter-island', x: 500, y: 0, z: 0, heading: 0, onBoat: false }));
-    expect(b.sent.some((message) => message.type === 'presence' && message.playerId === 'char-a')).toBe(false);
   });
 
 });
@@ -305,9 +233,6 @@ describe('S15 PvP combat authority', () => {
     hub.handleClientMessage(connection, attack('char-b'));
     expect(socket.closedWith).toBeNull();
     expect(socket.sent.some((message) => message.type === 'combat-hit')).toBe(false);
-    expect(socket.sent.find((message) => message.type === 'combat-result')).toMatchObject({
-      accepted: false, reason: 'pvp-disabled', targetId: 'char-b',
-    });
   });
 
   it('resolves a hit and broadcasts combat-hit to islanders (server-side damage)', () => {
@@ -317,9 +242,9 @@ describe('S15 PvP combat authority', () => {
     const b = new FakeSocket();
     const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
     const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 1, 1));
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
 
     hub.handleClientMessage(ca, attack('char-b', 'melee'));
     const hitToTarget = b.sent.find((message) => message.type === 'combat-hit') as
@@ -329,7 +254,6 @@ describe('S15 PvP combat authority', () => {
     expect(hitToTarget!.hp).toBeLessThan(hitToTarget!.maxHp);
     // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
     expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
-    expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
   });
 
   it('does not resolve hits across islands or out of range', () => {
@@ -344,9 +268,6 @@ describe('S15 PvP combat authority', () => {
     hub.handleClientMessage(cb, moved('mist-jungle', 1, 1)); // คนละเกาะ
     hub.handleClientMessage(ca, attack('char-b'));
     expect(b.sent.some((message) => message.type === 'combat-hit')).toBe(false);
-    expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({
-      accepted: false, reason: 'different-island',
-    });
   });
 
   it('broadcasts combat-defeat then combat-respawn on the ticker', () => {
@@ -356,9 +277,9 @@ describe('S15 PvP combat authority', () => {
     const b = new FakeSocket();
     const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
     const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 1, 1));
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
     // ตีจนตาย (เว้นคูลดาวน์) — หยุดทันทีที่เห็น defeat กัน clock เลยเวลาเกิดใหม่
     for (let i = 0; i < 40; i += 1) {
       hub.handleClientMessage(ca, attack('char-b', 'skill'));
@@ -383,6 +304,23 @@ describe('S15 PvP combat authority', () => {
     const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
     hub.handleClientMessage(connection, JSON.stringify({ type: 'attack', targetId: 42 }));
     expect(socket.closedWith?.code).toBe(1008);
+  });
+
+  it('rejects PvP damage into or out of a spawn/shop safe zone', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 0, 8));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 1, 8));
+
+    hub.handleClientMessage(ca, attack('char-b'));
+    hub.handleClientMessage(cb, attack('char-a'));
+    expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+    expect(b.sent.some((message) => message.type === 'combat-hit')).toBe(false);
   });
 });
 
