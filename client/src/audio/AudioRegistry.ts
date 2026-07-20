@@ -82,8 +82,11 @@ const seeds: Record<AudioCueId, CueSeed> = {
   'boat.board': sfx(recipe(190, 0.18, 0.11, 'triangle', 310), 45),
   'boat.disembark': sfx(recipe(270, 0.15, 0.1, 'triangle', 150), 42),
   'boat.throttle': {
-    ...sfx(recipe(88, 0.42, 0.055, 'sawtooth', 118), 20, true),
-    cooldownMs: 280,
+    ...sfx([
+      recipe(118, 0.2, 0.022, 'triangle', 92),
+      noise(0.22, 0.018, 420),
+    ], 20, true),
+    cooldownMs: 350,
     maxInstances: 2,
   },
   'boat.anchor': sfx([recipe(115, 0.42, 0.11, 'square', 54), noise(0.34, 0.06, 620)], 60, true),
@@ -108,9 +111,11 @@ const seeds: Record<AudioCueId, CueSeed> = {
     recipe(520, 0.6, 0.1, 'triangle', 1180),
     { ...recipe(780, 0.7, 0.06, 'sine', 1560), delay: 0.07 },
   ], 88),
-  'world.wind': ambience([noise(1.25, 0.028, 560), recipe(88, 1.1, 0.012, 'sine', 104)]),
-  'world.waves': ambience([noise(1.15, 0.04, 430), recipe(68, 1.05, 0.022, 'sine', 43)]),
-  'world.dock': ambience([noise(0.72, 0.025, 850), recipe(126, 0.68, 0.026, 'triangle', 86)]),
+  // Ambience stays noise-shaped: sustained low oscillators sound like mains hum
+  // on phone speakers, especially when several positional sources overlap.
+  'world.wind': ambience(noise(1.25, 0.022, 620)),
+  'world.waves': ambience(noise(1.15, 0.03, 470)),
+  'world.dock': ambience(noise(0.72, 0.02, 900)),
 };
 
 export const AUDIO_CUES: Readonly<Record<AudioCueId, AudioCueDefinition>> = Object.fromEntries(
