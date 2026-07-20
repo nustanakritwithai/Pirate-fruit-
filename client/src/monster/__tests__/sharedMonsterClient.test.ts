@@ -91,6 +91,7 @@ describe('S16 shared monster rendering and player defeat regression', () => {
   });
 
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {
+    const scene = new THREE.Scene();
     const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);
     client.applySnapshot('starter-island', [snapshot({ x: 1, z: 8, state: 'attack' })]);
     expect(client.collectPlayerDamage(new THREE.Vector3(0, 0, 8))).toBe(0);
