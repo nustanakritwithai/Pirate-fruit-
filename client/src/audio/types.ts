@@ -41,6 +41,10 @@ export interface ProceduralRecipe {
   gain: number;
   attack?: number;
   detune?: number;
+  delay?: number;
+  noise?: boolean;
+  filterFrequency?: number;
+  filterType?: BiquadFilterType;
 }
 
 export interface AudioCueDefinition {
@@ -54,7 +58,7 @@ export interface AudioCueDefinition {
   rolloff?: number;
   interestRange?: number;
   mobileInterestRange?: number;
-  recipe: ProceduralRecipe;
+  recipe: ProceduralRecipe | readonly ProceduralRecipe[];
 }
 
 export type MusicState = 'death' | 'boss' | 'combat' | 'sailing' | 'island' | 'silence';
@@ -70,8 +74,18 @@ export interface MusicObservation {
 
 export interface MusicTrack {
   id: 'sailing-a' | 'sailing-b' | 'island';
-  frequencies: readonly [number, number];
-  durationSeconds: number;
+  /** Original procedural composition. Notes are scale degrees; null means a rest. */
+  rootFrequency: number;
+  scale: readonly number[];
+  bpm: number;
+  stepsPerBeat: number;
+  beatsPerBar: number;
+  bass: readonly (number | null)[];
+  melody: readonly (number | null)[];
+  chords: readonly (number | null)[];
+  percussion: readonly ('kick' | 'deck' | 'bell' | null)[];
+  melodyWaveform: OscillatorType;
+  bars: number;
   loop: boolean;
 }
 
