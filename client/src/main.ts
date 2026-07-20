@@ -78,7 +78,7 @@ import {
   AudioSettingsUI,
   createAudioManager,
 } from './audio';
-import { OnboardingDirector } from './onboarding/OnboardingDirector';
+import type { OnboardingDirector } from './onboarding/OnboardingDirector';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -890,6 +890,8 @@ async function main(): Promise<void> {
   const onboardingEnabled = import.meta.env.VITE_ENABLE_ONBOARDING === 'true'
     || import.meta.env.VITE_ENABLE_ONBOARDING === '1';
   if (onboardingEnabled) {
+    // Keep the guide out of the initial bundle/request path when the production flag is off.
+    const { OnboardingDirector } = await import('./onboarding/OnboardingDirector');
     onboarding = new OnboardingDirector({
       scene: game.scene,
       storage: persistence.storage,
