@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { CharacterRig } from './CharacterRig';
 import { createMobileMaterial } from './MobilePBRMaterials';
 
@@ -38,6 +39,70 @@ function namedGroup(name: string, position: THREE.Vector3Tuple): THREE.Group {
   group.name = name;
   group.position.set(...position);
   return group;
+}
+
+/**
+ * Collapse every rigid part under one animated pivot into one vertex-coloured mesh.
+ * The seven rig pivots remain separate, so animation/combat timing is unchanged while
+ * a humanoid drops from roughly twenty draw calls to six.
+ */
+function mergeRigPivot(pivot: THREE.Group): THREE.Mesh | null {
+  pivot.updateMatrixWorld(true);
+  const inversePivot = new THREE.Matrix4().copy(pivot.matrixWorld).invert();
+  const meshes: THREE.Mesh<THREE.BufferGeometry, THREE.Material>[] = [];
+  pivot.traverse((object) => {
+    if (object instanceof THREE.Mesh && !Array.isArray(object.material)) {
+      meshes.push(object as THREE.Mesh<THREE.BufferGeometry, THREE.Material>);
+    }
+  });
+  if (meshes.length === 0) return null;
+
+  const transformed = meshes.map((mesh) => {
+    const geometry = mesh.geometry.clone();
+    const matrix = new THREE.Matrix4().multiplyMatrices(inversePivot, mesh.matrixWorld);
+    geometry.applyMatrix4(matrix);
+    const material = mesh.material as THREE.Material & { color?: THREE.Color };
+    const color = material.color ?? new THREE.Color(0xffffff);
+    const count = geometry.getAttribute('position').count;
+    const colors = new Float32Array(count * 3);
+    for (let index = 0; index < count; index++) {
+      colors[index * 3] = color.r;
+      colors[index * 3 + 1] = color.g;
+      colors[index * 3 + 2] = color.b;
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return geometry;
+  });
+  const geometry = mergeGeometries(transformed, false);
+  transformed.forEach((item) => item.dispose());
+  if (!geometry) return null;
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: 0.72,
+    metalness: 0.02,
+    envMapIntensity: 0.65,
+  });
+  const merged = new THREE.Mesh(geometry, material);
+  merged.name = `${pivot.name}:batched`;
+  merged.castShadow = true;
+  merged.receiveShadow = false;
+  merged.frustumCulled = true;
+  meshes.forEach((mesh) => mesh.removeFromParent());
+  pivot.add(merged);
+  return merged;
+}
+
+function batchAnimatedRig(rig: CharacterRig): THREE.Mesh {
+  const body = mergeRigPivot(rig.body);
+  mergeRigPivot(rig.head);
+  mergeRigPivot(rig.leftArm);
+  mergeRigPivot(rig.rightArm);
+  mergeRigPivot(rig.leftLeg);
+  mergeRigPivot(rig.rightLeg);
+  if (!body) throw new Error('Procedural character body has no renderable geometry');
+  return body;
 }
 
 /** มนุษย์ articulated แบบ Stylized Realism — pivot พร้อม Idle/Walk/Attack/Talk */
@@ -170,8 +235,9 @@ export function createHumanoidVisual(options: HumanoidVisualOptions): CharacterV
     leftLeg,
     rightLeg,
   };
+  const batchedHull = batchAnimatedRig(rig);
   addShadowFlags(group);
-  return { group, hull, rig };
+  return { group, hull: batchedHull, rig };
 }
 
 /** ปู articulated: body, ก้าม และขาแยก pivot สำหรับ scuttle/attack/heavy */
@@ -249,6 +315,7 @@ export function createCrabVisual(color: THREE.ColorRepresentation): CharacterVis
     leftLeg,
     rightLeg,
   };
+  const batchedHull = batchAnimatedRig(rig);
   addShadowFlags(group);
-  return { group, hull, rig };
+  return { group, hull: batchedHull, rig };
 }
