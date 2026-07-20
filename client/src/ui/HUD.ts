@@ -1,7 +1,6 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { Game } from '../engine/Game';
 import { controlSurfaceLayout } from '../engine/device';
-import { worldSafeZoneAt } from '@pirate-fruit/shared';
 
 /**
  * HUD พื้นฐาน (HTML overlay): Guard, พิกัด, FPS และคำแนะนำปุ่ม
@@ -10,7 +9,6 @@ export class HUD {
   private posText: HTMLDivElement;
   private fpsText: HTMLDivElement;
   private timeText: HTMLDivElement;
-  private safeZoneText: HTMLDivElement;
   private damageFlash!: HTMLDivElement;
 
   constructor(
@@ -30,10 +28,6 @@ export class HUD {
       .guard-fill { height: 100%; background: linear-gradient(90deg, #6fc2ff, #a5dcff);
                     transition: width .1s linear; }
       .hud-info { right: 16px; top: 16px; text-align: right; font-size: 13px; }
-      .hud-safe-zone { display:inline-block; margin-top:5px; padding:4px 9px; border-radius:999px;
-        color:#d9fff0; background:rgba(10,91,63,.86); border:1px solid rgba(111,255,190,.62);
-        font-weight:800; letter-spacing:.02em; box-shadow:0 2px 10px rgba(0,0,0,.28); }
-      .hud-safe-zone[hidden] { display:none; }
       .hud-help { left: 16px; top: 350px; font-size: 13px; background: rgba(0,0,0,.4);
                   padding: 10px 14px; border-radius: 10px; line-height: 1.7; }
       .hud-help b { color: #ffd76b; }
@@ -60,12 +54,11 @@ export class HUD {
 
     const info = document.createElement('div');
     info.className = 'hud hud-info';
-    info.innerHTML = `<div class="time"></div><div class="pos"></div><div class="fps"></div><div class="hud-safe-zone" hidden></div>`;
+    info.innerHTML = `<div class="time"></div><div class="pos"></div><div class="fps"></div>`;
     document.body.appendChild(info);
     this.posText = info.querySelector('.pos')!;
     this.fpsText = info.querySelector('.fps')!;
     this.timeText = info.querySelector('.time')!;
-    this.safeZoneText = info.querySelector('.hud-safe-zone')!;
 
     // บนมือถือมีปุ่มบนจอครบแล้ว ไม่ต้องแสดงคำแนะนำคีย์บอร์ด
     if (controlSurfaceLayout() === 'desktop') {
@@ -118,11 +111,6 @@ export class HUD {
     const p = c.position;
     this.posText.textContent = `X ${p.x.toFixed(1)}  Y ${p.y.toFixed(1)}  Z ${p.z.toFixed(1)}`;
     this.timeText.textContent = `☀ ${this.getClockLabel()}`;
-    const safeZone = worldSafeZoneAt(undefined, p.x, p.z);
-    this.safeZoneText.hidden = !safeZone;
-    this.safeZoneText.textContent = safeZone
-      ? `🛡 เขตปลอดภัย${safeZone.kind === 'harbor' ? ' · ท่าเรือ' : ' · ร้านค้า'}`
-      : '';
     const tris = this.game.triangles >= 1000
       ? `${(this.game.triangles / 1000).toFixed(1)}k`
       : `${this.game.triangles}`;
