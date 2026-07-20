@@ -78,7 +78,21 @@ export class BrowserAudioBackend implements AudioBackend {
     if (!Constructor) return;
     const context = new Constructor();
     const master = context.createGain();
-    master.connect(context.destination);
+    // Mobile speakers expose sub-bass/DC-like synthesis as electrical hum. Remove
+    // inaudible rumble and catch summed procedural peaks before the hardware output.
+    const highpass = context.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 36;
+    highpass.Q.value = 0.7;
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -12;
+    limiter.knee.value = 8;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.18;
+    master.connect(highpass);
+    highpass.connect(limiter);
+    limiter.connect(context.destination);
     this.context = context;
     this.master = master;
 
@@ -196,7 +210,7 @@ export class BrowserAudioBackend implements AudioBackend {
     }
     const percussion = track.percussion[absoluteStep % track.percussion.length];
     if (percussion === 'kick') this.scheduleTone(layer, 92, at, 0.12, 0.022, 'sine', 0, 43);
-    if (percussion === 'deck') this.scheduleTone(layer, 185, at, 0.045, 0.008, 'square', 0, 120);
+    if (percussion === 'deck') this.scheduleTone(layer, 210, at, 0.035, 0.005, 'triangle', 0, 145);
     if (percussion === 'bell') this.scheduleTone(layer, 1320, at, 0.16, 0.007, 'sine', 7, 880);
   }
 
@@ -265,30 +279,21 @@ export class BrowserAudioBackend implements AudioBackend {
     );
   }
 
-  setTension(value: number): void {
-    if (!this.context || !this.buses.get('ambience')) return;
-    const safe = Math.min(1, Math.max(0, value));
-    if (safe <= 0.001) {
-      if (this.tension) {
-        this.tension.gain.gain.setTargetAtTime(0, this.context.currentTime, 0.08);
-        const oscillator = this.tension.oscillator;
-        globalThis.setTimeout(() => { try { oscillator.stop(); } catch { /* already stopped */ } }, 500);
-        this.tension = null;
-      }
-      return;
-    }
-    if (!this.tension) {
-      const oscillator = this.context.createOscillator();
-      const gain = this.context.createGain();
-      oscillator.type = 'sawtooth';
-      oscillator.frequency.value = 52;
-      gain.gain.value = 0;
-      oscillator.connect(gain);
-      gain.connect(this.buses.get('ambience')!);
-      oscillator.start();
-      this.tension = { oscillator, gain };
-    }
-    this.tension.gain.gain.setTargetAtTime(0.035 * safe, this.context.currentTime, 0.08);
+  setTension(_value: number): void {
+    // Combat/boss tension is intentionally represented by music ducking only.
+    // A previous continuous 52 Hz sawtooth layer produced electrical hum/buzz on
+    // small phone speakers. Tear down a legacy layer if this backend is hot-reloaded,
+    // but never create a sustained oscillator.
+    if (!this.context || !this.tension) return;
+    const { oscillator, gain } = this.tension;
+    this.tension = null;
+    const now = this.context.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setTargetAtTime(0, now, 0.025);
+    globalThis.setTimeout(() => {
+      try { oscillator.stop(); } catch { /* already stopped */ }
+      gain.disconnect();
+    }, 180);
   }
 
   playCue(cue: AudioCueDefinition, position?: AudioPosition, priority = cue.priority): void {
@@ -415,6 +420,7 @@ export class BrowserAudioBackend implements AudioBackend {
     this.voices.clear();
     void this.context?.close().catch(() => undefined);
     this.context = null;
+    this.master = null;
     this.noiseBuffer = null;
   }
 }
