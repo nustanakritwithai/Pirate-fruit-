@@ -80,6 +80,8 @@ interface MonsterRuntime {
   state: WorldMonsterState;
   targetId: string | null;
   attackReadyAt: number;
+  /** Brief post-hit recovery; Server keeps movement cadence authoritative. */
+  attackRecoverUntil: number;
   respawnAt: number | null;
   patrolX: number;
   patrolZ: number;
@@ -99,6 +101,7 @@ const DEAGGRO_MULTIPLIER = 1.3; // เป้าหนีไกลเกินน
 // เพดานระยะไล่สูงสุดจากบ้าน (หน่วยโลก) — กันบอส aggro สูงไล่ผู้เล่นออกทะเลไกลเกิน
 // ให้แต่ละตัว "รักษาพื้นที่" ของมัน หนีพ้นเขตนี้ = ปลอดภัย
 const MAX_LEASH_DISTANCE = 26;
+const ATTACK_RECOVERY_MS = 280;
 
 function distance(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(ax - bx, az - bz);
@@ -125,6 +128,7 @@ export class MonsterSimulation {
         state: 'idle',
         targetId: null,
         attackReadyAt: 0,
+        attackRecoverUntil: 0,
         respawnAt: null,
         patrolX: spawn.homeX,
         patrolZ: spawn.homeZ,
@@ -237,7 +241,7 @@ export class MonsterSimulation {
   ): MonsterHitResult | null {
     const monster = this.monsters.get(spawnId);
     if (!monster || monster.state === 'dead' || monster.hp <= 0) return null;
-    // ห้ามยิง/ตีจากในเมืองออกไปเพื่อใช้ safe zone เป็นจุดโจมตีฟรี
+    // Prevent attacking outward while protected by a safe zone.
     if (this.safeZoneAt(monster.spawn.islandId, attackerX, attackerZ)) return null;
     const range = kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE;
     if (distance(attackerX, attackerZ, monster.x, monster.z) > range) return null;
@@ -302,6 +306,7 @@ export class MonsterSimulation {
     monster.z = monster.spawn.homeZ;
     monster.targetId = null;
     monster.respawnAt = null;
+    monster.attackRecoverUntil = 0;
     monster.contributions.clear();
     monster.sentX = monster.x;
     monster.sentZ = monster.z;
@@ -320,7 +325,7 @@ export class MonsterSimulation {
     const homeDist = distance(monster.x, monster.z, monster.spawn.homeX, monster.spawn.homeZ);
     const monsterInsideSafeZone = this.safeZoneAt(monster.spawn.islandId, monster.x, monster.z);
 
-    // ตรวจเป้าปัจจุบัน: หายจาก world / คนละเกาะ / เข้า safe zone / หนีไกล / ตัวเองไกลบ้าน → ปล่อยเป้า
+    // ตรวจเป้าปัจจุบัน: หายจาก world / คนละเกาะ / หนีไกล / ตัวเองไกลบ้าน → ปล่อยเป้า
     let target = monster.targetId ? playersById.get(monster.targetId) ?? null : null;
     if (target && target.islandId !== monster.spawn.islandId) target = null;
     if (target && this.safeZoneAt(target.islandId, target.x, target.z)) target = null;
@@ -361,11 +366,17 @@ export class MonsterSimulation {
 
     if (target) {
       const targetDist = distance(monster.x, monster.z, target.x, target.z);
+      if (now < monster.attackRecoverUntil) {
+        monster.state = 'attack';
+        this.faceToward(monster, target.x, target.z);
+        return;
+      }
       if (targetDist <= type.attackRange) {
         monster.state = 'attack';
         this.faceToward(monster, target.x, target.z);
         if (now >= monster.attackReadyAt) {
           monster.attackReadyAt = now + type.attackCooldown * 1000;
+          monster.attackRecoverUntil = now + ATTACK_RECOVERY_MS;
           attacks.push({
             spawnId: monster.spawn.spawnId,
             monsterId: type.id,
