@@ -6,6 +6,12 @@ Audio is a client-side presentation system guarded by `VITE_ENABLE_AUDIO_SYSTEM`
 
 Audio settings use the isolated local key `pirate-fruit:audio:v1`. They are not part of local gameplay saves, remote saves, PostgreSQL, or reconciliation.
 
+## Procedural Pirate Fantasy palette
+
+The score is an original, code-authored maritime adventure palette. Sailing uses two alternating 6/8 arrangements built from Dorian/minor-pentatonic scale degrees, low hull-like pulse, sparse deck percussion and fantasy bell accents. Island exploration uses a slower major-pentatonic pattern with wider rests. Combat and boss states reuse the active area score with ducking and a procedural tension layer, so no copyrighted combat track or downloaded media is required.
+
+Signature SFX combine a small number of oscillator/noise layers: cannon body plus filtered blast, sword whoosh, magic rise, coins, level-up, wind and waves. The noise table is generated in memory only after audio unlock. It is never serialized, fetched or cached by the host. Scheduling uses a 320 ms look-ahead and short-lived nodes; the sequencer does not preload audio, decode buffers or run an AudioWorklet.
+
 ## Runtime structure
 
 - `AudioManager`: lifecycle, buses, settings, dedupe, visibility handling and safe failure boundary.
@@ -46,7 +52,7 @@ Authoritative realtime callbacks pass a stable event identity to `AudioManager`.
 
 ## Procedural-only asset policy
 
-Production must not add MP3, GLB or base64-embedded audio. New score layers, SFX, characters, monsters, boats, buildings and effects should be authored from Web Audio or Three.js primitives. The build gate rejects MP3 and GLB output.
+Production must not add MP3, GLB or base64-embedded audio. New score layers, SFX, characters, monsters, boats, buildings and effects should be authored from Web Audio or Three.js primitives. The build gate rejects MP3 and GLB output. This palette adds zero audio-file transfer; its only bandwidth cost is the small compressed JavaScript delta containing note and synthesis definitions.
 
 The procedural conversion reduced the production directory from 25,559,187 bytes to 4,465,313 bytes: 21,093,874 bytes (82.5%) removed. The remaining transfer is primarily the 2.80 MB JPG texture set plus roughly 0.42 MB of gzipped JavaScript on a cold load.
 
