@@ -8,7 +8,7 @@ Audio settings use the isolated local key `pirate-fruit:audio:v1`. They are not 
 
 ## Procedural Pirate Fantasy palette
 
-The score is an original, code-authored maritime adventure palette. Sailing uses two alternating 6/8 arrangements built from Dorian/minor-pentatonic scale degrees, low hull-like pulse, sparse deck percussion and fantasy bell accents. Island exploration uses a slower major-pentatonic pattern with wider rests. Combat and boss states reuse the active area score with ducking and a procedural tension layer, so no copyrighted combat track or downloaded media is required.
+The score is an original, code-authored maritime adventure palette. Sailing uses two alternating 6/8 arrangements built from Dorian/minor-pentatonic scale degrees, low hull-like pulse, sparse deck percussion and fantasy bell accents. Island exploration uses a slower major-pentatonic pattern with wider rests. Combat and boss states reuse the active area score with ducking only. Sustained low-frequency tension oscillators are deliberately avoided because they reproduce as hum or buzz on small mobile speakers.
 
 Signature SFX combine a small number of oscillator/noise layers: cannon body plus filtered blast, sword whoosh, magic rise, coins, level-up, wind and waves. The noise table is generated in memory only after audio unlock. It is never serialized, fetched or cached by the host. Scheduling uses a 320 ms look-ahead and short-lived nodes; the sequencer does not preload audio, decode buffers or run an AudioWorklet.
 
@@ -21,7 +21,7 @@ Signature SFX combine a small number of oscillator/noise layers: cannon body plu
 - `AudioRegistry`: data-driven procedural fallback definitions for all A1 cue categories.
 - `AudioSettingsUI`: keyboard-accessible desktop/mobile control panel.
 
-The buses are `master`, `music`, `ambience`, `sfx`, and `ui`. Master, music, ambience, SFX and UI levels are stored independently. Muting sets only the master output to zero and preserves the individual values.
+The buses are `master`, `music`, `ambience`, `sfx`, and `ui`. Master, music, ambience, SFX and UI levels are stored independently. Muting sets only the master output to zero and preserves the individual values. The master output passes through a 36 Hz high-pass and a conservative dynamics limiter to prevent sub-bass rumble and summed procedural peaks from distorting phone speakers.
 
 ## Autoplay and loading
 
@@ -34,8 +34,8 @@ Music is streamed through two `HTMLAudioElement` sources routed into Web Audio. 
 | Priority | State | Behavior |
 |---:|---|---|
 | 1 | death | Fade music out, play death cue |
-| 2 | boss | Keep location music, duck it and add procedural tension |
-| 3 | combat | Keep location music, duck it and add lighter tension |
+| 2 | boss | Keep location music and apply stronger ducking |
+| 3 | combat | Keep location music and apply lighter ducking |
 | 4 | sailing/on boat | Alternate sailing A/B playlist |
 | 5 | island/on foot | Loop island music |
 | 6 | loading/unknown | Silence |
