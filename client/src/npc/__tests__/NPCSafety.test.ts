@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_NPCS } from '../NPCData';
 import { SAFE_ZONE_POI_LIST } from '../../world/WorldPOI';
+import { isWorldSafeZone } from '@pirate-fruit/shared';
 
 describe('NPC safe hubs', () => {
   it('keeps every NPC inside a village or harbor safe zone', () => {
@@ -10,6 +11,7 @@ describe('NPC safe hubs', () => {
         Math.hypot(npc.x - poi.x, npc.z - poi.z) <= poi.safeRadius,
       );
       expect(safe, `${npc.id} is outside a safe hub`).toBe(true);
+      expect(isWorldSafeZone(npc.islandId, npc.x, npc.z), `${npc.id} missing from shared safe-zone authority`).toBe(true);
     }
   });
 
