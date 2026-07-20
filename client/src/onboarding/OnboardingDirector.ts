@@ -407,10 +407,21 @@ export class OnboardingDirector implements Updatable {
       .onboarding-highlight{animation:onboarding-pulse 1.05s ease-in-out infinite!important;
         outline:3px solid #ffe16f!important;outline-offset:3px!important}
       @keyframes onboarding-pulse{50%{filter:brightness(1.35);box-shadow:0 0 0 8px rgba(255,221,105,.18)}}
-      @media(max-width:700px){.onboarding-root{bottom:6px;width:min(380px,calc(100vw - 12px))}
-        .onboarding-card{padding:9px 11px}.onboarding-title{font-size:14px}.onboarding-body{font-size:10px}
-        .onboarding-hint{font-size:9px}.onboarding-topics{grid-template-columns:1fr}
+      @media(max-width:700px){.onboarding-root{bottom:max(5px,env(safe-area-inset-bottom));
+        width:min(286px,calc(100vw - 92px))}
+        .onboarding-card{padding:6px 8px;border-radius:11px}
+        .onboarding-kicker{font-size:8px}.onboarding-guide-open{padding:3px 6px;font-size:8px}
+        .onboarding-title{margin:2px 0 1px;font-size:12px;line-height:1.2}
+        .onboarding-body{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+          font-size:9px;line-height:1.3}
+        .onboarding-waypoint{margin-top:4px;padding:3px 6px;font-size:9px}
+        .onboarding-arrow{font-size:14px}.onboarding-hint{margin-top:3px;font-size:8px;line-height:1.25}
+        .onboarding-actions{gap:4px;margin-top:4px}.onboarding-actions button{padding:4px 6px;font-size:8px}
+        .onboarding-topics{grid-template-columns:1fr}
         .onboarding-guide-root{align-items:flex-end;padding:6px}.onboarding-guide{max-height:82vh;padding:13px}}
+      @media(max-width:700px) and (max-height:500px){
+        .onboarding-root{width:min(260px,calc(100vw - 150px))}
+        .onboarding-body{-webkit-line-clamp:1}.onboarding-hint{display:none}}
       @media(prefers-reduced-motion:reduce){.onboarding-highlight{animation:none!important}}
     `;
     document.head.appendChild(style);
