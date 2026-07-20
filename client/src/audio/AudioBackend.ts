@@ -48,8 +48,6 @@ function contextConstructor(): AudioContextConstructor | null {
 export class BrowserAudioBackend implements AudioBackend {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
-  private outputHighpass: BiquadFilterNode | null = null;
-  private outputLimiter: DynamicsCompressorNode | null = null;
   private buses = new Map<AudioBus, GainNode>();
   private musicDuck: GainNode | null = null;
   private musicLayer: ProceduralMusicLayer | null = null;
@@ -97,8 +95,6 @@ export class BrowserAudioBackend implements AudioBackend {
     limiter.connect(context.destination);
     this.context = context;
     this.master = master;
-    this.outputHighpass = highpass;
-    this.outputLimiter = limiter;
 
     for (const bus of ['music', 'ambience', 'sfx', 'ui'] as const) {
       const node = context.createGain();
@@ -425,8 +421,6 @@ export class BrowserAudioBackend implements AudioBackend {
     void this.context?.close().catch(() => undefined);
     this.context = null;
     this.master = null;
-    this.outputHighpass = null;
-    this.outputLimiter = null;
     this.noiseBuffer = null;
   }
 }
