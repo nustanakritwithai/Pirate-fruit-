@@ -317,9 +317,9 @@ describe('S15 PvP combat authority', () => {
     const b = new FakeSocket();
     const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
     const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 1, 1));
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
 
     hub.handleClientMessage(ca, attack('char-b', 'melee'));
     const hitToTarget = b.sent.find((message) => message.type === 'combat-hit') as
@@ -356,9 +356,9 @@ describe('S15 PvP combat authority', () => {
     const b = new FakeSocket();
     const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
     const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
-    hub.handleClientMessage(ca, moved('starter-island', 0, 0));
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 1, 1));
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
     // ตีจนตาย (เว้นคูลดาวน์) — หยุดทันทีที่เห็น defeat กัน clock เลยเวลาเกิดใหม่
     for (let i = 0; i < 40; i += 1) {
       hub.handleClientMessage(ca, attack('char-b', 'skill'));
@@ -383,6 +383,30 @@ describe('S15 PvP combat authority', () => {
     const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
     hub.handleClientMessage(connection, JSON.stringify({ type: 'attack', targetId: 42 }));
     expect(socket.closedWith?.code).toBe(1008);
+  });
+
+  it('rejects PvP both into and out of a safe zone', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+
+    hub.handleClientMessage(ca, moved('starter-island', 0, 8));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 25, 8));
+    hub.handleClientMessage(ca, attack('char-b'));
+    hub.handleClientMessage(cb, attack('char-a'));
+
+    expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+    expect(b.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+    expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({
+      accepted: false, reason: 'target-unavailable',
+    });
+    expect(b.sent.find((message) => message.type === 'combat-result')).toMatchObject({
+      accepted: false, reason: 'target-unavailable',
+    });
   });
 });
 

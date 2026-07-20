@@ -10,7 +10,12 @@ import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
 import { MONSTER_TYPES } from './MonsterData';
 import { Monster, type MonsterState } from './Monster';
-import type { WorldMonsterSnapshot, WorldMonsterDelta, WorldMonsterState } from '@pirate-fruit/shared';
+import {
+  isWorldSafeZone,
+  type WorldMonsterSnapshot,
+  type WorldMonsterDelta,
+  type WorldMonsterState,
+} from '@pirate-fruit/shared';
 
 const LERP_PER_SECOND = 8;
 
@@ -185,6 +190,7 @@ export class SharedMonsterClient implements Updatable {
     range: number,
     halfAngle: number,
   ): string[] {
+    if (isWorldSafeZone(this.currentIslandId, origin.x, origin.z)) return [];
     const flen = Math.hypot(forwardX, forwardZ) || 1;
     const fx = forwardX / flen;
     const fz = forwardZ / flen;
@@ -207,6 +213,8 @@ export class SharedMonsterClient implements Updatable {
    * (player HP ยังเป็น client-side ในเฟสนี้ — Server เป็นเจ้าของแค่ตัวมอนสเตอร์)
    */
   collectPlayerDamage(playerPos: THREE.Vector3): number {
+    // Final client boundary: stale/replayed attack deltas cannot hurt a shopper.
+    if (isWorldSafeZone(this.currentIslandId, playerPos.x, playerPos.z)) return 0;
     const now = this.now();
     let total = 0;
     for (const monster of this.monsters.values()) {

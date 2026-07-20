@@ -8,14 +8,12 @@ import { BossBar } from '../ui/BossBar';
 import { Monster } from './Monster';
 import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWNS, type MonsterType } from './MonsterData';
 import type { CombatRewardSource } from '../combat/CombatData';
-import { SAFE_ZONE_POI_LIST } from '../world/WorldPOI';
+import { isWorldSafeZone } from '@pirate-fruit/shared';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
 function isInSafeZone(x: number, z: number): boolean {
-  return SAFE_ZONE_POI_LIST.some((poi) =>
-    Math.hypot(x - poi.x, z - poi.z) <= poi.safeRadius,
-  );
+  return isWorldSafeZone(undefined, x, z);
 }
 
 export interface AttackOptions {
@@ -156,6 +154,7 @@ export class MonsterManager {
 
   /** โจมตีของผู้เล่น: ดาเมจมอนสเตอร์ในกรวยหน้าตัวละคร คืนจำนวนตัวที่โดน */
   playerAttack(position: THREE.Vector3, heading: number, options: AttackOptions): number {
+    if (isInSafeZone(position.x, position.z)) return 0;
     const fx = Math.sin(heading);
     const fz = Math.cos(heading);
     let hits = 0;
@@ -191,6 +190,7 @@ export class MonsterManager {
     knockback = 0,
     source?: CombatRewardSource,
   ): number {
+    if (isInSafeZone(center.x, center.z)) return 0;
     let hits = 0;
     for (const monster of this.monsters) {
       if (!monster.alive) continue;
@@ -439,6 +439,10 @@ export class MonsterManager {
     const step = speed * dt;
     const nx = monster.group.position.x + (dx / len) * step;
     const nz = monster.group.position.z + (dz / len) * step;
+    if (!isInSafeZone(monster.group.position.x, monster.group.position.z) && isInSafeZone(nx, nz)) {
+      monster.returningHome = true;
+      return;
+    }
     const ground = this.collision.heightAt(nx, nz);
     if (ground < GROUND_MIN) return; // ไม่เดินลงน้ำ
     monster.group.position.x = nx;

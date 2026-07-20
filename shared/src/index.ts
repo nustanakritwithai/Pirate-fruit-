@@ -10,6 +10,7 @@ export * from './types/player.js';
 export * from './types/trade.js';
 export * from './world/monsters.js';
 export * from './world/boats.js';
+export * from './world/safeZones.js';
 export * from './types/realtime.js';
 export * from './types/quest.js';
 export * from './quest/definitions.js';

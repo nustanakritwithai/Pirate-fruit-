@@ -9,6 +9,7 @@ import {
   type RealtimeServerMessage,
   type RealtimeBoatIntent,
   type BoatWorldSnapshot,
+  isWorldSafeZone,
   type RealtimeCombatRejectReason,
 } from '@pirate-fruit/shared';
 import { CombatAuthority, type AttackKind } from './combatAuthority.js';
@@ -432,6 +433,10 @@ export class RealtimeHub {
     if (!attackerPos) return reject('presence-required');
     if (!targetPos) return reject('target-unavailable');
     if (attackerPos.islandId !== targetPos.islandId) return reject('different-island');
+    if (
+      isWorldSafeZone(attackerPos.islandId, attackerPos.x, attackerPos.z)
+      || isWorldSafeZone(targetPos.islandId, targetPos.x, targetPos.z)
+    ) return reject('target-unavailable');
     const decision = this.combat.resolveAttackDetailed(
       this.now(),
       connection.characterId,

@@ -473,23 +473,20 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     // Put the independent peer beside the actual controlled avatar. Dispatching
     // pointerdown on the real control exercises Input -> PlayerCombat -> target
     // selection without Playwright waiting on the app's fullscreen gesture promise.
-    const localPosition = await page.evaluate(() => {
-      const position = window.__combat?.controller?.position;
-      return position ? { x: position.x, y: position.y, z: position.z } : null;
+    // Keep the PvP authority smoke outside the starter-village safe zone.
+    // Repeat these authoritative positions because the live gameplay loop may publish
+    // the headless avatar's visual spawn position between smoke attempts.
+    peerX = 31;
+    peerY = 0;
+    peerZ = 8;
+    if (peer.readyState === 1) peerMove();
+    await page.evaluate(() => {
+      if (window.__combat?.controller) window.__combat.controller.heading = Math.PI / 2;
+      window.__realtime?.sendMove({
+        islandId: 'starter-island', x: 30, y: 0, z: 8,
+        heading: Math.PI / 2, onBoat: false,
+      });
     });
-    if (localPosition) {
-      peerX = localPosition.x + 1;
-      peerY = localPosition.y;
-      peerZ = localPosition.z;
-      if (peer.readyState === 1) peerMove();
-      await page.evaluate((position) => {
-        if (window.__combat?.controller) window.__combat.controller.heading = Math.PI / 2;
-        window.__realtime?.sendMove({
-          islandId: 'starter-island', x: position.x, y: position.y, z: position.z,
-          heading: Math.PI / 2, onBoat: false,
-        });
-      }, localPosition);
-    }
     const pvpDeadline = Date.now() + 20_000;
     while (targetId && Date.now() < pvpDeadline && !pvpDiag.gotHit) {
       if (peer.readyState === 1) peerMove();
@@ -503,7 +500,14 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       // Keep one real control-path gesture above, then submit the same target-only
       // intent through the live RealtimeClient. Headless rAF can pause before
       // PlayerCombat consumes the touch queue; server authority must not depend on it.
-      await page.evaluate((id) => window.__realtime?.sendAttack(id, 'melee'), targetId);
+      await page.evaluate((id) => {
+        const rt = window.__realtime;
+        rt?.sendMove({
+          islandId: 'starter-island', x: 30, y: 0, z: 8,
+          heading: Math.PI / 2, onBoat: false,
+        });
+        rt?.sendAttack(id, 'melee');
+      }, targetId);
       await new Promise((resolve) => setTimeout(resolve, 400));
       pvpDiag.gotHit = gotCombat();
     }
