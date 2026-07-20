@@ -3,6 +3,7 @@ export * from './protocol/version.js';
 export * from './config/defaults.js';
 export * from './schemas/server.js';
 export * from './schemas/session.js';
+export * from './types/characters.js';
 export * from './types/ids.js';
 export * from './types/persistence.js';
 export * from './types/player.js';
