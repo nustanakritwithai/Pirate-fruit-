@@ -21,13 +21,17 @@ export interface AudioBackend {
 
 interface ProceduralMusicLayer {
   gain: GainNode;
-  oscillators: OscillatorNode[];
+  sources: Set<AudioScheduledSourceNode>;
   trackId: MusicTrack['id'];
   timer: ReturnType<typeof globalThis.setTimeout> | null;
+  nextStepAt: number;
+  step: number;
+  stopped: boolean;
+  ended: boolean;
 }
 
 interface ActiveVoice {
-  source: OscillatorNode;
+  sources: AudioScheduledSourceNode[];
   priority: number;
   cueId: AudioCueDefinition['id'];
 }
@@ -49,6 +53,7 @@ export class BrowserAudioBackend implements AudioBackend {
   private musicLayer: ProceduralMusicLayer | null = null;
   private voices = new Set<ActiveVoice>();
   private tension: { oscillator: OscillatorNode; gain: GainNode } | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
   private listener: AudioPosition = { x: 0, y: 0, z: 0 };
   private readonly volumes = new Map<AudioBus | 'master', number>([
     ['master', 1], ['music', 0.7], ['ambience', 0.65], ['sfx', 0.8], ['ui', 0.75],
@@ -86,7 +91,22 @@ export class BrowserAudioBackend implements AudioBackend {
     master.gain.value = this.volumes.get('master') ?? 1;
     this.musicDuck = context.createGain();
     this.musicDuck.connect(this.buses.get('music')!);
+    this.noiseBuffer = this.createNoiseBuffer(context);
+  }
 
+  private createNoiseBuffer(context: AudioContext): AudioBuffer {
+    const length = Math.max(1, Math.floor(context.sampleRate * 1.25));
+    const buffer = context.createBuffer(1, length, context.sampleRate);
+    const channel = buffer.getChannelData(0);
+    // Deterministic xorshift avoids shipping a sample and keeps test/build output stable.
+    let seed = 0x50495241;
+    for (let i = 0; i < channel.length; i++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      channel[i] = ((seed >>> 0) / 0x7fffffff) - 1;
+    }
+    return buffer;
   }
 
   setBusVolume(bus: AudioBus | 'master', value: number): void {
@@ -105,26 +125,111 @@ export class BrowserAudioBackend implements AudioBackend {
     const fadeSeconds = Math.max(0.05, fadeMs / 1000);
     const gain = context.createGain();
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.032, now + fadeSeconds);
+    gain.gain.linearRampToValueAtTime(0.72, now + fadeSeconds);
     gain.connect(this.musicDuck);
-    const oscillators = track.frequencies.map((frequency, index) => {
-      const oscillator = context.createOscillator();
-      oscillator.type = index === 0 ? 'sine' : 'triangle';
-      oscillator.frequency.value = frequency;
-      oscillator.detune.value = index === 0 ? 0 : -7;
-      oscillator.connect(gain);
-      oscillator.start(now);
-      return oscillator;
-    });
-    const next: ProceduralMusicLayer = { gain, oscillators, trackId: track.id, timer: null };
+    const next: ProceduralMusicLayer = {
+      gain,
+      sources: new Set(),
+      trackId: track.id,
+      timer: null,
+      nextStepAt: now + 0.06,
+      step: 0,
+      stopped: false,
+      ended: false,
+    };
     const old = this.musicLayer;
     this.musicLayer = next;
-    if (!track.loop) {
-      next.timer = globalThis.setTimeout(() => {
-        if (this.musicLayer === next) onEnded();
-      }, track.durationSeconds * 1000);
-    }
+    this.scheduleMusic(next, track, onEnded);
     if (old) this.fadeOutMusicLayer(old, fadeMs);
+  }
+
+  private scheduleMusic(layer: ProceduralMusicLayer, track: MusicTrack, onEnded: () => void): void {
+    const context = this.context;
+    if (!context || layer.stopped) return;
+    const stepSeconds = 60 / track.bpm / track.stepsPerBeat;
+    const stepsPerBar = track.stepsPerBeat * track.beatsPerBar;
+    const totalSteps = stepsPerBar * track.bars;
+    const horizon = context.currentTime + 0.32;
+    while (layer.nextStepAt <= horizon && !layer.ended) {
+      if (layer.step >= totalSteps) {
+        if (track.loop) layer.step = 0;
+        else {
+          layer.ended = true;
+          const remainingMs = Math.max(0, (layer.nextStepAt - context.currentTime) * 1000);
+          layer.timer = globalThis.setTimeout(() => {
+            if (this.musicLayer === layer && !layer.stopped) onEnded();
+          }, remainingMs);
+          return;
+        }
+      }
+      this.scheduleMusicStep(layer, track, layer.step, layer.nextStepAt, stepSeconds, stepsPerBar);
+      layer.step++;
+      layer.nextStepAt += stepSeconds;
+    }
+    layer.timer = globalThis.setTimeout(() => this.scheduleMusic(layer, track, onEnded), 120);
+  }
+
+  private scheduleMusicStep(
+    layer: ProceduralMusicLayer,
+    track: MusicTrack,
+    absoluteStep: number,
+    at: number,
+    stepSeconds: number,
+    stepsPerBar: number,
+  ): void {
+    const index = absoluteStep % track.melody.length;
+    const noteFrequency = (degree: number, octave = 0): number => {
+      const semitone = track.scale[((degree % track.scale.length) + track.scale.length) % track.scale.length];
+      const wrappedOctave = Math.floor(degree / track.scale.length) + octave;
+      return track.rootFrequency * 2 ** ((semitone + wrappedOctave * 12) / 12);
+    };
+    const bass = track.bass[absoluteStep % track.bass.length];
+    if (bass !== null) this.scheduleTone(layer, noteFrequency(bass), at, stepSeconds * 1.75, 0.024, 'triangle');
+    const melody = track.melody[index];
+    if (melody !== null) {
+      this.scheduleTone(layer, noteFrequency(melody, 2), at, stepSeconds * 0.82, 0.017, track.melodyWaveform);
+    }
+    const chord = track.chords[absoluteStep % track.chords.length];
+    if (chord !== null && absoluteStep % Math.max(1, Math.floor(stepsPerBar / 2)) === 0) {
+      this.scheduleTone(layer, noteFrequency(chord, 1), at, stepSeconds * 3.2, 0.009, 'sine', -5);
+      this.scheduleTone(layer, noteFrequency(chord + 2, 1), at, stepSeconds * 3.2, 0.007, 'sine', 5);
+    }
+    const percussion = track.percussion[absoluteStep % track.percussion.length];
+    if (percussion === 'kick') this.scheduleTone(layer, 92, at, 0.12, 0.022, 'sine', 0, 43);
+    if (percussion === 'deck') this.scheduleTone(layer, 185, at, 0.045, 0.008, 'square', 0, 120);
+    if (percussion === 'bell') this.scheduleTone(layer, 1320, at, 0.16, 0.007, 'sine', 7, 880);
+  }
+
+  private scheduleTone(
+    layer: ProceduralMusicLayer,
+    frequency: number,
+    at: number,
+    duration: number,
+    peak: number,
+    waveform: OscillatorType,
+    detune = 0,
+    endFrequency?: number,
+  ): void {
+    const context = this.context;
+    if (!context || layer.stopped) return;
+    const oscillator = context.createOscillator();
+    const envelope = context.createGain();
+    oscillator.type = waveform;
+    oscillator.detune.value = detune;
+    oscillator.frequency.setValueAtTime(Math.max(1, frequency), at);
+    if (endFrequency !== undefined) oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), at + duration);
+    envelope.gain.setValueAtTime(0.0001, at);
+    envelope.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), at + Math.min(0.025, duration * 0.2));
+    envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+    oscillator.connect(envelope);
+    envelope.connect(layer.gain);
+    layer.sources.add(oscillator);
+    oscillator.onended = () => {
+      layer.sources.delete(oscillator);
+      envelope.disconnect();
+    };
+    oscillator.start(at);
+    oscillator.stop(at + duration + 0.02);
   }
 
   stopMusic(fadeMs: number): void {
@@ -136,15 +241,17 @@ export class BrowserAudioBackend implements AudioBackend {
 
   private fadeOutMusicLayer(layer: ProceduralMusicLayer, fadeMs: number): void {
     if (!this.context) return;
+    layer.stopped = true;
     if (layer.timer !== null) globalThis.clearTimeout(layer.timer);
     const now = this.context.currentTime;
     layer.gain.gain.cancelScheduledValues(now);
     layer.gain.gain.setValueAtTime(Math.max(0.0001, layer.gain.gain.value), now);
     layer.gain.gain.linearRampToValueAtTime(0.0001, now + Math.max(0.05, fadeMs / 1000));
     globalThis.setTimeout(() => {
-      for (const oscillator of layer.oscillators) {
-        try { oscillator.stop(); } catch { /* already stopped */ }
+      for (const source of layer.sources) {
+        try { source.stop(); } catch { /* already stopped */ }
       }
+      layer.sources.clear();
       layer.gain.disconnect();
     }, fadeMs + 120);
   }
@@ -200,32 +307,20 @@ export class BrowserAudioBackend implements AudioBackend {
     if (sameCue.length >= cue.maxInstances) {
       const candidate = sameCue.sort((a, b) => a.priority - b.priority)[0];
       if (candidate.priority > priority) return;
-      try { candidate.source.stop(); } catch { /* voice already ended */ }
+      for (const source of candidate.sources) try { source.stop(); } catch { /* already ended */ }
       this.voices.delete(candidate);
     }
     if (this.voices.size >= this.maxVoices) {
       const candidate = [...this.voices].sort((a, b) => a.priority - b.priority)[0];
       if (!candidate || candidate.priority > priority) return;
-      try { candidate.source.stop(); } catch { /* voice already ended */ }
+      for (const source of candidate.sources) try { source.stop(); } catch { /* already ended */ }
       this.voices.delete(candidate);
     }
 
-    const oscillator = context.createOscillator();
-    const envelope = context.createGain();
     const now = context.currentTime;
-    const end = now + cue.recipe.duration;
-    oscillator.type = cue.recipe.waveform;
-    oscillator.frequency.setValueAtTime(cue.recipe.frequency, now);
-    if (cue.recipe.endFrequency !== undefined) {
-      oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, cue.recipe.endFrequency), end);
-    }
-    if (cue.recipe.detune) oscillator.detune.value = cue.recipe.detune;
-    const attack = cue.recipe.attack ?? 0.008;
-    envelope.gain.setValueAtTime(0.0001, now);
-    envelope.gain.exponentialRampToValueAtTime(Math.max(0.0002, cue.recipe.gain), now + attack);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, end);
-    oscillator.connect(envelope);
-
+    const recipes = Array.isArray(cue.recipe) ? cue.recipe : [cue.recipe];
+    const sources: AudioScheduledSourceNode[] = [];
+    let output: AudioNode = bus;
     if (cue.spatial && position) {
       const panner = context.createPanner();
       panner.panningModel = 'equalpower';
@@ -236,17 +331,53 @@ export class BrowserAudioBackend implements AudioBackend {
       panner.positionX.value = position.x;
       panner.positionY.value = position.y;
       panner.positionZ.value = position.z;
-      envelope.connect(panner);
       panner.connect(bus);
-    } else {
-      envelope.connect(bus);
+      output = panner;
     }
-
-    const voice = { source: oscillator, priority, cueId: cue.id };
+    const voice = { sources, priority, cueId: cue.id };
     this.voices.add(voice);
-    oscillator.onended = () => this.voices.delete(voice);
-    oscillator.start(now);
-    oscillator.stop(end + 0.02);
+    let remaining = recipes.length;
+    for (const layer of recipes) {
+      const start = now + (layer.delay ?? 0);
+      const end = start + layer.duration;
+      const envelope = context.createGain();
+      const attack = Math.min(layer.duration * 0.4, layer.attack ?? 0.008);
+      envelope.gain.setValueAtTime(0.0001, start);
+      envelope.gain.exponentialRampToValueAtTime(Math.max(0.0002, layer.gain), start + attack);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, end);
+      let source: AudioScheduledSourceNode;
+      let sourceOutput: AudioNode;
+      if (layer.noise && this.noiseBuffer) {
+        const noiseSource = context.createBufferSource();
+        noiseSource.buffer = this.noiseBuffer;
+        const filter = context.createBiquadFilter();
+        filter.type = layer.filterType ?? 'lowpass';
+        filter.frequency.value = layer.filterFrequency ?? 900;
+        noiseSource.connect(filter);
+        source = noiseSource;
+        sourceOutput = filter;
+      } else {
+        const oscillator = context.createOscillator();
+        oscillator.type = layer.waveform;
+        oscillator.frequency.setValueAtTime(Math.max(1, layer.frequency), start);
+        if (layer.endFrequency !== undefined) {
+          oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, layer.endFrequency), end);
+        }
+        if (layer.detune) oscillator.detune.value = layer.detune;
+        source = oscillator;
+        sourceOutput = oscillator;
+      }
+      sourceOutput.connect(envelope);
+      envelope.connect(output);
+      sources.push(source);
+      source.onended = () => {
+        remaining--;
+        envelope.disconnect();
+        if (remaining <= 0) this.voices.delete(voice);
+      };
+      source.start(start);
+      source.stop(end + 0.02);
+    }
   }
 
   setListener(position: AudioPosition): void {
@@ -271,17 +402,19 @@ export class BrowserAudioBackend implements AudioBackend {
   dispose(): void {
     if (this.musicLayer) {
       if (this.musicLayer.timer !== null) globalThis.clearTimeout(this.musicLayer.timer);
-      for (const oscillator of this.musicLayer.oscillators) {
-        try { oscillator.stop(); } catch { /* already stopped */ }
+      this.musicLayer.stopped = true;
+      for (const source of this.musicLayer.sources) {
+        try { source.stop(); } catch { /* already stopped */ }
       }
       this.musicLayer = null;
     }
     this.setTension(0);
     for (const voice of this.voices) {
-      try { voice.source.stop(); } catch { /* already ended */ }
+      for (const source of voice.sources) try { source.stop(); } catch { /* already ended */ }
     }
     this.voices.clear();
     void this.context?.close().catch(() => undefined);
     this.context = null;
+    this.noiseBuffer = null;
   }
 }
