@@ -21,6 +21,11 @@ describe('Procedural character assets', () => {
     expect(visual.group.getObjectByName('rig:left-arm')).toBe(visual.rig.leftArm);
     expect(visual.group.getObjectByName('rig:right-leg')).toBe(visual.rig.rightLeg);
     expect(visual.group.getObjectByName('attachment:cutlass')).toBeTruthy();
+    let meshes = 0;
+    visual.group.traverse((object) => {
+      if (object instanceof THREE.Mesh) meshes++;
+    });
+    expect(meshes).toBeLessThanOrEqual(6);
   });
 
   it('animates humanoid locomotion/attack without moving the gameplay root', () => {

@@ -15,6 +15,7 @@ import { Ocean, SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 import { CloudLayer } from './CloudLayer';
 import { DayNightCycle } from './DayNightCycle';
 import { islandStreamingAction } from './IslandStreamingPolicy';
+import { batchStaticIsland } from '../art/StaticIslandBatcher';
 
 export const ISLAND_RADIUS = STARTER_ISLAND_RADIUS;
 export { WATER_LEVEL };
@@ -142,6 +143,7 @@ export class World {
 
     // ---------- สถานที่หลัก หมู่บ้าน ท่าเรือ หาดฝึก ----------
     const starterIsland = buildStarterIsland(scene, this.collision, textures, graphics);
+    batchStaticIsland(starterIsland.root);
     this.nightMaterial = starterIsland.nightMaterial;
     this.nightLights = starterIsland.nightLights;
 
@@ -220,6 +222,7 @@ export class World {
         this.nightMaterial,
         this.nightLights,
       ));
+      batchStaticIsland(result.root);
       const addedLights = this.nightLights.slice(lightStart);
       result.root.visible = false;
       result.root.children.forEach((child) => { child.visible = false; });

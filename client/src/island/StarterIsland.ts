@@ -16,6 +16,7 @@ import {
 import { createIslandBuildCollision } from './IslandLayout';
 
 export interface StarterIslandResult {
+  root: THREE.Group;
   nightMaterial: THREE.MeshStandardMaterial;
   nightLights: THREE.PointLight[];
 }
@@ -358,5 +359,5 @@ export function buildStarterIsland(
   buildFruitGrove(ctx);
   buildHillShrine(ctx);
   scene.add(root);
-  return { nightMaterial, nightLights };
+  return { root, nightMaterial, nightLights };
 }
