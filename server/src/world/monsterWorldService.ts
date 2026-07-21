@@ -1,4 +1,5 @@
 import {
+  MONSTER_PROTOCOL_SCHEMA_VERSION,
   SHARED_WORLD_SPAWNS,
   WORLD_MONSTER_TICK_MS,
   type RealtimeServerMessage,
@@ -7,6 +8,7 @@ import { MonsterSimulation } from './monsterSimulation.js';
 import type { AttackKind } from '../realtime/combatAuthority.js';
 import type { RealtimeHub, WorldMonsterBridge } from '../realtime/realtimeHub.js';
 import type { PostgresWorldMonsterRepository, WorldMonsterRow } from './worldMonsterRepository.js';
+import type { MonsterService } from '../monster/monsterService.js';
 
 interface ServiceLogger {
   warn(fields: object, message: string): void;
@@ -18,6 +20,8 @@ export interface MonsterWorldServiceOptions {
   logger?: ServiceLogger;
   /** persist ทุกกี่ ms (นอกจากตอน shutdown) */
   persistIntervalMs?: number;
+  /** Server-authoritative reward transaction for a confirmed shared-world death. */
+  rewards?: Pick<MonsterService, 'grantKills'>;
 }
 
 /**
@@ -97,12 +101,64 @@ export class MonsterWorldService implements WorldMonsterBridge {
       updates: [result.delta],
     });
     if (result.dead) {
-      this.hub.broadcastWorldMonster(result.islandId, {
-        type: 'world-monster-dead',
-        seq: 0,
-        spawnId,
-        byId: characterId,
-      });
+      const idempotencyKey = `world-kill:${spawnId}:${this.now()}`;
+      if (!this.options.rewards) {
+        this.hub.broadcastWorldMonster(result.islandId, {
+          type: 'world-monster-dead',
+          seq: 0,
+          spawnId,
+          byId: characterId,
+        });
+        return;
+      }
+      // Broadcast the credited death only after the same Server transaction has committed
+      // coins and progression. A retry reuses one key and therefore cannot double-grant.
+      void this.grantDeathReward(characterId, result.monsterId, idempotencyKey)
+        .then((outcome) => {
+          const granted = outcome.rewards[0];
+          this.hub.broadcastWorldMonster(result.islandId, {
+            type: 'world-monster-dead',
+            seq: 0,
+            spawnId,
+            byId: characterId,
+            reward: granted ? {
+              monsterId: granted.monsterId,
+              playerExp: granted.playerExp,
+              coins: granted.coins,
+              masteryExp: granted.masteryExp,
+              coinsTotal: outcome.coinsTotal,
+            } : undefined,
+          });
+        })
+        .catch((error) => {
+          this.options.logger?.warn(
+            { err: error, characterId, spawnId },
+            'shared monster reward failed',
+          );
+          this.hub.broadcastWorldMonster(result.islandId, {
+            type: 'world-monster-dead',
+            seq: 0,
+            spawnId,
+            byId: characterId,
+          });
+        });
+    }
+  }
+
+  private async grantDeathReward(
+    characterId: string,
+    monsterId: string,
+    idempotencyKey: string,
+  ) {
+    const body = {
+      schemaVersion: MONSTER_PROTOCOL_SCHEMA_VERSION,
+      idempotencyKey,
+      kills: [{ monsterId, count: 1 }],
+    };
+    try {
+      return await this.options.rewards!.grantKills(characterId, body);
+    } catch {
+      return this.options.rewards!.grantKills(characterId, body);
     }
   }
 

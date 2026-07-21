@@ -79,9 +79,13 @@ async function start(): Promise<void> {
   const quests = pool && environment.ENABLE_QUEST_SERVER
     ? new QuestService(new PostgresQuestRepository(pool, { progressionAuthority }))
     : undefined;
-  const monsters = pool && environment.ENABLE_MONSTER_SERVER
+  const monsterRewards = pool
+    && (environment.ENABLE_MONSTER_SERVER || environment.ENABLE_SHARED_WORLD_MONSTERS)
     ? new MonsterService(new PostgresMonsterRepository(pool, { progressionAuthority }))
     : undefined;
+  // REST kill reports remain independently gated; shared-world deaths use the same
+  // authoritative transaction without trusting a second client-reported kill.
+  const monsters = environment.ENABLE_MONSTER_SERVER ? monsterRewards : undefined;
   const progression = pool && progressionAuthority
     ? new ProgressionService(pool)
     : undefined;
@@ -101,6 +105,7 @@ async function start(): Promise<void> {
     ? new MonsterWorldService(realtime, {
         logger: app.log,
         repository: pool ? new PostgresWorldMonsterRepository(pool) : undefined,
+        rewards: monsterRewards,
       })
     : null;
   if (monsterWorld) {

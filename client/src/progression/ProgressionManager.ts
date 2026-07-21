@@ -134,6 +134,19 @@ export class ProgressionManager implements Updatable {
     this.events.emit('coins:changed', { amount: granted, total: this.state.coins, source });
   }
 
+  /** Replace the browser mirror with the canonical Server wallet total. */
+  setCoinsFromServer(total: number, source = 'server-reconcile'): boolean {
+    if (!Number.isFinite(total) || total < 0) return false;
+    const normalized = Math.floor(total);
+    const amount = normalized - this.state.coins;
+    if (amount === 0) return false;
+    this.state.coins = normalized;
+    this.dirty = true;
+    this.events.emit('coins:changed', { amount, total: normalized, source });
+    this.save();
+    return true;
+  }
+
   spendCoins(amount: number, source?: string): boolean {
     if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount)) return false;
     if (this.state.coins < amount) return false;
