@@ -237,6 +237,40 @@ describe('S9 realtime client', () => {
     client.stop();
   });
 
+  it('dispatches an authoritative shared-monster reward with the credited death', () => {
+    const sockets: FakeSocket[] = [];
+    const deaths: unknown[] = [];
+    const client = new RealtimeClient('ws://test/ws', {
+      onEconomy: () => undefined,
+      onResync: () => undefined,
+      onWorldMonsterDead: (spawnId, byId, reward) => deaths.push({ spawnId, byId, reward }),
+    }, {
+      webSocketFactory: () => {
+        const socket = new FakeSocket(); sockets.push(socket); return socket;
+      },
+    });
+    client.start();
+    const socket = sockets[0];
+    socket.welcome();
+    socket.push({
+      type: 'world-monster-dead',
+      seq: 2,
+      spawnId: 'starter-crab-1',
+      byId: 'character-a',
+      reward: {
+        monsterId: 'crab', playerExp: 25, coins: 9, masteryExp: 4, coinsTotal: 109,
+      },
+    });
+    expect(deaths).toEqual([{
+      spawnId: 'starter-crab-1',
+      byId: 'character-a',
+      reward: {
+        monsterId: 'crab', playerExp: 25, coins: 9, masteryExp: 4, coinsTotal: 109,
+      },
+    }]);
+    client.stop();
+  });
+
   it('dispatches authoritative boat state and sends intent without position, HP, or damage', () => {
     const sockets: FakeSocket[] = [];
     const deltas: string[] = [];
