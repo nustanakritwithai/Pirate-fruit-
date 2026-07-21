@@ -78,7 +78,8 @@ export async function reconcileProgression(
   const local = progression.getState().player;
   const serverTotal = totalExpOf(state.level, state.exp);
   const localTotal = totalExpOf(local.level, local.exp);
-  if (serverTotal <= localTotal) return false;
+  const coinsChanged = progression.setCoinsFromServer(state.coins, 'server-reconcile');
+  if (serverTotal <= localTotal) return coinsChanged;
   progression.addPlayerExp(serverTotal - localTotal, 'server-reconcile');
   return true;
 }
