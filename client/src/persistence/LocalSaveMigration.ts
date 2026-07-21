@@ -87,6 +87,7 @@ export async function migrateLocalSaveIfNeeded(
   coordinator: RemoteSaveCoordinator,
   storage: GameStorage,
   characterId: string,
+  allowLegacyImport = true,
 ): Promise<void> {
   const remote = await coordinator.load();
   if (remote.migrated) {
@@ -109,6 +110,21 @@ export async function migrateLocalSaveIfNeeded(
     return;
   }
   if (remote.revision > 0 || remote.state) return;
+
+  // Multi-slot online characters must start from their Server defaults. Keep legacy browser
+  // documents untouched as backup, but consume the one-time migration decision without upload.
+  if (!allowLegacyImport) {
+    const marker = readMarker(storage);
+    if (marker?.status !== 'confirmed') {
+      writeMarker(storage, {
+        idempotencyKey: marker?.idempotencyKey ?? idempotencyKey(),
+        status: 'confirmed',
+        characterId,
+        revision: remote.revision,
+      });
+    }
+    return;
+  }
 
   const documents = localDocuments(storage);
   let marker = readMarker(storage);
