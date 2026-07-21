@@ -111,18 +111,26 @@ export async function migrateLocalSaveIfNeeded(
   if (remote.revision > 0 || remote.state) return;
 
   const documents = localDocuments(storage);
-  if (!hasLocalSave(documents)) return;
-
   let marker = readMarker(storage);
-  // A browser can receive a new Server character after a cookie reset or service
-  // recreation. A confirmed marker from the previous identity must never block the
-  // new empty character from importing the still-intact Local save.
-  if (
-    marker?.status === 'confirmed'
-    || (marker?.characterId !== undefined && marker.characterId !== characterId)
-  ) {
-    marker = null;
+
+  // Legacy local data may be imported only once per browser. RepositoryBackedStorage mirrors
+  // the active remote character into the same legacy keys, so treating every empty character
+  // as a new migration target would clone the previous slot's stats, coins and inventory.
+  if (marker?.status === 'confirmed') return;
+  if (marker?.characterId !== undefined && marker.characterId !== characterId) return;
+
+  // Record that the legacy migration decision was consumed even when this browser had no old
+  // save. Otherwise gameplay from slot 1 later appears in the cache and gets imported into slot 2.
+  if (!hasLocalSave(documents)) {
+    writeMarker(storage, {
+      idempotencyKey: marker?.idempotencyKey ?? idempotencyKey(),
+      status: 'confirmed',
+      characterId,
+      revision: remote.revision,
+    });
+    return;
   }
+
   if (!marker) {
     marker = { idempotencyKey: idempotencyKey(), status: 'pending', characterId };
     storage.setItem(REMOTE_SAVE_BACKUP_KEY, JSON.stringify({
