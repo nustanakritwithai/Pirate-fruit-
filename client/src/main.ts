@@ -490,10 +490,45 @@ async function main(): Promise<void> {
     // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
     onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
     onWorldMonsterDelta: (islandId, updates) => sharedMonsters?.applyDelta(islandId, updates),
-    onWorldMonsterDead: (spawnId) => {
+    onWorldMonsterDead: (spawnId, byId, reward) => {
       const position = sharedMonsters?.positionOf(spawnId);
       sharedMonsters?.markDead(spawnId);
       audio.play('monster.death', { eventId: `world-monster-dead:${spawnId}`, position });
+      if (byId !== selfCharacterId || !reward) return;
+
+      const item = playerCombat?.activeItem
+        ?? { itemId: 'basic-brawl', category: 'style' as const, name: 'หมัด' };
+      progression.addPlayerExp(reward.playerExp, `shared-monster:${reward.monsterId}`);
+      progression.setCoinsFromServer(reward.coinsTotal, `shared-monster:${reward.monsterId}`);
+      const mastery = reward.masteryExp > 0
+        ? [{ itemId: item.itemId, category: item.category, amount: reward.masteryExp }]
+        : [];
+      if (reward.masteryExp > 0) {
+        progression.addMasteryExp(item.itemId, item.category, reward.masteryExp);
+      }
+      progression.emitRewardGranted({
+        playerExp: reward.playerExp,
+        coins: reward.coins,
+        mastery,
+        multiplier: 1,
+      });
+      const contribution = {
+        enemyId: reward.monsterId,
+        totalDamage: 0,
+        lastHitItemId: item.itemId,
+        lastHitCategory: item.category,
+        highestDamageItemId: item.itemId,
+        highestDamageCategory: item.category,
+        killed: true,
+      };
+      progression.events.emit('monster:killed', {
+        monsterId: reward.monsterId,
+        monsterType: reward.monsterId.includes('boss') ? 'boss' : 'normal',
+        isBoss: reward.monsterId.includes('boss'),
+        position: position ?? { x: controller.position.x, y: controller.position.y, z: controller.position.z },
+        contribution,
+      });
+      progression.save();
     },
     onWorldMonsterRespawn: (monster) => {
       sharedMonsters?.applyRespawn(monster);
