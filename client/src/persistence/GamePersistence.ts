@@ -192,7 +192,12 @@ export async function initializeGamePersistence(
         csrfToken: session.csrfToken,
       });
       await recoverDirtyLocalSave(coordinator, localStorage, characterId);
-      await migrateLocalSaveIfNeeded(coordinator, localStorage, characterId);
+      await migrateLocalSaveIfNeeded(
+        coordinator,
+        localStorage,
+        characterId,
+        !enabled(import.meta.env.VITE_ENABLE_CHARACTER_SELECT),
+      );
 
       const failover = { active: true };
       const useLocal = (error: unknown): void => {

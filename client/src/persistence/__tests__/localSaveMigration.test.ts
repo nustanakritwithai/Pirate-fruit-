@@ -131,7 +131,7 @@ describe('S6 local save migration', () => {
     expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).toBeNull();
   });
 
-  it('does not let a confirmed marker from an old Server character block migration', async () => {
+  it('does not clone a confirmed legacy migration into another character slot', async () => {
     const storage = new MemoryStorage();
     storage.setItem(GAMEPLAY_STORAGE_KEYS.progression, JSON.stringify({
       version: 1,
@@ -143,32 +143,15 @@ describe('S6 local save migration', () => {
       characterId: 'character-old',
       revision: 8,
     }));
-    let migrated = false;
     let migrationCalls = 0;
     const fetcher: FetchLike = async (input) => {
-      if (String(input).endsWith('/api/player/migrate-local')) {
-        migrationCalls += 1;
-        migrated = true;
-        return Response.json({
-          ok: true,
-          revision: 1,
-          idempotentReplay: false,
-          migrated: true,
-        });
-      }
+      if (String(input).endsWith('/api/player/migrate-local')) migrationCalls += 1;
       return Response.json({
         ok: true,
         schemaVersion: 1,
-        revision: migrated ? 1 : 0,
-        migrated,
-        state: migrated ? {
-          schemaVersion: 1,
-          checkpoint: null,
-          progression: storage.getItem(GAMEPLAY_STORAGE_KEYS.progression),
-          inventory: null,
-          boats: null,
-          loadout: null,
-        } : null,
+        revision: 0,
+        migrated: false,
+        state: null,
         cargo: { schemaVersion: 1, cargo: null },
       });
     };
@@ -179,13 +162,49 @@ describe('S6 local save migration', () => {
       'character-new',
     );
 
-    expect(migrationCalls).toBe(1);
+    expect(migrationCalls).toBe(0);
     expect(JSON.parse(storage.getItem(REMOTE_MIGRATION_MARKER_KEY)!)).toMatchObject({
       status: 'confirmed',
-      characterId: 'character-new',
-      revision: 1,
+      characterId: 'character-old',
+      revision: 8,
     });
+    // The old local save remains available as backup and is never deleted.
     expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).not.toBeNull();
+  });
+
+  it('keeps character-select slots server-clean while preserving the legacy backup', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(GAMEPLAY_STORAGE_KEYS.progression, 'legacy-progress');
+    storage.setItem(GAMEPLAY_STORAGE_KEYS.inventory, 'legacy-inventory');
+    let migrationCalls = 0;
+    const fetcher: FetchLike = async (input) => {
+      if (String(input).endsWith('/api/player/migrate-local')) migrationCalls += 1;
+      return Response.json({
+        ok: true,
+        schemaVersion: 1,
+        revision: 0,
+        migrated: false,
+        state: null,
+        cargo: { schemaVersion: 1, cargo: null },
+      });
+    };
+
+    await migrateLocalSaveIfNeeded(
+      new RemoteSaveCoordinator('https://save.example', { fetcher }),
+      storage,
+      'character-primary',
+      false,
+    );
+
+    expect(migrationCalls).toBe(0);
+    expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBe('legacy-progress');
+    expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.inventory)).toBe('legacy-inventory');
+    expect(storage.getItem(REMOTE_SAVE_BACKUP_KEY)).toBeNull();
+    expect(JSON.parse(storage.getItem(REMOTE_MIGRATION_MARKER_KEY)!)).toMatchObject({
+      status: 'confirmed',
+      characterId: 'character-primary',
+      revision: 0,
+    });
   });
 
   it('archives a same-character marker when the server is ahead (in-flight write landed)', async () => {
