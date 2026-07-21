@@ -55,6 +55,14 @@ describe('S12 progression reconcile', () => {
     expect(progression.getState().player.exp).toBe(before.exp);
   });
 
+  it('reconciles the canonical Server wallet even when EXP is unchanged', async () => {
+    const progression = new ProgressionManager({ storage: new MemoryStorage() });
+    expect(progression.coins).toBe(0);
+    const changed = await reconcileProgression(executorWith(1, 0, 109), progression);
+    expect(changed).toBe(true);
+    expect(progression.coins).toBe(109);
+  });
+
   it('does nothing when the server is unreachable', async () => {
     const progression = new ProgressionManager({ storage: new MemoryStorage() });
     const offline: RemoteProgressionExecutor = {
