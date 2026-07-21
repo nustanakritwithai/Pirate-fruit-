@@ -179,12 +179,23 @@ export interface RealtimeWorldMonsterDelta {
   updates: WorldMonsterDelta[];
 }
 
+export interface WorldMonsterReward {
+  monsterId: string;
+  playerExp: number;
+  coins: number;
+  masteryExp: number;
+  /** ยอดเหรียญ authoritative หลังธุรกรรม ใช้แก้ client cache ให้ตรง Server */
+  coinsTotal: number;
+}
+
 export interface RealtimeWorldMonsterDead {
   type: 'world-monster-dead';
   seq: number;
   spawnId: string;
   /** ผู้เล่นที่ฟันหมัดสุดท้าย (ให้เครดิต/แสดงผล) */
   byId?: string;
+  /** มีเฉพาะหลัง Server commit รางวัลสำเร็จ; client อื่นเห็นได้แต่ apply เฉพาะ byId ของตน */
+  reward?: WorldMonsterReward;
 }
 
 export interface RealtimeWorldMonsterRespawn {
