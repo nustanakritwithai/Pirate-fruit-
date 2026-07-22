@@ -364,10 +364,10 @@ export const PVP_SKILL_RANGE = 22;
 /** Presentation-only impulse computed by the Server after a confirmed hit. */
 export const PVP_MELEE_KNOCKBACK_SPEED = 10;
 export const PVP_SKILL_KNOCKBACK_SPEED = 14;
-/** Longer launch windows make normal hits readable and block an immediate counterattack. */
+/** Knockback travel and hit-stun are separate presentation/control windows. */
 export const PVP_MELEE_KNOCKBACK_DURATION = 0.34;
 export const PVP_SKILL_KNOCKBACK_DURATION = 0.4;
-export const PVP_MELEE_HITSTUN_DURATION = 0.4;
-export const PVP_SKILL_HITSTUN_DURATION = 0.4;
+export const PVP_MELEE_HITSTUN_DURATION = 0.8;
+export const PVP_SKILL_HITSTUN_DURATION = 0.8;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;

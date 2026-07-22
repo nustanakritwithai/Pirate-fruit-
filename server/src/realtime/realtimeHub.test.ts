@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   REALTIME_IDLE_TIMEOUT_MS,
   REALTIME_MAX_CLIENT_MESSAGE_BYTES,
+  PVP_MELEE_HITSTUN_DURATION,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
 import { RealtimeHub, type RealtimeSocket, type WorldMonsterBridge } from './realtimeHub.js';
@@ -327,7 +328,7 @@ describe('S15 PvP combat authority', () => {
       | undefined;
     expect(hitToTarget).toMatchObject({ attackerId: 'char-a', targetId: 'char-b' });
     expect(hitToTarget!.hp).toBeLessThan(hitToTarget!.maxHp);
-    expect(hitToTarget!.knockback).toMatchObject({ speed: 10, duration: 0.34, stunDuration: 0.4 });
+    expect(hitToTarget!.knockback).toMatchObject({ speed: 10, duration: 0.34, stunDuration: PVP_MELEE_HITSTUN_DURATION });
     // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
     expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
     expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
