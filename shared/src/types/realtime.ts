@@ -124,6 +124,8 @@ export interface RealtimeCombatHit {
   maxHp: number;
   /** Server-computed presentation impulse; never accepted from Client input. */
   knockback?: RealtimeKnockback;
+  blocked?: boolean;
+  guardBroken?: boolean;
 }
 
 export interface RealtimeKnockback {
@@ -329,10 +331,22 @@ export interface RealtimeAttack {
   skillId?: string;
 }
 
+/** Server records guard state explicitly; presence animation is never trusted as authority. */
+export interface RealtimeCombatBlock {
+  type: 'combat-block';
+  active: boolean;
+}
+
+export interface RealtimeResyncRequest {
+  type: 'resync';
+}
+
 /** S16 — Client รายงานเจตนาตีมอนสเตอร์กลาง — Server ตัดสินดาเมจ/ตาย/contribution เอง */
 export interface RealtimeWorldMonsterHit {
   type: 'world-monster-hit';
-  spawnId: string;
+  /** One combat action can legitimately hit several monsters; Server dedupes this id. */
+  intentId: string;
+  spawnIds: string[];
   kind: 'melee' | 'skill';
 }
 
@@ -340,6 +354,8 @@ export type RealtimeClientMessage =
   | RealtimePing
   | RealtimeMove
   | RealtimeAttack
+  | RealtimeCombatBlock
+  | RealtimeResyncRequest
   | RealtimeWorldMonsterHit
   | RealtimeBoatIntent;
 
@@ -368,7 +384,7 @@ export const PVP_SKILL_KNOCKBACK_SPEED = 14;
 /** Knockback travel and hit-stun are separate presentation/control windows. */
 export const PVP_MELEE_KNOCKBACK_DURATION = 0.34;
 export const PVP_SKILL_KNOCKBACK_DURATION = 0.4;
-export const PVP_MELEE_HITSTUN_DURATION = 0.2;
-export const PVP_SKILL_HITSTUN_DURATION = 0.2;
+export const PVP_MELEE_HITSTUN_DURATION = 0.35;
+export const PVP_SKILL_HITSTUN_DURATION = 0.35;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;
