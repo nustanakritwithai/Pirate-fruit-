@@ -94,6 +94,8 @@ export class BoatWorldService implements BoatWorldBridge {
     let result: BoatIntentResolution;
     if (intent.action === 'summon') result = await this.summon(characterId, presence);
     else if (intent.action === 'board') result = this.board(characterId, presence, intent.entityId);
+    else if (intent.action === 'take-helm') result = this.takeHelm(characterId, intent.entityId);
+    else if (intent.action === 'leave-helm') result = this.leaveHelm(characterId);
     else if (intent.action === 'disembark') result = this.disembark(characterId);
     else if (intent.action === 'input') result = this.input(characterId, intent);
     else result = this.fire(characterId, intent);
@@ -134,13 +136,32 @@ export class BoatWorldService implements BoatWorldBridge {
     const boat = this.sim.disembark(characterId);
     if (!boat) return { accepted: false, reason: 'not-aboard' };
     this.broadcastDelta(boat);
+    const sideX = Math.cos(boat.heading) * 4;
+    const sideZ = -Math.sin(boat.heading) * 4;
+    this.hub.updateDisembarkedPresence(characterId, boat.islandId, boat.x + sideX, boat.z + sideZ, boat.heading);
+    return { accepted: true, entityId: boat.entityId };
+  }
+
+  private takeHelm(characterId: string, entityId?: string): BoatIntentResolution {
+    if (!entityId) return { accepted: false, reason: 'boat-required' };
+    const boat = this.sim.takeHelm(entityId, characterId);
+    if (!boat) return { accepted: false, reason: 'not-passenger-or-helm-busy' };
+    this.broadcastDelta(boat);
+    return { accepted: true, entityId: boat.entityId };
+  }
+
+  private leaveHelm(characterId: string): BoatIntentResolution {
+    const boat = this.sim.leaveHelm(characterId);
+    if (!boat) return { accepted: false, reason: 'not-helm' };
+    this.broadcastDelta(boat);
     return { accepted: true, entityId: boat.entityId };
   }
 
   private input(characterId: string, intent: RealtimeBoatIntent): BoatIntentResolution {
     if (!intent.entityId) return { accepted: false, reason: 'boat-required' };
     const boat = this.sim.setInput(
-      this.now(), characterId, intent.entityId, intent.throttle ?? 0, intent.steer ?? 0, intent.anchor,
+      this.now(), characterId, intent.entityId, intent.throttle ?? 0, intent.steer ?? 0,
+      intent.anchor, intent.boost,
     );
     return boat ? { accepted: true, entityId: boat.entityId } : { accepted: false, reason: 'not-helm' };
   }
@@ -175,6 +196,9 @@ export class BoatWorldService implements BoatWorldBridge {
     const dtMs = now - this.lastTickAt;
     this.lastTickAt = now;
     const result = this.sim.tick(now, dtMs);
+    for (const transition of result.islandTransitions) {
+      this.hub.broadcastBoat(transition.fromIslandId, this.snapshotMessageForIsland(transition.fromIslandId));
+    }
     for (const boats of result.dirtyByIsland.values()) {
       for (const boat of boats) {
         this.broadcastDelta(boat);
