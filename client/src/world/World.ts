@@ -14,7 +14,7 @@ import type { IslandDefinition, IslandId } from '../island/IslandTypes';
 import { Ocean, SEA_BOUNDARY, WATER_LEVEL } from '../ocean/Ocean';
 import { CloudLayer } from './CloudLayer';
 import { DayNightCycle } from './DayNightCycle';
-import { islandStreamingAction } from './IslandStreamingPolicy';
+import { ISLAND_UNLOAD_DISTANCE, islandStreamingAction } from './IslandStreamingPolicy';
 import { batchStaticIsland } from '../art/StaticIslandBatcher';
 
 export const ISLAND_RADIUS = STARTER_ISLAND_RADIUS;
@@ -210,10 +210,15 @@ export class World {
     this.pendingIslands.add(id);
     const collisionScope = `island:${id}`;
 
+    let terrain: THREE.Mesh | null = null;
+    let root: THREE.Group | null = null;
+    let lightStart = this.nightLights.length;
+    let sceneChildrenBefore = new Set(this.scene.children);
     void STREAMED_ISLAND_BUILDERS[id]().then((build) => {
-      const terrain = this.buildTerrain(definition);
+      terrain = this.buildTerrain(definition);
       this.scene.add(terrain);
-      const lightStart = this.nightLights.length;
+      lightStart = this.nightLights.length;
+      sceneChildrenBefore = new Set(this.scene.children);
       const result = this.collision.runInScope(collisionScope, () => build(
         this.scene,
         this.collision,
@@ -222,13 +227,40 @@ export class World {
         this.nightMaterial,
         this.nightLights,
       ));
+      root = result.root;
       batchStaticIsland(result.root);
       const addedLights = this.nightLights.slice(lightStart);
       result.root.visible = false;
       result.root.children.forEach((child) => { child.visible = false; });
       this.islandDetailRoots.set(id, result.root);
       this.streamedIslands.set(id, { terrain, root: result.root, nightLights: addedLights });
+
+      // The player may have sailed away while the lazy module was loading. Dispose the
+      // completed island instead of retaining an invisible full scene until a later pass.
+      const focus = this.focusProvider?.();
+      if (focus && Math.hypot(focus.x - definition.center.x, focus.z - definition.center.z) > ISLAND_UNLOAD_DISTANCE) {
+        this.unloadIsland(id);
+      }
     }).catch((error: unknown) => {
+      if (root) {
+        root.removeFromParent();
+        this.disposeObjectTree(root);
+      } else {
+        // Builders are synchronous after their module resolves. Remove anything they added
+        // before throwing so a partial procedural island cannot leak into the scene.
+        for (const child of [...this.scene.children]) {
+          if (!sceneChildrenBefore.has(child)) {
+            child.removeFromParent();
+            this.disposeObjectTree(child);
+          }
+        }
+      }
+      if (terrain) {
+        terrain.removeFromParent();
+        terrain.geometry.dispose();
+        (terrain.material as THREE.Material).dispose();
+      }
+      this.nightLights.splice(lightStart);
       this.collision.removeScope(collisionScope);
       console.warn(`[World] procedural island ${id} failed to load`, error);
     }).finally(() => {
