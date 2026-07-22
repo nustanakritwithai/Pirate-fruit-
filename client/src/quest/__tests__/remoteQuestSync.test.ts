@@ -86,19 +86,25 @@ describe('S10 remote quest sync', () => {
     ]);
   });
 
-  it('grants rewards only from the server claim response (no local double grant)', async () => {
+  it('keeps a completed quest ready until the player explicitly turns it in', async () => {
     const { progression, quests, calls } = harness();
     quests.acceptQuest('starter-crabs');
     const coinsBefore = progression.coins;
 
     for (let index = 0; index < 5; index += 1) quests.recordKill('crab', false);
-    // local ครบแล้วแต่ยังไม่มีคำตอบ Server → ยังไม่มีรางวัล และเควสต์ยังไม่ปิด
+    // final objective stays pending until the Server confirms completion.
+    expect(progression.coins).toBe(coinsBefore);
+    expect(quests.getActiveQuest()?.completed).toBe(false);
+
+    await drain();
+    // Server ตอบ completed → คงสถานะเต็มไว้ก่อน ยังไม่แจกซ้ำ/ไม่ปิดเควสต์
+    const rewards = QUESTS_BY_ID.get('starter-crabs')!.rewards;
+    expect(calls.claim).toHaveLength(0);
     expect(progression.coins).toBe(coinsBefore);
     expect(quests.getActiveQuest()?.completed).toBe(true);
 
-    await drain();
-    // Server ตอบ completed → claim → รางวัลเข้าด้วยเลขจาก Server + เควสต์ปิด
-    const rewards = QUESTS_BY_ID.get('starter-crabs')!.rewards;
+    quests.claimQuestReward();
+    await drain(0);
     expect(calls.claim).toHaveLength(1);
     expect(progression.coins).toBe(coinsBefore + rewards.coins);
     expect(quests.getActiveQuest()).toBeNull();
@@ -128,9 +134,12 @@ describe('S10 remote quest sync', () => {
     expect(attempts).toBeGreaterThanOrEqual(1);
 
     behavior.progressError = null;
-    await drain(6_000); // retry 5s
+    await drain(6_000); // retry 5s; progress reaches ready state
     expect(calls.progress.length).toBeGreaterThan(attempts);
-    expect(calls.claim).toHaveLength(1); // มาถึงแล้วก็เคลมจนจบ
+    expect(calls.claim).toHaveLength(0);
+    quests.claimQuestReward();
+    await drain(0);
+    expect(calls.claim).toHaveLength(1);
     expect(quests.getActiveQuest()).toBeNull();
   });
 
@@ -165,11 +174,16 @@ describe('S10 remote quest sync', () => {
     ]);
   });
 
-  it('claims a quest the server already marked completed on boot', async () => {
+  it('keeps a quest the server already marked completed on boot ready to turn in', async () => {
     const { progression, quests, sync, calls, behavior } = harness();
     behavior.state.active = { questId: 'starter-crabs', progress: [5], status: 'completed' };
     const coinsBefore = progression.coins;
     await sync.reconcile();
+    await drain(0);
+    expect(calls.claim).toHaveLength(0);
+    expect(progression.coins).toBe(coinsBefore);
+    expect(quests.getActiveQuest()?.completed).toBe(true);
+    quests.claimQuestReward();
     await drain(0);
     expect(calls.claim).toHaveLength(1);
     expect(progression.coins).toBe(coinsBefore + QUESTS_BY_ID.get('starter-crabs')!.rewards.coins);
