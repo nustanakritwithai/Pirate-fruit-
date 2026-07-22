@@ -357,15 +357,24 @@ export class RealtimeHub {
     // While aboard, seed/reconnect from the server boat transform and ignore client coordinates.
     const aboard = this.boatWorld?.passengerBoat(connection.characterId);
     if (aboard) {
+      const now = this.now();
       const firstMove = connection.presence === null;
+      const islandChanged = connection.presence?.islandId !== aboard.islandId;
       connection.presence = {
         islandId: aboard.islandId, x: aboard.x, y: 0, z: aboard.z,
         heading: aboard.heading, onBoat: true, boatId: aboard.definitionId,
       };
-      if (firstMove) {
-        this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
-        this.relayPresence(connection);
+      if (!firstMove && !islandChanged && now - connection.lastMoveAt < REALTIME_MOVE_MIN_INTERVAL_MS) {
+        return;
       }
+      connection.lastMoveAt = now;
+      if (firstMove || islandChanged) {
+        this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
+      }
+      // The client keeps sending only a heartbeat while aboard. Relay the
+      // server-owned transform so an anchored passenger never ages out of
+      // other players' presentation caches (BUG-035).
+      this.relayPresence(connection);
       return;
     }
     const position = readPosition(message);
