@@ -5,7 +5,7 @@ import { BoatWorldService } from './boatWorldService.js';
 import type { BoatWorldRepository } from './boatWorldRepository.js';
 
 describe('S17 BoatWorldService', () => {
-  it('publishes authoritative passenger presence immediately when boarding an anchored boat', async () => {
+  it('atomically boards and takes the helm when the client intents race', async () => {
     const passengerUpdates: unknown[][] = [];
     const disembarkUpdates: unknown[][] = [];
     const hub = {
@@ -26,11 +26,11 @@ describe('S17 BoatWorldService', () => {
     const presence = { islandId: 'starter-island', x: 4, y: 0, z: -43, heading: 0, onBoat: false };
     await service.handleIntent('owner-a', presence,
       { type: 'boat-intent', intentId: 'intent-summon', action: 'summon' });
+    // The take-helm frame may arrive before the preceding auto-board frame.
+    // Server range validation makes the combined operation safe and reliable.
     const result = await service.handleIntent('owner-a', presence,
-      { type: 'boat-intent', intentId: 'intent-board1', action: 'board', entityId: 'boat-a' });
-    expect(result.accepted).toBe(true);
-    expect((await service.handleIntent('owner-a', presence,
-      { type: 'boat-intent', intentId: 'intent-helm-1', action: 'take-helm', entityId: 'boat-a' })).accepted).toBe(true);
+      { type: 'boat-intent', intentId: 'intent-helm-1', action: 'take-helm', entityId: 'boat-a' });
+    expect(result).toMatchObject({ accepted: true, entityId: 'boat-a' });
     expect((await service.handleIntent('owner-a', presence,
       { type: 'boat-intent', intentId: 'intent-helm-2', action: 'leave-helm', entityId: 'boat-a' })).accepted).toBe(true);
     expect((await service.handleIntent('owner-a', presence,
@@ -39,6 +39,30 @@ describe('S17 BoatWorldService', () => {
       ['owner-a', 'starter-island', 4.2, -43, expect.any(Number), 'training-dinghy'],
     ]);
     expect(disembarkUpdates).toHaveLength(1);
+  });
+
+  it('does not use take-helm to board from outside the authoritative range', async () => {
+    const hub = {
+      attachBoatWorld: () => undefined,
+      broadcastBoat: () => undefined,
+      updateBoatPassengerPresence: () => undefined,
+    } as unknown as RealtimeHub;
+    const repository: BoatWorldRepository = {
+      loadAll: async () => [],
+      loadActiveBoat: async (characterId) => ({
+        entityId: 'boat-a', ownerId: characterId, definitionId: 'training-dinghy',
+        hp: 130, maxHp: 130, cargoCapacity: 8,
+      }),
+      saveAll: async () => undefined,
+    };
+    const service = new BoatWorldService(hub, { repository, now: () => 1_000 });
+    const dockPresence = { islandId: 'starter-island', x: 4, y: 0, z: -43, heading: 0, onBoat: false };
+    await service.handleIntent('owner-a', dockPresence,
+      { type: 'boat-intent', intentId: 'intent-summon', action: 'summon' });
+    const result = await service.handleIntent('owner-a',
+      { ...dockPresence, x: 100, z: 100 },
+      { type: 'boat-intent', intentId: 'intent-helm-far', action: 'take-helm', entityId: 'boat-a' });
+    expect(result).toMatchObject({ accepted: false, reason: 'not-passenger-or-helm-busy' });
   });
 
   it('authorizes the canonical active boat and deduplicates repeated intentId', async () => {
