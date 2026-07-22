@@ -37,7 +37,7 @@ export interface SharedMonsterType {
 /** Delay from the authoritative attack action to its active hit frame. */
 export const WORLD_MONSTER_ATTACK_HIT_DELAY_MS = 180;
 /** Server-authoritative window during which a confirmed player hit interrupts monster AI. */
-export const WORLD_MONSTER_HITSTUN_MS = 800;
+export const WORLD_MONSTER_HITSTUN_MS = 450;
 
 /** One authoritative monster attack action (damage is applied only once for this id). */
 export interface WorldMonsterAttack {
