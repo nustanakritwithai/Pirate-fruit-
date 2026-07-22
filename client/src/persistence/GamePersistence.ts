@@ -50,6 +50,8 @@ export interface GamePersistenceHandle {
   readonly requestedEconomyMode: PersistenceMode;
   readonly activeEconomyMode: PersistenceMode;
   readonly storage: RepositoryBackedStorage;
+  /** ลองอัปโหลด Local dirty mirror และกลับเข้า Remote หลัง connection ฟื้น */
+  refreshSave(): Promise<boolean>;
   refreshEconomy(): Promise<PersistedEconomyState | null>;
   subscribeStatus(listener: (event: PersistenceStatusEvent) => void): () => void;
   /** สาเหตุล่าสุดที่ Remote Save ตกลงโหมด Local (null = ไม่เคย/เชื่อมสำเร็จแล้ว) */
@@ -117,6 +119,7 @@ export async function initializeGamePersistence(
 
   let activeMode: PersistenceMode = 'local';
   let activeEconomyMode: PersistenceMode = 'local';
+  let recoverRemoteSave: (() => Promise<boolean>) | null = null;
   let storage: RepositoryBackedStorage;
   const local = localRepositories(localStorage);
   const statusEvents: PersistenceStatusEvent[] = [];
@@ -220,6 +223,30 @@ export async function initializeGamePersistence(
       };
       const remotePlayer = new RemotePlayerRepository(apiUrl, options.fetcher, coordinator);
       const remoteCargo = new RemoteCargoRepository(apiUrl, options.fetcher, coordinator);
+      let recoveryInFlight: Promise<boolean> | null = null;
+      recoverRemoteSave = (): Promise<boolean> => {
+        if (failover.active) return Promise.resolve(true);
+        recoveryInFlight ??= (async () => {
+          try {
+            await recoverDirtyLocalSave(coordinator, localStorage, characterId);
+            failover.active = true;
+            activeMode = 'remote';
+            clearRemoteFallbackReason(localStorage);
+            emitStatus({
+              scope: 'save',
+              mode: 'remote',
+              message: 'Remote save connection restored; Local changes were synchronized.',
+            });
+            return true;
+          } catch (error) {
+            recordRemoteFallbackReason(localStorage, error);
+            return false;
+          } finally {
+            recoveryInFlight = null;
+          }
+        })();
+        return recoveryInFlight;
+      };
       const player: PlayerRepository = {
         loadPlayer: (id) => remotePlayer.loadPlayer(id),
         savePlayer: async (id, state) => {
@@ -313,6 +340,7 @@ export async function initializeGamePersistence(
     requestedEconomyMode,
     get activeEconomyMode() { return activeEconomyMode; },
     storage,
+    refreshSave: () => recoverRemoteSave?.() ?? Promise.resolve(activeMode === 'remote'),
     refreshEconomy,
     subscribeStatus(listener) {
       statusListeners.add(listener);
