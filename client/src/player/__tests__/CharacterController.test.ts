@@ -94,4 +94,20 @@ describe('CharacterController — double jump', () => {
     expect(controller.verticalSpeed).toBeLessThan(secondJumpSpeed);
     expect(controller.verticalSpeed).toBeGreaterThan(0);
   });
+
+  it('moves away from an authoritative hit while the hit-stun lock is active', () => {
+    const controller = new CharacterController(
+      waterInput(),
+      new CollisionSystem(() => 0),
+      () => 0,
+    );
+    controller.teleport(0, 0, 0);
+    controller.update(0.016);
+    controller.applyStun(0.28);
+    controller.applyKnockback(1, 0, 8, 0.28);
+    controller.update(0.1);
+    expect(controller.position.x).toBeCloseTo(0.8, 2);
+    expect(controller.position.z).toBeCloseTo(0, 2);
+    expect(controller.isStunned).toBe(true);
+  });
 });
