@@ -123,7 +123,10 @@ describe('S16 MonsterSimulation', () => {
     expect(hit).toMatchObject({
       damage: WORLD_MONSTER_MELEE_DAMAGE,
       dead: false,
-      delta: { hitReaction: { directionX: expect.closeTo(-1, 6), directionZ: expect.closeTo(0, 6) } },
+      delta: {
+        damage: WORLD_MONSTER_MELEE_DAMAGE,
+        hitReaction: { directionX: expect.closeTo(-1, 6), directionZ: expect.closeTo(0, 6) },
+      },
     });
     expect(sim.hpOf('s-crab')).toBe(SHARED_MONSTER_TYPES.crab.maxHp - WORLD_MONSTER_MELEE_DAMAGE);
     expect(sim.contributorsOf('s-crab', now)).toEqual([{ characterId: 'p1', damage: WORLD_MONSTER_MELEE_DAMAGE }]);

@@ -235,6 +235,8 @@ export interface WorldMonsterDelta {
   heading: number;
   hp: number;
   state: WorldMonsterState;
+  /** Authoritative damage applied by the hit that produced this delta. */
+  damage?: number;
   /** Presentation-only hit impulse emitted with the authoritative HP delta. */
   hitReaction?: WorldMonsterHitReaction;
   /** Exact queued attack action invalidated by this authoritative state change. */

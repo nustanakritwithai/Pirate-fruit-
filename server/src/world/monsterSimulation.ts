@@ -293,7 +293,12 @@ export class MonsterSimulation {
       maxHp: monster.type.maxHp,
       damage,
       dead,
-      delta: { ...this.deltaOf(monster), hitReaction, ...(cancelAttackId ? { cancelAttackId } : {}) },
+      delta: {
+        ...this.deltaOf(monster),
+        damage,
+        hitReaction,
+        ...(cancelAttackId ? { cancelAttackId } : {}),
+      },
     };
   }
 
