@@ -33,6 +33,21 @@ export interface SharedMonsterType {
   respawnMs: number;
 }
 
+/** Delay from the authoritative attack action to its active hit frame. */
+export const WORLD_MONSTER_ATTACK_HIT_DELAY_MS = 180;
+
+/** One authoritative monster attack action (damage is applied only once for this id). */
+export interface WorldMonsterAttack {
+  attackId: string;
+  spawnId: string;
+  monsterId: string;
+  islandId: string;
+  targetId: string;
+  action: 'melee';
+  damage: number;
+  hitDelayMs: number;
+}
+
 /** ตารางชนิด (subset ที่ Server จำลอง — id ตรงกับ MONSTER_TYPES ฝั่ง client เพื่อ reuse โมเดล) */
 export const SHARED_MONSTER_TYPES: Record<string, SharedMonsterType> = {
   crab: {

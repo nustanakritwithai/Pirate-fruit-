@@ -12,6 +12,7 @@ import { MONSTER_TYPES } from './MonsterData';
 import { Monster, type MonsterState } from './Monster';
 import {
   isWorldSafeZone,
+  type WorldMonsterAttack,
   type WorldMonsterSnapshot,
   type WorldMonsterDelta,
   type WorldMonsterState,
@@ -28,7 +29,11 @@ interface SharedMonster {
   maxHp: number;
   state: WorldMonsterState;
   monsterId: string;
-  attackReadyAt: number;
+}
+
+interface PendingMonsterAttack {
+  attack: WorldMonsterAttack;
+  hitAt: number;
 }
 
 function renderState(state: WorldMonsterState): MonsterState {
@@ -63,6 +68,8 @@ export function resolveSharedMonsterPlayerDamage(
 
 export class SharedMonsterClient implements Updatable {
   private readonly monsters = new Map<string, SharedMonster>();
+  private readonly pendingAttacks: PendingMonsterAttack[] = [];
+  private readonly seenAttackIds = new Set<string>();
   private currentIslandId: string;
 
   constructor(
@@ -88,6 +95,8 @@ export class SharedMonsterClient implements Updatable {
   setIsland(islandId: string): void {
     if (islandId === this.currentIslandId) return;
     this.currentIslandId = islandId;
+    this.pendingAttacks.length = 0;
+    this.seenAttackIds.clear();
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
   }
 
@@ -132,9 +141,34 @@ export class SharedMonsterClient implements Updatable {
     }
   }
 
+  /**
+   * Apply one Server-authored monster action. The persistent `attack` state is
+   * presentation state only; this event is the sole source of a hit frame.
+   * Every observer plays the action, while only the named target queues damage.
+   */
+  applyAttack(attack: WorldMonsterAttack, localCharacterId?: string): void {
+    if (attack.islandId !== this.currentIslandId || this.seenAttackIds.has(attack.attackId)) return;
+    const monster = this.monsters.get(attack.spawnId);
+    if (!monster || monster.monsterId !== attack.monsterId || monster.state === 'dead') return;
+    this.seenAttackIds.add(attack.attackId);
+    if (this.seenAttackIds.size > 1024) {
+      const oldest = this.seenAttackIds.values().next().value;
+      if (typeof oldest === 'string') this.seenAttackIds.delete(oldest);
+    }
+    monster.state = 'attack';
+    monster.visual.applyAuthoritativeState(monster.hp, monster.maxHp, 'attack');
+    monster.visual.playAttackAnimation(attack.action !== 'melee');
+    if (attack.targetId === localCharacterId) {
+      this.pendingAttacks.push({
+        attack,
+        hitAt: this.now() + Math.max(0, attack.hitDelayMs),
+      });
+    }
+  }
+
   markDead(spawnId: string): void {
     const monster = this.monsters.get(spawnId);
-    if (!monster) return;
+      if (!monster) return;
     monster.state = 'dead';
     monster.hp = 0;
     monster.visual.applyAuthoritativeState(0, monster.maxHp, 'dead');
@@ -171,7 +205,6 @@ export class SharedMonsterClient implements Updatable {
         maxHp: snapshot.maxHp,
         state: snapshot.state,
         monsterId: snapshot.monsterId,
-        attackReadyAt: 0,
       };
       this.monsters.set(snapshot.spawnId, monster);
       return;
@@ -190,6 +223,9 @@ export class SharedMonsterClient implements Updatable {
     this.scene.remove(monster.group);
     monster.visual.dispose();
     this.monsters.delete(spawnId);
+    for (let i = this.pendingAttacks.length - 1; i >= 0; i -= 1) {
+      if (this.pendingAttacks[i]?.attack.spawnId === spawnId) this.pendingAttacks.splice(i, 1);
+    }
   }
 
   /** spawnId ของมอนสเตอร์ (มีชีวิต) ที่อยู่ในกรวยโจมตีหน้าเรา — ส่งเจตนาตีให้ Server */
@@ -218,24 +254,21 @@ export class SharedMonsterClient implements Updatable {
     return hits;
   }
 
-  /**
-   * มอนสเตอร์ที่กำลัง 'attack' และอยู่ในระยะประชิดผู้เล่น → คืนดาเมจที่ควรกินผู้เล่น
-   * (player HP ยังเป็น client-side ในเฟสนี้ — Server เป็นเจ้าของแค่ตัวมอนสเตอร์)
-   */
+  /** Consume due action hit frames; a state snapshot alone never deals damage. */
   collectPlayerDamage(playerPos: THREE.Vector3): number {
-    // Final client boundary: stale/replayed attack deltas cannot hurt a shopper.
-    if (isWorldSafeZone(this.currentIslandId, playerPos.x, playerPos.z)) return 0;
     const now = this.now();
+    const safe = isWorldSafeZone(this.currentIslandId, playerPos.x, playerPos.z);
     let total = 0;
-    for (const monster of this.monsters.values()) {
-      if (monster.state !== 'attack' || !monster.group.visible) continue;
-      const type = MONSTER_TYPES[monster.monsterId];
-      if (!type) continue;
+    for (let i = this.pendingAttacks.length - 1; i >= 0; i -= 1) {
+      const pending = this.pendingAttacks[i]!;
+      if (now < pending.hitAt) continue;
+      this.pendingAttacks.splice(i, 1);
+      if (safe) continue;
+      const monster = this.monsters.get(pending.attack.spawnId);
+      const type = monster ? MONSTER_TYPES[monster.monsterId] : undefined;
+      if (!monster || !type || monster.state === 'dead' || !monster.group.visible) continue;
       const dist = Math.hypot(monster.group.position.x - playerPos.x, monster.group.position.z - playerPos.z);
-      if (dist > type.attackRange + 0.6) continue;
-      if (now < monster.attackReadyAt) continue;
-      monster.attackReadyAt = now + type.attackCooldown * 1000;
-      total += type.damage;
+      if (dist <= type.attackRange + 0.6) total += pending.attack.damage;
     }
     return total;
   }

@@ -6,10 +6,12 @@ import {
   WORLD_MONSTER_MELEE_RANGE,
   WORLD_MONSTER_SKILL_DAMAGE,
   WORLD_MONSTER_SKILL_RANGE,
+  WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
   isWorldSafeZone,
   type SharedMonsterType,
   type SharedSpawnPoint,
   type WorldMonsterDelta,
+  type WorldMonsterAttack,
   type WorldMonsterHitReaction,
   type WorldMonsterSnapshot,
   type WorldMonsterState,
@@ -40,13 +42,7 @@ export interface MonsterHitResult {
   delta: WorldMonsterDelta;
 }
 
-export interface MonsterAttackEvent {
-  spawnId: string;
-  monsterId: string;
-  islandId: string;
-  targetId: string;
-  damage: number;
-}
+export type MonsterAttackEvent = WorldMonsterAttack;
 
 export interface SimulationTickResult {
   /** delta ต่อเกาะ (เฉพาะตัวที่เปลี่ยน) */
@@ -110,6 +106,7 @@ function distance(ax: number, az: number, bx: number, bz: number): number {
 
 export class MonsterSimulation {
   private readonly monsters = new Map<string, MonsterRuntime>();
+  private attackSequence = 0;
 
   constructor(
     private readonly now: () => number = () => Date.now(),
@@ -387,11 +384,14 @@ export class MonsterSimulation {
           monster.attackReadyAt = now + type.attackCooldown * 1000;
           monster.attackRecoverUntil = now + ATTACK_RECOVERY_MS;
           attacks.push({
+            attackId: `${monster.spawn.spawnId}:${++this.attackSequence}`,
             spawnId: monster.spawn.spawnId,
             monsterId: type.id,
             islandId: monster.spawn.islandId,
             targetId: target.characterId,
+            action: 'melee',
             damage: type.damage,
+            hitDelayMs: WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
           });
         }
       } else {
