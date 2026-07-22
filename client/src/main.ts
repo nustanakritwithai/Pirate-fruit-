@@ -366,7 +366,7 @@ async function main(): Promise<void> {
     : null;
   if (sharedMonsters) {
     game.add(sharedMonsters);
-    // PvE: มอนสเตอร์กลางที่กำลัง 'attack' ประชิดผู้เล่น → กิน HP ฝั่ง client (Server เป็นเจ้าของตัวมอน)
+    // PvE: มอนสเตอร์กลางส่ง attack action แล้ว client รับเฉพาะ hit frame ครั้งเดียว
     game.add({
       update: () => {
         const damage = sharedMonsters.collectPlayerDamage(controller.position);
@@ -492,6 +492,14 @@ async function main(): Promise<void> {
     // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
     onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
     onWorldMonsterDelta: (islandId, updates) => sharedMonsters?.applyDelta(islandId, updates),
+    onWorldMonsterAttack: (attack) => {
+      sharedMonsters?.applyAttack(attack, selfCharacterId ?? undefined);
+      const position = sharedMonsters?.positionOf(attack.spawnId);
+      audio.play('monster.attack', {
+        eventId: `world-monster-attack:${attack.attackId}`,
+        position,
+      });
+    },
     onWorldMonsterDead: (spawnId, byId, reward) => {
       const position = sharedMonsters?.positionOf(spawnId);
       sharedMonsters?.markDead(spawnId);

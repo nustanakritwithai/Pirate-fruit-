@@ -7,7 +7,7 @@
  * Client ที่เห็น seq กระโดดต้อง resync (ดึง snapshot ทาง REST) แล้วนับต่อจาก seq ใหม่
  */
 
-import type { WorldMonsterDelta, WorldMonsterSnapshot } from '../world/monsters.js';
+import type { WorldMonsterAttack, WorldMonsterDelta, WorldMonsterSnapshot } from '../world/monsters.js';
 import type { BoatWorldSnapshot, RealtimeBoatIntent } from '../world/boats.js';
 
 export const REALTIME_PROTOCOL_VERSION = 1;
@@ -191,6 +191,12 @@ export interface RealtimeWorldMonsterDelta {
   updates: WorldMonsterDelta[];
 }
 
+export interface RealtimeWorldMonsterAttack {
+  type: 'world-monster-attack';
+  seq: number;
+  attack: WorldMonsterAttack;
+}
+
 export interface WorldMonsterReward {
   monsterId: string;
   playerExp: number;
@@ -278,6 +284,7 @@ export type RealtimeServerMessage =
   | RealtimeCombatResult
   | RealtimeWorldMonsterSnapshot
   | RealtimeWorldMonsterDelta
+  | RealtimeWorldMonsterAttack
   | RealtimeWorldMonsterDead
   | RealtimeWorldMonsterRespawn
   | RealtimeBoatSnapshot

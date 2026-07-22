@@ -225,7 +225,6 @@ export class Monster {
       this.group.rotation.x = 0;
       this.group.rotation.z = 0;
     }
-    if (state === 'attack' && this.state !== 'attack') this.animator.triggerAttack(false);
     this.hp = nextHp;
     this.state = state;
     this.group.visible = true;

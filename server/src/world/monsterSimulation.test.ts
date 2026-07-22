@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SHARED_MONSTER_TYPES,
   WORLD_MONSTER_CONTRIBUTION_WINDOW_MS,
+  WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
   WORLD_MONSTER_MELEE_DAMAGE,
   type SharedSpawnPoint,
 } from '@pirate-fruit/shared';
@@ -40,13 +41,22 @@ describe('S16 MonsterSimulation', () => {
 
     // เดินเข้าหาเรื่อย ๆ จนติดระยะแล้วตี
     let attacked = false;
+    let firstAttack: ReturnType<MonsterSimulation['tick']>['attacks'][number] | undefined;
     for (let i = 0; i < 60 && !attacked; i += 1) {
       now += 200;
       const result = sim.tick(now, 200, [player('p1', 'starter-island', 0, 0)]);
-      if (result.attacks.some((a) => a.spawnId === 's-crab' && a.targetId === 'p1')) attacked = true;
+      firstAttack = result.attacks.find((a) => a.spawnId === 's-crab' && a.targetId === 'p1') ?? firstAttack;
+      if (firstAttack) attacked = true;
     }
     expect(attacked).toBe(true);
+    expect(firstAttack).toMatchObject({
+      action: 'melee',
+      damage: SHARED_MONSTER_TYPES.crab.damage,
+      hitDelayMs: WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
+    });
     expect(sim.stateOf('s-crab')).toBe('attack');
+    const action = sim.tick(now + 200, 200, [player('p1', 'starter-island', 0, 0)]).attacks;
+    expect(action).toHaveLength(0);
   });
 
   it('holds position for one recovery beat after an attack before chasing again', () => {

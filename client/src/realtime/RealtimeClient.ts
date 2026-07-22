@@ -14,6 +14,7 @@ import {
   type RealtimeServerMessage,
   type WorldMonsterSnapshot,
   type WorldMonsterDelta,
+  type WorldMonsterAttack,
   type WorldMonsterReward,
   type RealtimeKnockback,
   type BoatWorldSnapshot,
@@ -77,6 +78,7 @@ export interface RealtimeHandlers {
   /** S16: มอนสเตอร์กลาง — snapshot/delta/dead/respawn (Server เป็นเจ้าของ) */
   onWorldMonsterSnapshot?(islandId: string, monsters: WorldMonsterSnapshot[]): void;
   onWorldMonsterDelta?(islandId: string, updates: WorldMonsterDelta[]): void;
+  onWorldMonsterAttack?(attack: WorldMonsterAttack): void;
   onWorldMonsterDead?(spawnId: string, byId?: string, reward?: WorldMonsterReward): void;
   onWorldMonsterRespawn?(monster: WorldMonsterSnapshot): void;
   /** S17 authoritative boat world. */
@@ -240,6 +242,8 @@ export class RealtimeClient {
       this.handlers.onWorldMonsterSnapshot?.(message.islandId, message.monsters);
     } else if (message.type === 'world-monster-delta') {
       this.handlers.onWorldMonsterDelta?.(message.islandId, message.updates);
+    } else if (message.type === 'world-monster-attack') {
+      this.handlers.onWorldMonsterAttack?.(message.attack);
     } else if (message.type === 'world-monster-dead') {
       this.handlers.onWorldMonsterDead?.(message.spawnId, message.byId, message.reward);
     } else if (message.type === 'world-monster-respawn') {

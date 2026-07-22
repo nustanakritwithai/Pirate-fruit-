@@ -166,7 +166,7 @@ export class MonsterWorldService implements WorldMonsterBridge {
     const now = this.now();
     const dtMs = now - this.lastTickAt;
     this.lastTickAt = now;
-    const { dirtyByIsland, respawns } = this.sim.tick(now, dtMs, this.hub.worldPlayerViews());
+    const { dirtyByIsland, respawns, attacks } = this.sim.tick(now, dtMs, this.hub.worldPlayerViews());
     for (const [islandId, updates] of dirtyByIsland) {
       this.hub.broadcastWorldMonster(islandId, {
         type: 'world-monster-delta',
@@ -180,6 +180,16 @@ export class MonsterWorldService implements WorldMonsterBridge {
         type: 'world-monster-respawn',
         seq: 0,
         monster,
+      });
+    }
+    // The attack action is a discrete authoritative event. Clients play the
+    // matching animation and apply its hit frame once; they must not infer
+    // damage from a persistent `state: attack` snapshot.
+    for (const attack of attacks) {
+      this.hub.broadcastWorldMonster(attack.islandId, {
+        type: 'world-monster-attack',
+        seq: 0,
+        attack,
       });
     }
     this.persistAccumMs += dtMs;
