@@ -5,10 +5,12 @@ import type { Effects } from '../effects/Effects';
 import type { GraphicsProfile } from '../engine/GraphicsQuality';
 import { mulberry32 } from '../world/props';
 import { BossBar } from '../ui/BossBar';
-import { Monster } from './Monster';
+import { Monster, type MonsterState } from './Monster';
 import { MONSTER_TYPES, MONSTER_CAMPS, BOSS_SPAWNS, type MonsterType } from './MonsterData';
 import type { CombatRewardSource } from '../combat/CombatData';
 import { isWorldSafeZone } from '@pirate-fruit/shared';
+import { inferIslandId } from '../island/IslandRegistry';
+import type { IslandId } from '../island/IslandTypes';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
@@ -64,6 +66,46 @@ function countScale(tier: GraphicsProfile['tier']): number {
   return tier === 'low' ? 0.6 : tier === 'medium' ? 0.85 : 1;
 }
 
+export function ambientMonsterCountForIsland(
+  islandId: IslandId,
+  tier: GraphicsProfile['tier'],
+): number {
+  const scale = countScale(tier);
+  const camps = MONSTER_CAMPS
+    .filter((camp) => camp.islandId === islandId)
+    .reduce((total, camp) => total + Math.max(1, Math.round(camp.count * scale)), 0);
+  return camps + BOSS_SPAWNS.filter((spawn) => spawn.islandId === islandId).length;
+}
+
+interface AmbientMonsterSpawn {
+  islandId: IslandId;
+  type: MonsterType;
+  x: number;
+  z: number;
+  respawnDelay: number;
+  boss: boolean;
+  saved?: {
+    capturedAt: number;
+    x: number;
+    y: number;
+    z: number;
+    rotationY: number;
+    homeX: number;
+    homeZ: number;
+    hp: number;
+    state: MonsterState;
+    attackCooldown: number;
+    respawnTimer: number;
+    wanderAngle: number;
+    wanderTimer: number;
+    staggerTimer: number;
+    attackCount: number;
+    returningHome: boolean;
+    telegraphTimer: number;
+    pendingHeavy: boolean;
+  };
+}
+
 export class MonsterManager {
   private readonly monsters: Monster[] = [];
   private readonly bosses = new Set<Monster>();
@@ -72,6 +114,9 @@ export class MonsterManager {
   private readonly bossBar = new BossBar();
   private readonly rand = mulberry32(20260712);
   private readonly tmp = new THREE.Vector2();
+  private readonly ambientSpawns = new Map<IslandId, AmbientMonsterSpawn[]>();
+  private readonly ambientInstances = new Map<Monster, AmbientMonsterSpawn>();
+  private activeAmbientIsland: IslandId | null = null;
   private bossAudioActive = false;
 
   constructor(
@@ -92,15 +137,96 @@ export class MonsterManager {
         const count = Math.max(1, Math.round(camp.count * scale));
         for (let i = 0; i < count; i++) {
           const spot = this.findLand(camp.x, camp.z, camp.radius);
-          this.spawnMonster(type, spot.x, spot.z, 12);
+          this.addAmbientSpawn({
+            islandId: camp.islandId,
+            type,
+            x: spot.x,
+            z: spot.z,
+            respawnDelay: 12,
+            boss: false,
+          });
         }
       }
 
       for (const spawn of BOSS_SPAWNS) {
         const bossType = MONSTER_TYPES[spawn.typeId];
         const bossSpot = this.findLand(spawn.x, spawn.z, 2);
-        this.bosses.add(this.spawnMonster(bossType, bossSpot.x, bossSpot.z, 40));
+        this.addAmbientSpawn({
+          islandId: spawn.islandId,
+          type: bossType,
+          x: bossSpot.x,
+          z: bossSpot.z,
+          respawnDelay: 40,
+          boss: true,
+        });
       }
+      this.activateAmbientIsland(inferIslandId(controller.position.x, controller.position.z));
+    }
+  }
+
+  private addAmbientSpawn(spawn: AmbientMonsterSpawn): void {
+    const entries = this.ambientSpawns.get(spawn.islandId) ?? [];
+    entries.push(spawn);
+    this.ambientSpawns.set(spawn.islandId, entries);
+  }
+
+  /** Keep only one island's offline monsters materialized; Server-owned shared monsters bypass this path. */
+  private activateAmbientIsland(islandId: IslandId): void {
+    if (islandId === this.activeAmbientIsland) return;
+    const now = Date.now();
+    for (const [monster, spawn] of this.ambientInstances) {
+      spawn.saved = {
+        capturedAt: now,
+        x: monster.group.position.x,
+        y: monster.group.position.y,
+        z: monster.group.position.z,
+        rotationY: monster.group.rotation.y,
+        homeX: monster.home.x,
+        homeZ: monster.home.y,
+        hp: monster.hp,
+        state: monster.state,
+        attackCooldown: monster.attackCooldown,
+        respawnTimer: monster.respawnTimer,
+        wanderAngle: monster.wanderAngle,
+        wanderTimer: monster.wanderTimer,
+        staggerTimer: monster.staggerTimer,
+        attackCount: monster.attackCount,
+        returningHome: monster.returningHome,
+        telegraphTimer: monster.telegraphTimer,
+        pendingHeavy: monster.pendingHeavy,
+      };
+      this.bosses.delete(monster);
+      const index = this.monsters.indexOf(monster);
+      if (index >= 0) this.monsters.splice(index, 1);
+      this.scene.remove(monster.group);
+      monster.dispose();
+    }
+    this.ambientInstances.clear();
+    this.activeAmbientIsland = islandId;
+    this.bossAudioActive = false;
+    this.bossBar.hide();
+
+    for (const spawn of this.ambientSpawns.get(islandId) ?? []) {
+      const monster = this.spawnMonster(spawn.type, spawn.x, spawn.z, spawn.respawnDelay);
+      const saved = spawn.saved;
+      if (saved) {
+        monster.group.position.set(saved.x, saved.y, saved.z);
+        monster.group.rotation.y = saved.rotationY;
+        monster.home.set(saved.homeX, saved.homeZ);
+        const elapsed = Math.max(0, (now - saved.capturedAt) / 1_000);
+        monster.applyAuthoritativeState(saved.hp, spawn.type.maxHp, saved.state);
+        monster.attackCooldown = Math.max(0, saved.attackCooldown - elapsed);
+        monster.respawnTimer = Math.max(0, saved.respawnTimer - elapsed);
+        monster.wanderAngle = saved.wanderAngle;
+        monster.wanderTimer = Math.max(0, saved.wanderTimer - elapsed);
+        monster.staggerTimer = Math.max(0, saved.staggerTimer - elapsed);
+        monster.attackCount = saved.attackCount;
+        monster.returningHome = saved.returningHome;
+        monster.telegraphTimer = Math.max(0, saved.telegraphTimer - elapsed);
+        monster.pendingHeavy = saved.pendingHeavy && monster.telegraphTimer > 0;
+      }
+      if (spawn.boss) this.bosses.add(monster);
+      this.ambientInstances.set(monster, spawn);
     }
   }
 
@@ -244,6 +370,9 @@ export class MonsterManager {
 
   update(dt: number): void {
     const player = this.controller.position;
+    if (this.ambientSpawns.size > 0) {
+      this.activateAmbientIsland(inferIslandId(player.x, player.z));
+    }
     const engageable =
       this.controller.inputEnabled &&
       !this.controller.isMounted &&

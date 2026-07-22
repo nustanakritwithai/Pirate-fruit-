@@ -550,7 +550,7 @@ export class TouchControls {
       : this.skillMasteryRequirements[slot - 1] ?? 0;
     const unlocked = ultimate ? this.ultUnlocked : this.skillsUnlocked;
     if (!unlocked) {
-      this.showToast(ultimate ? 'ยังไม่มีไม้ตาย' : `สกิล ${slot} ปลดล็อกใน Phase 5 (Combat)`);
+      this.showToast(ultimate ? 'ยังไม่มีไม้ตาย' : `ยังไม่มีสกิลในช่อง ${slot}`);
       return;
     }
     if (this.activeMasteryLevel < required) {

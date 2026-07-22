@@ -177,6 +177,21 @@ export function getRelativeHitAngle(
   return Math.atan2(localRight, localForward);
 }
 
+/** HP local regen is presentation/gameplay fallback only; never heal through an active Server PvP window. */
+export function canRegenerateHp(
+  timeSinceDamaged: number,
+  authoritativeCombatTimer: number,
+  hp: number,
+  hpMax: number,
+  mounted: boolean,
+): boolean {
+  return authoritativeCombatTimer <= 0
+    && timeSinceDamaged > REGEN_DELAY
+    && hp > 0
+    && hp < hpMax
+    && !mounted;
+}
+
 /**
  * Combat Framework ของผู้เล่น (Phase 5 → Phase 7)
  * - State machine: idle/attack1-4/casting/blocking/stunned/knockback/knockdown/dead
@@ -564,12 +579,13 @@ export class PlayerCombat {
     // ---------- HP regen นอกคอมแบต ----------
     this.authoritativeCombatTimer = Math.max(0, this.authoritativeCombatTimer - dt);
     this.timeSinceDamaged += dt;
-    if (
-      this.timeSinceDamaged > REGEN_DELAY &&
-      this.controller.hp > 0 &&
-      this.controller.hp < this.controller.hpMax &&
-      !this.controller.isMounted
-    ) {
+    if (canRegenerateHp(
+      this.timeSinceDamaged,
+      this.authoritativeCombatTimer,
+      this.controller.hp,
+      this.controller.hpMax,
+      this.controller.isMounted,
+    )) {
       this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + REGEN_RATE * dt);
     }
 

@@ -31,4 +31,16 @@ describe('NPC safe hubs', () => {
       Math.hypot(npc.x - poi.x, npc.z - poi.z) <= poi.safeRadius,
     ))).toBe(true);
   });
+
+  it('keeps nearby NPC nameplates far enough apart to remain readable', () => {
+    for (let left = 0; left < ALL_NPCS.length; left++) {
+      for (let right = left + 1; right < ALL_NPCS.length; right++) {
+        const a = ALL_NPCS[left]!;
+        const b = ALL_NPCS[right]!;
+        if (a.islandId !== b.islandId) continue;
+        const distance = Math.hypot(a.x - b.x, a.z - b.z);
+        expect(distance, `${a.id} overlaps ${b.id}`).toBeGreaterThanOrEqual(3.2);
+      }
+    }
+  });
 });

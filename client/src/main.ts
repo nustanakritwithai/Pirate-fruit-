@@ -81,6 +81,7 @@ import {
   createAudioManager,
 } from './audio';
 import type { OnboardingDirector } from './onboarding/OnboardingDirector';
+import { createAuthoritativeResyncHandler } from './realtime/AuthoritativeResync';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -365,6 +366,17 @@ async function main(): Promise<void> {
         remotePollInFlight = false;
       });
   };
+  const resyncAuthoritativeState = createAuthoritativeResyncHandler({
+    refreshEconomy: pollRemoteEconomy,
+    refreshQuest: questSync ? () => questSync.reconcile() : undefined,
+    refreshProgression: remoteProgression
+      ? () => reconcileProgression(remoteProgression, progression)
+      : undefined,
+    flushAndRecoverSave: async () => {
+      await persistence.flush();
+      await persistence.refreshSave();
+    },
+  });
   // S9: Server push โลกเศรษฐกิจผ่าน WebSocket — ระหว่างเชื่อมอยู่หยุด poll 5 วิ
   // (WS หลุด/ปิด flag = กลับไป poll เดิมอัตโนมัติ ไม่มีช่วงมืด)
   // S13: ผู้เล่นคนอื่นบนเกาะเดียวกัน (เปิดด้วย VITE_ENABLE_MULTIPLAYER) — แสดงผลล้วน
@@ -463,7 +475,7 @@ async function main(): Promise<void> {
       tradeManager.living.setServerReadOnly(true);
       refreshEconomyViews();
     },
-    onResync: () => pollRemoteEconomy(),
+    onResync: resyncAuthoritativeState,
     onAnnouncement: (message, level) => {
       economyHud.notifyStatus(message, level === 'warning');
       audio.play(level === 'warning' ? 'ui.reject' : 'ui.notification');

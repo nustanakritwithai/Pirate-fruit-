@@ -25,6 +25,7 @@ const RESPAWN_COOLDOWN = 10;
 const BOARD_RANGE = 4.8;
 /** ระยะจากพวงมาลัยที่กด E ถือได้ */
 const HELM_RANGE = 2.1;
+const AUTHORITY_INTENT_TIMEOUT = 8;
 
 /** สถานะผู้เล่นกับเรือ: นอกเรือ / เดินบนดาดฟ้า / ถือพวงมาลัย */
 export type BoatRiderState = 'off' | 'deck' | 'helm';
@@ -57,6 +58,7 @@ export class BoatManager {
   private authorityEntityId: string | null = null;
   private authorityInputAccum = 0;
   private pendingSummonIntentId: string | null = null;
+  private pendingSummonElapsed = 0;
   private selectionListener: ((boatId: string) => void) | null = null;
 
   constructor(
@@ -107,6 +109,8 @@ export class BoatManager {
   setAuthority(adapter: BoatAuthorityAdapter | null): void {
     this.authority = adapter;
     this.authorityEntityId = null;
+    this.pendingSummonIntentId = null;
+    this.pendingSummonElapsed = 0;
   }
 
   private get authorityActive(): boolean {
@@ -163,6 +167,7 @@ export class BoatManager {
   handleAuthorityResult(result: { intentId: string; accepted: boolean; reason?: string }): void {
     if (result.intentId !== this.pendingSummonIntentId) return;
     this.pendingSummonIntentId = null;
+    this.pendingSummonElapsed = 0;
     this.shop.setStatus(
       result.accepted ? 'Server ยืนยันการเรียกเรือแล้ว' : `เรียกเรือไม่สำเร็จ: ${result.reason ?? 'invalid'}`,
       !result.accepted,
@@ -202,6 +207,14 @@ export class BoatManager {
   update(dt: number): void {
     this.elapsed += dt;
     this.hud.update(this.active, dt);
+    if (this.pendingSummonIntentId) {
+      this.pendingSummonElapsed += dt;
+      if (!this.authorityActive || this.pendingSummonElapsed >= AUTHORITY_INTENT_TIMEOUT) {
+        this.pendingSummonIntentId = null;
+        this.pendingSummonElapsed = 0;
+        this.shop.setStatus('Server เรือไม่ตอบสนอง กรุณาลองเรียกใหม่', true);
+      }
+    }
     const boat = this.active;
     if (!boat) {
       this.removeDeckProvider();
@@ -677,6 +690,7 @@ export class BoatManager {
     }
     if (this.authorityActive) {
       this.pendingSummonIntentId = this.authority!.send('summon');
+      this.pendingSummonElapsed = 0;
       this.shop.setStatus(this.pendingSummonIntentId ? 'กำลังขอ Server เรียกเรือ…' : 'ยังไม่ได้เชื่อมต่อ Server', !this.pendingSummonIntentId);
       return;
     }
