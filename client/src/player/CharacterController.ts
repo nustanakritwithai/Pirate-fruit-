@@ -267,6 +267,7 @@ export class CharacterController {
     if (
       acceptInput &&
       this.input.consumeDash() &&
+      !inWater &&
       this.dashCooldownTimer === 0 &&
       this.energy >= DASH_ENERGY_COST
     ) {
@@ -281,7 +282,7 @@ export class CharacterController {
         this.dashDir.set(Math.sin(this.heading), 0, Math.cos(this.heading));
       }
     }
-    const dashing = this.dashTimer > 0;
+    let dashing = this.dashTimer > 0;
 
     // ---------- เคลื่อนที่แนวราบ ----------
     let speed = 0;
@@ -305,8 +306,13 @@ export class CharacterController {
     let swimming = false;
     const jumpPressed = acceptInput && this.input.consumeJump();
 
-    if (overWater && this.position.y <= SWIM_LEVEL + 0.5 && !dashing && !this.devilFruitUser) {
+    if (overWater && this.position.y <= SWIM_LEVEL + 0.5 && !this.devilFruitUser) {
       // ---------- ว่ายน้ำ / ลอยตัวที่ผิวน้ำ ----------
+      // A dash that reaches the water must hand control to swimming immediately. Keeping
+      // the stale `dashing` state for this frame used to run gravity instead and could
+      // push the player below the surface before swimming was allowed to engage.
+      this.dashTimer = 0;
+      dashing = false;
       swimming = true;
       this.onGround = false;
       if (acceptInput && this.input.jump) {
