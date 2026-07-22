@@ -20,7 +20,7 @@ export class BoatWorldClient {
 
   constructor(
     private readonly scene: THREE.Scene,
-    private readonly selfCharacterId: string | null,
+    private readonly getSelfCharacterId: () => string | null,
     private readonly localBoats: BoatManager,
     private readonly textures: WorldTextures,
     private readonly graphics: GraphicsProfile,
@@ -36,10 +36,11 @@ export class BoatWorldClient {
   }
 
   applyDelta(snapshot: BoatWorldSnapshot): void {
-    if (snapshot.ownerId === this.selfCharacterId) {
-      const rider = snapshot.helmId === this.selfCharacterId
+    const selfCharacterId = this.getSelfCharacterId();
+    if (snapshot.ownerId === selfCharacterId) {
+      const rider = snapshot.helmId === selfCharacterId
         ? 'helm'
-        : snapshot.passengerIds.includes(this.selfCharacterId ?? '') ? 'deck' : 'off';
+        : snapshot.passengerIds.includes(selfCharacterId ?? '') ? 'deck' : 'off';
       this.localBoats.applyAuthoritativeBoat(snapshot, rider);
       return;
     }
