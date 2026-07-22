@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { TradeAction, TradeCargoSlotSnapshot, TradeRejectCode } from '@pirate-fruit/shared';
 
 /** ธุรกรรมถูกปฏิเสธด้วยเหตุผลทางธุรกิจ (เงิน/ของ/ความจุ) — ไม่ใช่ความผิดพลาดระบบ */
@@ -35,6 +35,12 @@ export interface TradeMutationOutcome {
   idempotentReplay: boolean;
 }
 
+export interface PreparedTradeMutation {
+  outcome: TradeMutationOutcome;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+}
+
 interface StoredOutcomeMetadata {
   requestHash?: string;
   result?: { coins?: number; cargo?: TradeCargoSlotSnapshot[] };
@@ -53,6 +59,18 @@ export class PostgresTradeRepository {
    * บันทึก audit ลง trade_transactions → commit
    */
   async execute(input: TradeMutationInput): Promise<TradeMutationOutcome> {
+    const prepared = await this.prepare(input);
+    try {
+      await prepared.commit();
+      return prepared.outcome;
+    } catch (error) {
+      await prepared.rollback().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Hold the player transaction open until the economy snapshot is durably persisted. */
+  async prepare(input: TradeMutationInput): Promise<PreparedTradeMutation> {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
@@ -81,12 +99,11 @@ export class PostgresTradeRepository {
             'Idempotency key was reused with a different trade payload',
           );
         }
-        await client.query('commit');
-        return {
+        return preparedMutation(client, {
           coins: replay.metadata_json.result?.coins ?? coins,
           cargo: replay.metadata_json.result?.cargo ?? [],
           idempotentReplay: true,
-        };
+        });
       }
 
       // เรือที่เลือกอยู่ = เจ้าของช่อง cargo (S6 normalize ไว้ใน player_boats แล้ว)
@@ -198,13 +215,32 @@ export class PostgresTradeRepository {
         ],
       );
 
-      await client.query('commit');
-      return { coins: nextCoins, cargo, idempotentReplay: false };
+      return preparedMutation(client, { coins: nextCoins, cargo, idempotentReplay: false });
     } catch (error) {
       await client.query('rollback').catch(() => undefined);
+      client.release();
       throw error;
+    }
+  }
+}
+
+function preparedMutation(
+  client: PoolClient,
+  outcome: TradeMutationOutcome,
+): PreparedTradeMutation {
+  let settled = false;
+  const settle = async (operation: 'commit' | 'rollback'): Promise<void> => {
+    if (settled) return;
+    settled = true;
+    try {
+      await client.query(operation);
     } finally {
       client.release();
     }
-  }
+  };
+  return {
+    outcome,
+    commit: () => settle('commit'),
+    rollback: () => settle('rollback'),
+  };
 }
