@@ -32,6 +32,12 @@ export interface EconomyRuntimeSnapshot {
   lastTickAt: Date | null;
 }
 
+export interface EconomyAtomicWork<T> {
+  result: T;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+}
+
 export interface EconomyRuntimeOptions {
   repository: EconomyWorldRepository;
   logger?: EconomyRuntimeLogger;
@@ -69,6 +75,8 @@ export class EconomyRuntime {
   private interval: ReturnType<typeof globalThis.setInterval> | null = null;
   private pulseQueue: Promise<void> = Promise.resolve();
   private running = false;
+  private catchUpRemaining = 0;
+  private catchUpTickedAt: Date | null = null;
 
   constructor(private readonly options: EconomyRuntimeOptions) {
     this.logger = options.logger ?? silentLogger;
@@ -148,6 +156,50 @@ export class EconomyRuntime {
     return run;
   }
 
+  /**
+   * Trade variant: keep its DB transaction uncommitted until the mutated economy snapshot
+   * is durable. A persist failure rolls the player transaction and in-memory engine back.
+   */
+  async executeAtomic<T>(
+    fn: (engine: EconomyEngine) => Promise<EconomyAtomicWork<T>>,
+  ): Promise<T> {
+    const step = async (): Promise<T> => {
+      if (!this.running) throw new Error('ECONOMY_NOT_READY');
+      if (!this.lease) {
+        this.lease = await this.options.repository.tryAcquireLeadership();
+        if (this.lease) await this.initializeLeader(this.lease);
+      }
+      if (!this.lease || !this.engine) throw new Error('ECONOMY_NOT_READY');
+      const before = structuredClone(this.engine.snapshot());
+      let work: EconomyAtomicWork<T> | null = null;
+      let economyPersisted = false;
+      try {
+        work = await fn(this.engine);
+        await this.persist(this.engine.snapshot(), this.now());
+        economyPersisted = true;
+        await work.commit();
+        return work.result;
+      } catch (error) {
+        await work?.rollback().catch(() => undefined);
+        this.engine = await this.engineFactory(before.document);
+        if (economyPersisted) {
+          try {
+            await this.persist(before, this.now());
+          } catch (rollbackError) {
+            this.engine = null;
+            this.cached = null;
+            await this.releaseLease();
+            throw new AggregateError([error, rollbackError], 'Trade and economy rollback failed');
+          }
+        }
+        throw error;
+      }
+    };
+    const run = this.pulseQueue.then(step);
+    this.pulseQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
   private enqueuePulse(wait = false): Promise<void> {
     this.pulseQueue = this.pulseQueue
       .then(() => this.runPulse())
@@ -172,6 +224,19 @@ export class EconomyRuntime {
       return;
     }
     if (!this.engine) throw new Error('Economy leader has no simulation engine');
+    if (this.catchUpRemaining > 0) {
+      const steps = Math.min(this.maxCatchUpTicks, this.catchUpRemaining);
+      for (let index = 0; index < steps; index++) this.engine.advance();
+      this.catchUpRemaining -= steps;
+      this.catchUpTickedAt = new Date(
+        Math.min(
+          this.now().getTime(),
+          (this.catchUpTickedAt?.getTime() ?? this.now().getTime()) + steps * this.tickIntervalMs,
+        ),
+      );
+      await this.persist(this.engine.snapshot(), this.catchUpRemaining > 0 ? this.catchUpTickedAt : this.now());
+      return;
+    }
     this.engine.advance();
     await this.persist(this.engine.snapshot(), this.now());
   }
@@ -180,16 +245,18 @@ export class EconomyRuntime {
     const stored = await lease.load(REMOTE_ECONOMY_WORLD_ID);
     this.engine = await this.engineFactory(stored?.document);
     const now = this.now();
-    const missedTicks = stored?.lastTickAt
-      ? Math.min(
-          this.maxCatchUpTicks,
-          Math.max(0, Math.floor((now.getTime() - stored.lastTickAt.getTime()) / this.tickIntervalMs)),
-        )
+    const totalMissedTicks = stored?.lastTickAt
+      ? Math.max(0, Math.floor((now.getTime() - stored.lastTickAt.getTime()) / this.tickIntervalMs))
       : 0;
+    const missedTicks = Math.min(this.maxCatchUpTicks, totalMissedTicks);
     for (let index = 0; index < missedTicks; index++) this.engine.advance();
-    await this.persist(this.engine.snapshot(), now);
+    this.catchUpRemaining = Math.max(0, totalMissedTicks - missedTicks);
+    this.catchUpTickedAt = stored?.lastTickAt
+      ? new Date(stored.lastTickAt.getTime() + missedTicks * this.tickIntervalMs)
+      : now;
+    await this.persist(this.engine.snapshot(), this.catchUpRemaining > 0 ? this.catchUpTickedAt : now);
     this.logger.info(
-      { worldId: REMOTE_ECONOMY_WORLD_ID, tick: this.engine.tick, missedTicks },
+      { worldId: REMOTE_ECONOMY_WORLD_ID, tick: this.engine.tick, missedTicks, catchUpRemaining: this.catchUpRemaining },
       'economy leadership acquired',
     );
   }
@@ -226,6 +293,8 @@ export class EconomyRuntime {
   private async releaseLease(): Promise<void> {
     const lease = this.lease;
     this.lease = null;
+    this.catchUpRemaining = 0;
+    this.catchUpTickedAt = null;
     if (lease) await lease.release();
   }
 }
