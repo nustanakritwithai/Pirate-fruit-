@@ -45,6 +45,9 @@ const ULTIMATE_SLOT = 3;
 
 interface WaveProjectile {
   visual: EnergyProjectileVisual;
+  originX: number;
+  originZ: number;
+  travelRange: number;
   dirX: number;
   dirZ: number;
   life: number;
@@ -67,6 +70,9 @@ interface ActiveSummon {
   x: number;
   y: number;
   z: number;
+  dirX: number;
+  dirZ: number;
+  attackRange: number;
   life: number;
   fireAcc: number;
   fireInterval: number;
@@ -195,6 +201,7 @@ export class PlayerCombat {
   /** คูลดาวน์รายสกิล (key = skill.id) — เดินตามเวลาจริง ไม่รีเซ็ตตอนสลับชุดสกิล */
   private readonly skillCooldowns = new Map<string, number>();
   private timeSinceDamaged = 99;
+  private authoritativeCombatTimer = 0;
   private damageReactionSerial = 0;
   private damageReactionAngle = 0;
   /**
@@ -234,6 +241,18 @@ export class PlayerCombat {
     forwardZ: number;
     kind: 'melee' | 'skill';
     skillId?: string;
+    /** Client presentation/targeting range; Server still validates authority. */
+    range: number;
+  }) => void;
+
+  /** S16 hook for delayed summon shots against the shared authoritative monster world. */
+  onSharedMonsterAttack?: (info: {
+    origin: THREE.Vector3;
+    forwardX: number;
+    forwardZ: number;
+    range: number;
+    kind: 'melee' | 'skill';
+    area?: number;
   }) => void;
 
   constructor(
@@ -456,9 +475,25 @@ export class PlayerCombat {
     this.timeSinceDamaged = 0;
   }
 
+  /** Keep local regeneration/healing out of an active authoritative combat exchange. */
+  markCombatActivity(): void {
+    this.timeSinceDamaged = 0;
+    this.authoritativeCombatTimer = Math.max(this.authoritativeCombatTimer, REGEN_DELAY + 1);
+  }
+
+  /** Respawn is authoritative and must immediately release stale local combat locks. */
+  notifyRespawn(): void {
+    this.cancelPendingCast();
+    this.activeChannel = null;
+    this.swing = null;
+    this.combatState = 'idle';
+    this.stateTimer = 0;
+    this.controller.setMovementLock(1);
+  }
+
   /** Apply a Server-confirmed PvP hit to the local presentation/movement only. */
   notifyAuthoritativeHit(knockback?: RealtimeKnockback, applyImpulse = true): void {
-    this.timeSinceDamaged = 0;
+    this.markCombatActivity();
     this.damageReactionSerial++;
     if (!knockback) {
       this.damageReactionAngle = 0;
@@ -527,6 +562,7 @@ export class PlayerCombat {
     }
 
     // ---------- HP regen นอกคอมแบต ----------
+    this.authoritativeCombatTimer = Math.max(0, this.authoritativeCombatTimer - dt);
     this.timeSinceDamaged += dt;
     if (
       this.timeSinceDamaged > REGEN_DELAY &&
@@ -549,6 +585,11 @@ export class PlayerCombat {
     }
     if (this.controller.hp <= 0 && this.combatState !== 'dead') this.enterState('dead', 0.8);
 
+    if (this.controller.isMounted && (this.pendingCast || this.activeChannel)) {
+      this.cancelPendingCast();
+      this.activeChannel = null;
+      if (this.combatState === 'casting') this.combatState = 'idle';
+    }
     const canAct = this.controller.inputEnabled && !this.controller.isMounted;
 
     this.advanceSwing(dt);
@@ -638,11 +679,19 @@ export class PlayerCombat {
     this.combatState = state;
     this.stateTimer = duration;
     this.swing = null;
-    this.pendingCast = null;
+    this.cancelPendingCast();
     this.activeChannel = null; // โดนขัด (stun/knockback) → หยุด channel มัดรัว/ลำแสง
     if (state === 'stunned' || state === 'knockback' || state === 'knockdown' || state === 'dead') {
       this.skillVisualElapsed = this.skillVisualDuration;
     }
+  }
+
+  private cancelPendingCast(): void {
+    const pending = this.pendingCast;
+    if (!pending) return;
+    this.pendingCast = null;
+    this.controller.mp = Math.min(this.controller.mpMax, this.controller.mp + pending.skill.energyCost);
+    this.skillCooldowns.delete(pending.skill.id);
   }
 
   // ------------------------------------------------------------------
@@ -696,7 +745,20 @@ export class PlayerCombat {
         },
       });
       // S15: แจ้งเจตนาโจมตี PvP (Server ตัดสินว่าโดนผู้เล่นคนอื่นไหม/ดาเมจเท่าไร)
-      this.onPvpAttack?.({ origin: position.clone(), forwardX: forward.x, forwardZ: forward.z, kind: 'melee' });
+      this.onPvpAttack?.({
+        origin: position.clone(),
+        forwardX: forward.x,
+        forwardZ: forward.z,
+        kind: 'melee',
+        range: m1.range,
+      });
+      this.onSharedMonsterAttack?.({
+        origin: position.clone(),
+        forwardX: forward.x,
+        forwardZ: forward.z,
+        kind: 'melee',
+        range: m1.range,
+      });
 
       if (this.set.weaponCategory === 'sword') {
         const blade = this.visualAnchors?.getSwordBladeWorldSegment();
@@ -851,7 +913,7 @@ export class PlayerCombat {
   private advanceCast(dt: number): void {
     if (!this.pendingCast) return;
     if (this.combatState !== 'casting') {
-      this.pendingCast = null;
+      this.cancelPendingCast();
       return;
     }
     this.pendingCast.timer -= dt;
@@ -871,7 +933,26 @@ export class PlayerCombat {
     const source = this.skillSource();
     const scaledDamage = skill.damage * this.damageMultiplier(skill.category);
     // S15: แจ้งเจตนาโจมตี PvP ด้วยสกิล (Server ตัดสินผล — ดาเมจฝั่ง PvP เป็นค่าคงที่ของ Server)
-    this.onPvpAttack?.({ origin: position.clone(), forwardX: dirX, forwardZ: dirZ, kind: 'skill', skillId: skill.id });
+    this.onPvpAttack?.({
+      origin: position.clone(),
+      forwardX: dirX,
+      forwardZ: dirZ,
+      kind: 'skill',
+      skillId: skill.id,
+      range: this.skillTargetRange(skill),
+    });
+    if (skill.renderType !== 'beam' && skill.renderType !== 'flurry' && skill.renderType !== 'summon' && skill.renderType !== 'ground') {
+      this.onSharedMonsterAttack?.({
+        origin: position.clone(),
+        forwardX: dirX,
+        forwardZ: dirZ,
+        kind: 'skill',
+        range: this.skillTargetRange(skill),
+        ...(skill.renderType === 'aoe' || skill.renderType === 'buff'
+          ? { area: Math.max(0.5, skill.radius) }
+          : {}),
+      });
+    }
 
     switch (skill.renderType) {
       case 'projectile':
@@ -944,6 +1025,9 @@ export class PlayerCombat {
       const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
       this.projectiles.push({
         visual,
+        originX: position.x,
+        originZ: position.z,
+        travelRange: this.skillTargetRange(skill),
         dirX: sx,
         dirZ: sz,
         life: WAVE_LIFETIME,
@@ -986,6 +1070,9 @@ export class PlayerCombat {
       const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
       this.projectiles.push({
         visual,
+        originX: position.x,
+        originZ: position.z,
+        travelRange: this.skillTargetRange(skill),
         dirX: sx,
         dirZ: sz,
         life: WAVE_LIFETIME,
@@ -1027,6 +1114,9 @@ export class PlayerCombat {
       x,
       y,
       z,
+      dirX,
+      dirZ,
+      attackRange: this.skillTargetRange(skill),
       life: skill.isUltimate ? 9 : 6.5,
       fireAcc: 0,
       fireInterval: skill.isUltimate ? 0.7 : 0.95,
@@ -1139,13 +1229,24 @@ export class PlayerCombat {
       if (s.fireAcc >= s.fireInterval) {
         s.fireAcc = 0;
         const target = this.nearestMonster(s.x, s.z, s.acquireRange);
-        if (target) {
-          this.monsters.applyHit(target, s.damage, s.x, s.z, 3, s.source);
-          const dir = new THREE.Vector3(
+        const dir = target
+          ? new THREE.Vector3(
             target.group.position.x - s.x,
             0,
             target.group.position.z - s.z,
-          ).normalize();
+          ).normalize()
+          : new THREE.Vector3(s.dirX, 0, s.dirZ);
+        // Shared S16 monsters are not in MonsterManager, so a summon must
+        // still emit its delayed shot intent even when no local target exists.
+        this.onSharedMonsterAttack?.({
+          origin: new THREE.Vector3(s.x, s.y, s.z),
+          forwardX: dir.x,
+          forwardZ: dir.z,
+          kind: 'skill',
+          range: s.attackRange,
+        });
+        if (target) {
+          this.monsters.applyHit(target, s.damage, s.x, s.z, 3, s.source);
           this.effects.spawnEnergyLaunch(new THREE.Vector3(s.x, s.y, s.z), dir, s.color, 0.8);
           const impact = target.group.position.clone();
           impact.y += 1;
@@ -1218,6 +1319,15 @@ export class PlayerCombat {
     const position = this.controller.position;
     const heading = this.controller.heading;
     const isLast = ch.ticksDone >= ch.totalTicks;
+
+    this.onSharedMonsterAttack?.({
+      origin: position.clone(),
+      forwardX: ch.dirX,
+      forwardZ: ch.dirZ,
+      kind: 'skill',
+      range: ch.skill.range,
+      ...(ch.kind === 'beam' ? { area: Math.max(0.5, ch.skill.radius) } : {}),
+    });
 
     if (ch.kind === 'flurry') {
       this.monsters.playerAttack(position, heading, {
@@ -1303,6 +1413,14 @@ export class PlayerCombat {
       this.effects.spawnShockwave(new THREE.Vector3(zone.x, pos.y, zone.z), zone.radius, zone.color);
       if (zone.damage > 0) {
         this.damageZone(zone.x, zone.z, zone.radius, zone.damage, zone.knockback, zone.source, zone.dot);
+        this.onSharedMonsterAttack?.({
+          origin: new THREE.Vector3(zone.x, pos.y, zone.z),
+          forwardX: 0,
+          forwardZ: 1,
+          kind: 'skill',
+          range: zone.radius,
+          area: zone.radius,
+        });
       }
       if (zone.dot) {
         this.dotFields.push({
@@ -1329,6 +1447,21 @@ export class PlayerCombat {
         for (const m of this.monsters.monstersNear(field.x, field.z, field.radius)) {
           this.monsters.applyHit(m, tickDmg, field.x, field.z, 0, field.source);
         }
+        // Persistent elemental fields affect ships on the same cadence as monsters.
+        // The original cast damaged a ship once, but subsequent DoT ticks were PvE-only.
+        this.navalCombat?.damageNearestEnemyShipFromSkill(
+          new THREE.Vector3(field.x, pos.y, field.z),
+          field.radius,
+          tickDmg,
+        );
+        this.onSharedMonsterAttack?.({
+          origin: new THREE.Vector3(field.x, pos.y, field.z),
+          forwardX: 0,
+          forwardZ: 1,
+          kind: 'skill',
+          range: field.radius,
+          area: field.radius,
+        });
       }
       if (field.remaining <= 0) this.dotFields.splice(i, 1);
     }
@@ -1337,7 +1470,8 @@ export class PlayerCombat {
   /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
-    this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + healHp);
+    const appliedHeal = this.authoritativeCombatTimer > 0 ? 0 : healHp;
+    this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + appliedHeal);
     // คืน MP (ทรัพยากรสกิล) แทน Energy
     this.controller.mp = Math.min(
       this.controller.mpMax,
@@ -1347,7 +1481,7 @@ export class PlayerCombat {
     this.skillBuffTimer = 8;
     this.effects.spawnShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
     this.touch?.notify(
-      `✨ บัฟ! ดาเมจ x${this.skillBuffMultiplier.toFixed(2)} · ฮีล +${Math.round(healHp)}`,
+      `✨ บัฟ! ดาเมจ x${this.skillBuffMultiplier.toFixed(2)} · ฮีล +${Math.round(appliedHeal)}`,
     );
   }
 
@@ -1449,7 +1583,7 @@ export class PlayerCombat {
       // homing: จับเป้าใกล้สุดแล้วค่อย ๆ เลี้ยวทิศเข้าหา
       if (wave.homing) {
         if (!wave.target || !wave.target.alive) {
-          wave.target = this.nearestMonster(wave.visual.root.position.x, wave.visual.root.position.z, 30);
+          wave.target = this.nearestMonster(wave.originX, wave.originZ, wave.travelRange);
         }
         if (wave.target) {
           const tx = wave.target.group.position.x - wave.visual.root.position.x;
@@ -1500,7 +1634,11 @@ export class PlayerCombat {
         );
       }
 
-      if (wave.life <= 0) {
+      const travelled = Math.hypot(
+        wave.visual.root.position.x - wave.originX,
+        wave.visual.root.position.z - wave.originZ,
+      );
+      if (wave.life <= 0 || travelled >= wave.travelRange) {
         this.effects.destroyEnergyProjectile(wave.visual);
         this.projectiles.splice(i, 1);
       }
@@ -1511,6 +1649,14 @@ export class PlayerCombat {
     const base = this.progression?.getDamageMultiplier(category) ?? 1;
     // บัฟชั่วคราวจากสกิล buff — คูณดาเมจทุกท่าระหว่างเปิดใช้
     return base * (this.skillBuffTimer > 0 ? this.skillBuffMultiplier : 1);
+  }
+
+  /** Keep client target selection bounded by the actual skill shape. */
+  private skillTargetRange(skill: CastableSkill): number {
+    if (skill.renderType === 'aoe' || skill.renderType === 'buff') {
+      return Math.max(0.8, skill.radius);
+    }
+    return Math.max(0.8, skill.range);
   }
 
   /** source ของ M1 = อาวุธที่ถือ */
