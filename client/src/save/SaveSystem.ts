@@ -61,15 +61,19 @@ export class SaveSystem {
   }
 
   save(): void {
-    if (!this.controller.moveState.onGround || this.controller.isMounted) return;
     const p = this.controller.position;
     const checkpoint = this.getCheckpoint();
+    const safePosition = this.controller.moveState.onGround && !this.controller.isMounted;
+    const previous = safePosition ? null : SaveSystem.load(this.storage);
+    const spawn = getIsland(checkpoint.islandId).spawn;
     const data: SaveData = {
       saveVersion: 4,
-      x: p.x,
-      y: p.y,
-      z: p.z,
-      heading: this.controller.heading,
+      // Unsafe movement still persists resources/checkpoint, while retaining
+      // the last safe on-foot transform for the next boot.
+      x: safePosition ? p.x : previous?.x ?? spawn.x,
+      y: safePosition ? p.y : previous?.y ?? 0,
+      z: safePosition ? p.z : previous?.z ?? spawn.z,
+      heading: safePosition ? this.controller.heading : previous?.heading ?? this.controller.heading,
       cameraYaw: this.camera.yaw,
       worldTime: this.getWorldTime(),
       spawnId: checkpoint.spawnId,
