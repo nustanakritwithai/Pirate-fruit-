@@ -368,7 +368,7 @@ export const PVP_SKILL_KNOCKBACK_SPEED = 14;
 /** Knockback travel and hit-stun are separate presentation/control windows. */
 export const PVP_MELEE_KNOCKBACK_DURATION = 0.34;
 export const PVP_SKILL_KNOCKBACK_DURATION = 0.4;
-export const PVP_MELEE_HITSTUN_DURATION = 0.8;
-export const PVP_SKILL_HITSTUN_DURATION = 0.8;
+export const PVP_MELEE_HITSTUN_DURATION = 0.45;
+export const PVP_SKILL_HITSTUN_DURATION = 0.45;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;
