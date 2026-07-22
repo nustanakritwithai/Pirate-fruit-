@@ -80,7 +80,7 @@ interface MonsterRuntime {
   attackReadyAt: number;
   /** Brief post-hit recovery; Server keeps movement cadence authoritative. */
   attackRecoverUntil: number;
-  /** Server-authoritative 0.45s interruption window applied by confirmed player hits. */
+  /** Server-authoritative 0.2s interruption window applied by confirmed player hits. */
   hitstunUntil: number;
   /** Attack action that may still be waiting for its active hit frame on clients. */
   activeAttackId: string | null;

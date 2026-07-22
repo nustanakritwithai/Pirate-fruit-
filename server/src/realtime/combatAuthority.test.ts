@@ -110,7 +110,7 @@ describe('S15 CombatAuthority', () => {
     // ตีจนตาย (เว้นระยะคูลดาวน์)
     for (let i = 0; i < Math.ceil(PVP_MAX_HP / PVP_MELEE_DAMAGE); i += 1) {
       last = combat.resolveAttack(now, 'a', near, 'b', near2, 'melee') ?? last;
-      now += PVP_MELEE_HITSTUN_DURATION * 1_000;
+      now += Math.max(PVP_MELEE_HITSTUN_DURATION * 1_000, PVP_ATTACK_MIN_INTERVAL_MS);
     }
     expect(last?.defeated).toBe(true);
     expect(combat.isAlive('b')).toBe(false);
