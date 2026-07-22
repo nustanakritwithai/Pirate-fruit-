@@ -39,6 +39,10 @@ class RecordingPlayerSaves implements PlayerSaveRepository {
     this.loads.push(characterId);
     return { revision: 0, migrated: false, state: null };
   }
+  async resetLegacyProgress(characterId: string) {
+    this.loads.push(`reset:${characterId}`);
+    return { revision: 1, idempotentReplay: false, migrated: true };
+  }
   async save(identity: PlayerSaveMutationIdentity) {
     this.saves.push(identity);
     return { revision: 1, idempotentReplay: false, migrated: false };
@@ -123,6 +127,24 @@ describe('S6 player save API', () => {
     });
     expect(suppliedIdentity.statusCode).toBe(400);
     expect(saves.saves).toHaveLength(0);
+
+    const reset = await server.inject({
+      method: 'POST',
+      url: '/api/player/reset-legacy-progress',
+      headers: {
+        cookie: `${cookieName}=${first.rawToken}`,
+        origin: 'https://game.example',
+        'x-csrf-token': first.csrfToken,
+      },
+      payload: {},
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(JSON.parse(reset.body)).toMatchObject({
+      ok: true,
+      revision: 1,
+      migrated: true,
+    });
+    expect(saves.loads).toContain(`reset:${first.record.characterId}`);
   });
 
   it('rejects expired sessions and abnormal checkpoints', async () => {

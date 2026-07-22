@@ -17,7 +17,7 @@ import {
   LocalEconomyRepository,
   LocalPlayerRepository,
 } from '../LocalRepositories';
-import { RemotePlayerRepository, type FetchLike } from '../RemoteRepositories';
+import { RemotePlayerRepository, RemoteSaveCoordinator, type FetchLike } from '../RemoteRepositories';
 import { RepositoryBackedStorage } from '../RepositoryBackedStorage';
 import { GAMEPLAY_STORAGE_KEYS } from '../storageKeys';
 
@@ -193,6 +193,30 @@ describe('S3 persistence repositories', () => {
       expectedRevision: 0,
       documents: state,
     });
+  });
+
+  it('supports the idempotent legacy progress repair endpoint', async () => {
+    const calls: string[] = [];
+    const fetcher: FetchLike = async (input, init) => {
+      calls.push(`${String(input)}:${init?.method ?? 'GET'}`);
+      return init?.method === 'POST'
+        ? Response.json({ ok: true, revision: 2, idempotentReplay: false, migrated: true })
+        : Response.json({
+          ok: true,
+          schemaVersion: 1,
+          revision: 1,
+          migrated: true,
+          state: null,
+          cargo: { schemaVersion: 1, cargo: null },
+        });
+    };
+    const coordinator = new RemoteSaveCoordinator('https://server.example', { fetcher });
+    await coordinator.load();
+    await expect(coordinator.resetLegacyProgress()).resolves.toMatchObject({ revision: 2 });
+    expect(calls).toEqual([
+      'https://server.example/api/player/state:GET',
+      'https://server.example/api/player/reset-legacy-progress:POST',
+    ]);
   });
 
   it('falls back to the local save when remote endpoints are unavailable', async () => {
