@@ -51,6 +51,13 @@ export interface SharedMonsterDamageResolution {
   defeated: boolean;
 }
 
+export interface SharedMonsterPlayerHit {
+  damage: number;
+  sourceX: number;
+  sourceZ: number;
+  attackId: string;
+}
+
 /** Pure damage transition used by main so shared-monster death cannot miss respawn. */
 export function resolveSharedMonsterPlayerDamage(
   currentHp: number,
@@ -262,8 +269,10 @@ export class SharedMonsterClient implements Updatable {
     const hits: string[] = [];
     for (const [spawnId, monster] of this.monsters) {
       if (monster.state === 'dead' || monster.hp <= 0) continue;
-      const dx = monster.group.position.x - origin.x;
-      const dz = monster.group.position.z - origin.z;
+      // Targeting must use the latest authoritative coordinate, not the
+      // interpolated visual which can lag far behind during reconnect/jitter.
+      const dx = monster.target.x - origin.x;
+      const dz = monster.target.z - origin.z;
       const dist = Math.hypot(dx, dz);
       if (dist > range || dist < 1e-3) continue;
       if ((dx / dist) * fx + (dz / dist) * fz < cosHalf) continue;
@@ -272,11 +281,25 @@ export class SharedMonsterClient implements Updatable {
     return hits;
   }
 
-  /** Consume due action hit frames; a state snapshot alone never deals damage. */
-  collectPlayerDamage(playerPos: THREE.Vector3): number {
+  /** Alive targets in an authoritative circular area (AoE/ground/DoT). */
+  targetsInRadius(origin: THREE.Vector3, radius: number): string[] {
+    if (isWorldSafeZone(this.currentIslandId, origin.x, origin.z)) return [];
+    const radiusSq = Math.max(0, radius) ** 2;
+    const hits: string[] = [];
+    for (const [spawnId, monster] of this.monsters) {
+      if (monster.state === 'dead' || monster.hp <= 0) continue;
+      const dx = monster.target.x - origin.x;
+      const dz = monster.target.z - origin.z;
+      if (dx * dx + dz * dz <= radiusSq) hits.push(spawnId);
+    }
+    return hits;
+  }
+
+  /** Consume due authoritative hits with their real source for block/reaction direction. */
+  collectPlayerHits(playerPos: THREE.Vector3): SharedMonsterPlayerHit[] {
     const now = this.now();
     const safe = isWorldSafeZone(this.currentIslandId, playerPos.x, playerPos.z);
-    let total = 0;
+    const hits: SharedMonsterPlayerHit[] = [];
     for (let i = this.pendingAttacks.length - 1; i >= 0; i -= 1) {
       const pending = this.pendingAttacks[i]!;
       if (now < pending.hitAt) continue;
@@ -285,10 +308,22 @@ export class SharedMonsterClient implements Updatable {
       const monster = this.monsters.get(pending.attack.spawnId);
       const type = monster ? MONSTER_TYPES[monster.monsterId] : undefined;
       if (!monster || !type || monster.state === 'dead' || !monster.group.visible) continue;
-      const dist = Math.hypot(monster.group.position.x - playerPos.x, monster.group.position.z - playerPos.z);
-      if (dist <= type.attackRange + 0.6) total += pending.attack.damage;
+      const dist = Math.hypot(monster.target.x - playerPos.x, monster.target.z - playerPos.z);
+      if (dist <= type.attackRange + 0.6) {
+        hits.push({
+          damage: pending.attack.damage,
+          sourceX: monster.target.x,
+          sourceZ: monster.target.z,
+          attackId: pending.attack.attackId,
+        });
+      }
     }
-    return total;
+    return hits;
+  }
+
+  /** Consume due action hit frames; a state snapshot alone never deals damage. */
+  collectPlayerDamage(playerPos: THREE.Vector3): number {
+    return this.collectPlayerHits(playerPos).reduce((total, hit) => total + hit.damage, 0);
   }
 
   update(dt: number): void {
