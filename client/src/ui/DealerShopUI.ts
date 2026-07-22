@@ -53,6 +53,7 @@ export class DealerShopUI {
   private readonly lists: HTMLDivElement;
   private readonly status: HTMLDivElement;
   private readonly drawBtn: HTMLButtonElement;
+  private drawInFlight = false;
   private closeCallback: (() => void) | null = null;
 
   constructor(
@@ -85,7 +86,7 @@ export class DealerShopUI {
 
     this.root.querySelector<HTMLButtonElement>('.dealer-shop-close')!
       .addEventListener('click', () => this.close());
-    this.drawBtn.addEventListener('click', () => this.handleDraw());
+    this.drawBtn.addEventListener('click', () => void this.handleDraw());
     this.root.addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-equip]');
       if (!button) return;
@@ -100,6 +101,11 @@ export class DealerShopUI {
 
   get isOpen(): boolean {
     return this.root.style.display !== 'none';
+  }
+
+  /** Refresh an open wallet after any authoritative progression update. */
+  refresh(): void {
+    if (this.isOpen) this.render();
   }
 
   open(onClose: () => void): void {
@@ -123,15 +129,24 @@ export class DealerShopUI {
     this.status.classList.toggle('danger', danger);
   }
 
-  private handleDraw(): void {
-    const drawn = this.inventory.draw();
-    if (!drawn) {
-      this.setStatus(`เหรียญไม่พอ ต้องการ ${this.inventory.drawCost} 🪙`, true);
-      return;
-    }
-    this.showResult(drawn);
-    this.onChange();
+  private async handleDraw(): Promise<void> {
+    if (this.drawInFlight) return;
+    this.drawInFlight = true;
     this.render();
+    try {
+      const drawn = await this.inventory.drawAsync();
+      if (!drawn) {
+        this.setStatus(`เหรียญไม่พอ ต้องการ ${this.inventory.drawCost} 🪙`, true);
+        return;
+      }
+      this.showResult(drawn);
+      this.onChange();
+    } catch (error) {
+      this.setStatus(error instanceof Error ? error.message : 'เชื่อมต่อร้านค้าไม่สำเร็จ', true);
+    } finally {
+      this.drawInFlight = false;
+      this.render();
+    }
   }
 
   private showResult(drawn: DrawResult): void {
@@ -153,7 +168,7 @@ export class DealerShopUI {
   render(): void {
     this.coins.textContent = `${this.inventory.coins} เหรียญ`;
     this.drawBtn.textContent = `🎲 สุ่ม 1 ครั้ง · ${this.inventory.drawCost} 🪙`;
-    this.drawBtn.disabled = this.inventory.coins < this.inventory.drawCost;
+    this.drawBtn.disabled = this.drawInFlight || this.inventory.coins < this.inventory.drawCost;
 
     const snapshot = this.inventory.loadout.snapshot;
     const equippedOf: Record<ItemKind, string | null> = {
