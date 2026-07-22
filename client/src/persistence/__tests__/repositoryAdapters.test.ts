@@ -260,19 +260,37 @@ describe('S3 persistence repositories', () => {
         expiresAt: '2099-01-01T00:00:00.000Z',
       },
     };
+    let remoteAvailable = false;
+    let remoteRevision = 1;
     const fetcher: FetchLike = async (input, init) => {
       const url = String(input);
       if (url.endsWith('/api/session/me')) return Response.json(sessionPayload);
       if (url.endsWith('/api/player/state')) return Response.json({
         ok: true,
         schemaVersion: 1,
-        revision: 1,
+        revision: remoteRevision,
         migrated: true,
         state: remoteState,
         cargo: { schemaVersion: 1, cargo: null },
       });
       if (url.endsWith('/api/player/save') && init?.method === 'POST') {
-        return new Response('{}', { status: 503 });
+        if (!remoteAvailable) return new Response('{}', { status: 503 });
+        remoteRevision += 1;
+        return Response.json({
+          ok: true,
+          revision: remoteRevision,
+          idempotentReplay: false,
+          migrated: true,
+        });
+      }
+      if (url.endsWith('/api/player/cargo') && init?.method === 'PUT') {
+        remoteRevision += 1;
+        return Response.json({
+          ok: true,
+          revision: remoteRevision,
+          idempotentReplay: false,
+          migrated: true,
+        });
       }
       throw new Error(`Unexpected URL ${url}`);
     };
@@ -294,5 +312,10 @@ describe('S3 persistence repositories', () => {
     expect(persistence.activeMode).toBe('local');
     expect(storage.getItem(GAMEPLAY_STORAGE_KEYS.progression)).toBe('offline-change');
     expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).not.toBeNull();
+
+    remoteAvailable = true;
+    await expect(persistence.refreshSave()).resolves.toBe(true);
+    expect(persistence.activeMode).toBe('remote');
+    expect(storage.getItem(REMOTE_DIRTY_SAVE_KEY)).toBeNull();
   });
 });
