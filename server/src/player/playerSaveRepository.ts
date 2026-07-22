@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import type { BoatDefinitionId, IslandId } from '@pirate-fruit/shared';
+import {
+  STAT_POINTS_PER_LEVEL,
+  type BoatDefinitionId,
+  type IslandId,
+} from '@pirate-fruit/shared';
 import type { Pool, PoolClient } from 'pg';
 import {
   canonicalBoatData,
   canonicalResourceCaps,
   defaultPlayerState,
+  defaultProgression,
+  PlayerDocumentValidationError,
   type CanonicalBoat,
   type CanonicalCargo,
   type CanonicalCheckpoint,
@@ -114,6 +120,28 @@ function parseMastery(value: unknown): Record<string, CanonicalMasteryEntry> {
   return jsonRecord(value) as Record<string, CanonicalMasteryEntry>;
 }
 
+function masteryExpRequired(level: number): number {
+  return Math.floor(40 + level * 18 + level * level * 1.6);
+}
+
+/** Convert the persisted level/remaining-exp representation back to earned lifetime XP. */
+function masteryLifetimeExp(entry: CanonicalMasteryEntry): number {
+  let total = Math.max(0, Math.floor(entry.exp));
+  const level = Math.max(1, Math.min(600, Math.floor(entry.level)));
+  for (let current = 1; current < level; current += 1) total += masteryExpRequired(current);
+  return total;
+}
+
+function totalMasteryExp(mastery: Record<string, CanonicalMasteryEntry>): number {
+  return Object.values(mastery).reduce((sum, entry) => sum + masteryLifetimeExp(entry), 0);
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const expected = new Set(left);
+  return expected.size === right.length && right.every((id) => expected.has(id));
+}
+
 function equipmentState(rows: Array<{ slot: string; metadata_json: unknown }>): {
   inventory: CanonicalInventory['loadout'];
   legacy: CanonicalLegacyLoadout;
@@ -129,6 +157,10 @@ function equipmentState(rows: Array<{ slot: string; metadata_json: unknown }>): 
 export interface PlayerSaveRepositoryOptions {
   /** S12: level/exp เป็นของ Server (เดินจาก EXP ที่ Server แจก) — save ห้ามเขียนทับ */
   preserveServerProgression?: boolean;
+  /** S10: player_quests เป็นของ Quest API — save ทั่วไปห้ามลบหรือเขียนทับ */
+  preserveServerQuests?: boolean;
+  /** ร้าน Server เป็นเจ้าของ item acquisition; save รับได้เฉพาะ equip/use จากของที่มีจริง */
+  preserveServerInventory?: boolean;
 }
 
 export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
@@ -211,7 +243,7 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
         ...resetState.progression,
         level: row.level,
         exp: numberFromBigint(exp),
-        statPoints: Math.max(0, (row.level - 1) * 3),
+        statPoints: Math.max(0, (row.level - 1) * STAT_POINTS_PER_LEVEL),
       };
       const caps = canonicalResourceCaps(resetProgression);
       await client.query(
@@ -295,7 +327,7 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
     return this.mutate(
       identity,
       async (client) => {
-        await this.persistPlayer(client, identity.characterId, state);
+        await this.persistPlayer(client, identity.characterId, state, true);
         await this.persistCargo(client, identity.characterId, state.cargo);
       },
       true,
@@ -464,8 +496,20 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
     const questResult = await client.query<{
       quest_id: string;
       status: string;
-      progress_json: { counts?: number[] };
+      progress_json: { objectives?: unknown; counts?: unknown };
     }>('select quest_id, status, progress_json from player_quests where character_id = $1', [characterId]);
+
+    const serverQuestAuthority = this.repositoryOptions.preserveServerQuests === true;
+    const activeQuest = questResult.rows.find((quest) => (
+      quest.status === 'active' || (serverQuestAuthority && quest.status === 'completed')
+    ));
+    const activeProgressRaw = activeQuest?.progress_json?.objectives
+      ?? activeQuest?.progress_json?.counts;
+    const activeQuestProgress = Array.isArray(activeProgressRaw)
+      ? activeProgressRaw.map((count) => (
+          typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
+        ))
+      : [];
 
     const progressionRow = progressionResult.rows[0];
     const progression: CanonicalProgression = {
@@ -473,21 +517,23 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
       exp: numberFromBigint(progressionRow.exp),
       statPoints: progressionRow.stat_points,
       stats: {
-        combat: progressionRow.combat,
-        vitality: progressionRow.vitality,
-        blade: progressionRow.blade,
-        ranged: progressionRow.ranged,
-        fruitPower: progressionRow.fruit_power,
-        mana: progressionRow.mana,
+        // Core schema รุ่นแรก default เป็น 0 แต่ gameplay canonical เริ่มที่ 1.
+        combat: Math.max(1, progressionRow.combat),
+        vitality: Math.max(1, progressionRow.vitality),
+        blade: Math.max(1, progressionRow.blade),
+        ranged: Math.max(1, progressionRow.ranged),
+        fruitPower: Math.max(1, progressionRow.fruit_power),
+        mana: Math.max(1, progressionRow.mana),
       },
       mastery: parseMastery(progressionRow.mastery_json),
       coins: numberFromBigint(row.coins),
       completedQuestIds: questResult.rows
-        .filter((quest) => quest.status === 'completed' || quest.status === 'claimed')
+        .filter((quest) => serverQuestAuthority
+          ? quest.status === 'claimed'
+          : quest.status === 'completed' || quest.status === 'claimed')
         .map((quest) => quest.quest_id),
-      activeQuestId: questResult.rows.find((quest) => quest.status === 'active')?.quest_id ?? null,
-      activeQuestProgress:
-        questResult.rows.find((quest) => quest.status === 'active')?.progress_json?.counts ?? [],
+      activeQuestId: activeQuest?.quest_id ?? null,
+      activeQuestProgress,
     };
     const caps = canonicalResourceCaps(progression);
     const stats = statsResult.rows[0] ?? {
@@ -570,21 +616,27 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
     client: PoolClient,
     characterId: string,
     state: CanonicalPlayerState,
+    trustedLegacyMigration = false,
   ): Promise<void> {
-    const progression = state.progression;
-    // S12: เมื่อ progression authority เปิด — level/exp เดินโดย Server เท่านั้น
-    // (save จาก client เขียนได้แค่ส่วนที่ยังเป็นของ client: เหรียญ transitional,
-    //  ตำแหน่ง, สเตต/mastery)
-    const preserve = this.repositoryOptions.preserveServerProgression === true;
+    const preserve = this.repositoryOptions.preserveServerProgression === true
+      && !trustedLegacyMigration;
+    const progression = preserve
+      ? await this.authoritativeProgression(client, characterId, state.progression)
+      : state.progression;
+    const inventory = this.repositoryOptions.preserveServerInventory && !trustedLegacyMigration
+      ? await this.authoritativeInventory(client, characterId, state.inventory, state.loadout)
+      : state.inventory;
+    // เมื่อ progression authority เปิด level/exp/coins เดินโดย Server เท่านั้น.
+    // Client ส่งตำแหน่งและคำขอจัดสเตตัสที่ต้องผ่านการตรวจแต้ม; mastery ยังเป็น
+    // transitional จนกว่า reward attribution จะย้ายเข้า combat authority ครบถ้วน.
     if (preserve) {
       await client.query(
         `update characters
-            set coins = $2, current_island_id = $3, spawn_id = $4,
+            set current_island_id = $2, spawn_id = $3,
                 updated_at = now()
           where id = $1`,
         [
           characterId,
-          String(progression.coins),
           state.checkpoint.islandId,
           state.checkpoint.spawnId,
         ],
@@ -640,9 +692,215 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
       ],
     );
     await this.persistCheckpoint(client, characterId, state.checkpoint, progression);
-    await this.persistInventory(client, characterId, state.inventory, state.loadout);
+    await this.persistInventory(client, characterId, inventory, state.loadout);
     await this.persistBoats(client, characterId, state.boats);
-    await this.persistQuests(client, characterId, progression);
+    if (!this.repositoryOptions.preserveServerQuests) {
+      await this.persistQuests(client, characterId, progression);
+    }
+  }
+
+  /**
+   * Full-save requests may carry the browser mirror, but level/EXP/coins are always
+   * reloaded from the locked Server rows. Stat allocation is accepted only when it
+   * conserves the exact pool of unspent Server-issued points; arbitrary increases,
+   * refunds, and decreases are rejected. Mastery may grow only within the aggregate
+   * reward budget recorded by authoritative monster/quest transactions.
+   */
+  private async authoritativeProgression(
+    client: PoolClient,
+    characterId: string,
+    proposed: CanonicalProgression,
+  ): Promise<CanonicalProgression> {
+    const character = await client.query<{ level: number; coins: string }>(
+      'select level, coins::text as coins from characters where id = $1',
+      [characterId],
+    );
+    const characterRow = character.rows[0];
+    if (!characterRow) throw new PlayerStateNotFoundError();
+    const stored = await client.query<{
+      exp: string;
+      stat_points: number;
+      combat: number;
+      vitality: number;
+      blade: number;
+      ranged: number;
+      fruit_power: number;
+      mana: number;
+      mastery_json: unknown;
+    }>(
+      `select exp::text as exp, stat_points, combat, vitality, blade, ranged,
+              fruit_power, mana, mastery_json
+         from player_progression
+        where character_id = $1
+        for update`,
+      [characterId],
+    );
+    const fallback = defaultProgression();
+    const row = stored.rows[0];
+    const currentStats = row
+      ? {
+          // Core schema รุ่นแรก default เป็น 0 แต่ gameplay canonical เริ่มที่ 1.
+          // Normalize แถวเก่าโดยไม่คิดว่าแต้มฐานนี้เป็นการ allocate จาก client.
+          combat: Math.max(1, row.combat),
+          vitality: Math.max(1, row.vitality),
+          blade: Math.max(1, row.blade),
+          ranged: Math.max(1, row.ranged),
+          fruitPower: Math.max(1, row.fruit_power),
+          mana: Math.max(1, row.mana),
+        }
+      : fallback.stats;
+    const currentStatPoints = row?.stat_points
+      ?? Math.max(0, (characterRow.level - 1) * STAT_POINTS_PER_LEVEL);
+    const statIds = Object.keys(currentStats) as Array<keyof typeof currentStats>;
+    let allocated = 0;
+    for (const statId of statIds) {
+      const delta = proposed.stats[statId] - currentStats[statId];
+      if (!Number.isInteger(delta) || delta < 0) {
+        throw new PlayerDocumentValidationError(
+          `Server stat '${statId}' cannot be decreased or refunded by a save`,
+        );
+      }
+      allocated += delta;
+    }
+    if (allocated > currentStatPoints || proposed.statPoints !== currentStatPoints - allocated) {
+      throw new PlayerDocumentValidationError(
+        'Client stat allocation does not match Server-issued stat points',
+      );
+    }
+    const currentMastery = parseMastery(row?.mastery_json);
+    for (const [itemId, current] of Object.entries(currentMastery)) {
+      const next = proposed.mastery[itemId];
+      if (!next || masteryLifetimeExp(next) < masteryLifetimeExp(current)) {
+        throw new PlayerDocumentValidationError(
+          `Server mastery '${itemId}' cannot be decreased or reassigned by a save`,
+        );
+      }
+    }
+    const inventoryRows = await client.query<{ item_id: string; metadata_json: unknown }>(
+      'select item_id, metadata_json from player_inventory where character_id = $1',
+      [characterId],
+    );
+    const allowedMasteryItems = new Set([
+      ...Object.keys(defaultProgression().mastery),
+      ...Object.keys(currentMastery),
+      ...inventoryRows.rows
+        .filter((item) => ['sword', 'gun', 'style', 'fruit'].includes(String(jsonRecord(item.metadata_json).kind)))
+        .map((item) => item.item_id),
+    ]);
+    for (const itemId of Object.keys(proposed.mastery)) {
+      if (!allowedMasteryItems.has(itemId)) {
+        throw new PlayerDocumentValidationError(`Client mastery item '${itemId}' is not owned`);
+      }
+    }
+    const [monsterBudget, questBudget] = await Promise.all([
+      client.query<{ total: string }>(
+        'select coalesce(sum(mastery_exp), 0)::text as total from monster_kill_batches where character_id = $1',
+        [characterId],
+      ),
+      client.query<{ total: string }>(
+        'select coalesce(sum(mastery_bonus), 0)::text as total from quest_claims where character_id = $1',
+        [characterId],
+      ),
+    ]);
+    const earnedBudget = numberFromBigint(monsterBudget.rows[0]?.total ?? 0)
+      + numberFromBigint(questBudget.rows[0]?.total ?? 0);
+    const currentMasteryTotal = totalMasteryExp(currentMastery);
+    const proposedMasteryTotal = totalMasteryExp(proposed.mastery);
+    // Grandfather a migrated legacy baseline, but never let it grow without new
+    // server-recorded rewards. Fresh online characters are bounded by all receipts.
+    if (proposedMasteryTotal > Math.max(currentMasteryTotal, earnedBudget)) {
+      throw new PlayerDocumentValidationError('Client mastery exceeds Server-issued reward budget');
+    }
+    return {
+      ...proposed,
+      level: characterRow.level,
+      exp: numberFromBigint(row?.exp ?? 0),
+      coins: numberFromBigint(characterRow.coins),
+      statPoints: proposed.statPoints,
+      stats: proposed.stats,
+    };
+  }
+
+  /**
+   * Acquisition is Server-owned. A normal save may equip owned items, change quickslots,
+   * or consume potions, but it cannot add/remove permanent items or increase consumables.
+   */
+  private async authoritativeInventory(
+    client: PoolClient,
+    characterId: string,
+    proposed: CanonicalInventory,
+    legacyLoadout: CanonicalLegacyLoadout,
+  ): Promise<CanonicalInventory> {
+    const result = await client.query<{
+      item_id: string;
+      quantity: number;
+      metadata_json: unknown;
+    }>(
+      'select item_id, quantity, metadata_json from player_inventory where character_id = $1 for update',
+      [characterId],
+    );
+    const owned = {
+      sword: [] as string[],
+      gun: [] as string[],
+      style: ['combat'],
+      fruit: [] as string[],
+    };
+    const consumables: Record<string, number> = {};
+    for (const row of result.rows) {
+      const kind = jsonRecord(row.metadata_json).kind;
+      if (kind === 'consumable') consumables[row.item_id] = row.quantity;
+      else if (kind === 'sword') owned.sword.push(row.item_id);
+      else if (kind === 'gun') owned.gun.push(row.item_id);
+      else if (kind === 'style' && row.item_id !== 'combat') owned.style.push(row.item_id);
+      else if (kind === 'fruit') owned.fruit.push(row.item_id);
+    }
+    if (
+      !sameIds(owned.sword, proposed.ownedSwords)
+      || !sameIds(owned.gun, proposed.ownedGuns)
+      || !sameIds(owned.style, proposed.ownedStyles)
+      || !sameIds(owned.fruit, proposed.ownedFruits)
+    ) {
+      throw new PlayerDocumentValidationError('Client inventory ownership differs from Server inventory');
+    }
+    for (const [itemId, quantity] of Object.entries(proposed.consumables)) {
+      if (quantity > (consumables[itemId] ?? 0)) {
+        throw new PlayerDocumentValidationError(`Client cannot increase consumable '${itemId}'`);
+      }
+    }
+
+    const owns = (kind: 'sword' | 'gun' | 'style' | 'fruit', itemId: string | null): boolean => (
+      itemId === null || owned[kind].includes(itemId)
+    );
+    const loadout = proposed.loadout;
+    if (
+      !owns('sword', loadout.equippedSwordId)
+      || !owns('gun', loadout.equippedGunId)
+      || !owns('style', loadout.equippedFightingStyleId)
+      || !owns('fruit', loadout.equippedFruitId)
+    ) {
+      throw new PlayerDocumentValidationError('Client equipped an item it does not own');
+    }
+    const legacyKinds = { style: 'style', sword: 'sword', gun: 'gun', fruit: 'fruit' } as const;
+    for (const [slot, kind] of Object.entries(legacyKinds)) {
+      const itemId = legacyLoadout.slots[slot as keyof typeof legacyKinds] ?? null;
+      const builtIn = itemId === 'basic-brawl' || itemId === 'training-sword';
+      if (!builtIn && !owns(kind, itemId)) {
+        throw new PlayerDocumentValidationError('Legacy loadout contains an unowned item');
+      }
+    }
+    const nextConsumables = Object.fromEntries(
+      Object.entries(consumables)
+        .map(([itemId]) => [itemId, proposed.consumables[itemId] ?? 0] as const)
+        .filter(([, quantity]) => quantity > 0),
+    );
+    return {
+      ...proposed,
+      ownedSwords: owned.sword,
+      ownedGuns: owned.gun,
+      ownedStyles: owned.style,
+      ownedFruits: owned.fruit,
+      consumables: nextConsumables,
+    };
   }
 
   private async persistCheckpoint(
@@ -870,7 +1128,7 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
         [
           characterId,
           progression.activeQuestId,
-          JSON.stringify({ counts: progression.activeQuestProgress }),
+          JSON.stringify({ objectives: progression.activeQuestProgress }),
         ],
       );
     }
