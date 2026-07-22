@@ -2,12 +2,16 @@ import {
   PVP_ATTACK_MIN_INTERVAL_MS,
   PVP_MAX_HP,
   PVP_MELEE_DAMAGE,
+  PVP_MELEE_KNOCKBACK_DURATION,
+  PVP_MELEE_KNOCKBACK_SPEED,
   PVP_MELEE_RANGE,
   PVP_RESPAWN_MS,
   PVP_SKILL_DAMAGE,
+  PVP_SKILL_KNOCKBACK_DURATION,
+  PVP_SKILL_KNOCKBACK_SPEED,
   PVP_SKILL_RANGE,
 } from '@pirate-fruit/shared';
-import type { RealtimeCombatRejectReason } from '@pirate-fruit/shared';
+import type { RealtimeCombatRejectReason, RealtimeKnockback } from '@pirate-fruit/shared';
 
 /**
  * S15 — Multiplayer Combat Authority (PvP)
@@ -41,6 +45,8 @@ export interface AttackResolution {
   maxHp: number;
   /** true = เป้า HP หมด (แพ้) — ตั้งเวลาเกิดใหม่ไว้แล้ว */
   defeated: boolean;
+  /** Server-computed presentation impulse; Client cannot choose its direction or size. */
+  knockback?: RealtimeKnockback;
 }
 
 export type AttackDecision =
@@ -60,6 +66,24 @@ function damageFor(kind: AttackKind): number {
 
 function rangeFor(kind: AttackKind): number {
   return kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
+}
+
+function knockbackFor(
+  attacker: CombatPosition,
+  target: CombatPosition,
+  kind: AttackKind,
+  defeated: boolean,
+): RealtimeKnockback | undefined {
+  if (defeated) return undefined;
+  const dx = target.x - attacker.x;
+  const dz = target.z - attacker.z;
+  const length = Math.hypot(dx, dz) || 1;
+  return {
+    directionX: dx / length,
+    directionZ: dz / length,
+    speed: kind === 'skill' ? PVP_SKILL_KNOCKBACK_SPEED : PVP_MELEE_KNOCKBACK_SPEED,
+    duration: kind === 'skill' ? PVP_SKILL_KNOCKBACK_DURATION : PVP_MELEE_KNOCKBACK_DURATION,
+  };
 }
 
 export class CombatAuthority {
@@ -143,7 +167,16 @@ export class CombatAuthority {
     target.hp = Math.max(0, target.hp - damage);
     const defeated = target.hp <= 0;
     if (defeated) target.respawnAt = now + PVP_RESPAWN_MS;
-    return { accepted: true, resolution: { damage, hp: target.hp, maxHp: PVP_MAX_HP, defeated } };
+    return {
+      accepted: true,
+      resolution: {
+        damage,
+        hp: target.hp,
+        maxHp: PVP_MAX_HP,
+        defeated,
+        knockback: knockbackFor(attackerPos, targetPos, kind, defeated),
+      },
+    };
   }
 
   /** ถึงเวลาเกิดใหม่ของใครบ้าง → รีเซ็ต HP เต็มแล้วคืนรายการเพื่อ broadcast */

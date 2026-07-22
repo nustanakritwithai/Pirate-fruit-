@@ -430,19 +430,20 @@ async function main(): Promise<void> {
     },
     onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
     // S15: ผล PvP จาก Server (authority) — โดนเราเอง = ปรับหลอดเลือดตาม Server
-    onCombatHit: ({ attackerId, targetId, damage, hp, maxHp }) => {
+    onCombatHit: ({ attackerId, targetId, damage, hp, maxHp, knockback }) => {
       audioBridge?.markCombat();
       if (targetId === selfCharacterId) {
         const fraction = maxHp > 0 ? hp / maxHp : 0;
         controller.hp = Math.max(0, Math.round(fraction * controller.hpMax));
         hud.flashDamage();
-        playerCombat?.notifyDamaged();
+        playerCombat?.notifyAuthoritativeHit(knockback, controller.hp > 0);
         effects.spawnDamageNumber(controller.position, damage, '#ff6b6b');
         audio.play('combat.hit', {
           eventId: `pvp-hit:${attackerId}:${targetId}:${hp}:${damage}`,
           position: controller.position,
         });
       } else {
+        remotePlayers?.applyCombatHit(targetId, knockback);
         const at = remotePlayers?.positionOf(targetId);
         if (at) {
           at.y += 2.2;

@@ -87,7 +87,11 @@ describe('S16 MonsterSimulation', () => {
     expect(sim.contributorsOf('s-crab', now)).toHaveLength(0);
     // ในระยะ → โดน + บันทึก contribution (ดาเมจจาก Server)
     const hit = sim.applyHit(now, 's-crab', 'p1', 1, 0, 'melee');
-    expect(hit).toMatchObject({ damage: WORLD_MONSTER_MELEE_DAMAGE, dead: false });
+    expect(hit).toMatchObject({
+      damage: WORLD_MONSTER_MELEE_DAMAGE,
+      dead: false,
+      delta: { hitReaction: { directionX: expect.closeTo(-1, 6), directionZ: expect.closeTo(0, 6) } },
+    });
     expect(sim.hpOf('s-crab')).toBe(SHARED_MONSTER_TYPES.crab.maxHp - WORLD_MONSTER_MELEE_DAMAGE);
     expect(sim.contributorsOf('s-crab', now)).toEqual([{ characterId: 'p1', damage: WORLD_MONSTER_MELEE_DAMAGE }]);
     // contribution เก่าเกินหน้าต่าง → ไม่ถูกนับ

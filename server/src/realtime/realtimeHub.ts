@@ -459,6 +459,7 @@ export class RealtimeHub {
       damage: resolution.damage,
       hp: resolution.hp,
       maxHp: resolution.maxHp,
+      knockback: resolution.knockback,
     });
     if (resolution.defeated) {
       this.broadcastToIsland(islandId, {

@@ -3,9 +3,11 @@ import {
   PVP_ATTACK_MIN_INTERVAL_MS,
   PVP_MAX_HP,
   PVP_MELEE_DAMAGE,
+  PVP_MELEE_KNOCKBACK_SPEED,
   PVP_MELEE_RANGE,
   PVP_RESPAWN_MS,
   PVP_SKILL_DAMAGE,
+  PVP_SKILL_KNOCKBACK_SPEED,
 } from '@pirate-fruit/shared';
 import { CombatAuthority } from './combatAuthority.js';
 
@@ -22,6 +24,11 @@ describe('S15 CombatAuthority', () => {
       hp: PVP_MAX_HP - PVP_MELEE_DAMAGE,
       maxHp: PVP_MAX_HP,
       defeated: false,
+      knockback: {
+        directionX: expect.closeTo(1 / Math.sqrt(2), 6),
+        directionZ: expect.closeTo(1 / Math.sqrt(2), 6),
+        speed: PVP_MELEE_KNOCKBACK_SPEED,
+      },
     });
     expect(combat.hpOf('b')).toBe(PVP_MAX_HP - PVP_MELEE_DAMAGE);
   });
@@ -29,7 +36,7 @@ describe('S15 CombatAuthority', () => {
   it('uses a higher fixed damage for skill attacks (client cannot set damage)', () => {
     const combat = new CombatAuthority();
     const result = combat.resolveAttack(1_000, 'a', near, 'b', near2, 'skill');
-    expect(result?.damage).toBe(PVP_SKILL_DAMAGE);
+    expect(result).toMatchObject({ damage: PVP_SKILL_DAMAGE, knockback: { speed: PVP_SKILL_KNOCKBACK_SPEED } });
   });
 
   it('rejects attacks out of range, on self, and on the dead', () => {

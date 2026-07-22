@@ -237,6 +237,32 @@ describe('S9 realtime client', () => {
     client.stop();
   });
 
+  it('forwards the Server-computed combat knockback impulse', () => {
+    const sockets: FakeSocket[] = [];
+    const hits: unknown[] = [];
+    const client = new RealtimeClient('ws://test/ws', {
+      onEconomy: () => undefined,
+      onResync: () => undefined,
+      onCombatHit: (hit) => hits.push(hit),
+    }, {
+      webSocketFactory: () => {
+        const socket = new FakeSocket(); sockets.push(socket); return socket;
+      },
+    });
+    client.start();
+    sockets[0].welcome();
+    sockets[0].push({
+      type: 'combat-hit', seq: 2, attackerId: 'char-a', targetId: 'char-b',
+      damage: 7, hp: 93, maxHp: 100,
+      knockback: { directionX: 1, directionZ: 0, speed: 6, duration: 0.16 },
+    });
+    expect(hits).toEqual([{
+      attackerId: 'char-a', targetId: 'char-b', damage: 7, hp: 93, maxHp: 100,
+      knockback: { directionX: 1, directionZ: 0, speed: 6, duration: 0.16 },
+    }]);
+    client.stop();
+  });
+
   it('dispatches an authoritative shared-monster reward with the credited death', () => {
     const sockets: FakeSocket[] = [];
     const deaths: unknown[] = [];

@@ -122,6 +122,15 @@ export interface RealtimeCombatHit {
   /** HP ของเป้าหลังโดน (Server authority) + เพดาน เพื่อ map เป็นหลอดเลือดฝั่ง Client */
   hp: number;
   maxHp: number;
+  /** Server-computed presentation impulse; never accepted from Client input. */
+  knockback?: RealtimeKnockback;
+}
+
+export interface RealtimeKnockback {
+  directionX: number;
+  directionZ: number;
+  speed: number;
+  duration: number;
 }
 
 export interface RealtimeCombatDefeat {
@@ -342,5 +351,10 @@ export const PVP_ATTACK_MIN_INTERVAL_MS = 300;
 /** ระยะสูงสุดที่นับว่าโจมตีถึง (world units) — วัดจาก presence ล่าสุดของทั้งคู่ */
 export const PVP_MELEE_RANGE = 4.5;
 export const PVP_SKILL_RANGE = 22;
+/** Presentation-only impulse computed by the Server after a confirmed hit. */
+export const PVP_MELEE_KNOCKBACK_SPEED = 6;
+export const PVP_SKILL_KNOCKBACK_SPEED = 10;
+export const PVP_MELEE_KNOCKBACK_DURATION = 0.16;
+export const PVP_SKILL_KNOCKBACK_DURATION = 0.24;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;

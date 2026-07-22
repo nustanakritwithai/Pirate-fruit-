@@ -118,7 +118,17 @@ export class SharedMonsterClient implements Updatable {
       monster.hp = update.hp;
       monster.state = update.state;
       monster.visual.applyAuthoritativeState(update.hp, monster.maxHp, renderState(update.state));
-      if (wasHit) monster.visual.playHitReaction();
+      if (update.hitReaction) {
+        monster.visual.playHitReaction();
+        monster.visual.playHitReactionDirection(
+          update.hitReaction.directionX,
+          update.hitReaction.directionZ,
+          update.hitReaction.strength,
+        );
+      } else if (wasHit) {
+        // Backward-compatible fallback for a mixed-version Server during rollout.
+        monster.visual.playHitReaction();
+      }
     }
   }
 

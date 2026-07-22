@@ -38,6 +38,7 @@ import {
   isAttackState,
 } from './CombatState';
 import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
+import type { RealtimeKnockback } from '@pirate-fruit/shared';
 
 /** สลอตไม้ตายในอาเรย์คูลดาวน์ 4 ช่อง */
 const ULTIMATE_SLOT = 3;
@@ -453,6 +454,35 @@ export class PlayerCombat {
   /** แจ้งว่าเพิ่งโดนดาเมจ (หยุด HP regen) — main เรียกจาก onPlayerHit */
   notifyDamaged(): void {
     this.timeSinceDamaged = 0;
+  }
+
+  /** Apply a Server-confirmed PvP hit to the local presentation/movement only. */
+  notifyAuthoritativeHit(knockback?: RealtimeKnockback, applyImpulse = true): void {
+    this.timeSinceDamaged = 0;
+    this.damageReactionSerial++;
+    if (!knockback) {
+      this.damageReactionAngle = 0;
+      return;
+    }
+    const directionLength = Math.hypot(knockback.directionX, knockback.directionZ) || 1;
+    const directionX = knockback.directionX / directionLength;
+    const directionZ = knockback.directionZ / directionLength;
+    // The attacker is opposite the impulse direction, so the existing hit overlay
+    // leans away from the authoritative source rather than toward it.
+    this.damageReactionAngle = getRelativeHitAngle(
+      this.controller.position.x,
+      this.controller.position.z,
+      this.controller.heading,
+      this.controller.position.x - directionX,
+      this.controller.position.z - directionZ,
+    );
+    if (!applyImpulse) return;
+    const speed = Math.max(0, Number(knockback.speed));
+    const duration = Math.max(0.05, Number(knockback.duration));
+    if (speed > 0) {
+      this.controller.applyKnockback(directionX, directionZ, speed, duration);
+      this.enterState('knockback', duration);
+    }
   }
 
   /** เรียกหลัง equip อาวุธ/ผลไม้ที่ร้าน — รีเฟรชชุดสกิล/ไอคอนปุ่ม */

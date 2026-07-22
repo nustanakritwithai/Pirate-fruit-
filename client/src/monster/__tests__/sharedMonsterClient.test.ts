@@ -56,6 +56,7 @@ describe('S16 shared monster rendering and player defeat regression', () => {
 
     client.applyDelta('starter-island', [{
       spawnId: 'starter-crab-1', x: 30, z: 5, heading: 1, hp: 63, state: 'chase',
+      hitReaction: { directionX: 1, directionZ: 0, strength: 0.64 },
     }]);
     client.update(1 / 60);
     const visualRoot = rendered!.children[0] as THREE.Group;

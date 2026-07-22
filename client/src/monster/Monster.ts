@@ -269,11 +269,17 @@ export class Monster {
       dx = -Math.sin(this.group.rotation.y);
       dz = -Math.cos(this.group.rotation.y);
     }
-    const length = Math.hypot(dx, dz) || 1;
+    this.playHitReactionDirection(dx, dz, strength);
+  }
+
+  /** Apply a Server-provided presentation impulse without changing the authoritative group. */
+  playHitReactionDirection(directionX: number, directionZ: number, strength = 0.52): void {
+    if (this.state === 'dead') return;
+    const length = Math.hypot(directionX, directionZ) || 1;
     const resistance = this.type.kind === 'boss' ? 0.35 : 1;
     const amount = Math.min(0.8, Math.max(0.15, strength) * resistance);
-    this.hitOffset.x = (dx / length) * amount;
-    this.hitOffset.y = (dz / length) * amount;
+    this.hitOffset.x = (directionX / length) * amount;
+    this.hitOffset.y = (directionZ / length) * amount;
   }
 
   private die(): void {
