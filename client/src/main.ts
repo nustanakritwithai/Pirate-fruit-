@@ -444,7 +444,6 @@ async function main(): Promise<void> {
     && (import.meta.env.VITE_ENABLE_BOAT_WORLD === 'true'
       || import.meta.env.VITE_ENABLE_BOAT_WORLD === '1');
   const getSelfCharacterId = () => getRemoteSession().session?.characterId ?? null;
-  const selfCharacterId = getSelfCharacterId();
   const sharedMonsterRewardSources = new Map<string, {
     itemId: string;
     category: 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
@@ -635,7 +634,17 @@ async function main(): Promise<void> {
     onBoatRespawn: (boat) => boatWorldClient?.applyRespawn(boat),
     onBoatIntentResult: (result) => {
       boatManager.handleAuthorityResult(result);
-      if (!result.accepted) touchControls?.notify(`คำสั่งเรือถูกปฏิเสธ: ${result.reason ?? 'invalid'}`);
+      if (!result.accepted) {
+        const boatRejectMessages: Record<string, string> = {
+          'not-passenger-or-helm-busy': 'พวงมาลัยยังไม่พร้อม กำลังซิงก์สถานะเรือ',
+          'board-range-or-state': 'ต้องอยู่ใกล้เรือและรอให้เรือพร้อมก่อน',
+          'boat-and-presence-required': 'กำลังซิงก์ตำแหน่งกับ Server ลองอีกครั้ง',
+          'not-aboard': 'คุณไม่ได้อยู่บนเรือลำนี้',
+          'not-helm': 'คุณยังไม่ได้ถือพวงมาลัย',
+          'server-error': 'Server เรือขัดข้องชั่วคราว ลองอีกครั้ง',
+        };
+        touchControls?.notify(boatRejectMessages[result.reason ?? ''] ?? 'คำสั่งเรือไม่สำเร็จ ลองอีกครั้ง');
+      }
     },
   });
   if (realtime && boatWorldEnabled) {
@@ -649,7 +658,10 @@ async function main(): Promise<void> {
   // จากฝั่ง Node ได้แน่นอน โดยไม่พึ่ง setInterval ในหน้าเว็บที่ headless throttle
   (window as unknown as { __realtime?: typeof realtime }).__realtime = realtime;
   // S15: characterId ของเราให้ browser-smoke ใช้เป็นเป้าทดสอบ PvP (อ่านอย่างเดียว)
-  (window as unknown as { __characterId?: string | null }).__characterId = selfCharacterId;
+  Object.defineProperty(window, '__characterId', {
+    configurable: true,
+    get: getSelfCharacterId,
+  });
   // S13: รายงานตำแหน่งตัวเองให้ Server relay ทุก 100ms ผ่าน setInterval —
   // จงใจไม่ผูกกับ game loop (rAF) เพราะแท็บพื้นหลังโดน throttle จน presence ไม่ไหล
   if (realtime && multiplayerEnabled) {
@@ -658,7 +670,6 @@ async function main(): Promise<void> {
       remotePlayers?.setIsland(islandManager.activeIsland);
       sharedMonsters?.setIsland(islandManager.activeIsland);
       if (!realtime.connected) return;
-      if (boatWorldEnabled && boatManager.riderState !== 'off') return;
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
       const locomotion = controller.moveState.swimming
