@@ -3,6 +3,7 @@ import {
   PVP_ATTACK_MIN_INTERVAL_MS,
   PVP_MAX_HP,
   PVP_MELEE_DAMAGE,
+  PVP_MELEE_KNOCKBACK_DURATION,
   PVP_MELEE_KNOCKBACK_SPEED,
   PVP_MELEE_RANGE,
   PVP_RESPAWN_MS,
@@ -28,6 +29,7 @@ describe('S15 CombatAuthority', () => {
         directionX: expect.closeTo(1 / Math.sqrt(2), 6),
         directionZ: expect.closeTo(1 / Math.sqrt(2), 6),
         speed: PVP_MELEE_KNOCKBACK_SPEED,
+        duration: PVP_MELEE_KNOCKBACK_DURATION,
       },
     });
     expect(combat.hpOf('b')).toBe(PVP_MAX_HP - PVP_MELEE_DAMAGE);
@@ -53,6 +55,31 @@ describe('S15 CombatAuthority', () => {
     expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS - 1, 'a', near, 'b', near2, 'melee')).toBeNull();
     // พ้นคูลดาวน์ → โดนอีกครั้ง
     expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS, 'a', near, 'b', near2, 'melee')).not.toBeNull();
+  });
+
+  it('keeps a hit target in a short authoritative hit-stun window', () => {
+    const combat = new CombatAuthority();
+    expect(combat.resolveAttack(1_000, 'a', near, 'b', near2, 'melee')).not.toBeNull();
+    expect(
+      combat.resolveAttack(
+        1_000 + PVP_MELEE_KNOCKBACK_DURATION * 1_000 - 1,
+        'b',
+        near2,
+        'a',
+        near,
+        'melee',
+      ),
+    ).toBeNull();
+    expect(
+      combat.resolveAttack(
+        1_000 + PVP_MELEE_KNOCKBACK_DURATION * 1_000,
+        'b',
+        near2,
+        'a',
+        near,
+        'melee',
+      ),
+    ).not.toBeNull();
   });
 
   it('defeats a target at 0 hp and respawns full after the delay', () => {

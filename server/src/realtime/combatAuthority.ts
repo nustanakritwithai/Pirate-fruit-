@@ -32,6 +32,8 @@ interface CombatState {
   hp: number;
   /** null = ยังไม่ตาย; ตัวเลข = เวลาที่จะเกิดใหม่ (ms) */
   respawnAt: number | null;
+  /** Server-authoritative hit-stun window; prevents immediate counterattacks. */
+  hitstunUntil: number;
   /** เวลาโจมตีล่าสุดต่อเป้าแต่ละคน — กันสแปม/ออโต้ยิงรัว */
   lastAttackAt: Map<string, number>;
 }
@@ -52,7 +54,7 @@ export interface AttackResolution {
 export type AttackDecision =
   | { accepted: true; resolution: AttackResolution }
   | { accepted: false; reason: Extract<RealtimeCombatRejectReason,
-      'self-target' | 'presence-required' | 'defeated' | 'cooldown' | 'out-of-range'> };
+      'self-target' | 'presence-required' | 'defeated' | 'stunned' | 'cooldown' | 'out-of-range'> };
 
 export interface RespawnEvent {
   playerId: string;
@@ -96,7 +98,12 @@ export class CombatAuthority {
   /** ผู้เล่นเข้าร่วม — เริ่มด้วย HP เต็ม (idempotent) */
   ensure(playerId: string): void {
     if (!this.states.has(playerId)) {
-      this.states.set(playerId, { hp: PVP_MAX_HP, respawnAt: null, lastAttackAt: new Map() });
+      this.states.set(playerId, {
+        hp: PVP_MAX_HP,
+        respawnAt: null,
+        hitstunUntil: 0,
+        lastAttackAt: new Map(),
+      });
     }
   }
 
@@ -150,6 +157,7 @@ export class CombatAuthority {
     if (attacker.respawnAt !== null || target.respawnAt !== null) {
       return { accepted: false, reason: 'defeated' };
     }
+    if (attacker.hitstunUntil > now) return { accepted: false, reason: 'stunned' };
 
     // throttle: โจมตีเป้าเดิมถี่เกินไป = ทิ้ง (กันออโต้)
     const lastAt = attacker.lastAttackAt.get(targetId) ?? -Infinity;
@@ -167,6 +175,8 @@ export class CombatAuthority {
     target.hp = Math.max(0, target.hp - damage);
     const defeated = target.hp <= 0;
     if (defeated) target.respawnAt = now + PVP_RESPAWN_MS;
+    const knockback = knockbackFor(attackerPos, targetPos, kind, defeated);
+    if (knockback) target.hitstunUntil = Math.max(target.hitstunUntil, now + knockback.duration * 1_000);
     return {
       accepted: true,
       resolution: {
@@ -174,7 +184,7 @@ export class CombatAuthority {
         hp: target.hp,
         maxHp: PVP_MAX_HP,
         defeated,
-        knockback: knockbackFor(attackerPos, targetPos, kind, defeated),
+        knockback,
       },
     };
   }
@@ -186,6 +196,7 @@ export class CombatAuthority {
       if (state.respawnAt !== null && now >= state.respawnAt) {
         state.hp = PVP_MAX_HP;
         state.respawnAt = null;
+        state.hitstunUntil = 0;
         state.lastAttackAt.clear();
         respawned.push({ playerId, hp: PVP_MAX_HP, maxHp: PVP_MAX_HP });
       }
