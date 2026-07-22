@@ -447,7 +447,7 @@ export class Effects {
   }
 
   /** ตัวเลขดาเมจลอยขึ้นเหนือเป้า */
-  spawnDamageNumber(position: THREE.Vector3, amount: number, color = '#ffe28a'): void {
+  spawnDamageNumber(position: THREE.Vector3, amount: number, color = '#ffe28a', prefix = ''): void {
     const canvas = document.createElement('canvas');
     canvas.width = 128;
     canvas.height = 64;
@@ -457,9 +457,9 @@ export class Effects {
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 7;
     ctx.strokeStyle = 'rgba(0,0,0,.8)';
-    ctx.strokeText(`${Math.round(amount)}`, 64, 32);
+    ctx.strokeText(`${prefix}${Math.round(amount)}`, 64, 32);
     ctx.fillStyle = color;
-    ctx.fillText(`${Math.round(amount)}`, 64, 32);
+    ctx.fillText(`${prefix}${Math.round(amount)}`, 64, 32);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const sprite = new THREE.Sprite(
@@ -478,6 +478,11 @@ export class Effects {
     sprite.renderOrder = 998;
     this.scene.add(sprite);
     this.numbers.push({ sprite, life: 0.75, maxLife: 0.75 });
+  }
+
+  /** Incoming player damage uses a negative prefix so it cannot be mistaken for a reward. */
+  spawnPlayerDamageNumber(position: THREE.Vector3, amount: number): void {
+    this.spawnDamageNumber(position, amount, '#ff6b6b', '-');
   }
 
   spawnBoatImpact(position: THREE.Vector3, destructive = false): void {
