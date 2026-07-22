@@ -299,7 +299,7 @@ export class RemotePlayers implements Updatable {
     const duration = Math.max(0.05, Number(knockback?.duration ?? 0.16));
     // Keep remote recoil visible for the full impulse instead of capping normal
     // melee hits to the old sub-meter presentation distance.
-    const distance = THREE.MathUtils.clamp(speed * duration, 0.25, 3.2);
+    const distance = THREE.MathUtils.clamp(speed * duration, 0.25, 5.5);
     const normalizedX = directionX / length;
     const normalizedZ = directionZ / length;
     player.hitOrigin.copy(player.target);

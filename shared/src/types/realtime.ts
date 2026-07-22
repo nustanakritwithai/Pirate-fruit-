@@ -353,10 +353,10 @@ export const PVP_ATTACK_MIN_INTERVAL_MS = 300;
 export const PVP_MELEE_RANGE = 4.5;
 export const PVP_SKILL_RANGE = 22;
 /** Presentation-only impulse computed by the Server after a confirmed hit. */
-export const PVP_MELEE_KNOCKBACK_SPEED = 8;
-export const PVP_SKILL_KNOCKBACK_SPEED = 12;
-/** Keep the defender locked through the next normal attack window, while leaving a combo in range. */
-export const PVP_MELEE_KNOCKBACK_DURATION = 0.28;
-export const PVP_SKILL_KNOCKBACK_DURATION = 0.32;
+export const PVP_MELEE_KNOCKBACK_SPEED = 10;
+export const PVP_SKILL_KNOCKBACK_SPEED = 14;
+/** Longer launch windows make normal hits readable and block an immediate counterattack. */
+export const PVP_MELEE_KNOCKBACK_DURATION = 0.34;
+export const PVP_SKILL_KNOCKBACK_DURATION = 0.4;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;
