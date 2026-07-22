@@ -29,6 +29,8 @@ import { registerMonsterRoutes } from './monster/monsterRoutes.js';
 import type { MonsterService } from './monster/monsterService.js';
 import { registerProgressionRoutes } from './progression/progressionRoutes.js';
 import type { ProgressionService } from './progression/progressionService.js';
+import { registerShopRoutes } from './shop/shopRoutes.js';
+import type { ShopService } from './shop/shopService.js';
 
 export interface BuildServerOptions {
   environment: ServerEnvironment;
@@ -41,6 +43,7 @@ export interface BuildServerOptions {
   quests?: QuestService;
   monsters?: MonsterService;
   progression?: ProgressionService;
+  shop?: ShopService;
   realtime?: RealtimeHub;
   logger?: FastifyServerOptions['logger'];
 }
@@ -184,6 +187,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     environment,
     sessions: options.sessions,
     progression: options.progression,
+  });
+  await registerShopRoutes(app, {
+    environment,
+    sessions: options.sessions,
+    shop: options.shop,
   });
   await registerRealtimeRoutes(app, {
     environment,
