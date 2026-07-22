@@ -33,6 +33,7 @@ class MemoryEconomyRepository implements EconomyWorldRepository {
   leaderHeld = false;
   saves: EconomyWorldWrite[] = [];
   releases = 0;
+  failNextSave = false;
 
   constructor(stored: StoredEconomyWorld | null = null) {
     this.stored = stored;
@@ -48,6 +49,10 @@ class MemoryEconomyRepository implements EconomyWorldRepository {
     return {
       load: async () => this.stored,
       save: async (write) => {
+        if (this.failNextSave) {
+          this.failNextSave = false;
+          throw new Error('snapshot persist failed');
+        }
         this.saves.push(write);
         this.stored = {
           worldId: write.worldId,
@@ -96,7 +101,7 @@ describe('S7 economy runtime', () => {
     expect(repository.releases).toBe(1);
   });
 
-  it('caps missed-time crash recovery and persists the recovered snapshot atomically', async () => {
+  it('batches missed-time recovery without permanently discarding downtime ticks', async () => {
     const now = new Date('2026-01-01T00:10:00.000Z');
     const repository = new MemoryEconomyRepository({
       worldId: 'main',
@@ -118,7 +123,10 @@ describe('S7 economy runtime', () => {
     await runtime.start();
     expect(repository.saves).toHaveLength(1);
     expect(repository.saves[0]?.tick).toBe(19);
-    expect(repository.saves[0]?.tickedAt).toEqual(now);
+    expect(repository.saves[0]?.tickedAt).toEqual(new Date('2026-01-01T00:01:00.000Z'));
+    for (let batch = 0; batch < 9; batch += 1) await runtime.pulseNow();
+    expect(repository.saves.at(-1)?.tick).toBe(127);
+    expect(repository.saves.at(-1)?.tickedAt).toEqual(now);
     await runtime.stop();
   });
 
@@ -179,6 +187,30 @@ describe('S7 economy runtime', () => {
     await runtime.pulseNow();
     expect((await runtime.getSnapshot()).tick).toBe(ticksBefore + 1);
 
+    await runtime.stop();
+  });
+
+  it('rolls back prepared trade work when the economy snapshot cannot persist', async () => {
+    const repository = new MemoryEconomyRepository();
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory,
+      setInterval: (() => ({}) as ReturnType<typeof setInterval>) as unknown as typeof setInterval,
+      clearInterval: vi.fn() as unknown as typeof clearInterval,
+    });
+    await runtime.start();
+    repository.failNextSave = true;
+    const commit = vi.fn(async () => undefined);
+    const rollback = vi.fn(async () => undefined);
+
+    await expect(runtime.executeAtomic(async (engine) => {
+      engine.advance();
+      return { result: 'ok', commit, rollback };
+    })).rejects.toThrow('snapshot persist failed');
+
+    expect(commit).not.toHaveBeenCalled();
+    expect(rollback).toHaveBeenCalledOnce();
+    expect((await runtime.getSnapshot()).tick).toBe(0);
     await runtime.stop();
   });
 });
