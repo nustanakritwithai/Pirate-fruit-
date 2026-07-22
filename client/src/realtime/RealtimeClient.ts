@@ -112,6 +112,7 @@ export class RealtimeClient {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private isConnected = false;
   private attackIntentSequence = 0;
+  private monsterIntentSequence = 0;
 
   constructor(
     private readonly url: string,
@@ -194,6 +195,7 @@ export class RealtimeClient {
       // (presence เป็น absolute ใช้ได้เลย; economy ใหม่กว่าเดิมแน่นอน)
       this.lastSeq = message.seq;
       this.handlers.onResync();
+      this.socket?.send(JSON.stringify({ type: 'resync' }));
       this.dispatch(message);
       return;
     }
@@ -288,15 +290,29 @@ export class RealtimeClient {
     return intentId;
   }
 
+  sendCombatBlock(active: boolean): void {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
+    this.socket.send(JSON.stringify({ type: 'combat-block', active }));
+  }
+
   /** S16: รายงานเจตนาตีมอนสเตอร์กลาง — Server ตัดสินดาเมจ/ตาย/contribution เอง */
   sendMonsterHit(spawnId: string, kind: 'melee' | 'skill'): void {
-    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
-    this.socket.send(JSON.stringify({ type: 'world-monster-hit', spawnId, kind }));
+    this.sendMonsterHits([spawnId], kind);
+  }
+
+  /** One authoritative action may hit an AoE set; one intent id prevents replaying the set. */
+  sendMonsterHits(spawnIds: readonly string[], kind: 'melee' | 'skill'): string | null {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return null;
+    const targets = [...new Set(spawnIds)].slice(0, 16);
+    if (targets.length === 0) return null;
+    const intentId = `mob-${++this.monsterIntentSequence}`;
+    this.socket.send(JSON.stringify({ type: 'world-monster-hit', intentId, spawnIds: targets, kind }));
+    return intentId;
   }
 
   /** S17: only control intent; no position/HP/damage/reward fields exist in this payload. */
   sendBoatIntent(action: BoatIntentAction, payload: {
-    entityId?: string; throttle?: number; steer?: number; anchor?: boolean;
+    entityId?: string; throttle?: number; steer?: number; anchor?: boolean; boost?: boolean;
     fireSide?: 'port' | 'starboard';
   } = {}, retryIntentId?: string): string | null {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return null;
