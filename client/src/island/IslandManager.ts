@@ -74,7 +74,11 @@ export class IslandManager {
     }
 
     const island = findIslandAt(position.x, position.z, 7);
-    if (island && worldHeightAt(position.x, position.z) > -0.25 && island.id !== this.activeIslandId) {
+    if (
+      island
+      && (worldHeightAt(position.x, position.z) > -0.25 || this.controller.isMounted)
+      && island.id !== this.activeIslandId
+    ) {
       this.activeIslandId = island.id;
       this.spawns.activateIsland(island.id);
       const [minLevel, maxLevel] = island.recommendedLevel;
