@@ -61,8 +61,34 @@ export class SessionService {
       now,
     );
     if (!record) return null;
-    await this.repository.touch(record.sessionId, now);
+    const ttlMs = this.ttlDays * DAY_MS;
+    if (this.repository.refresh && record.expiresAt.getTime() - now.getTime() < ttlMs / 3) {
+      record.expiresAt = new Date(now.getTime() + ttlMs);
+      await this.repository.refresh(record.sessionId, record.expiresAt);
+    } else {
+      await this.repository.touch(record.sessionId, now);
+    }
     return this.authentication(record);
+  }
+
+  /** Let the character gate name a legacy auto-created Guest without replacing its save. */
+  async renameLegacyGuest(
+    session: AuthenticatedSession,
+    requestedName: string,
+  ): Promise<AuthenticatedSession> {
+    if (!session.record.characterName.startsWith('Guest-') || !this.repository.renameLegacyGuest) {
+      return session;
+    }
+    const renamed = await this.repository.renameLegacyGuest(
+      session.record.userId,
+      session.record.characterId,
+      requestedName,
+    );
+    if (renamed) {
+      session.record.characterName = renamed;
+      session.identity.characterName = renamed;
+    }
+    return session;
   }
 
   validateCsrf(session: AuthenticatedSession, received: unknown): boolean {
