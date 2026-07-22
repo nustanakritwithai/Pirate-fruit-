@@ -13,6 +13,7 @@ export type WorldMonsterState =
   | 'aggro'
   | 'chase'
   | 'attack'
+  | 'stunned'
   | 'return'
   | 'dead';
 
@@ -35,6 +36,8 @@ export interface SharedMonsterType {
 
 /** Delay from the authoritative attack action to its active hit frame. */
 export const WORLD_MONSTER_ATTACK_HIT_DELAY_MS = 180;
+/** Server-authoritative window during which a confirmed player hit interrupts monster AI. */
+export const WORLD_MONSTER_HITSTUN_MS = 800;
 
 /** One authoritative monster attack action (damage is applied only once for this id). */
 export interface WorldMonsterAttack {
@@ -234,6 +237,8 @@ export interface WorldMonsterDelta {
   state: WorldMonsterState;
   /** Presentation-only hit impulse emitted with the authoritative HP delta. */
   hitReaction?: WorldMonsterHitReaction;
+  /** Exact queued attack action invalidated by this authoritative state change. */
+  cancelAttackId?: string;
 }
 
 export interface WorldMonsterHitReaction {

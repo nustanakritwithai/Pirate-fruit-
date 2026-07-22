@@ -414,9 +414,10 @@ export class RealtimeHub {
       return;
     }
     // Missing intentId remains compatible with clients deployed before this acknowledgement.
-    const intentId = typeof message.intentId === 'string' && message.intentId.length <= 128
+    const suppliedIntentId = typeof message.intentId === 'string' && message.intentId.length <= 128
       ? message.intentId
-      : 'legacy';
+      : undefined;
+    const intentId = suppliedIntentId ?? 'legacy';
     const reject = (reason: RealtimeCombatRejectReason) => {
       this.sendTo(connection, {
         type: 'combat-result', seq: 0, intentId, targetId, accepted: false, reason,
@@ -444,6 +445,7 @@ export class RealtimeHub {
       targetId,
       targetPos,
       kind,
+      suppliedIntentId,
     );
     if (!decision.accepted) return reject(decision.reason);
     const resolution = decision.resolution;

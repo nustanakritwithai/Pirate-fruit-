@@ -159,6 +159,7 @@ export type RealtimeCombatRejectReason =
   | 'different-island'
   | 'defeated'
   | 'stunned'
+  | 'duplicate'
   | 'cooldown'
   | 'out-of-range';
 

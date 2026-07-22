@@ -49,15 +49,33 @@ describe('S15 CombatAuthority', () => {
     expect(combat.resolveAttack(1_000, 'a', null, 'b', near2, 'melee')).toBeNull();
   });
 
-  it('throttles repeated hits on the same target', () => {
+  it('allows unique combo actions to refresh stun while rejecting cooldown and replay', () => {
     const combat = new CombatAuthority();
-    expect(combat.resolveAttack(1_000, 'a', near, 'b', near2, 'melee')).not.toBeNull();
+    expect(combat.resolveAttackDetailed(1_000, 'a', near, 'b', near2, 'melee', 'combo-1').accepted).toBe(true);
     // เร็วเกินไป → ทิ้ง
-    expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS - 1, 'a', near, 'b', near2, 'melee')).toBeNull();
-    // พ้นคูลดาวน์แต่ยังอยู่ใน hit-stun → ยังไม่โดนซ้ำ
-    expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS, 'a', near, 'b', near2, 'melee')).toBeNull();
-    // พ้น hit-stun → combo hit ถัดไปจึงเข้าได้
-    expect(combat.resolveAttack(1_000 + PVP_MELEE_HITSTUN_DURATION * 1_000, 'a', near, 'b', near2, 'melee')).not.toBeNull();
+    expect(combat.resolveAttackDetailed(
+      1_000 + PVP_ATTACK_MIN_INTERVAL_MS - 1, 'a', near, 'b', near2, 'melee', 'combo-too-fast',
+    )).toMatchObject({ accepted: false, reason: 'cooldown' });
+    // action ใหม่หลังคูลดาวน์เข้าได้แม้เป้ายัง stun และต่อเวลา stun จาก hit ล่าสุด
+    expect(combat.resolveAttackDetailed(
+      1_000 + PVP_ATTACK_MIN_INTERVAL_MS, 'a', near, 'b', near2, 'melee', 'combo-2',
+    ).accepted).toBe(true);
+    const hpAfterCombo = combat.hpOf('b');
+    // replay action เดิมไม่ลด HP รอบสอง แม้เวลาผ่านคูลดาวน์
+    expect(combat.resolveAttackDetailed(
+      1_000 + PVP_ATTACK_MIN_INTERVAL_MS * 2, 'a', near, 'b', near2, 'melee', 'combo-2',
+    )).toMatchObject({ accepted: false, reason: 'duplicate' });
+    expect(combat.hpOf('b')).toBe(hpAfterCombo);
+
+    // เป้ายังสวนไม่ได้จนกว่าจะครบ 0.8 วินาทีจาก combo hit ล่าสุด
+    expect(combat.resolveAttack(
+      1_000 + PVP_ATTACK_MIN_INTERVAL_MS + PVP_MELEE_HITSTUN_DURATION * 1_000 - 1,
+      'b', near2, 'a', near, 'melee',
+    )).toBeNull();
+    expect(combat.resolveAttack(
+      1_000 + PVP_ATTACK_MIN_INTERVAL_MS + PVP_MELEE_HITSTUN_DURATION * 1_000,
+      'b', near2, 'a', near, 'melee',
+    )).not.toBeNull();
   });
 
   it('keeps a hit target in a short authoritative hit-stun window', () => {

@@ -38,6 +38,8 @@ interface CombatState {
   hitstunUntil: number;
   /** เวลาโจมตีล่าสุดต่อเป้าแต่ละคน — กันสแปม/ออโต้ยิงรัว */
   lastAttackAt: Map<string, number>;
+  /** Client action ids already consumed by Server; prevents replay from dealing damage twice. */
+  processedIntentIds: Map<string, number>;
 }
 
 export type AttackKind = 'melee' | 'skill';
@@ -56,7 +58,7 @@ export interface AttackResolution {
 export type AttackDecision =
   | { accepted: true; resolution: AttackResolution }
   | { accepted: false; reason: Extract<RealtimeCombatRejectReason,
-      'self-target' | 'presence-required' | 'defeated' | 'stunned' | 'cooldown' | 'out-of-range'> };
+      'self-target' | 'presence-required' | 'defeated' | 'stunned' | 'duplicate' | 'cooldown' | 'out-of-range'> };
 
 export interface RespawnEvent {
   playerId: string;
@@ -67,6 +69,9 @@ export interface RespawnEvent {
 function damageFor(kind: AttackKind): number {
   return kind === 'skill' ? PVP_SKILL_DAMAGE : PVP_MELEE_DAMAGE;
 }
+
+const ATTACK_INTENT_TTL_MS = 30_000;
+const MAX_PROCESSED_ATTACK_INTENTS = 256;
 
 function rangeFor(kind: AttackKind): number {
   return kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
@@ -106,6 +111,7 @@ export class CombatAuthority {
         respawnAt: null,
         hitstunUntil: 0,
         lastAttackAt: new Map(),
+        processedIntentIds: new Map(),
       });
     }
   }
@@ -149,6 +155,7 @@ export class CombatAuthority {
     targetId: string,
     targetPos: CombatPosition | null,
     kind: AttackKind,
+    intentId?: string,
   ): AttackDecision {
     if (attackerId === targetId) return { accepted: false, reason: 'self-target' };
     if (!attackerPos || !targetPos) return { accepted: false, reason: 'presence-required' };
@@ -156,17 +163,17 @@ export class CombatAuthority {
     this.ensure(targetId);
     const attacker = this.states.get(attackerId)!;
     const target = this.states.get(targetId)!;
+    if (intentId && !this.claimIntent(attacker, intentId, now)) {
+      return { accepted: false, reason: 'duplicate' };
+    }
     // ผู้โจมตีต้องยังไม่ตาย และเป้าต้องยังไม่ตาย
     if (attacker.respawnAt !== null || target.respawnAt !== null) {
       return { accepted: false, reason: 'defeated' };
     }
     if (attacker.hitstunUntil > now) return { accepted: false, reason: 'stunned' };
-    // Do not stack another hit while the target is still in the authoritative
-    // hit-stun window. A combo may continue after the window expires, but a
-    // held attack cannot drain HP every cooldown tick during one stun.
-    if (target.hitstunUntil > now) return { accepted: false, reason: 'stunned' };
 
-    // throttle: โจมตีเป้าเดิมถี่เกินไป = ทิ้ง (กันออโต้)
+    // A new action may refresh the target's stun for a real combo. Cooldown and
+    // intent de-duplication still guarantee at most one hit per action cadence.
     const lastAt = attacker.lastAttackAt.get(targetId) ?? -Infinity;
     if (now - lastAt < PVP_ATTACK_MIN_INTERVAL_MS) return { accepted: false, reason: 'cooldown' };
 
@@ -197,6 +204,22 @@ export class CombatAuthority {
         knockback,
       },
     };
+  }
+
+  private claimIntent(state: CombatState, intentId: string, now: number): boolean {
+    const cutoff = now - ATTACK_INTENT_TTL_MS;
+    for (const [id, seenAt] of state.processedIntentIds) {
+      if (seenAt >= cutoff) break;
+      state.processedIntentIds.delete(id);
+    }
+    if (state.processedIntentIds.has(intentId)) return false;
+    state.processedIntentIds.set(intentId, now);
+    while (state.processedIntentIds.size > MAX_PROCESSED_ATTACK_INTENTS) {
+      const oldest = state.processedIntentIds.keys().next().value;
+      if (typeof oldest !== 'string') break;
+      state.processedIntentIds.delete(oldest);
+    }
+    return true;
   }
 
   /** ถึงเวลาเกิดใหม่ของใครบ้าง → รีเซ็ต HP เต็มแล้วคืนรายการเพื่อ broadcast */

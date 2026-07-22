@@ -121,4 +121,33 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(client.collectPlayerDamage(new THREE.Vector3(20, 0, 8))).toBe(7);
     expect(client.collectPlayerDamage(new THREE.Vector3(20, 0, 8))).toBe(0);
   });
+
+  it('cancels a queued monster hit when the server confirms hit-stun', () => {
+    let now = 1_000;
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => now);
+    client.applySnapshot('starter-island', [snapshot({ x: 20, z: 8, state: 'attack' })]);
+    const attack: WorldMonsterAttack = {
+      attackId: 'starter-crab-1:interrupt-me',
+      spawnId: 'starter-crab-1',
+      monsterId: 'crab',
+      islandId: 'starter-island',
+      targetId: 'player-1',
+      action: 'melee',
+      damage: 7,
+      hitDelayMs: 180,
+    };
+    client.applyAttack(attack, 'player-1');
+    client.applyDelta('starter-island', [{
+      spawnId: 'starter-crab-1', x: 20, z: 8, heading: 0, hp: 58, state: 'stunned',
+      cancelAttackId: attack.attackId,
+    }]);
+
+    now += 180;
+    expect(client.collectPlayerDamage(new THREE.Vector3(20, 0, 8))).toBe(0);
+
+    client.applyAttack({ ...attack, attackId: 'starter-crab-1:while-stunned' }, 'player-1');
+    now += 180;
+    expect(client.collectPlayerDamage(new THREE.Vector3(20, 0, 8))).toBe(0);
+  });
 });

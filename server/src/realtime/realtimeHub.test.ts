@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   REALTIME_IDLE_TIMEOUT_MS,
   REALTIME_MAX_CLIENT_MESSAGE_BYTES,
+  PVP_ATTACK_MIN_INTERVAL_MS,
   PVP_MELEE_HITSTUN_DURATION,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
@@ -295,8 +296,8 @@ describe('S15 PvP combat authority', () => {
   function moved(island: string, x: number, z: number) {
     return JSON.stringify({ type: 'move', islandId: island, x, y: 0, z, heading: 0, onBoat: false });
   }
-  function attack(targetId: string, kind: 'melee' | 'skill' = 'melee') {
-    return JSON.stringify({ type: 'attack', targetId, kind });
+  function attack(targetId: string, kind: 'melee' | 'skill' = 'melee', intentId?: string) {
+    return JSON.stringify({ type: 'attack', targetId, kind, ...(intentId ? { intentId } : {}) });
   }
 
   it('ignores attack frames when pvp is disabled (default)', () => {
@@ -332,6 +333,29 @@ describe('S15 PvP combat authority', () => {
     // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
     expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
     expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
+  });
+
+  it('accepts new combo intents during target stun but rejects a replayed intent', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
+
+    hub.handleClientMessage(ca, attack('char-b', 'melee', 'combo-1'));
+    clock += PVP_ATTACK_MIN_INTERVAL_MS;
+    hub.handleClientMessage(ca, attack('char-b', 'melee', 'combo-2'));
+    clock += PVP_ATTACK_MIN_INTERVAL_MS;
+    hub.handleClientMessage(ca, attack('char-b', 'melee', 'combo-2'));
+
+    expect(b.sent.filter((message) => message.type === 'combat-hit')).toHaveLength(2);
+    expect(a.sent.filter((message) => message.type === 'combat-result').at(-1)).toMatchObject({
+      intentId: 'combo-2', accepted: false, reason: 'duplicate',
+    });
   });
 
   it('does not resolve hits across islands or out of range', () => {

@@ -3,6 +3,7 @@ import {
   SHARED_MONSTER_TYPES,
   WORLD_MONSTER_CONTRIBUTION_WINDOW_MS,
   WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
+  WORLD_MONSTER_HITSTUN_MS,
   WORLD_MONSTER_MELEE_DAMAGE,
   type SharedSpawnPoint,
 } from '@pirate-fruit/shared';
@@ -76,6 +77,28 @@ describe('S16 MonsterSimulation', () => {
     sim.tick(now, 200, [player('p1', 'starter-island', 5, 0)]);
     const afterRecovery = sim.snapshotForIsland('starter-island')[0];
     expect(afterRecovery.x).toBeGreaterThan(duringRecovery.x);
+  });
+
+  it('cancels a queued counterattack and refreshes authoritative stun on combo hits', () => {
+    let now = 1_000;
+    const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);
+    const attack = sim.tick(now, 200, [player('p1', 'starter-island', 0, 0)]).attacks[0]!;
+
+    now += 100;
+    const firstHit = sim.applyHit(now, 's-crab', 'p1', 0, 0, 'melee');
+    expect(firstHit?.delta).toMatchObject({
+      state: 'stunned',
+      cancelAttackId: attack.attackId,
+    });
+    expect(sim.tick(now + WORLD_MONSTER_HITSTUN_MS - 1, 200, [player('p1', 'starter-island', 0, 0)]).attacks)
+      .toHaveLength(0);
+    expect(sim.stateOf('s-crab')).toBe('stunned');
+
+    now += 500;
+    expect(sim.applyHit(now, 's-crab', 'p1', 0, 0, 'melee')?.delta.state).toBe('stunned');
+    expect(sim.tick(now + WORLD_MONSTER_HITSTUN_MS - 1, 200, [player('p1', 'starter-island', 0, 0)]).attacks)
+      .toHaveLength(0);
+    expect(sim.stateOf('s-crab')).toBe('stunned');
   });
 
   it('drops a target that disappears from the world and returns home', () => {
