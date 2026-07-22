@@ -1,6 +1,6 @@
 import type { CharacterController } from '../player/CharacterController';
 import type { Game } from '../engine/Game';
-import { controlSurfaceLayout } from '../engine/device';
+import { controlSurfaceLayout, isTouchDevice } from '../engine/device';
 
 /**
  * HUD พื้นฐาน (HTML overlay): Guard, พิกัด, FPS และคำแนะนำปุ่ม
@@ -61,7 +61,7 @@ export class HUD {
     this.timeText = info.querySelector('.time')!;
 
     // บนมือถือมีปุ่มบนจอครบแล้ว ไม่ต้องแสดงคำแนะนำคีย์บอร์ด
-    if (controlSurfaceLayout() === 'desktop') {
+    if (controlSurfaceLayout() === 'desktop' && !isTouchDevice()) {
       const help = document.createElement('div');
       help.className = 'hud hud-help';
       help.innerHTML = `
