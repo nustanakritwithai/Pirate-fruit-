@@ -78,7 +78,10 @@ export class Game {
   private tick(): void {
     // จำกัด dt กันกรณีสลับแท็บแล้วเวลาโดดไกล
     const frameDt = Math.min(this.clock.getDelta(), 0.25);
-    this.accumulator += frameDt;
+    this.accumulator = Math.min(
+      this.accumulator + frameDt,
+      this.fixedDt * this.maxSubSteps * 3,
+    );
 
     let subSteps = 0;
     while (this.accumulator >= this.fixedDt && subSteps < this.maxSubSteps) {
@@ -86,10 +89,8 @@ export class Game {
       this.accumulator -= this.fixedDt;
       subSteps++;
     }
-    if (subSteps === this.maxSubSteps && this.accumulator >= this.fixedDt) {
-      // ยอมทิ้งเวลาที่ค้างแทนการทำให้เครื่องติดอยู่ในวงจรคำนวณย้อนหลัง
-      this.accumulator = 0;
-    }
+    // Keep the bounded remainder for the next few frames. A lag spike catches
+    // up gradually instead of silently deleting movement/cooldown time.
 
     this.fpsFrames++;
     this.fpsTime += frameDt;
