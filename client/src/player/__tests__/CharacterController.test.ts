@@ -103,10 +103,10 @@ describe('CharacterController — double jump', () => {
     );
     controller.teleport(0, 0, 0);
     controller.update(0.016);
-    controller.applyStun(0.28);
-    controller.applyKnockback(1, 0, 8, 0.28);
+    controller.applyStun(0.34);
+    controller.applyKnockback(1, 0, 10, 0.34);
     controller.update(0.1);
-    expect(controller.position.x).toBeCloseTo(0.8, 2);
+    expect(controller.position.x).toBeCloseTo(1, 2);
     expect(controller.position.z).toBeCloseTo(0, 2);
     expect(controller.isStunned).toBe(true);
   });

@@ -152,7 +152,7 @@ describe('S13 RemotePlayers', () => {
     let now = 1_000;
     const players = new RemotePlayers(scene, 'starter-island', () => now);
     players.applyPresence(snapshot({ x: 10, z: 20 }));
-    players.applyCombatHit('char-b', { directionX: 1, directionZ: 0, speed: 8, duration: 0.28 });
+    players.applyCombatHit('char-b', { directionX: 1, directionZ: 0, speed: 10, duration: 0.34 });
     players.applyPresence(snapshot({ x: 10, z: 20 })); // frame sent before knockback
     players.update(0.016);
     const ghost = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
