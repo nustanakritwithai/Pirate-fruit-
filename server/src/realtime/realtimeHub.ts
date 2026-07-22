@@ -86,6 +86,11 @@ export interface RealtimeConnection {
   lastMoveAt: number;
   /** Peers already seeded to this connection while inside presentation interest. */
   visiblePeerIds: Set<string>;
+  /** S16 authoritative monster action replay/rate protection. */
+  monsterIntentIds: Map<string, number>;
+  lastMonsterActionAt: number;
+  monsterActionWindowAt: number;
+  monsterActionsInWindow: number;
 }
 
 export interface RealtimeHubLogger {
@@ -97,6 +102,11 @@ const silentLogger: RealtimeHubLogger = {
   info: () => undefined,
   warn: () => undefined,
 };
+
+const MONSTER_INTENT_TTL_MS = 30_000;
+const MONSTER_ACTION_MIN_INTERVAL_MS = 55;
+const MONSTER_ACTIONS_PER_SECOND = 18;
+const MAX_MONSTER_TARGETS_PER_ACTION = 16;
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -248,6 +258,10 @@ export class RealtimeHub {
       presence: null,
       lastMoveAt: 0,
       visiblePeerIds: new Set(),
+      monsterIntentIds: new Map(),
+      lastMonsterActionAt: -Infinity,
+      monsterActionWindowAt: this.now(),
+      monsterActionsInWindow: 0,
     };
     this.connections.add(connection);
     if (this.pvpEnabled) this.combat.ensure(characterId);
@@ -308,6 +322,22 @@ export class RealtimeHub {
     }
     if (message.type === 'attack') {
       this.handleAttack(connection, message);
+      return;
+    }
+    if (message.type === 'combat-block') {
+      if (typeof message.active !== 'boolean') {
+        this.drop(connection, 1008, 'invalid combat-block payload');
+        return;
+      }
+      if (this.pvpEnabled) this.combat.setBlocking(connection.characterId, message.active, this.now());
+      return;
+    }
+    if (message.type === 'resync') {
+      const islandId = connection.presence?.islandId;
+      if (!islandId) return;
+      if (this.worldMonsters) this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(islandId));
+      if (this.boatWorld) this.sendTo(connection, this.boatWorld.snapshotMessageForIsland(islandId));
+      this.relayPresence(connection);
       return;
     }
     if (message.type === 'world-monster-hit') {
@@ -462,6 +492,8 @@ export class RealtimeHub {
       hp: resolution.hp,
       maxHp: resolution.maxHp,
       knockback: resolution.knockback,
+      blocked: resolution.blocked,
+      guardBroken: resolution.guardBroken,
     });
     if (resolution.defeated) {
       this.broadcastToIsland(islandId, {
@@ -544,6 +576,21 @@ export class RealtimeHub {
     }
   }
 
+  /** Boat authority returns a player to on-foot presence immediately after disembark. */
+  updateDisembarkedPresence(
+    characterId: string,
+    islandId: string,
+    x: number,
+    z: number,
+    heading: number,
+  ): void {
+    for (const connection of this.connections) {
+      if (connection.characterId !== characterId) continue;
+      connection.presence = { islandId, x, y: 0, z, heading, onBoat: false };
+      this.relayPresence(connection);
+    }
+  }
+
   broadcastBoat(islandId: string, message: RealtimeServerMessage): void {
     this.broadcastToIsland(islandId, message);
   }
@@ -552,7 +599,7 @@ export class RealtimeHub {
     if (!this.boatWorld) return;
     const intentId = message.intentId;
     const action = message.action;
-    const actions = new Set(['summon', 'board', 'disembark', 'input', 'fire']);
+    const actions = new Set(['summon', 'board', 'take-helm', 'leave-helm', 'disembark', 'input', 'fire']);
     if (typeof intentId !== 'string' || intentId.length < 8 || intentId.length > 64
       || typeof action !== 'string' || !actions.has(action)) {
       this.drop(connection, 1008, 'invalid boat intent');
@@ -568,13 +615,19 @@ export class RealtimeHub {
       throttle: numberOrUndefined(message.throttle),
       steer: numberOrUndefined(message.steer),
       anchor: typeof message.anchor === 'boolean' ? message.anchor : undefined,
+      boost: message.boost === true ? true : undefined,
       fireSide,
     };
     void this.boatWorld.handleIntent(connection.characterId, connection.presence, intent)
       .then((result) => this.sendTo(connection, {
         type: 'boat-intent-result', seq: 0, intentId, ...result,
       }))
-      .catch((error) => this.logger.warn({ err: error, characterId: connection.characterId }, 'boat intent failed'));
+      .catch((error) => {
+        this.logger.warn({ err: error, characterId: connection.characterId }, 'boat intent failed');
+        this.sendTo(connection, {
+          type: 'boat-intent-result', seq: 0, intentId, accepted: false, reason: 'server-error',
+        });
+      });
   }
 
   /** S16: มุมมองผู้เล่นที่มีตำแหน่ง (ให้ world sim ใช้ขับ AI) */
@@ -599,22 +652,51 @@ export class RealtimeHub {
 
   private handleWorldMonsterHit(connection: RealtimeConnection, message: Record<string, unknown>): void {
     if (!this.worldMonsters) return; // ปิด flag = เพิกเฉย
-    const spawnId = message.spawnId;
-    if (typeof spawnId !== 'string' || spawnId.length === 0 || spawnId.length > 96) {
+    const intentId = message.intentId;
+    const rawSpawnIds = message.spawnIds;
+    if (
+      typeof intentId !== 'string'
+      || intentId.length < 4
+      || intentId.length > 64
+      || !Array.isArray(rawSpawnIds)
+      || rawSpawnIds.length === 0
+      || rawSpawnIds.length > MAX_MONSTER_TARGETS_PER_ACTION
+      || rawSpawnIds.some((spawnId) => (
+        typeof spawnId !== 'string' || spawnId.length === 0 || spawnId.length > 96
+      ))
+    ) {
       this.drop(connection, 1008, 'invalid world-monster-hit payload');
       return;
     }
+    const now = this.now();
+    const cutoff = now - MONSTER_INTENT_TTL_MS;
+    for (const [seenId, seenAt] of connection.monsterIntentIds) {
+      if (seenAt >= cutoff) break;
+      connection.monsterIntentIds.delete(seenId);
+    }
+    if (connection.monsterIntentIds.has(intentId)) return;
+    if (now - connection.lastMonsterActionAt < MONSTER_ACTION_MIN_INTERVAL_MS) return;
+    if (now - connection.monsterActionWindowAt >= 1_000) {
+      connection.monsterActionWindowAt = now;
+      connection.monsterActionsInWindow = 0;
+    }
+    if (connection.monsterActionsInWindow >= MONSTER_ACTIONS_PER_SECOND) return;
+    connection.monsterIntentIds.set(intentId, now);
+    connection.lastMonsterActionAt = now;
+    connection.monsterActionsInWindow += 1;
     const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
     const presence = connection.presence;
     if (!presence) return; // ต้องมีตำแหน่ง (Server วัดระยะเอง — ไม่เชื่อพิกัด client)
-    this.worldMonsters.handleHit(
-      connection.characterId,
-      presence.islandId,
-      presence.x,
-      presence.z,
-      spawnId,
-      kind,
-    );
+    for (const spawnId of new Set(rawSpawnIds as string[])) {
+      this.worldMonsters.handleHit(
+        connection.characterId,
+        presence.islandId,
+        presence.x,
+        presence.z,
+        spawnId,
+        kind,
+      );
+    }
   }
 
   /** economy tick/trade เขียนสำเร็จ → push ให้ทุก connection */

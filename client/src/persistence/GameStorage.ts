@@ -2,6 +2,8 @@ export interface GameStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+  /** Repository-backed storage can force pending remote documents before an authority intent. */
+  flush?(): Promise<void>;
 }
 
 class BrowserGameStorage implements GameStorage {

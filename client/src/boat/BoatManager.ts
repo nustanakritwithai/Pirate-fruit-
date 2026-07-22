@@ -32,9 +32,9 @@ export type BoatRiderState = 'off' | 'deck' | 'helm';
 export interface BoatAuthorityAdapter {
   connected(): boolean;
   send(action: BoatIntentAction, payload?: {
-    entityId?: string; throttle?: number; steer?: number; anchor?: boolean;
+    entityId?: string; throttle?: number; steer?: number; anchor?: boolean; boost?: boolean;
     fireSide?: 'port' | 'starboard';
-  }): void;
+  }): string | null;
 }
 
 export class BoatManager {
@@ -56,6 +56,8 @@ export class BoatManager {
   private authority: BoatAuthorityAdapter | null = null;
   private authorityEntityId: string | null = null;
   private authorityInputAccum = 0;
+  private pendingSummonIntentId: string | null = null;
+  private selectionListener: ((boatId: string) => void) | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -94,6 +96,14 @@ export class BoatManager {
     return this.progress.selectedBoatId;
   }
 
+  get shopOpen(): boolean {
+    return this.shop.isOpen;
+  }
+
+  onSelectionChanged(listener: ((boatId: string) => void) | null): void {
+    this.selectionListener = listener;
+  }
+
   setAuthority(adapter: BoatAuthorityAdapter | null): void {
     this.authority = adapter;
     this.authorityEntityId = null;
@@ -105,9 +115,15 @@ export class BoatManager {
 
   /** Absolute state from S17 Server; never accepts client-computed HP/position. */
   applyAuthoritativeBoat(snapshot: BoatWorldSnapshot, serverRider: BoatRiderState = 'off'): void {
-    if (snapshot.definitionId !== this.selectedBoatId) return;
     this.authorityEntityId = snapshot.entityId;
     let boat = this.active;
+    if (boat && boat.definition.id !== snapshot.definitionId) {
+      this.removeDeckProvider();
+      this.scene.remove(boat.group);
+      boat.dispose();
+      this.active = null;
+      boat = null;
+    }
     if (!boat) {
       const definition = this.progress.getRuntimeDefinition(snapshot.definitionId)
         ?? getBoatDefinition(snapshot.definitionId);
@@ -117,7 +133,6 @@ export class BoatManager {
       this.active = boat;
       this.ensureDeckProvider(boat);
     }
-    if (boat.definition.id !== snapshot.definitionId) return;
     boat.group.visible = snapshot.state !== 'sunk' && snapshot.state !== 'respawning';
     boat.group.position.x = snapshot.x;
     boat.group.position.z = snapshot.z;
@@ -143,6 +158,15 @@ export class BoatManager {
         ? 'piloted'
         : Math.abs(snapshot.speed) > 0.15 ? 'spawned' : 'docked';
     }
+  }
+
+  handleAuthorityResult(result: { intentId: string; accepted: boolean; reason?: string }): void {
+    if (result.intentId !== this.pendingSummonIntentId) return;
+    this.pendingSummonIntentId = null;
+    this.shop.setStatus(
+      result.accepted ? 'Server ยืนยันการเรียกเรือแล้ว' : `เรียกเรือไม่สำเร็จ: ${result.reason ?? 'invalid'}`,
+      !result.accepted,
+    );
   }
 
   /** พาผู้เล่นกลับขึ้นดาดฟ้าเรือตัวเอง (หลังยึดเรือศัตรู) — คืน false ถ้าไม่มีเรือ */
@@ -305,7 +329,9 @@ export class BoatManager {
       this.hud.notify(boat.anchor ? '⚓ ทอดสมอแล้ว' : 'ยกสมอแล้ว');
     }
 
-    if ((this.input.consumeDash() || this.input.sprint) && boat.boostCooldown <= 0 && !boat.anchor) {
+    const boostRequested = (this.input.consumeDash() || this.input.sprint)
+      && boat.boostCooldown <= 0 && !boat.anchor;
+    if (boostRequested) {
       boat.boostTimer = BOOST_DURATION;
       boat.boostCooldown = BOOST_COOLDOWN;
       this.hud.notify('⚡ Boost!');
@@ -324,6 +350,7 @@ export class BoatManager {
           throttle,
           steer: steering,
           anchor: boat.anchor,
+          boost: boostRequested,
         });
       }
       const cannon = this.input.consumeCannon();
@@ -449,6 +476,11 @@ export class BoatManager {
 
   /** ถือพวงมาลัย = โหมดขับเรือ (ล็อกตัวละครที่พวงมาลัย) */
   private takeHelm(boat: Boat): void {
+    if (this.authorityActive) {
+      this.authority!.send('take-helm', { entityId: this.authorityEntityId ?? undefined });
+      this.prompt.hide();
+      return;
+    }
     boat.state = 'piloted';
     boat.anchor = false;
     this.rider = 'helm';
@@ -463,6 +495,11 @@ export class BoatManager {
 
   /** ปล่อยพวงมาลัย = กลับไปเดินบนดาดฟ้า (เรือแล่นต่อด้วยความเฉื่อย) */
   private leaveHelm(boat: Boat): void {
+    if (this.authorityActive) {
+      this.authority!.send('leave-helm', { entityId: this.authorityEntityId ?? undefined });
+      this.prompt.hide();
+      return;
+    }
     boat.state = findDockAt(boat.group.position.x, boat.group.position.z) ? 'docked' : 'spawned';
     this.rider = 'deck';
     this.controller.setMounted(false);
@@ -579,12 +616,14 @@ export class BoatManager {
   private handleShopAction(action: BoatShopAction, boatId?: string): void {
     if (action === 'purchase' && boatId) {
       const result = this.progress.purchase(boatId);
+      if (result.ok && this.progress.selectedBoatId) this.selectionListener?.(this.progress.selectedBoatId);
       this.shop.setStatus(result.message, !result.ok);
       return;
     }
     if (action === 'select' && boatId) {
       const definition = getBoatDefinition(boatId);
       const ok = this.progress.select(boatId);
+      if (ok) this.selectionListener?.(boatId);
       this.shop.setStatus(ok && definition ? `เลือก ${definition.name} แล้ว` : 'ยังไม่ได้เป็นเจ้าของเรือลำนี้', !ok);
       return;
     }
@@ -636,6 +675,11 @@ export class BoatManager {
       this.shop.setStatus(`รอซ่อมซากอีก ${Math.ceil(this.active.destroyCooldown)} วินาที`, true);
       return;
     }
+    if (this.authorityActive) {
+      this.pendingSummonIntentId = this.authority!.send('summon');
+      this.shop.setStatus(this.pendingSummonIntentId ? 'กำลังขอ Server เรียกเรือ…' : 'ยังไม่ได้เชื่อมต่อ Server', !this.pendingSummonIntentId);
+      return;
+    }
     if (this.active) {
       this.setRiderOff();
       this.removeDeckProvider();
@@ -660,6 +704,5 @@ export class BoatManager {
     this.ensureDeckProvider(boat);
     this.shop.setStatus(`เรียก ${definition.name} ที่${dock.name}แล้ว`);
     this.effects.spawnBoatImpact(boat.group.position);
-    if (this.authorityActive) this.authority!.send('summon');
   }
 }

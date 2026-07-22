@@ -3,6 +3,7 @@ import { drawGacha, GACHA_POOL, RARITY_WEIGHT, STARTER_STYLE_ID, type GachaEntry
 import { ItemInventory } from '../ItemInventory';
 import { POTIONS } from '../PotionData';
 import type { EconomyWallet } from '../../progression/ProgressionTypes';
+import type { RemoteShopExecutor } from '../RemoteShopClient';
 
 function makeWallet(start = 5000): EconomyWallet & { spent: number } {
   let coins = start;
@@ -111,6 +112,30 @@ describe('ItemInventory ownership + equip + toggle', () => {
     expect(inv.equip('fruit', 'flame')).toBe(false);
     expect(inv.loadout.snapshot.equippedFruitId).toBeNull();
   });
+
+  it('applies only the authoritative draw and exact coin balance from Server', async () => {
+    const wallet = makeWallet(9_999);
+    const inv = new ItemInventory(wallet);
+    const remote: RemoteShopExecutor = {
+      purchase: async () => ({
+        ok: true,
+        schemaVersion: 1,
+        action: 'draw',
+        coins: 350,
+        item: { kind: 'sword', id: 'bisento', rarity: 'legendary' },
+        quantity: 1,
+        isNew: true,
+        idempotentReplay: false,
+      }),
+    };
+    inv.setRemoteExecutor(remote);
+
+    const result = await inv.drawAsync();
+
+    expect(result?.entry.id).toBe('bisento');
+    expect(inv.ownedOf('sword')).toContain('bisento');
+    expect(wallet.coins).toBe(350);
+  });
 });
 
 describe('ItemInventory potions + quickslots', () => {
@@ -142,6 +167,8 @@ describe('ItemInventory potions + quickslots', () => {
 
   it('assigns and reads quickslots (ignores out-of-range / invalid id)', () => {
     const inv = new ItemInventory(makeWallet());
+    inv.buyPotion('potion-hp');
+    inv.buyPotion('potion-mp');
     inv.assignQuickslot(0, 'potion-hp');
     inv.assignQuickslot(1, 'potion-mp');
     expect(inv.getQuickslot(0)).toBe('potion-hp');
@@ -159,5 +186,26 @@ describe('ItemInventory potions + quickslots', () => {
     inv.buyPotion('potion-hp');
     inv.buyPotion('potion-hp');
     expect(inv.listConsumables()).toEqual([{ id: 'potion-hp', count: 2 }]);
+  });
+
+  it('uses the authoritative potion quantity and coin balance from Server', async () => {
+    const wallet = makeWallet(1_000);
+    const inv = new ItemInventory(wallet);
+    inv.setRemoteExecutor({
+      purchase: async () => ({
+        ok: true,
+        schemaVersion: 1,
+        action: 'potion',
+        coins: 40,
+        item: { kind: 'consumable', id: 'potion-hp', rarity: 'common' },
+        quantity: 2,
+        isNew: false,
+        idempotentReplay: true,
+      }),
+    });
+
+    expect(await inv.buyPotionAsync('potion-hp')).toBe(true);
+    expect(inv.getConsumableCount('potion-hp')).toBe(2);
+    expect(wallet.coins).toBe(40);
   });
 });

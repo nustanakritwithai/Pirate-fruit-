@@ -53,8 +53,7 @@ describe('MonsterWorldService rewards', () => {
         'skill',
       );
     }
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
@@ -79,5 +78,44 @@ describe('MonsterWorldService rewards', () => {
         coinsTotal: 109,
       },
     });
+  });
+
+  it('retries a transient reward failure without broadcasting an uncredited death', async () => {
+    const broadcasts: RealtimeServerMessage[] = [];
+    const hub = {
+      broadcastWorldMonster: (_islandId: string, message: RealtimeServerMessage) => broadcasts.push(message),
+      worldPlayerViews: () => [],
+    } as unknown as RealtimeHub;
+    const spawn = SHARED_WORLD_SPAWNS[0]!;
+    const type = SHARED_MONSTER_TYPES[spawn.monsterId]!;
+    let now = 2_000;
+    let attempts = 0;
+    const rewards = {
+      async grantKills(): Promise<MonsterKillsResponse> {
+        attempts += 1;
+        if (attempts === 1) throw new Error('temporary database outage');
+        return {
+          ok: true,
+          schemaVersion: MONSTER_PROTOCOL_SCHEMA_VERSION,
+          rewards: [{ monsterId: spawn.monsterId, count: 1, playerExp: 25, coins: 9, masteryExp: 4 }],
+          totals: { playerExp: 25, coins: 9, masteryExp: 4 },
+          coinsTotal: 109,
+          idempotentReplay: false,
+        };
+      },
+    };
+    const service = new MonsterWorldService(hub, { now: () => now, rewards });
+    for (let index = 0; index < Math.ceil(type.maxHp / WORLD_MONSTER_SKILL_DAMAGE); index += 1) {
+      service.handleHit('character-a', spawn.islandId, spawn.homeX, spawn.homeZ, spawn.spawnId, 'skill');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(1);
+    expect(broadcasts.some((message) => message.type === 'world-monster-dead')).toBe(false);
+
+    now += 300;
+    (service as unknown as { tick(): void }).tick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(2);
+    expect(broadcasts.some((message) => message.type === 'world-monster-dead')).toBe(true);
   });
 });

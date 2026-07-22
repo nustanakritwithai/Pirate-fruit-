@@ -71,59 +71,74 @@ export class QuestManager {
     const active = this.getActiveQuest();
     if (!active || active.completed) return;
 
-    let changed = false;
+    let reported = false;
+    let displayChanged = false;
     active.definition.objectives.forEach((objective, index) => {
       const typeMatches = objective.type === 'kill' || (objective.type === 'boss' && isBoss);
       if (!typeMatches || objective.targetId !== monsterId) return;
       const next = Math.min(objective.requiredAmount, active.progress[index] + 1);
       if (next === active.progress[index]) return;
-      active.progress[index] = next;
-      changed = true;
+      reported = true;
+      const displayNext = this.remoteSync && next >= objective.requiredAmount
+        ? Math.max(0, objective.requiredAmount - 1)
+        : next;
+      if (displayNext === active.progress[index]) return;
+      active.progress[index] = displayNext;
+      displayChanged = true;
       this.progression.events.emit('quest:progress', {
         questId: active.definition.id,
         objectiveIndex: index,
-        current: next,
+        current: displayNext,
         required: objective.requiredAmount,
       });
     });
 
-    if (!changed) return;
-    this.progression.setQuestProgress(active.progress);
+    if (!reported) return;
+    if (displayChanged) this.progression.setQuestProgress(active.progress);
     this.remoteSync?.notifyKill(monsterId, isBoss);
-    this.finishIfComplete(active);
+    if (displayChanged) this.finishIfComplete(active);
   }
 
   recordDeliver(commodityId: string, islandId: string, quantity: number): void {
     const active = this.getActiveQuest();
     if (!active || active.completed) return;
 
-    let changed = false;
+    let reported = false;
+    let displayChanged = false;
     active.definition.objectives.forEach((objective, index) => {
       if (objective.type !== 'deliver') return;
       if (objective.targetId !== commodityId) return;
       if (objective.islandId && objective.islandId !== islandId) return;
       const next = Math.min(objective.requiredAmount, active.progress[index] + quantity);
       if (next === active.progress[index]) return;
-      active.progress[index] = next;
-      changed = true;
+      reported = true;
+      const displayNext = this.remoteSync && next >= objective.requiredAmount
+        ? Math.max(0, objective.requiredAmount - 1)
+        : next;
+      if (displayNext === active.progress[index]) return;
+      active.progress[index] = displayNext;
+      displayChanged = true;
       this.progression.events.emit('quest:progress', {
         questId: active.definition.id,
         objectiveIndex: index,
-        current: next,
+        current: displayNext,
         required: objective.requiredAmount,
       });
     });
 
-    if (!changed) return;
-    this.progression.setQuestProgress(active.progress);
+    if (!reported) return;
+    if (displayChanged) this.progression.setQuestProgress(active.progress);
     this.remoteSync?.notifyDeliver(commodityId, islandId, quantity);
-    this.finishIfComplete(active);
+    if (displayChanged) this.finishIfComplete(active);
   }
 
   /** โหมด remote: ครบแล้วรอ Server ยืนยัน+เคลม; โหมด local: แจกรางวัลทันทีตามเดิม */
   private finishIfComplete(active: ActiveQuest): void {
     if (!isQuestComplete(active.definition, active.progress)) return;
-    if (this.remoteSync) this.remoteSync.requestClaim(active.definition.id);
+    // Remote quests deliberately stay in the completed/ready-to-turn-in state.
+    // The server already owns this state; claiming is an explicit Quest Board
+    // action so a full objective is never mistaken for a fresh quest.
+    if (this.remoteSync) this.remoteSync.notifyCompleted(active.definition.id);
     else this.claimQuestReward();
   }
 
@@ -154,13 +169,35 @@ export class QuestManager {
   /** ตั้งสถานะ local ตาม Server (reconcile) — ไม่แจกรางวัล ไม่ emit accepted */
   forceState(questId: string | null, progress: number[]): void {
     this.progression.setActiveQuest(questId, progress);
+    const definition = questId ? QUESTS_BY_ID.get(questId) : undefined;
+    if (!definition || !questId) return;
+    definition.objectives.forEach((objective, index) => {
+      this.progression.events.emit('quest:progress', {
+        questId,
+        objectiveIndex: index,
+        current: Math.min(objective.requiredAmount, Math.max(0, Math.floor(progress[index] ?? 0))),
+        required: objective.requiredAmount,
+      });
+    });
   }
 
   /** progress ทางการจาก Server มาทับ (เงียบ — UI อ่านจาก getActiveQuest ตามรอบ) */
   syncServerProgress(questId: string, progress: number[]): void {
     const state = this.progression.getState();
     if (state.activeQuestId !== questId) return;
+    const previous = state.activeQuestProgress;
     this.progression.setQuestProgress(progress);
+    const definition = QUESTS_BY_ID.get(questId);
+    definition?.objectives.forEach((objective, index) => {
+      const current = Math.min(objective.requiredAmount, Math.max(0, Math.floor(progress[index] ?? 0)));
+      if (current === (previous[index] ?? 0)) return;
+      this.progression.events.emit('quest:progress', {
+        questId,
+        objectiveIndex: index,
+        current,
+        required: objective.requiredAmount,
+      });
+    });
   }
 
   /** รางวัลที่ Server ตัดสิน (โหมด remote) */

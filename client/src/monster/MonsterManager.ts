@@ -228,7 +228,7 @@ export class MonsterManager {
     const died = monster.takeDamage(damage, srcX, srcZ);
     const actualDamage = Math.max(0, hpBefore - monster.hp);
     this.effects.spawnHitSpark(monster.group.position);
-    this.callbacks.onMonsterDamaged?.(monster, damage);
+    this.callbacks.onMonsterDamaged?.(monster, actualDamage);
     this.callbacks.onRewardContribution?.(monster, actualDamage, died, source);
     if (!died && knockback > 0) {
       const dx = monster.group.position.x - srcX;

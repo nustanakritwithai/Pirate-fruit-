@@ -173,7 +173,6 @@ export class NPCManager {
 
     if (!nearest) {
       this.prompt.hide();
-      this.input.consumeInteract();
       return;
     }
     this.prompt.show(nearest.definition.name);

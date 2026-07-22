@@ -10,6 +10,7 @@ export class PotionShopUI {
   private readonly coins: HTMLSpanElement;
   private readonly list: HTMLDivElement;
   private readonly status: HTMLDivElement;
+  private purchaseInFlight = false;
   private closeCallback: (() => void) | null = null;
 
   constructor(
@@ -40,19 +41,37 @@ export class PotionShopUI {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-buy]');
       if (!button) return;
       const id = button.dataset.buy!;
-      if (this.inventory.buyPotion(id)) {
+      void this.purchase(id);
+    });
+    this.root.style.display = 'none';
+  }
+
+  private async purchase(id: string): Promise<void> {
+    if (this.purchaseInFlight) return;
+    this.purchaseInFlight = true;
+    this.render();
+    try {
+      if (await this.inventory.buyPotionAsync(id)) {
         this.onChange();
         this.setStatus(`ซื้อ ${POTIONS[id]?.nameTh ?? id} แล้ว ✓`);
       } else {
         this.setStatus('เหรียญไม่พอ 🪙', true);
       }
+    } catch (error) {
+      this.setStatus(error instanceof Error ? error.message : 'เชื่อมต่อร้านค้าไม่สำเร็จ', true);
+    } finally {
+      this.purchaseInFlight = false;
       this.render();
-    });
-    this.root.style.display = 'none';
+    }
   }
 
   get isOpen(): boolean {
     return this.root.style.display !== 'none';
+  }
+
+  /** Refresh an open wallet after any authoritative progression update. */
+  refresh(): void {
+    if (this.isOpen) this.render();
   }
 
   open(onClose: () => void): void {
@@ -89,7 +108,7 @@ export class PotionShopUI {
             <h4>${p.nameTh}</h4>
             <div class="potion-card-effect">ฟื้น ${p.restore} ${p.kind === 'hp' ? 'HP' : 'MP'} · มีอยู่ ${owned}</div>
           </div>
-          <button type="button" data-buy="${id}" ${cannotAfford ? 'disabled' : ''}>ซื้อ · ${p.price} 🪙</button>
+          <button type="button" data-buy="${id}" ${cannotAfford || this.purchaseInFlight ? 'disabled' : ''}>ซื้อ · ${p.price} 🪙</button>
         </div>`;
     }).join('');
   }

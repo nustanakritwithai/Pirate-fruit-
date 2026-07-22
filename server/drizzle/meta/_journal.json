@@ -57,6 +57,13 @@
       "when": 1784448000000,
       "tag": "0007_s18_session_active_character",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784682000000,
+      "tag": "0008_authoritative_shop",
+      "breakpoints": true
     }
   ]
 }

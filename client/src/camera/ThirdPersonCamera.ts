@@ -28,6 +28,7 @@ export class ThirdPersonCamera {
     private camera: THREE.PerspectiveCamera,
     private input: Input,
     private getTarget: () => THREE.Vector3,
+    private heightAt?: (x: number, z: number) => number,
   ) {}
 
   setBoatMode(enabled: boolean): void {
@@ -76,8 +77,9 @@ export class ThirdPersonCamera {
       target.z + Math.cos(this.yaw) * horiz,
     );
 
-    // กันกล้องมุดใต้พื้นน้ำ/พื้นดินแบบหยาบๆ
-    idealPos.y = Math.max(idealPos.y, 0.5);
+    // Keep the camera above the actual procedural terrain, not only sea level.
+    const groundY = this.heightAt?.(idealPos.x, idealPos.z) ?? 0;
+    idealPos.y = Math.max(idealPos.y, groundY + 0.35, 0.5);
 
     if (!this.initialized) {
       this.currentPos.copy(idealPos);
@@ -86,6 +88,8 @@ export class ThirdPersonCamera {
       // หน่วงกล้องเล็กน้อยให้ลื่น
       this.currentPos.lerp(idealPos, Math.min(1, dt * 10));
     }
+    const currentGroundY = this.heightAt?.(this.currentPos.x, this.currentPos.z) ?? 0;
+    this.currentPos.y = Math.max(this.currentPos.y, currentGroundY + 0.35, 0.5);
 
     this.camera.position.copy(this.currentPos);
     this.camera.lookAt(target);

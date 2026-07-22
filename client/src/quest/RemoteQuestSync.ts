@@ -4,7 +4,7 @@
  * แจกได้จากคำตอบ claim ของ Server เท่านั้น — โหมด remote ไม่มีการแจกรางวัล local
  * - เหตุการณ์ kill/deliver ถูกคิวแล้ว flush เป็นชุด (debounce) → Server คืน
  *   progress ทางการมาทับของ local
- * - Server แจ้ง completed → ขอ claim ด้วย idempotency key เดิมจนกว่าจะสำเร็จ
+ * - Server แจ้ง completed → คงสถานะพร้อมส่งไว้จนผู้เล่นกดส่งเควส
  * - เปิดเกมใหม่: ดึงสถานะจาก Server มา reconcile (Server ชนะ) — local มีเควสต์
  *   ที่ Server ไม่รู้จัก → รับใหม่บน Server แล้วรายงานแต้มที่ค้างไว้
  */
@@ -71,7 +71,6 @@ export class RemoteQuestSync {
         this.host.syncServerProgress(state.active.questId, state.active.progress);
       }
       if (state.active.status === 'completed') {
-        this.beginClaim(state.active.questId);
         this.scheduleFlush(0);
       }
       return;
@@ -130,7 +129,11 @@ export class RemoteQuestSync {
   notifyAbandoned(): void {
     this.queue = [];
     this.pendingClaim = null;
-    void this.executor.abandon().catch(() => undefined);
+    void this.executor.abandon().catch(async () => {
+      this.host.notice?.('ยกเลิกเควสต์บน Server ไม่สำเร็จ — กำลังคืนสถานะเดิม');
+      await this.reconcile();
+      this.scheduleFlush(RETRY_DELAY_MS);
+    });
   }
 
   notifyKill(targetId: string, isBoss: boolean): void {
@@ -139,18 +142,23 @@ export class RemoteQuestSync {
   }
 
   notifyDeliver(commodityId: string, islandId: string, quantity: number): void {
-    this.enqueue({
-      kind: 'deliver',
-      targetId: commodityId,
-      amount: Math.max(1, Math.min(99, Math.floor(quantity))),
-      islandId,
-    });
+    let remaining = Math.max(1, Math.floor(quantity));
+    while (remaining > 0) {
+      const amount = Math.min(99, remaining);
+      this.enqueue({ kind: 'deliver', targetId: commodityId, amount, islandId });
+      remaining -= amount;
+    }
     this.scheduleFlush();
   }
 
   /** local เห็นว่าครบแล้ว — เร่ง flush เพื่อให้ Server ยืนยันและเข้าสู่ claim */
   requestClaim(questId: string): void {
     this.beginClaim(questId);
+    this.scheduleFlush(0);
+  }
+
+  /** local เห็นว่าครบแล้ว — flush progress แต่รอผู้เล่นกดส่งเควสก่อน claim */
+  notifyCompleted(_questId: string): void {
     this.scheduleFlush(0);
   }
 
@@ -192,11 +200,27 @@ export class RemoteQuestSync {
         // ส่งสำเร็จแล้วเท่านั้นจึงตัดออกจากคิว
         this.queue.splice(0, batch.length);
         if (response.questId) {
-          this.host.syncServerProgress(response.questId, response.progress);
-          if (response.completed) this.beginClaim(response.questId);
+          const optimistic = [...response.progress];
+          const definition = QUESTS_BY_ID.get(response.questId);
+          if (definition) {
+            for (const event of this.queue) {
+              definition.objectives.forEach((objective, index) => {
+                const matchesKind = event.kind === 'deliver'
+                  ? objective.type === 'deliver'
+                  : objective.type === 'kill' || objective.type === 'boss' && event.isBoss === true;
+                if (!matchesKind || objective.targetId !== event.targetId) return;
+                if (objective.islandId && objective.islandId !== event.islandId) return;
+                optimistic[index] = Math.min(
+                  objective.requiredAmount,
+                  (optimistic[index] ?? 0) + event.amount,
+                );
+              });
+            }
+          }
+          this.host.syncServerProgress(response.questId, optimistic);
         }
       }
-      if (this.pendingClaim) {
+      if (this.pendingClaim && this.queue.length === 0) {
         const { questId, key } = this.pendingClaim;
         try {
           const outcome = await this.executor.claim(questId, key);

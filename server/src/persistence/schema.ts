@@ -396,6 +396,36 @@ export const tradeTransactions = pgTable(
   ],
 );
 
+export const shopTransactions = pgTable(
+  'shop_transactions',
+  {
+    id: uuid('id').primaryKey(),
+    characterId: uuid('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'restrict' }),
+    action: text('action').notNull(),
+    itemId: varchar('item_id', { length: 128 }).notNull(),
+    quantity: integer('quantity').notNull(),
+    cost: bigint('cost', { mode: 'bigint' }).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
+    requestHash: varchar('request_hash', { length: 64 }).notNull(),
+    resultJson: jsonb('result_json').$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('shop_transactions_character_idempotency_uq').on(
+      table.characterId,
+      table.idempotencyKey,
+    ),
+    index('shop_transactions_character_created_idx').on(
+      table.characterId,
+      table.createdAt.desc(),
+    ),
+    check('shop_transactions_action_check', sql`${table.action} in ('draw', 'potion')`),
+    check('shop_transactions_values_check', sql`${table.quantity} > 0 and ${table.cost} >= 0`),
+  ],
+);
+
 export const questClaims = pgTable(
   'quest_claims',
   {
@@ -521,4 +551,5 @@ export type UserRecord = typeof users.$inferSelect;
 export type CharacterRecord = typeof characters.$inferSelect;
 export type EconomyWorldRecord = typeof economyWorlds.$inferSelect;
 export type TradeTransactionRecord = typeof tradeTransactions.$inferSelect;
+export type ShopTransactionRecord = typeof shopTransactions.$inferSelect;
 export type PlayerSaveOperationRecord = typeof playerSaveOperations.$inferSelect;

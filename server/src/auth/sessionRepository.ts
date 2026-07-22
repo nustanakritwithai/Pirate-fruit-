@@ -24,6 +24,8 @@ export interface SessionRepository {
   createGuest(input: NewGuestSessionRecord): Promise<StoredSessionRecord>;
   findActiveByTokenHash(tokenHash: string, now: Date): Promise<StoredSessionRecord | null>;
   touch(sessionId: string, now: Date): Promise<void>;
+  refresh?(sessionId: string, expiresAt: Date): Promise<void>;
+  renameLegacyGuest?(userId: string, characterId: string, name: string): Promise<string | null>;
   revoke(sessionId: string, now: Date): Promise<boolean>;
   countActive(now: Date): Promise<number>;
 }
@@ -130,6 +132,26 @@ export class PostgresSessionRepository implements SessionRepository {
           and last_seen_at < ($2::timestamptz - interval '5 minutes')`,
       [sessionId, now],
     );
+  }
+
+  async refresh(sessionId: string, expiresAt: Date): Promise<void> {
+    await this.pool.query(
+      `update sessions
+          set expires_at = $2, last_seen_at = now()
+        where id = $1 and revoked_at is null`,
+      [sessionId, expiresAt],
+    );
+  }
+
+  async renameLegacyGuest(userId: string, characterId: string, name: string): Promise<string | null> {
+    const result = await this.pool.query<{ name: string }>(
+      `update characters
+          set name = $3, updated_at = now()
+        where id = $1 and user_id = $2 and name like 'Guest-%'
+        returning name`,
+      [characterId, userId, name],
+    );
+    return result.rows[0]?.name ?? null;
   }
 
   async revoke(sessionId: string, now: Date): Promise<boolean> {

@@ -109,6 +109,32 @@ describe('S8 remote trade (client)', () => {
     expect(trade.hold.slots).toEqual([]);
   });
 
+  it('reconciles a stale wallet exactly to the server for buys and replays', async () => {
+    const wallet = fakeWallet(5_000);
+    const executor: RemoteTradeExecutor = {
+      execute: vi.fn(async () => response({ coins: 970, idempotentReplay: true })),
+    };
+    const trade = new TradeManager(wallet, 'training-dinghy', undefined, new MemoryStorage());
+    trade.setRemoteExecutor(executor);
+
+    await trade.buyAsync('starter-island', 'fresh-fish', 3);
+
+    expect(wallet.coins).toBe(970);
+  });
+
+  it('reconciles a wallet that is behind the server after a sell', async () => {
+    const wallet = fakeWallet(10);
+    const executor: RemoteTradeExecutor = {
+      execute: vi.fn(async () => response({ action: 'sell', coins: 154, cargo: [] })),
+    };
+    const trade = new TradeManager(wallet, 'training-dinghy', undefined, new MemoryStorage());
+    trade.setRemoteExecutor(executor);
+
+    await trade.sellAsync('starter-island', 'fresh-fish', 3);
+
+    expect(wallet.coins).toBe(154);
+  });
+
   it('keeps the same idempotency key when retrying a 503', async () => {
     const bodies: { idempotencyKey: string }[] = [];
     let calls = 0;

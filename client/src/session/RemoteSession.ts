@@ -214,6 +214,36 @@ export async function recoverRemoteSession(
   return currentSession;
 }
 
+/** Refresh an already-authenticated cookie without ever creating/rebinding a character. */
+export async function refreshRemoteSession(
+  options: RemoteSessionOptions = {},
+): Promise<RemoteSessionHandle> {
+  if (currentSession.mode !== 'online') return currentSession;
+  const apiUrl = normalizeApiUrl(
+    options.apiUrl ?? (import.meta.env.VITE_API_URL || productionRemoteApiUrl()),
+  );
+  if (!apiUrl) return currentSession;
+  const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
+  try {
+    const payload = await parseSession(await sessionRequest(
+      fetcher,
+      apiUrl,
+      '/api/session/me',
+      'GET',
+      Math.max(1_000, options.requestTimeoutMs ?? 6_000),
+    ));
+    currentSession = {
+      mode: 'online',
+      session: payload.session,
+      csrfToken: payload.csrfToken,
+      created: false,
+    };
+  } catch (error) {
+    options.warn?.('Remote session refresh failed; keeping the current local session mirror.', error);
+  }
+  return currentSession;
+}
+
 export function getRemoteSession(): RemoteSessionHandle {
   return currentSession;
 }

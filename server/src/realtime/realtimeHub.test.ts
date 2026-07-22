@@ -453,9 +453,34 @@ describe('S16 shared monster bridge', () => {
       type: 'move', islandId: 'starter-island', x: 22, y: 0, z: -4, heading: 0, onBoat: false,
     }));
     hub.handleClientMessage(connection, JSON.stringify({
-      type: 'world-monster-hit', spawnId: 'starter-crab-1', kind: 'skill',
+      type: 'world-monster-hit', intentId: 'mob-0001', spawnIds: ['starter-crab-1'], kind: 'skill',
     }));
 
     expect(hits).toEqual([['char-a', 'starter-island', 22, -4, 'starter-crab-1', 'skill']]);
+  });
+
+  it('deduplicates a monster action while allowing one action to hit an AoE set', () => {
+    let now = 1_000;
+    const hub = new RealtimeHub(undefined, () => now, 200, true);
+    const hits: Parameters<WorldMonsterBridge['handleHit']>[] = [];
+    hub.attachWorldMonsters({
+      snapshotMessageForIsland: (islandId) => ({
+        type: 'world-monster-snapshot', seq: 0, islandId, monsters: [],
+      }),
+      handleHit: (...hit) => { hits.push(hit); },
+    });
+    const connection = hub.register(new FakeSocket(), 'user-a', 'char-a', 'Alice')!;
+    hub.handleClientMessage(connection, JSON.stringify({
+      type: 'move', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false,
+    }));
+    const action = JSON.stringify({
+      type: 'world-monster-hit', intentId: 'mob-area-1',
+      spawnIds: ['crab-1', 'crab-2', 'crab-2'], kind: 'skill',
+    });
+    hub.handleClientMessage(connection, action);
+    now += 100;
+    hub.handleClientMessage(connection, action);
+
+    expect(hits.map((hit) => hit[4])).toEqual(['crab-1', 'crab-2']);
   });
 });

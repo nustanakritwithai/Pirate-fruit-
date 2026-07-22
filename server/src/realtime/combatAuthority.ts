@@ -40,6 +40,9 @@ interface CombatState {
   lastAttackAt: Map<string, number>;
   /** Client action ids already consumed by Server; prevents replay from dealing damage twice. */
   processedIntentIds: Map<string, number>;
+  blocking: boolean;
+  guard: number;
+  lastGuardAt: number;
 }
 
 export type AttackKind = 'melee' | 'skill';
@@ -53,6 +56,8 @@ export interface AttackResolution {
   defeated: boolean;
   /** Server-computed presentation impulse; Client cannot choose its direction or size. */
   knockback?: RealtimeKnockback;
+  blocked?: boolean;
+  guardBroken?: boolean;
 }
 
 export type AttackDecision =
@@ -72,6 +77,9 @@ function damageFor(kind: AttackKind): number {
 
 const ATTACK_INTENT_TTL_MS = 30_000;
 const MAX_PROCESSED_ATTACK_INTENTS = 256;
+const PVP_GUARD_MAX = 100;
+const PVP_GUARD_REGEN_PER_SECOND = 18;
+const PVP_BLOCK_DAMAGE_RATIO = 0.25;
 
 function rangeFor(kind: AttackKind): number {
   return kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
@@ -112,6 +120,9 @@ export class CombatAuthority {
         hitstunUntil: 0,
         lastAttackAt: new Map(),
         processedIntentIds: new Map(),
+        blocking: false,
+        guard: PVP_GUARD_MAX,
+        lastGuardAt: 0,
       });
     }
   }
@@ -130,6 +141,13 @@ export class CombatAuthority {
   isAlive(playerId: string): boolean {
     const state = this.states.get(playerId);
     return Boolean(state && state.respawnAt === null);
+  }
+
+  setBlocking(playerId: string, active: boolean, now: number): void {
+    this.ensure(playerId);
+    const state = this.states.get(playerId)!;
+    this.refreshGuard(state, now);
+    state.blocking = active && state.respawnAt === null && state.guard > 0 && state.hitstunUntil <= now;
   }
 
   /**
@@ -185,7 +203,16 @@ export class CombatAuthority {
     if (dx * dx + dy * dy + dz * dz > range * range) return { accepted: false, reason: 'out-of-range' };
 
     attacker.lastAttackAt.set(targetId, now);
-    const damage = damageFor(kind);
+    this.refreshGuard(target, now);
+    const baseDamage = damageFor(kind);
+    const blocked = target.blocking && target.guard > 0;
+    const damage = blocked ? Math.max(1, Math.ceil(baseDamage * PVP_BLOCK_DAMAGE_RATIO)) : baseDamage;
+    let guardBroken = false;
+    if (blocked) {
+      target.guard = Math.max(0, target.guard - baseDamage);
+      guardBroken = target.guard <= 0;
+      if (guardBroken) target.blocking = false;
+    }
     target.hp = Math.max(0, target.hp - damage);
     const defeated = target.hp <= 0;
     if (defeated) target.respawnAt = now + PVP_RESPAWN_MS;
@@ -193,6 +220,7 @@ export class CombatAuthority {
     if (knockback) {
       const stunDuration = knockback.stunDuration ?? knockback.duration;
       target.hitstunUntil = Math.max(target.hitstunUntil, now + stunDuration * 1_000);
+      if (guardBroken) target.hitstunUntil = Math.max(target.hitstunUntil, now + 700);
     }
     return {
       accepted: true,
@@ -202,6 +230,8 @@ export class CombatAuthority {
         maxHp: PVP_MAX_HP,
         defeated,
         knockback,
+        blocked,
+        guardBroken,
       },
     };
   }
@@ -209,8 +239,7 @@ export class CombatAuthority {
   private claimIntent(state: CombatState, intentId: string, now: number): boolean {
     const cutoff = now - ATTACK_INTENT_TTL_MS;
     for (const [id, seenAt] of state.processedIntentIds) {
-      if (seenAt >= cutoff) break;
-      state.processedIntentIds.delete(id);
+      if (seenAt < cutoff) state.processedIntentIds.delete(id);
     }
     if (state.processedIntentIds.has(intentId)) return false;
     state.processedIntentIds.set(intentId, now);
@@ -222,6 +251,14 @@ export class CombatAuthority {
     return true;
   }
 
+  private refreshGuard(state: CombatState, now: number): void {
+    const elapsed = state.lastGuardAt > 0 ? Math.max(0, now - state.lastGuardAt) : 0;
+    state.lastGuardAt = now;
+    if (!state.blocking && state.guard < PVP_GUARD_MAX) {
+      state.guard = Math.min(PVP_GUARD_MAX, state.guard + elapsed * PVP_GUARD_REGEN_PER_SECOND / 1_000);
+    }
+  }
+
   /** ถึงเวลาเกิดใหม่ของใครบ้าง → รีเซ็ต HP เต็มแล้วคืนรายการเพื่อ broadcast */
   collectRespawns(now: number): RespawnEvent[] {
     const respawned: RespawnEvent[] = [];
@@ -230,6 +267,9 @@ export class CombatAuthority {
         state.hp = PVP_MAX_HP;
         state.respawnAt = null;
         state.hitstunUntil = 0;
+        state.blocking = false;
+        state.guard = PVP_GUARD_MAX;
+        state.lastGuardAt = now;
         state.lastAttackAt.clear();
         respawned.push({ playerId, hp: PVP_MAX_HP, maxHp: PVP_MAX_HP });
       }

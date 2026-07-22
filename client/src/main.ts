@@ -20,6 +20,7 @@ import { BoatWorldClient } from './boat/BoatWorldClient';
 import { MonsterManager } from './monster/MonsterManager';
 import { PlayerCombat } from './combat/PlayerCombat';
 import { ItemInventory } from './shop/ItemInventory';
+import { initializeRemoteShop } from './shop/RemoteShopClient';
 import { DealerShopUI } from './ui/DealerShopUI';
 import { PotionShopUI } from './ui/PotionShopUI';
 import { InventoryUI } from './ui/InventoryUI';
@@ -63,6 +64,7 @@ import {
   getRemoteSession,
   initializeRemoteSession,
   recoverRemoteSession,
+  refreshRemoteSession,
 } from './session/RemoteSession';
 import { runCharacterGate } from './session/CharacterGate';
 import {
@@ -143,6 +145,7 @@ async function main(): Promise<void> {
     game.camera,
     input,
     () => controller.position,
+    (x, z) => world.collision.heightAt(x, z),
   );
   const controller: CharacterController = new CharacterController(
     input,
@@ -161,6 +164,7 @@ async function main(): Promise<void> {
     (id) => progression.getMasteryLevel(id),
     persistence.storage,
   );
+  itemInventory.setRemoteExecutor(initializeRemoteShop());
 
   const spawnManager = new SpawnManager(controller, world.collision);
 
@@ -178,7 +182,12 @@ async function main(): Promise<void> {
   } else {
     spawnManager.teleportToCheckpoint();
   }
-  controller.hp = Math.min(controller.hpMax, Math.max(1, saved?.hp ?? controller.hpMax));
+  if (saved?.hp !== undefined && saved.hp <= 0) {
+    spawnManager.respawn();
+    controller.hp = controller.hpMax;
+  } else {
+    controller.hp = Math.min(controller.hpMax, Math.max(1, saved?.hp ?? controller.hpMax));
+  }
   controller.energy = Math.min(
     controller.energyMax,
     Math.max(0, saved?.energy ?? controller.energyMax),
@@ -224,15 +233,18 @@ async function main(): Promise<void> {
     undefined,
     persistence.storage,
   );
-  tradeManager.living.setServerReadOnly(persistence.activeEconomyMode === 'remote');
+  boatManager.onSelectionChanged((boatId) => tradeManager.setBoat(boatId));
+  // A requested Server economy must never fork into a browser simulation when the
+  // network is temporarily unavailable. Keep the last snapshot read-only and poll.
+  tradeManager.living.setServerReadOnly(persistence.requestedEconomyMode === 'remote');
   // S8: Server ตัดสินซื้อ/ขายเมื่อ VITE_ENABLE_TRADE_SERVER เปิด + session online
   // (null = โหมด local เดิมทุกประการ — flag ปิดใน production จนกว่าจะ verify)
   tradeManager.setRemoteExecutor(initializeRemoteTrade());
   // S10: Server ตัดสินสถานะเควสต์+รางวัลเมื่อ VITE_ENABLE_QUEST_SERVER เปิด + session online
   // (null = โหมด local เดิมทุกประการ — flag ปิดใน production จนกว่าจะ verify)
   const remoteQuest = initializeRemoteQuest();
-  if (remoteQuest) {
-    const questSync = new RemoteQuestSync(remoteQuest, questManager);
+  const questSync = remoteQuest ? new RemoteQuestSync(remoteQuest, questManager) : null;
+  if (questSync) {
     questManager.setRemoteSync(questSync);
     void questSync.reconcile();
   }
@@ -247,13 +259,33 @@ async function main(): Promise<void> {
   // S12: level/exp ทางการมาจาก Server — บูตแล้วเทียบ ถ้า Server นำหน้าเติมส่วนต่างเข้า local
   const remoteProgression = initializeRemoteProgression();
   if (remoteProgression) void reconcileProgression(remoteProgression, progression);
+  if (questSync || remoteProgression) {
+    let reconcileInFlight = false;
+    setInterval(() => {
+      if (document.hidden || reconcileInFlight) return;
+      reconcileInFlight = true;
+      void Promise.all([
+        questSync?.reconcile(),
+        remoteProgression ? reconcileProgression(remoteProgression, progression) : undefined,
+      ]).finally(() => { reconcileInFlight = false; });
+    }, 60_000);
+  }
+  if (initialSession.mode === 'online') {
+    setInterval(() => { if (!document.hidden) void refreshRemoteSession(); }, 6 * 60 * 60 * 1_000);
+    document.addEventListener('visibilitychange', () => {
+      const expiresAt = Date.parse(getRemoteSession().session?.expiresAt ?? '');
+      if (!document.hidden && Number.isFinite(expiresAt) && expiresAt - Date.now() < 24 * 60 * 60 * 1_000) {
+        void refreshRemoteSession();
+      }
+    });
+  }
   const tradeShop = new TradeShopUI(tradeManager);
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);
   const economyHud = new EconomyMobileHUD(tradeManager);
   persistence.subscribeStatus((event) => {
     if (event.scope === 'economy') {
-      tradeManager.living.setServerReadOnly(event.mode === 'remote');
+      tradeManager.living.setServerReadOnly(persistence.requestedEconomyMode === 'remote');
     }
     economyHud.notifyStatus(event.message, event.mode === 'local');
   });
@@ -310,6 +342,8 @@ async function main(): Promise<void> {
   let livingTickAccum = 0;
   let remotePollAccum = 0;
   let remotePollInFlight = false;
+  let remoteSaveRecoveryAccum = 0;
+  let remoteSaveRecoveryInFlight = false;
   const refreshEconomyViews = (): void => {
     tradeRouteHint.refresh();
     tradeShop.refresh();
@@ -324,7 +358,7 @@ async function main(): Promise<void> {
         const world = state?.world ? parseEconomyDocument(state.world) : null;
         if (!world) return;
         tradeManager.living.replaceState(world);
-        tradeManager.living.setServerReadOnly(persistence.activeEconomyMode === 'remote');
+        tradeManager.living.setServerReadOnly(persistence.requestedEconomyMode === 'remote');
         refreshEconomyViews();
       })
       .finally(() => {
@@ -347,6 +381,8 @@ async function main(): Promise<void> {
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
   let lastPvpNoticeAt = 0;
+  let selfPvpHp: number | null = null;
+  let selfPvpDefeated = false;
   const notifyPvp = (message: string) => {
     const now = Date.now();
     if (now - lastPvpNoticeAt < 1_500) return;
@@ -369,17 +405,20 @@ async function main(): Promise<void> {
     // PvE: มอนสเตอร์กลางส่ง attack action แล้ว client รับเฉพาะ hit frame ครั้งเดียว
     game.add({
       update: () => {
-        const damage = sharedMonsters.collectPlayerDamage(controller.position);
-        if (damage > 0) {
+        if (selfPvpDefeated) {
+          sharedMonsters.collectPlayerHits(controller.position);
+          return;
+        }
+        for (const hit of sharedMonsters.collectPlayerHits(controller.position)) {
           const resolution = resolveSharedMonsterPlayerDamage(
             controller.hp,
-            damage,
+            hit.damage,
             (amount) => playerCombat?.modifyIncomingDamage({
               amount,
               unblockable: false,
               knockback: 0,
-              sourceX: controller.position.x,
-              sourceZ: controller.position.z,
+              sourceX: hit.sourceX,
+              sourceZ: hit.sourceZ,
               tags: [],
             }) ?? amount,
           );
@@ -392,7 +431,9 @@ async function main(): Promise<void> {
           if (resolution.defeated) {
             audioBridge?.notifyDeath();
             spawnManager.respawn();
+            playerCombat?.notifyRespawn();
             globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
+            break;
           }
         }
       },
@@ -402,10 +443,16 @@ async function main(): Promise<void> {
   const boatWorldEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_BOAT_WORLD === 'true'
       || import.meta.env.VITE_ENABLE_BOAT_WORLD === '1');
-  const selfCharacterId = getRemoteSession().session?.characterId ?? null;
+  const getSelfCharacterId = () => getRemoteSession().session?.characterId ?? null;
+  const selfCharacterId = getSelfCharacterId();
+  const sharedMonsterRewardSources = new Map<string, {
+    itemId: string;
+    category: 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
+    name: string;
+  }>();
   let selfAudioLifeCycle = 0;
   const boatWorldClient = boatWorldEnabled
-    ? new BoatWorldClient(game.scene, selfCharacterId, boatManager, worldTextures, graphics, effects)
+    ? new BoatWorldClient(game.scene, getSelfCharacterId, boatManager, worldTextures, graphics, effects)
     : null;
   if (boatWorldClient) game.add(boatWorldClient);
   const realtime = initializeRealtime({
@@ -432,12 +479,17 @@ async function main(): Promise<void> {
     // S15: ผล PvP จาก Server (authority) — โดนเราเอง = ปรับหลอดเลือดตาม Server
     onCombatHit: ({ attackerId, targetId, damage, hp, maxHp, knockback }) => {
       audioBridge?.markCombat();
-      if (targetId === selfCharacterId) {
-        const fraction = maxHp > 0 ? hp / maxHp : 0;
-        controller.hp = Math.max(0, Math.round(fraction * controller.hpMax));
+      if (targetId === getSelfCharacterId()) {
+        const serverLoss = selfPvpHp === null
+          ? Math.max(0, damage)
+          : Math.max(0, selfPvpHp - hp);
+        selfPvpHp = Math.max(0, Math.min(maxHp, hp));
+        const actualDamage = Math.min(controller.hp, serverLoss);
+        controller.hp = Math.max(0, controller.hp - actualDamage);
         hud.flashDamage();
+        playerCombat?.markCombatActivity();
         playerCombat?.notifyAuthoritativeHit(knockback, controller.hp > 0);
-        effects.spawnPlayerDamageNumber(controller.position, damage);
+        if (actualDamage > 0) effects.spawnPlayerDamageNumber(controller.position, Math.round(actualDamage));
         audio.play('combat.hit', {
           eventId: `pvp-hit:${attackerId}:${targetId}:${hp}:${damage}`,
           position: controller.position,
@@ -447,7 +499,7 @@ async function main(): Promise<void> {
         const at = remotePlayers?.positionOf(targetId);
         if (at) {
           at.y += 2.2;
-          effects.spawnDamageNumber(at, damage, attackerId === selfCharacterId ? '#ffe28a' : '#ff8a8a');
+          effects.spawnDamageNumber(at, damage, attackerId === getSelfCharacterId() ? '#ffe28a' : '#ff8a8a');
           audio.play('combat.hit', {
             eventId: `pvp-hit:${attackerId}:${targetId}:${hp}:${damage}`,
             position: at,
@@ -456,9 +508,11 @@ async function main(): Promise<void> {
       }
     },
     onCombatDefeat: (playerId) => {
-      if (playerId === selfCharacterId) {
+      if (playerId === getSelfCharacterId()) {
         // แพ้ PvP → กลับจุดปลอดภัย (Server จะส่ง respawn คืน HP เต็มตามเวลา)
-        controller.hp = Math.max(1, Math.round(controller.hpMax * 0.1));
+        selfPvpDefeated = true;
+        selfPvpHp = 0;
+        controller.hp = 0;
         spawnManager.teleportToCheckpoint();
         hud.flashDamage();
         audioBridge?.notifyDeath(`pvp-defeat:${playerId}:${selfAudioLifeCycle}`);
@@ -467,8 +521,11 @@ async function main(): Promise<void> {
       }
     },
     onCombatRespawn: (playerId) => {
-      if (playerId === selfCharacterId) {
+      if (playerId === getSelfCharacterId()) {
+        selfPvpDefeated = false;
+        selfPvpHp = null;
         controller.hp = controller.hpMax;
+        playerCombat?.notifyRespawn();
         selfAudioLifeCycle += 1;
         audioBridge?.notifyRespawn(`pvp-respawn:${playerId}:${selfAudioLifeCycle}`);
       } else {
@@ -501,7 +558,7 @@ async function main(): Promise<void> {
       }
     },
     onWorldMonsterAttack: (attack) => {
-      sharedMonsters?.applyAttack(attack, selfCharacterId ?? undefined);
+      sharedMonsters?.applyAttack(attack, getSelfCharacterId() ?? undefined);
       const position = sharedMonsters?.positionOf(attack.spawnId);
       audio.play('monster.attack', {
         eventId: `world-monster-attack:${attack.attackId}`,
@@ -512,10 +569,11 @@ async function main(): Promise<void> {
       const position = sharedMonsters?.positionOf(spawnId);
       sharedMonsters?.markDead(spawnId);
       audio.play('monster.death', { eventId: `world-monster-dead:${spawnId}`, position });
-      if (byId !== selfCharacterId || !reward) return;
+      if (byId !== getSelfCharacterId() || !reward) return;
 
-      const item = playerCombat?.activeItem
+      const item = sharedMonsterRewardSources.get(spawnId) ?? playerCombat?.activeItem
         ?? { itemId: 'basic-brawl', category: 'style' as const, name: 'หมัด' };
+      sharedMonsterRewardSources.delete(spawnId);
       progression.addPlayerExp(reward.playerExp, `shared-monster:${reward.monsterId}`);
       progression.setCoinsFromServer(reward.coinsTotal, `shared-monster:${reward.monsterId}`);
       const mastery = reward.masteryExp > 0
@@ -549,6 +607,7 @@ async function main(): Promise<void> {
       progression.save();
     },
     onWorldMonsterRespawn: (monster) => {
+      sharedMonsterRewardSources.delete(monster.spawnId);
       sharedMonsters?.applyRespawn(monster);
       audio.play('monster.respawn', {
         eventId: `world-monster-respawn:${monster.spawnId}`,
@@ -575,13 +634,14 @@ async function main(): Promise<void> {
     },
     onBoatRespawn: (boat) => boatWorldClient?.applyRespawn(boat),
     onBoatIntentResult: (result) => {
+      boatManager.handleAuthorityResult(result);
       if (!result.accepted) touchControls?.notify(`คำสั่งเรือถูกปฏิเสธ: ${result.reason ?? 'invalid'}`);
     },
   });
   if (realtime && boatWorldEnabled) {
     boatManager.setAuthority({
       connected: () => realtime.connected,
-      send: (action, payload) => { realtime.sendBoatIntent(action, payload); },
+      send: (action, payload) => realtime.sendBoatIntent(action, payload),
     });
   }
   realtime?.start();
@@ -641,6 +701,19 @@ async function main(): Promise<void> {
   game.add({
     update: (dt: number) => {
       const elapsedMs = dt * 1000;
+      if (persistence.requestedMode === 'remote' && persistence.activeMode === 'local') {
+        remoteSaveRecoveryAccum += elapsedMs;
+        if (remoteSaveRecoveryAccum >= 10_000 && !remoteSaveRecoveryInFlight) {
+          remoteSaveRecoveryAccum = 0;
+          remoteSaveRecoveryInFlight = true;
+          void persistence.refreshSave().finally(() => {
+            remoteSaveRecoveryInFlight = false;
+            renderServerStatus();
+          });
+        }
+      } else {
+        remoteSaveRecoveryAccum = 0;
+      }
       if (persistence.requestedEconomyMode === 'remote' && !realtime?.connected) {
         remotePollAccum += elapsedMs;
         if (remotePollAccum >= REMOTE_ECONOMY_TICK_INTERVAL_MS) {
@@ -648,7 +721,7 @@ async function main(): Promise<void> {
           pollRemoteEconomy();
         }
       }
-      if (persistence.activeEconomyMode === 'local') {
+      if (persistence.requestedEconomyMode === 'local') {
         livingTickAccum += elapsedMs;
         if (livingTickAccum >= LIVING_TICK_INTERVAL_MS) {
           livingTickAccum = 0;
@@ -704,6 +777,7 @@ async function main(): Promise<void> {
     itemInventory,
     touchControls,
     touchControls.usesTouchLayout,
+    () => playerCombat?.state ?? 'idle',
   );
   // กระเป๋าเก็บของ (ปุ่ม 🎒 / คีย์ B) — ติดตั้ง/กิน/จัดยาลงช่องลัด
   let controlsBeforeInv = true;
@@ -718,6 +792,13 @@ async function main(): Promise<void> {
       if (open) controlsBeforeInv = controller.inputEnabled;
       controller.setControlsEnabled(open ? false : controlsBeforeInv);
     },
+    () => !(
+      tradeShop.isOpen
+      || dealerShop.isOpen
+      || potionShop.isOpen
+      || boatManager.shopOpen
+      || economyPanel.isOpen
+    ),
   );
 
   // มอนสเตอร์ + ระบบต่อสู้ (Phase 4-5) — callbacks อ้าง playerCombat แบบ late-bind
@@ -750,6 +831,7 @@ async function main(): Promise<void> {
       onBossAudioState: (active) => audioBridge?.setBossActive(active),
       onPlayerDefeated: () => {
         spawnManager.respawn();
+        playerCombat?.notifyRespawn();
         hud.flashDamage();
         audioBridge?.notifyDeath();
         globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
@@ -838,9 +920,12 @@ async function main(): Promise<void> {
   // S16: และต่อ M1/สกิลเข้ากับมอนสเตอร์กลาง — หาตัวในกรวยหน้าแล้วส่ง "เจตนาตี" ให้ Server ตัดสิน
   if (realtime && (multiplayerEnabled || sharedWorldMonstersEnabled)) {
     const CONE_HALF_ANGLE = Math.PI / 3; // ~120° กรวยหน้า
-    playerCombat.onPvpAttack = ({ origin, forwardX, forwardZ, kind, skillId }) => {
+    playerCombat.onPvpAttack = ({ origin, forwardX, forwardZ, kind, skillId, range: requestedRange }) => {
       if (pvpEnabled && remotePlayers) {
-        const range = kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
+        const range = Math.min(
+          kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE,
+          Math.max(0.8, requestedRange),
+        );
         const targets = remotePlayers.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE);
         // Touch users cannot turn as precisely while pressing attack. If nobody
         // is in the forward cone, lock the nearest in-range player and face them.
@@ -851,18 +936,41 @@ async function main(): Promise<void> {
           if (target && targets.length === 0) {
             controller.heading = Math.atan2(target.x - origin.x, target.z - origin.z);
           }
-          realtime.sendAttack(targetId, kind, skillId);
+          const targetIds = targets.length > 0 ? targets.slice(0, 8) : [targetId];
+          for (const id of targetIds) realtime.sendAttack(id, kind, skillId);
+          playerCombat?.markCombatActivity();
         }
       } else if (multiplayerEnabled && !pvpEnabled) {
         notifyPvp('⚔️ PK ยังไม่เปิดใน build นี้');
       }
-      if (sharedMonsters) {
-        const range = kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE;
-        for (const spawnId of sharedMonsters.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE)) {
-          realtime.sendMonsterHit(spawnId, kind);
-        }
-      }
     };
+    playerCombat.onSharedMonsterAttack = ({ origin, forwardX, forwardZ, kind, range: requestedRange, area }) => {
+      if (!sharedMonsters) return;
+      const range = Math.min(
+        kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
+        Math.max(0.8, requestedRange),
+      );
+      const spawnIds = area
+        ? sharedMonsters.targetsInRadius(origin, Math.min(range, Math.max(0.5, area)))
+        : sharedMonsters.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE);
+      const item = playerCombat?.activeItem;
+      if (item) for (const spawnId of spawnIds) sharedMonsterRewardSources.set(spawnId, { ...item });
+      realtime.sendMonsterHits(spawnIds, kind);
+    };
+    if (pvpEnabled) {
+      let lastBlocking = false;
+      let blockRefresh = 0;
+      game.add({
+        update: (dt) => {
+          blockRefresh += dt;
+          const blocking = playerCombat?.blocking ?? false;
+          if (blocking === lastBlocking && (!blocking || blockRefresh < 1)) return;
+          lastBlocking = blocking;
+          blockRefresh = 0;
+          realtime.sendCombatBlock(blocking);
+        },
+      });
+    }
   }
   // debug hook สำหรับเทสต์อัตโนมัติ/ดีบักในเบราว์เซอร์ (อ่านอย่างเดียว)
   (window as unknown as { __combat?: PlayerCombat }).__combat = playerCombat;
@@ -897,6 +1005,8 @@ async function main(): Promise<void> {
   progression.events.on('player:exp-gained', () => audio.play('reward.exp'));
   progression.events.on('coins:changed', ({ amount }) => {
     if (amount > 0) audio.play('reward.coins');
+    dealerShop.refresh();
+    potionShop.refresh();
   });
   progression.events.on('quest:progress', () => audio.play('ui.quest-update'));
   progression.events.on('quest:completed', () => audio.play('reward.quest-complete'));
@@ -933,6 +1043,7 @@ async function main(): Promise<void> {
     audio.play('player.drowning');
     audioBridge?.notifyDeath();
     spawnManager.respawn();
+    playerCombat?.notifyRespawn();
     globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
   };
 

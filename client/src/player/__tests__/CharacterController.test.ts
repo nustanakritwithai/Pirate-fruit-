@@ -60,6 +60,20 @@ describe('CharacterController — ภัยน้ำทะเล', () => {
     expect(controller.moveState.swimming).toBe(false);
     expect(controller.energy).toBeLessThan(controller.energyMax);
   });
+
+  it('เปลี่ยนจาก dash เป็นว่ายทันทีเมื่อแตะผิวน้ำ', () => {
+    const controller = new CharacterController(
+      waterInput(),
+      new CollisionSystem(() => -0.9),
+      () => 0,
+    );
+    controller.teleport(0, -0.35, 0);
+    controller.startDash(1, 0, 12, 0.3);
+    controller.update(0.016);
+
+    expect(controller.moveState.swimming).toBe(true);
+    expect(controller.moveState.dashing).toBe(false);
+  });
 });
 
 describe('CharacterController — double jump', () => {

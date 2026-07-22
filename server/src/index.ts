@@ -25,6 +25,7 @@ import { QuestService } from './quest/questService.js';
 import { PostgresMonsterRepository } from './monster/monsterRepository.js';
 import { MonsterService } from './monster/monsterService.js';
 import { ProgressionService } from './progression/progressionService.js';
+import { ShopService } from './shop/shopService.js';
 
 async function start(): Promise<void> {
   const environment = loadEnvironment();
@@ -40,7 +41,11 @@ async function start(): Promise<void> {
       )
     : undefined;
   const playerSaves = pool
-    ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool, { preserveServerProgression: environment.ENABLE_PROGRESSION_SERVER }))
+    ? new PlayerSaveService(new PostgresPlayerSaveRepository(pool, {
+        preserveServerProgression: environment.ENABLE_PROGRESSION_SERVER,
+        preserveServerQuests: environment.ENABLE_QUEST_SERVER,
+        preserveServerInventory: environment.ENABLE_PROGRESSION_SERVER,
+      }))
     : undefined;
   // S18: character select CRUD (เปิดใช้จริงเมื่อ ENABLE_CHARACTER_SELECT — route ตรวจ flag เอง)
   const characters = pool ? new PostgresCharacterRepository(pool) : undefined;
@@ -89,7 +94,8 @@ async function start(): Promise<void> {
   const progression = pool && progressionAuthority
     ? new ProgressionService(pool)
     : undefined;
-  const app = await buildServer({ environment, database, sessions, characters, playerSaves, economy, trade, quests, monsters, progression, realtime });
+  const shop = pool && progressionAuthority ? new ShopService(pool) : undefined;
+  const app = await buildServer({ environment, database, sessions, characters, playerSaves, economy, trade, quests, monsters, progression, shop, realtime });
   runtimeLogger = app.log;
   // S8 ops: เก็บกวาด session หมดอายุ + guest กำพร้าเป็นรอบ (ผู้เล่นที่มีเซฟจริงไม่ถูกแตะ)
   const stopGuestCleanup = pool && environment.ENABLE_REMOTE_SESSION

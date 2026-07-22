@@ -102,6 +102,7 @@ export class EconomyMobileHUD {
   }
 
   notifyStatus(message: string, isFallback: boolean): void {
+    if (!isFallback) this.activeAlerts.delete('persistence-mode');
     this.ingestPlayerEvent({
       id: `persistence-${Date.now()}-${isFallback ? 'local' : 'remote'}`,
       priority: isFallback ? 'critical' : 'medium',
@@ -140,6 +141,12 @@ export class EconomyMobileHUD {
       if (event.isAlert) {
         this.activeAlerts.set(event.mergeKey, event);
       }
+    }
+    const currentEconomyAlerts = new Set(
+      classified.filter((event) => event.isAlert).map((event) => event.mergeKey),
+    );
+    for (const key of this.activeAlerts.keys()) {
+      if (key !== 'persistence-mode' && !currentEconomyAlerts.has(key)) this.activeAlerts.delete(key);
     }
     this.panel?.setActiveAlerts(this.getActiveAlerts());
 

@@ -28,6 +28,15 @@ const TARGET_NAMES: Record<string, string> = {
   'sun-silk': 'ผ้าไหมสุริยะ',
 };
 
+const ISLAND_NAMES: Record<string, string> = {
+  'starter-island': 'เกาะเริ่มต้น',
+  'mist-jungle': 'พงไพรหมอก',
+  'sunscar-desert': 'ทะเลทรายสุริยะ',
+  'azure-frost': 'เหมันต์คราม',
+  'tempest-sky': 'นภาวายุ',
+  'ember-volcano': 'ภูผาอัคคี',
+};
+
 export class QuestTracker {
   private readonly root: HTMLDivElement;
   private completedMessageTimer = 0;
@@ -51,7 +60,11 @@ export class QuestTracker {
     this.root.className = 'quest-tracker';
     document.body.appendChild(this.root);
     const events = quests.events;
-    events.on('quest:accepted', () => this.render());
+    events.on('quest:accepted', () => {
+      this.completedMessageTimer = 0;
+      this.root.classList.remove('complete');
+      this.render();
+    });
     events.on('quest:progress', () => this.render());
     events.on('quest:completed', ({ name, playerExp, coins }) => {
       this.completedMessageTimer = 3.2;
@@ -80,15 +93,15 @@ export class QuestTracker {
       return;
     }
     this.root.style.display = 'block';
-    this.root.classList.remove('complete');
+    this.root.classList.toggle('complete', active.completed);
     const objectives = active.definition.objectives.map((objective, index) => {
       const label = TARGET_NAMES[objective.targetId] ?? objective.targetId;
       const suffix = objective.type === 'deliver' && objective.islandId
-        ? ` → ${objective.islandId === 'starter-island' ? 'เกาะแรก' : objective.islandId === 'mist-jungle' ? 'ป่าหมอก' : 'ทะเลทราย'}`
+        ? ` → ${ISLAND_NAMES[objective.islandId] ?? objective.islandId}`
         : '';
       return `<div class="quest-tracker-objective">${label}${suffix} ` +
         `${active.progress[index]} / ${objective.requiredAmount}</div>`;
     }).join('');
-    this.root.innerHTML = `<div class="quest-tracker-title">📜 ${active.definition.name}</div>${objectives}`;
+    this.root.innerHTML = `<div class="quest-tracker-title">${active.completed ? '✅ พร้อมส่งเควส' : '📜'} ${active.definition.name}</div>${objectives}`;
   }
 }

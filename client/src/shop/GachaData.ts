@@ -7,23 +7,29 @@ import { DEVIL_FRUITS } from '../fruit/FruitRegistry';
 import { SWORDS } from '../swords/SwordRegistry';
 import { listAvailableGuns } from '../guns/GunRegistry';
 import { FIGHTING_STYLES } from '../fighting-styles/FightingStyleRegistry';
-import type { FightingStyleSeaTier } from '../fighting-styles/types';
+import {
+  SHOP_DRAW_COST,
+  SHOP_GACHA_CATALOG,
+  SHOP_RARITY_WEIGHT,
+  type ShopItemKind,
+  type ShopRarity,
+} from '@pirate-fruit/shared';
 
-export type ItemKind = 'sword' | 'gun' | 'fighting-style' | 'fruit';
-export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'mythical';
+export type ItemKind = ShopItemKind;
+export type Rarity = ShopRarity;
 
 /** สไตล์เริ่มต้นที่ผู้เล่นมีติดตัว (ไม่อยู่ในพูลสุ่ม) */
 export const STARTER_STYLE_ID = 'combat';
 
 /** ราคาต่อการสุ่ม 1 ครั้ง */
-export const DRAW_COST = 150;
+export const DRAW_COST = SHOP_DRAW_COST;
 
 export const RARITY_WEIGHT: Record<Rarity, number> = {
-  common: 60,
-  uncommon: 26,
-  rare: 10,
-  legendary: 3.5,
-  mythical: 0.8,
+  common: SHOP_RARITY_WEIGHT.common / 10,
+  uncommon: SHOP_RARITY_WEIGHT.uncommon / 10,
+  rare: SHOP_RARITY_WEIGHT.rare / 10,
+  legendary: SHOP_RARITY_WEIGHT.legendary / 10,
+  mythical: SHOP_RARITY_WEIGHT.mythical / 10,
 };
 
 export const RARITY_LABEL: Record<Rarity, string> = {
@@ -63,28 +69,18 @@ export interface GachaEntry {
   rarity: Rarity;
 }
 
-function styleRarity(tier: FightingStyleSeaTier): Rarity {
-  switch (tier) {
-    case 'starter':
-      return 'common';
-    case 'first-sea':
-      return 'uncommon';
-    case 'second-sea':
-      return 'rare';
-    default:
-      return 'legendary';
-  }
-}
-
 /** พูลของที่สุ่มได้ทั้งหมด (ยกเว้นสไตล์เริ่มต้น) */
-export const GACHA_POOL: GachaEntry[] = [
-  ...SWORDS.map((s): GachaEntry => ({ kind: 'sword', id: s.id, name: s.nameTh, rarity: s.rarity })),
-  ...listAvailableGuns().map((g): GachaEntry => ({ kind: 'gun', id: g.id, name: g.nameTh, rarity: g.rarity })),
-  ...FIGHTING_STYLES.filter((s) => s.id !== STARTER_STYLE_ID).map(
-    (s): GachaEntry => ({ kind: 'fighting-style', id: s.id, name: s.nameTh, rarity: styleRarity(s.seaTier) }),
-  ),
-  ...DEVIL_FRUITS.map((f): GachaEntry => ({ kind: 'fruit', id: f.id, name: f.nameTh, rarity: f.rarity })),
-];
+const itemNames = new Map<string, string>([
+  ...SWORDS.map((item) => [`sword:${item.id}`, item.nameTh] as const),
+  ...listAvailableGuns().map((item) => [`gun:${item.id}`, item.nameTh] as const),
+  ...FIGHTING_STYLES.map((item) => [`fighting-style:${item.id}`, item.nameTh] as const),
+  ...DEVIL_FRUITS.map((item) => [`fruit:${item.id}`, item.nameTh] as const),
+]);
+
+export const GACHA_POOL: GachaEntry[] = SHOP_GACHA_CATALOG.map((item) => ({
+  ...item,
+  name: itemNames.get(`${item.kind}:${item.id}`) ?? item.id,
+}));
 
 /**
  * สุ่ม 1 ชิ้นจากพูล ถ่วงน้ำหนักตามความหายาก

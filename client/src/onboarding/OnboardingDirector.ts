@@ -77,14 +77,14 @@ export class OnboardingDirector implements Updatable {
     document.body.appendChild(this.guide);
 
     this.root.querySelector<HTMLButtonElement>('.onboarding-guide-open')!
-      .addEventListener('click', () => this.openGuide());
+      .addEventListener('click', () => this.openGuide(true));
     this.root.querySelector<HTMLButtonElement>('.onboarding-prev')!
       .addEventListener('click', () => this.previous());
     this.root.querySelector<HTMLButtonElement>('.onboarding-pause')!
       .addEventListener('click', () => this.pause());
     this.root.querySelector<HTMLButtonElement>('.onboarding-next')!
       .addEventListener('click', () => this.manualAdvance());
-    this.helpButton.addEventListener('click', () => this.openGuide());
+    this.helpButton.addEventListener('click', () => this.openGuide(true));
     this.guide.querySelector<HTMLButtonElement>('.onboarding-guide-close')!
       .addEventListener('click', () => this.closeGuide());
     this.guide.querySelector<HTMLButtonElement>('[data-guide-action="resume"]')!
@@ -96,7 +96,7 @@ export class OnboardingDirector implements Updatable {
 
     window.addEventListener('keydown', (event) => {
       if (event.code === 'Escape' && this.guide.style.display !== 'none') this.closeGuide();
-      if (event.code === 'KeyH' && !event.repeat && !this.isTypingTarget(event.target)) this.openGuide();
+      if (event.code === 'KeyH' && !event.repeat && !this.isTypingTarget(event.target)) this.openGuide(false);
       if (event.code === 'Enter' && this.active
         && ONBOARDING_STEPS[this.save.stepIndex]?.completion.type === 'manual') {
         this.manualAdvance();
@@ -299,8 +299,10 @@ export class OnboardingDirector implements Updatable {
     this.beacon.rotation.z += dt * 0.8;
   }
 
-  private openGuide(): void {
-    if (document.pointerLockElement) document.exitPointerLock();
+  private openGuide(interactive: boolean): void {
+    // Keyboard users can read/close the guide without losing pointer lock. A click/tap
+    // explicitly requests an interactive dialog and may release it for cursor access.
+    if (interactive && document.pointerLockElement) document.exitPointerLock();
     this.guide.style.display = 'flex';
   }
 
@@ -408,7 +410,7 @@ export class OnboardingDirector implements Updatable {
         outline:3px solid #ffe16f!important;outline-offset:3px!important}
       @keyframes onboarding-pulse{50%{filter:brightness(1.35);box-shadow:0 0 0 8px rgba(255,221,105,.18)}}
       @media(max-width:700px){.onboarding-root{bottom:max(5px,env(safe-area-inset-bottom));
-        width:min(286px,calc(100vw - 92px))}
+        left:36%;width:min(250px,calc(100vw - 170px))}
         .onboarding-card{padding:6px 8px;border-radius:11px}
         .onboarding-kicker{font-size:8px}.onboarding-guide-open{padding:3px 6px;font-size:8px}
         .onboarding-title{margin:2px 0 1px;font-size:12px;line-height:1.2}

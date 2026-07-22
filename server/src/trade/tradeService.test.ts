@@ -98,6 +98,24 @@ function fakeRuntime(engine: EconomyEngine): EconomyRuntime {
       queue = run.then(() => undefined, () => undefined);
       return run;
     },
+    executeAtomic<T>(fn: (e: EconomyEngine) => Promise<{
+      result: T;
+      commit(): Promise<void>;
+      rollback(): Promise<void>;
+    }>): Promise<T> {
+      const run = queue.then(async () => {
+        const work = await fn(engine);
+        try {
+          await work.commit();
+          return work.result;
+        } catch (error) {
+          await work.rollback();
+          throw error;
+        }
+      });
+      queue = run.then(() => undefined, () => undefined);
+      return run;
+    },
   } as unknown as EconomyRuntime;
 }
 

@@ -60,7 +60,7 @@ export class TradeService {
     const request = tradeRequestSchema.parse(body);
     const hash = requestHash(request);
 
-    return this.runtime.executeExclusive(async (engine) => {
+    return this.runtime.executeAtomic(async (engine) => {
       let unitPrice: number;
       let total: number;
       let fee = 0;
@@ -91,7 +91,7 @@ export class TradeService {
         total = gross - fee;
       }
 
-      const outcome: TradeMutationOutcome = await this.repository.execute({
+      const prepared = await this.repository.prepare({
         characterId,
         action: request.action,
         islandId: request.islandId,
@@ -105,30 +105,40 @@ export class TradeService {
         cargoFits: (boatId, slots) =>
           engine.cargoFits(boatId, slots, request.commodityId, request.quantity),
       });
+      const outcome: TradeMutationOutcome = prepared.outcome;
 
-      // แก้คลังเมืองหลัง DB commit เท่านั้น และห้ามซ้ำตอน replay
-      if (!outcome.idempotentReplay) {
-        if (request.action === 'buy') {
-          engine.applyBuy(request.islandId, request.commodityId, request.quantity, unitPrice);
-        } else {
-          engine.applySell(request.islandId, request.commodityId, request.quantity, unitPrice);
+      try {
+        // DB ยังไม่ commit จน EconomyRuntime persist snapshot นี้สำเร็จ
+        if (!outcome.idempotentReplay) {
+          if (request.action === 'buy') {
+            engine.applyBuy(request.islandId, request.commodityId, request.quantity, unitPrice);
+          } else {
+            engine.applySell(request.islandId, request.commodityId, request.quantity, unitPrice);
+          }
         }
-      }
 
-      return {
-        ok: true,
-        schemaVersion: TRADE_PROTOCOL_SCHEMA_VERSION,
-        action: request.action,
-        islandId: request.islandId,
-        commodityId: request.commodityId,
-        quantity: request.quantity,
-        unitPrice,
-        total,
-        fee,
-        coins: outcome.coins,
-        cargo: outcome.cargo,
-        idempotentReplay: outcome.idempotentReplay,
-      } satisfies TradeExecuteResponse;
+        return {
+          result: {
+            ok: true,
+            schemaVersion: TRADE_PROTOCOL_SCHEMA_VERSION,
+            action: request.action,
+            islandId: request.islandId,
+            commodityId: request.commodityId,
+            quantity: request.quantity,
+            unitPrice,
+            total,
+            fee,
+            coins: outcome.coins,
+            cargo: outcome.cargo,
+            idempotentReplay: outcome.idempotentReplay,
+          } satisfies TradeExecuteResponse,
+          commit: prepared.commit,
+          rollback: prepared.rollback,
+        };
+      } catch (error) {
+        await prepared.rollback().catch(() => undefined);
+        throw error;
+      }
     });
   }
 }

@@ -5,6 +5,8 @@
  */
 
 export const LEVEL_MAX = 2800 as const;
+/** ทุกครั้งที่ Server เดินขึ้นหนึ่งเลเวล ผู้เล่นได้แต้มสเตตัส 3 แต้ม */
+export const STAT_POINTS_PER_LEVEL = 3 as const;
 
 export function expRequiredForLevel(level: number): number {
   const safeLevel = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1));

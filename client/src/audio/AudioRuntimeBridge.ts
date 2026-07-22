@@ -25,6 +25,7 @@ export class AudioRuntimeBridge implements Updatable {
   private previousY: number;
   private previousHp: number;
   private previousCombat: string;
+  private previousSkillType: PlayerCombat['skillAnimationType'];
   private previousGuard: number;
   private previousRider: 'off' | 'deck' | 'helm';
   private previousAnchor = false;
@@ -34,6 +35,7 @@ export class AudioRuntimeBridge implements Updatable {
     this.previousY = options.controller.position.y;
     this.previousHp = options.controller.hp;
     this.previousCombat = options.combat.state;
+    this.previousSkillType = options.combat.skillAnimationType;
     this.previousGuard = options.combat.guardFraction;
     this.previousRider = options.boats.riderState;
     this.previousAnchor = options.boats.activeBoat?.anchor ?? false;
@@ -109,6 +111,7 @@ export class AudioRuntimeBridge implements Updatable {
         this.options.audio.play('combat.m1-swing');
         this.markCombat();
       } else if (state === 'casting') {
+        this.previousSkillType = this.options.combat.skillAnimationType;
         this.options.audio.play('combat.skill-cast');
         this.markCombat(5);
       } else if (state === 'stunned' || state === 'knockback' || state === 'knockdown') {
@@ -122,7 +125,13 @@ export class AudioRuntimeBridge implements Updatable {
         this.notifyDeath();
       }
     }
-    if (this.previousCombat === 'casting' && state === 'idle') {
+    if (
+      this.previousCombat === 'casting'
+      && state === 'idle'
+      && (this.previousSkillType === 'projectile'
+        || this.previousSkillType === 'homing'
+        || this.previousSkillType === 'beam')
+    ) {
       this.options.audio.play('combat.projectile', { position: this.options.controller.position });
     }
     this.previousCombat = state;

@@ -101,8 +101,7 @@ export class TradeManager {
 
   /**
    * ส่ง intent ให้ Server ตัดสิน แล้ว sync ผลจริงกลับ:
-   * - เหรียญ: apply เป็น delta ของธุรกรรม (ไม่ทับยอด local เพราะรางวัลมอน/เควสต์
-   *   ยังเป็นฝั่ง client จนถึง S10-S12 — transitional trust model)
+   * - เหรียญ: reconcile ให้เท่ากับยอด canonical ที่ Server ตอบเสมอ รวม idempotent replay
    * - cargo: แทนที่ทั้งชุดด้วย canonical จาก player_cargo
    * - สต็อกเมือง: Server หักแล้ว mirror ฝั่งนี้ตามมากับ economy poll รอบถัดไป
    * ปฏิเสธ/เน็ตล่ม = ไม่แตะสถานะ local ใด ๆ (ห้าม fork ยอดเงินกับ Server)
@@ -121,6 +120,9 @@ export class TradeManager {
       : this.resolveSellPrice(islandId, commodityId, qty);
 
     try {
+      // Boat selection determines canonical cargo capacity. Flush its pending save before
+      // asking the trade authority, otherwise an immediate purchase can see the old boat.
+      await this.storage.flush?.();
       const response = await this.remote!.execute({
         action,
         islandId,
@@ -128,17 +130,7 @@ export class TradeManager {
         quantity: qty,
         expectedUnitPrice: expected ?? undefined,
       });
-      if (action === 'buy') {
-        if (!this.wallet.spendCoins(response.total, `trade:buy:${commodityId}`)) {
-          // Server หักแล้วแต่กระเป๋า local ไม่พอ (ยอด local ตามหลัง) — บังคับ sync ยอดจริง
-          this.wallet.addCoins(
-            Math.max(0, response.coins - this.wallet.coins),
-            'trade:reconcile',
-          );
-        }
-      } else {
-        this.wallet.addCoins(response.total, `trade:sell:${commodityId}`);
-      }
+      this.reconcileWallet(response.coins);
       this.cargo.slots = response.cargo.map((slot) => ({
         commodityId: slot.commodityId,
         quantity: slot.quantity,
@@ -161,6 +153,17 @@ export class TradeManager {
         return this.emit({ ok: false, message: rejectMessageTh(error) });
       }
       return this.emit({ ok: false, message: 'เชื่อมต่อ Server ไม่ได้ ลองใหม่อีกครั้ง' });
+    }
+  }
+
+  /** ปรับ wallet mirror ได้ทั้งขึ้นและลง ห้ามใช้ transaction delta เพราะอาจเป็น replay */
+  private reconcileWallet(canonicalCoins: number): void {
+    const target = Math.max(0, Math.floor(canonicalCoins));
+    const difference = target - this.wallet.coins;
+    if (difference > 0) {
+      this.wallet.addCoins(difference, 'trade:server-reconcile');
+    } else if (difference < 0) {
+      this.wallet.spendCoins(-difference, 'trade:server-reconcile');
     }
   }
 
@@ -342,4 +345,3 @@ function rejectMessageTh(error: RemoteTradeError): string {
     default: return `Server ปฏิเสธ: ${error.message}`;
   }
 }
-

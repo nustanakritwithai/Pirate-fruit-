@@ -61,16 +61,19 @@ export class Input {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.dragging = false;
+      this.touch?.resetTransientInputs();
+    });
 
     domElement.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       if (!this.pointerLocked) {
         domElement.requestPointerLock();
-      } else {
-        // คลิกซ้ายระหว่างล็อกเมาส์ = โจมตี
-        this.attackQueue++;
       }
+      // The gesture that acquires pointer lock is still a deliberate canvas attack.
+      this.attackQueue++;
       this.dragging = true;
     });
     window.addEventListener('mouseup', () => (this.dragging = false));

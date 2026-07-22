@@ -82,8 +82,12 @@ export async function registerSessionRoutes(
           .send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
       }
 
-      const existing = await sessions.authenticate(request.cookies[cookieName]);
+      const requestedName = sanitizeCharacterName(
+        (request.body as { name?: string } | undefined)?.name,
+      );
+      let existing = await sessions.authenticate(request.cookies[cookieName]);
       if (existing) {
+        if (requestedName) existing = await sessions.renameLegacyGuest(existing, requestedName);
         metrics.recordSessionResumed();
         reply.setCookie(
           cookieName,
@@ -93,9 +97,6 @@ export async function registerSessionRoutes(
         return sessionResponse(existing, false);
       }
 
-      const requestedName = sanitizeCharacterName(
-        (request.body as { name?: string } | undefined)?.name,
-      );
       const created = await sessions.createGuest(requestedName ?? undefined);
       metrics.recordSessionCreated();
       reply.setCookie(

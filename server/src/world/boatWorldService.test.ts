@@ -7,10 +7,12 @@ import type { BoatWorldRepository } from './boatWorldRepository.js';
 describe('S17 BoatWorldService', () => {
   it('publishes authoritative passenger presence immediately when boarding an anchored boat', async () => {
     const passengerUpdates: unknown[][] = [];
+    const disembarkUpdates: unknown[][] = [];
     const hub = {
       attachBoatWorld: () => undefined,
       broadcastBoat: () => undefined,
       updateBoatPassengerPresence: (...args: unknown[]) => passengerUpdates.push(args),
+      updateDisembarkedPresence: (...args: unknown[]) => disembarkUpdates.push(args),
     } as unknown as RealtimeHub;
     const repository: BoatWorldRepository = {
       loadAll: async () => [],
@@ -27,9 +29,16 @@ describe('S17 BoatWorldService', () => {
     const result = await service.handleIntent('owner-a', presence,
       { type: 'boat-intent', intentId: 'intent-board1', action: 'board', entityId: 'boat-a' });
     expect(result.accepted).toBe(true);
+    expect((await service.handleIntent('owner-a', presence,
+      { type: 'boat-intent', intentId: 'intent-helm-1', action: 'take-helm', entityId: 'boat-a' })).accepted).toBe(true);
+    expect((await service.handleIntent('owner-a', presence,
+      { type: 'boat-intent', intentId: 'intent-helm-2', action: 'leave-helm', entityId: 'boat-a' })).accepted).toBe(true);
+    expect((await service.handleIntent('owner-a', presence,
+      { type: 'boat-intent', intentId: 'intent-leave1', action: 'disembark', entityId: 'boat-a' })).accepted).toBe(true);
     expect(passengerUpdates).toEqual([
       ['owner-a', 'starter-island', 4.2, -43, expect.any(Number), 'training-dinghy'],
     ]);
+    expect(disembarkUpdates).toHaveLength(1);
   });
 
   it('authorizes the canonical active boat and deduplicates repeated intentId', async () => {

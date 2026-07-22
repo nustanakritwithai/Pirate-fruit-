@@ -32,6 +32,7 @@ export class InventoryUI {
     private inventory: ItemInventory,
     private onChange: () => void,
     private onVisibilityChanged: (open: boolean) => void,
+    private canOpen: () => boolean = () => true,
   ) {
     this.injectStyles();
     this.openButton = document.createElement('button');
@@ -80,7 +81,7 @@ export class InventoryUI {
   }
 
   open(): void {
-    if (this.openState) return;
+    if (this.openState || !this.canOpen()) return;
     if (document.pointerLockElement) document.exitPointerLock();
     this.openState = true;
     this.root.style.display = 'flex';

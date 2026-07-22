@@ -16,7 +16,7 @@ export class QuestBoard {
     this.root = document.createElement('div');
     this.root.className = 'quest-board-root';
     this.root.innerHTML = `<section class="quest-board"><header><div><h2>📜 กระดานภารกิจหมู่เกาะ</h2>
-      <p>รับได้ครั้งละ 1 ภารกิจ · รางวัลเข้าทันทีเมื่อทำครบ</p></div>
+      <p>${this.quests.isRemote ? 'รับได้ครั้งละ 1 ภารกิจ · ทำครบแล้วกลับมาส่งเพื่อรับรางวัลจาก Server' : 'รับได้ครั้งละ 1 ภารกิจ · รางวัลเข้าทันทีเมื่อทำครบ'}</p></div>
       <button class="quest-board-close" type="button" aria-label="ปิด">×</button></header>
       <div class="quest-board-cards"></div><div class="quest-board-status"></div></section>`;
     document.body.appendChild(this.root);
@@ -28,6 +28,8 @@ export class QuestBoard {
       if (!button) return;
       this.accept(button.dataset.quest!);
     });
+    this.quests.events.on('quest:progress', () => this.renderIfOpen());
+    this.quests.events.on('quest:completed', () => this.renderIfOpen());
     window.addEventListener('keydown', (event) => {
       if (event.code === 'Escape' && this.root.style.display !== 'none') this.close();
     });
@@ -51,6 +53,18 @@ export class QuestBoard {
   }
 
   private accept(questId: string): void {
+    const active = this.quests.getActiveQuest();
+    if (active?.definition.id === questId && active.completed) {
+      const result = this.quests.claimQuestReward();
+      this.status.classList.remove('danger');
+      this.status.textContent = result.claimed
+        ? 'ส่งเควสสำเร็จ — รับรางวัลแล้ว'
+        : result.reason === 'pending-server'
+          ? 'กำลังส่งเควสให้ Server...'
+          : 'ยังส่งเควสไม่ได้';
+      this.render();
+      return;
+    }
     let result = this.quests.acceptQuest(questId);
     if (result.reason === 'replace-confirmation') {
       const replace = window.confirm('ละทิ้งภารกิจปัจจุบันและรับภารกิจนี้แทนหรือไม่?');
@@ -81,15 +95,21 @@ export class QuestBoard {
       const targetAmount = quest.objectives.reduce((total, objective) => total + objective.requiredAmount, 0);
       const locked = state.player.level < quest.minimumLevel;
       const active = state.activeQuestId === quest.id;
+      const ready = active && this.quests.getActiveQuest()?.completed === true;
+      const completed = !quest.repeatable && state.completedQuestIds.includes(quest.id);
       card.innerHTML = `<h3>${quest.name}</h3><p>${quest.description}</p>
         <div class="quest-card-meta"><span>Lv.${quest.minimumLevel}+</span>
-          <span>${targetAmount} เป้าหมาย</span><span>${quest.objectives.length > 1 ? `${quest.objectives.length} ขั้น` : 'ทำซ้ำได้'}</span></div>
+          <span>${targetAmount} เป้าหมาย</span><span>${quest.objectives.length > 1 ? `${quest.objectives.length} ขั้น` : quest.repeatable ? 'ทำซ้ำได้' : 'ทำได้ครั้งเดียว'}</span></div>
         <div class="quest-card-reward">+${quest.rewards.playerExp} EXP · +${quest.rewards.coins} Coins · +${quest.rewards.masteryBonus ?? 0} Mastery</div>
-        <button type="button" data-quest="${quest.id}" ${locked || active ? 'disabled' : ''}>${
-          active ? 'กำลังทำภารกิจ' : locked ? `ต้องการ Lv.${quest.minimumLevel}` : 'รับภารกิจ'
+        <button type="button" data-quest="${quest.id}" ${locked || completed || (active && !ready) ? 'disabled' : ''}>${
+          ready ? 'ส่งเควส / รับรางวัล' : active ? 'กำลังทำภารกิจ' : completed ? 'ทำสำเร็จแล้ว' : locked ? `ต้องการ Lv.${quest.minimumLevel}` : 'รับภารกิจ'
         }</button>`;
       this.cards.appendChild(card);
     }
+  }
+
+  private renderIfOpen(): void {
+    if (this.root.style.display !== 'none') this.render();
   }
 
   private injectStyles(): void {

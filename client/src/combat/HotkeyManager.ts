@@ -27,6 +27,7 @@ export class HotkeyManager implements Updatable {
     private inventory: ItemInventory,
     private touch: TouchControls | null,
     isTouchDevice: boolean,
+    private readonly getCombatState: () => string = () => 'idle',
   ) {
     // แถบ quickslot บนจอ — เฉพาะเดสก์ท็อป (มือถือใช้ปุ่ม TouchControls)
     this.bar = isTouchDevice ? null : this.buildBar();
@@ -63,6 +64,13 @@ export class HotkeyManager implements Updatable {
   }
 
   private usePotion(slot: number): void {
+    if (
+      this.controller.hp <= 0
+      || ['stunned', 'knockback', 'knockdown', 'dead'].includes(this.getCombatState())
+    ) {
+      this.touch?.notify('ติดสถานะอยู่ — ยังใช้ยาไม่ได้');
+      return;
+    }
     const id = this.inventory.getQuickslot(slot);
     if (!id) {
       this.touch?.notify('ช่องลัดว่าง — จัดยาที่กระเป๋า (B)');

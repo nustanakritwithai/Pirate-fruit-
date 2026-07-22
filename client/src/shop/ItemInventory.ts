@@ -12,10 +12,12 @@ import { getSword } from '../swords/SwordRegistry';
 import { getGun } from '../guns/GunRegistry';
 import { getFightingStyle } from '../fighting-styles/FightingStyleRegistry';
 import { getFruit } from '../fruit/FruitRegistry';
-import { DRAW_COST, drawGacha, STARTER_STYLE_ID, type GachaEntry, type ItemKind } from './GachaData';
+import { DRAW_COST, GACHA_POOL, drawGacha, STARTER_STYLE_ID, type GachaEntry, type ItemKind } from './GachaData';
 import { getPotion } from './PotionData';
 import { gameStorage, type GameStorage } from '../persistence/GameStorage';
 import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
+import type { ShopPotionId } from '@pirate-fruit/shared';
+import type { RemoteShopExecutor } from './RemoteShopClient';
 
 const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.inventory;
 /** จำนวนช่องลัดใช้ยา */
@@ -48,6 +50,7 @@ const VALIDATORS: Record<ItemKind, (id: string) => boolean> = {
 
 export class ItemInventory {
   private data: InventoryData;
+  private remote: RemoteShopExecutor | null = null;
   readonly loadout: SkillLoadout;
 
   constructor(
@@ -66,6 +69,14 @@ export class ItemInventory {
 
   get drawCost(): number {
     return DRAW_COST;
+  }
+
+  setRemoteExecutor(executor: RemoteShopExecutor | null): void {
+    this.remote = executor;
+  }
+
+  get isRemoteShop(): boolean {
+    return this.remote !== null;
   }
 
   ownedOf(kind: ItemKind): readonly string[] {
@@ -90,6 +101,21 @@ export class ItemInventory {
     if (isNew) list.push(entry.id);
     this.save();
     return { entry, isNew };
+  }
+
+  async drawAsync(): Promise<DrawResult | null> {
+    if (!this.remote) return this.draw();
+    const response = await this.remote.purchase('draw');
+    if (response.item.kind === 'consumable') throw new Error('Server returned the wrong shop item');
+    const entry = GACHA_POOL.find((candidate) => (
+      candidate.kind === response.item.kind && candidate.id === response.item.id
+    ));
+    if (!entry) throw new Error('Server returned an unknown shop item');
+    const list = this.listFor(entry.kind);
+    if (!list.includes(entry.id)) list.push(entry.id);
+    this.reconcileCoins(response.coins);
+    this.save();
+    return { entry, isNew: response.isNew };
   }
 
   equip(kind: ItemKind, id: string): boolean {
@@ -140,6 +166,20 @@ export class ItemInventory {
     return true;
   }
 
+  async buyPotionAsync(id: string): Promise<boolean> {
+    if (!this.remote) return this.buyPotion(id);
+    const potion = getPotion(id);
+    if (!potion || (id !== 'potion-hp' && id !== 'potion-mp')) return false;
+    const response = await this.remote.purchase('potion', id as ShopPotionId);
+    if (response.item.kind !== 'consumable' || response.item.id !== id) {
+      throw new Error('Server returned the wrong potion');
+    }
+    this.data.consumables[id] = response.quantity;
+    this.reconcileCoins(response.coins);
+    this.save();
+    return true;
+  }
+
   /** รับยาฟรี (รางวัลปล้นเรือ/เควส) */
   addConsumable(id: string, count = 1): boolean {
     if (!getPotion(id) || count <= 0) return false;
@@ -169,7 +209,7 @@ export class ItemInventory {
   /** จัดยาลงช่องลัด (id=null = เอาออก) */
   assignQuickslot(slot: number, id: string | null): void {
     if (slot < 0 || slot >= QUICKSLOT_COUNT) return;
-    if (id !== null && !getPotion(id)) return;
+    if (id !== null && (!getPotion(id) || this.getConsumableCount(id) <= 0)) return;
     this.data.quickslots[slot] = id;
     this.save();
   }
@@ -197,6 +237,17 @@ export class ItemInventory {
     }
   }
 
+  private reconcileCoins(canonicalCoins: number): void {
+    const target = Math.max(0, Math.floor(canonicalCoins));
+    const difference = target - this.coins;
+    if (this.wallet) {
+      if (difference > 0) this.wallet.addCoins(difference, 'shop:server-reconcile');
+      else if (difference < 0) this.wallet.spendCoins(-difference, 'shop:server-reconcile');
+    } else {
+      this.data.coins = target;
+    }
+  }
+
   private load(): InventoryData {
     const base: InventoryData = {
       coins: 800,
@@ -216,6 +267,7 @@ export class ItemInventory {
       const ownedStyles = filter('fighting-style', parsed.ownedStyles);
       if (!ownedStyles.includes(STARTER_STYLE_ID)) ownedStyles.unshift(STARTER_STYLE_ID);
       const loadout: SkillLoadoutState = { ...base.loadout, ...sanitizeLoadout(parsed.loadout) };
+      const consumables = sanitizeConsumables(parsed.consumables);
       return {
         coins:
           typeof parsed.coins === 'number' && Number.isFinite(parsed.coins)
@@ -225,8 +277,8 @@ export class ItemInventory {
         ownedGuns: filter('gun', parsed.ownedGuns),
         ownedStyles,
         ownedFruits: filter('fruit', parsed.ownedFruits),
-        consumables: sanitizeConsumables(parsed.consumables),
-        quickslots: sanitizeQuickslots(parsed.quickslots),
+        consumables,
+        quickslots: sanitizeQuickslots(parsed.quickslots, consumables),
         loadout,
       };
     } catch {
@@ -248,12 +300,12 @@ function sanitizeConsumables(value: unknown): Record<string, number> {
 }
 
 /** ตรวจ quickslots (ยาว QUICKSLOT_COUNT, แต่ละช่องเป็น potion id ที่มีจริง หรือ null) */
-function sanitizeQuickslots(value: unknown): (string | null)[] {
+function sanitizeQuickslots(value: unknown, consumables: Record<string, number>): (string | null)[] {
   const slots: (string | null)[] = new Array(QUICKSLOT_COUNT).fill(null);
   if (Array.isArray(value)) {
     for (let i = 0; i < QUICKSLOT_COUNT; i++) {
       const v = value[i];
-      if (typeof v === 'string' && getPotion(v)) slots[i] = v;
+      if (typeof v === 'string' && getPotion(v) && (consumables[v] ?? 0) > 0) slots[i] = v;
     }
   }
   return slots;

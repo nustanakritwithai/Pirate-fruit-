@@ -312,8 +312,21 @@ export class TouchControls {
     this.blockBtn.style.display = display;
     this.weaponBtn.style.display = display;
     for (const button of this.skillButtons) button.style.display = display;
-    for (const button of this.potionButtons) button.style.display = display;
+    for (const button of this.potionButtons) button.style.display = 'flex';
     this.dashBtn.classList.toggle('tc-boat-boost', mode === 'boat');
+  }
+
+  resetTransientInputs(): void {
+    this.jumpHeldRaw = false;
+    this.blockHeldRaw = false;
+    this.blockBtn.classList.remove('tc-on');
+    this.joyPointerId = null;
+    this.camPointerId = null;
+    this.joystickActive = false;
+    this.moveX = 0;
+    this.moveZ = 0;
+    this.joyBase.classList.remove('tc-visible');
+    this.cancelSkillAim();
   }
 
   /** อ่านช่องลัดยาที่แตะหนึ่งครั้ง คืน 1-2 หรือ 0 */
