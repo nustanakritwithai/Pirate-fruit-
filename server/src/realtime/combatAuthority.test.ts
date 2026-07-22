@@ -4,6 +4,7 @@ import {
   PVP_MAX_HP,
   PVP_MELEE_DAMAGE,
   PVP_MELEE_KNOCKBACK_DURATION,
+  PVP_MELEE_HITSTUN_DURATION,
   PVP_MELEE_KNOCKBACK_SPEED,
   PVP_MELEE_RANGE,
   PVP_RESPAWN_MS,
@@ -62,7 +63,7 @@ describe('S15 CombatAuthority', () => {
     expect(combat.resolveAttack(1_000, 'a', near, 'b', near2, 'melee')).not.toBeNull();
     expect(
       combat.resolveAttack(
-        1_000 + PVP_MELEE_KNOCKBACK_DURATION * 1_000 - 1,
+        1_000 + PVP_MELEE_HITSTUN_DURATION * 1_000 - 1,
         'b',
         near2,
         'a',
@@ -72,7 +73,7 @@ describe('S15 CombatAuthority', () => {
     ).toBeNull();
     expect(
       combat.resolveAttack(
-        1_000 + PVP_MELEE_KNOCKBACK_DURATION * 1_000,
+        1_000 + PVP_MELEE_HITSTUN_DURATION * 1_000,
         'b',
         near2,
         'a',

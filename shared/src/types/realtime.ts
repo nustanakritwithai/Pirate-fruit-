@@ -131,6 +131,8 @@ export interface RealtimeKnockback {
   directionZ: number;
   speed: number;
   duration: number;
+  /** Separate control-lock window; optional for mixed-version payloads. */
+  stunDuration?: number;
 }
 
 export interface RealtimeCombatDefeat {
@@ -358,5 +360,7 @@ export const PVP_SKILL_KNOCKBACK_SPEED = 14;
 /** Longer launch windows make normal hits readable and block an immediate counterattack. */
 export const PVP_MELEE_KNOCKBACK_DURATION = 0.34;
 export const PVP_SKILL_KNOCKBACK_DURATION = 0.4;
+export const PVP_MELEE_HITSTUN_DURATION = 0.4;
+export const PVP_SKILL_HITSTUN_DURATION = 0.4;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;
