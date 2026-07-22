@@ -480,6 +480,9 @@ export class PlayerCombat {
     const speed = Math.max(0, Number(knockback.speed));
     const duration = Math.max(0.05, Number(knockback.duration));
     if (speed > 0) {
+      // Lock local input for the authoritative hit-stun window so the defender
+      // cannot immediately trade damage back while being launched.
+      this.controller.applyStun(duration);
       this.controller.applyKnockback(directionX, directionZ, speed, duration);
       this.enterState('knockback', duration);
     }

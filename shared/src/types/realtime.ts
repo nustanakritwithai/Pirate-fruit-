@@ -156,6 +156,7 @@ export type RealtimeCombatRejectReason =
   | 'target-unavailable'
   | 'different-island'
   | 'defeated'
+  | 'stunned'
   | 'cooldown'
   | 'out-of-range';
 
@@ -352,9 +353,10 @@ export const PVP_ATTACK_MIN_INTERVAL_MS = 300;
 export const PVP_MELEE_RANGE = 4.5;
 export const PVP_SKILL_RANGE = 22;
 /** Presentation-only impulse computed by the Server after a confirmed hit. */
-export const PVP_MELEE_KNOCKBACK_SPEED = 6;
-export const PVP_SKILL_KNOCKBACK_SPEED = 10;
-export const PVP_MELEE_KNOCKBACK_DURATION = 0.16;
-export const PVP_SKILL_KNOCKBACK_DURATION = 0.24;
+export const PVP_MELEE_KNOCKBACK_SPEED = 8;
+export const PVP_SKILL_KNOCKBACK_SPEED = 12;
+/** Keep the defender locked through the next normal attack window, while leaving a combo in range. */
+export const PVP_MELEE_KNOCKBACK_DURATION = 0.28;
+export const PVP_SKILL_KNOCKBACK_DURATION = 0.32;
 /** แพ้แล้วเกิดใหม่ (HP เต็ม) หลังผ่านไปกี่มิลลิวินาที */
 export const PVP_RESPAWN_MS = 5_000;
