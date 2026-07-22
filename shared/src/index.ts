@@ -17,5 +17,6 @@ export * from './quest/definitions.js';
 export * from './types/monster.js';
 export * from './monster/rewards.js';
 export * from './progression/level.js';
+export * from './shop/catalog.js';
 export * from './types/progression.js';
 export * from './validation/guards.js';
