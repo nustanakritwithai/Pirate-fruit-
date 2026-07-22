@@ -387,7 +387,7 @@ async function main(): Promise<void> {
           playerCombat?.notifyDamaged();
           hud.flashDamage();
           if (resolution.taken > 0) {
-            effects.spawnDamageNumber(controller.position, Math.round(resolution.taken), '#ff6b6b');
+            effects.spawnPlayerDamageNumber(controller.position, Math.round(resolution.taken));
           }
           if (resolution.defeated) {
             audioBridge?.notifyDeath();
@@ -437,7 +437,7 @@ async function main(): Promise<void> {
         controller.hp = Math.max(0, Math.round(fraction * controller.hpMax));
         hud.flashDamage();
         playerCombat?.notifyAuthoritativeHit(knockback, controller.hp > 0);
-        effects.spawnDamageNumber(controller.position, damage, '#ff6b6b');
+        effects.spawnPlayerDamageNumber(controller.position, damage);
         audio.play('combat.hit', {
           eventId: `pvp-hit:${attackerId}:${targetId}:${hp}:${damage}`,
           position: controller.position,
@@ -718,7 +718,7 @@ async function main(): Promise<void> {
         playerCombat?.notifyDamaged();
         hud.flashDamage();
         // ตัวเลขดาเมจแดงเด้งเหนือหัวผู้เล่น (แยกสีจากเลขทำมอนสเตอร์ที่เป็นเหลือง)
-        if (amount > 0) effects.spawnDamageNumber(controller.position, amount, '#ff6b6b');
+        if (amount > 0) effects.spawnPlayerDamageNumber(controller.position, amount);
       },
       modifyIncomingDamage: (attack) =>
         playerCombat?.modifyIncomingDamage(attack) ?? attack.amount,

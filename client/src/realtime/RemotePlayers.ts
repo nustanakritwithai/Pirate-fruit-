@@ -49,6 +49,11 @@ interface RemotePlayer {
   snapshot: RealtimePresenceSnapshot;
   /** Presentation-only recoil layered over interpolated Server presence. */
   hitOffset: THREE.Vector3;
+  /** Last hit impulse, held until a newer presence frame confirms the movement. */
+  hitOrigin: THREE.Vector3;
+  hitDirection: THREE.Vector3;
+  hitDistance: number;
+  hitUntil: number;
 }
 
 function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
@@ -237,6 +242,10 @@ export class RemotePlayers implements Updatable {
         lod,
         snapshot,
         hitOffset: new THREE.Vector3(),
+        hitOrigin: new THREE.Vector3(snapshot.x, snapshot.y, snapshot.z),
+        hitDirection: new THREE.Vector3(),
+        hitDistance: 0,
+        hitUntil: 0,
       });
       return;
     }
@@ -255,6 +264,20 @@ export class RemotePlayers implements Updatable {
       player.avatarKind = kind;
       player.animator = avatar.animator;
       player.lod = nextLod;
+    }
+    // Presence frames already in flight can describe the pre-hit position. Keep
+    // the recoil visible until a later frame has actually moved in the impulse
+    // direction; otherwise the ghost only twitches and immediately snaps back.
+    if (player.hitDistance > 0 && this.now() < player.hitUntil) {
+      const progress = (snapshot.x - player.hitOrigin.x) * player.hitDirection.x
+        + (snapshot.z - player.hitOrigin.z) * player.hitDirection.z;
+      if (progress >= player.hitDistance * 0.45) {
+        player.hitOffset.set(0, 0, 0);
+        player.hitDistance = 0;
+      }
+    } else if (player.hitDistance > 0) {
+      player.hitOffset.set(0, 0, 0);
+      player.hitDistance = 0;
     }
     player.target.set(snapshot.x, snapshot.y, snapshot.z);
     player.targetHeading = snapshot.heading;
@@ -277,7 +300,13 @@ export class RemotePlayers implements Updatable {
     // Keep remote recoil visible for the full impulse instead of capping normal
     // melee hits to the old sub-meter presentation distance.
     const distance = THREE.MathUtils.clamp(speed * duration * 0.72, 0.25, 2.4);
-    player.hitOffset.set((directionX / length) * distance, 0, (directionZ / length) * distance);
+    const normalizedX = directionX / length;
+    const normalizedZ = directionZ / length;
+    player.hitOrigin.copy(player.target);
+    player.hitDirection.set(normalizedX, 0, normalizedZ);
+    player.hitDistance = distance;
+    player.hitUntil = this.now() + 900;
+    player.hitOffset.set(normalizedX * distance, 0, normalizedZ * distance);
     player.animation = {
       ...player.animation,
       combatState: knockback ? 'knockback' : 'stunned',
@@ -384,7 +413,7 @@ export class RemotePlayers implements Updatable {
         : fullIds.has(playerId) ? 'full' : distance <= visibleLimit ? 'low' : 'hidden';
       this.setLod(player, desiredLod);
       player.group.position.lerp(player.target, factor);
-      player.hitOffset.multiplyScalar(Math.exp(-12 * Math.min(dt, 0.05)));
+      player.hitOffset.multiplyScalar(Math.exp(-4 * Math.min(dt, 0.05)));
       if (player.hitOffset.lengthSq() < 1e-5) player.hitOffset.set(0, 0, 0);
       player.group.position.add(player.hitOffset);
       // หมุนตัวเข้าหา heading เป้าหมายแบบสั้นสุด (กันหมุนรอบเกิน)

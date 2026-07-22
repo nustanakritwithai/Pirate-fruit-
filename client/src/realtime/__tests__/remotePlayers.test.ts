@@ -147,6 +147,23 @@ describe('S13 RemotePlayers', () => {
     expect(ghost.position.z).toBeCloseTo(20, 1);
   });
 
+  it('does not snap recoil back when an older presence frame arrives first', () => {
+    const scene = new THREE.Scene();
+    let now = 1_000;
+    const players = new RemotePlayers(scene, 'starter-island', () => now);
+    players.applyPresence(snapshot({ x: 10, z: 20 }));
+    players.applyCombatHit('char-b', { directionX: 1, directionZ: 0, speed: 8, duration: 0.28 });
+    players.applyPresence(snapshot({ x: 10, z: 20 })); // frame sent before knockback
+    players.update(0.016);
+    const ghost = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+    expect(ghost.position.x).toBeGreaterThan(10.4);
+
+    now += 120;
+    players.applyPresence(snapshot({ x: 12.2, z: 20 })); // target caught up
+    players.update(0.016);
+    expect(ghost.position.x).toBeGreaterThan(10.4);
+  });
+
   it('renders a boat proxy when onBoat and swaps back to the player visual on foot (S14)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
