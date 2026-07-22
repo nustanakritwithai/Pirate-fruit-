@@ -4,6 +4,7 @@ import {
   BOAT_CANNON_COOLDOWN_MS,
   BOAT_DOCK_SPAWNS,
   BOAT_RESPAWN_MS,
+  BOAT_WORLD_BOUNDARY,
   type BoatWorldSnapshot,
 } from '@pirate-fruit/shared';
 import { BoatSimulation, type CanonicalBoat } from './boatSimulation.js';
@@ -43,11 +44,32 @@ describe('S17 BoatSimulation', () => {
     expect(state.speed).toBeLessThanOrEqual(AUTHORITATIVE_BOAT_DEFINITIONS['training-dinghy']!.maxSpeed);
   });
 
+  it('applies boost on the authoritative simulation instead of trusting client speed', () => {
+    const sim = new BoatSimulation();
+    sim.restore([row({ entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'] })]);
+    sim.setInput(100, 'owner-a', 'boat-a', 1, 0, false, true);
+    sim.tick(200, 100);
+    const boosted = sim.stateOf('boat-a')!;
+    expect(boosted.speed).toBeGreaterThan(AUTHORITATIVE_BOAT_DEFINITIONS['training-dinghy']!.acceleration * 0.1);
+    expect(boosted.speed).toBeLessThanOrEqual(AUTHORITATIVE_BOAT_DEFINITIONS['training-dinghy']!.maxSpeed * 1.35);
+
+    // A second request during cooldown is accepted as ordinary input but cannot
+    // extend the boost beyond the server-owned window.
+    sim.setInput(300, 'owner-a', 'boat-a', 1, 0, false, true);
+    sim.tick(400, 100);
+    expect(sim.stateOf('boat-a')!.speed).toBeLessThanOrEqual(
+      AUTHORITATIVE_BOAT_DEFINITIONS['training-dinghy']!.maxSpeed * 1.35,
+    );
+  });
+
   it('boards only in range, carries passenger identity, and disembarks cleanly', () => {
     const sim = new BoatSimulation();
     sim.restore([row({ entityId: 'boat-a', ownerId: 'owner-a', x: 10, z: 10 })]);
     expect(sim.board('boat-a', 'guest', 'starter-island', 100, 100)).toBeNull();
     expect(sim.board('boat-a', 'guest', 'starter-island', 12, 10)?.passengerIds).toContain('guest');
+    expect(sim.stateOf('boat-a')?.helmId).toBeUndefined();
+    expect(sim.takeHelm('boat-a', 'guest')?.helmId).toBe('guest');
+    expect(sim.leaveHelm('guest')?.helmId).toBeUndefined();
     expect(sim.boatOfPassenger('guest')?.entityId).toBe('boat-a');
     expect(sim.disembark('guest')?.passengerIds).not.toContain('guest');
   });
@@ -69,13 +91,27 @@ describe('S17 BoatSimulation', () => {
 
   it('does not teleport through the world boundary during a long frame', () => {
     const sim = new BoatSimulation();
-    sim.restore([row({ entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'], x: 519, heading: Math.PI / 2, speed: 9 })]);
+    sim.restore([row({ entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'], x: BOAT_WORLD_BOUNDARY - 1, heading: Math.PI / 2, speed: 9 })]);
     sim.setInput(1_000, 'owner-a', 'boat-a', 1, 0);
     const before = sim.stateOf('boat-a')!;
     sim.tick(1_250, 5_000); // dt is capped; collision restores the previous safe transform
     const after = sim.stateOf('boat-a')!;
     expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(3);
-    expect(Math.hypot(after.x, after.z)).toBeLessThanOrEqual(520);
+    expect(Math.hypot(after.x, after.z)).toBeLessThanOrEqual(BOAT_WORLD_BOUNDARY);
+  });
+
+  it('moves boat interest to the nearest island while sailing', () => {
+    const sim = new BoatSimulation();
+    sim.restore([row({
+      entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'],
+      x: 0, z: -39.5, heading: Math.PI, speed: 9,
+    })]);
+    sim.setInput(1_000, 'owner-a', 'boat-a', 1, 0, false);
+    const result = sim.tick(1_250, 250);
+    expect(sim.stateOf('boat-a')?.islandId).toBe('mist-jungle');
+    expect(result.islandTransitions).toMatchObject([
+      { fromIslandId: 'starter-island', toIslandId: 'mist-jungle' },
+    ]);
   });
 
   it('restores persistent boat/passenger state after restart and handles load budget', () => {
@@ -86,11 +122,11 @@ describe('S17 BoatSimulation', () => {
       ...(index === 0 ? { helmId: 'owner-0', passengerIds: ['owner-0'], speed: 4 } : {}),
     }));
     sim.restore(many);
-    expect(sim.disconnect('owner-0')).toMatchObject({ anchor: true, passengerIds: ['owner-0'] });
+    expect(sim.disconnect('owner-0')).toMatchObject({ anchor: true, passengerIds: [] });
     const recovered = new BoatSimulation();
     recovered.restore(sim.serialize());
     expect(recovered.snapshotForIsland('starter-island')).toHaveLength(200);
-    expect(recovered.boatOfPassenger('owner-0')?.entityId).toBe('boat-0');
+    expect(recovered.boatOfPassenger('owner-0')).toBeNull();
     const started = Date.now();
     for (let tick = 0; tick < 20; tick += 1) recovered.tick(tick * 100, 100);
     expect(Date.now() - started).toBeLessThan(500);
