@@ -2,6 +2,7 @@ import { isTouchDevice } from '../engine/device';
 
 /** ปุ่ม/ข้อความโต้ตอบร่วมกันระหว่างคีย์บอร์ดและจอสัมผัส */
 export class InteractionPrompt {
+  private static active: InteractionPrompt | null = null;
   private readonly element: HTMLButtonElement;
   private requested = false;
 
@@ -39,6 +40,10 @@ export class InteractionPrompt {
   }
 
   showAction(action: string, target = '', icon = '◆'): void {
+    if (InteractionPrompt.active !== this) {
+      InteractionPrompt.active?.hideElement();
+      InteractionPrompt.active = this;
+    }
     const label = target ? `${action} <strong>${target}</strong>` : action;
     this.element.innerHTML = isTouchDevice()
       ? `${icon} ${label}`
@@ -47,6 +52,11 @@ export class InteractionPrompt {
   }
 
   hide(): void {
+    if (InteractionPrompt.active === this) InteractionPrompt.active = null;
+    this.hideElement();
+  }
+
+  private hideElement(): void {
     this.element.style.display = 'none';
     this.requested = false;
   }
