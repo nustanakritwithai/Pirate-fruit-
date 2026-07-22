@@ -233,6 +233,39 @@ describe('S13 presence relay', () => {
     });
   });
 
+  it('relays recurring server-owned boat presence while an anchored passenger is idle', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true);
+    hub.attachBoatWorld({
+      snapshotMessageForIsland: (islandId) => ({ type: 'boat-snapshot', seq: 0, islandId, boats: [] }),
+      handleIntent: async () => ({ accepted: true }),
+      isPassenger: (characterId) => characterId === 'char-a',
+      passengerBoat: (characterId) => characterId === 'char-a' ? {
+        entityId: 'boat-a', ownerId: 'char-a', definitionId: 'training-dinghy',
+        islandId: 'starter-island', x: 4.2, z: -43, heading: 0, speed: 0,
+        hp: 130, maxHp: 130, anchor: true, state: 'docked', passengerIds: ['char-a'],
+      } : null,
+      removePlayer: () => undefined,
+    });
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(cb, moved('starter-island', 0, 0));
+
+    clock += 100;
+    hub.handleClientMessage(ca, moved('wrong-client-island', 999, 999, true));
+    const firstCount = b.sent.filter((message) => message.type === 'presence' && message.playerId === 'char-a').length;
+    clock += 100;
+    hub.handleClientMessage(ca, moved('wrong-client-island', 999, 999, true));
+    const relayed = b.sent.filter((message) => message.type === 'presence' && message.playerId === 'char-a');
+
+    expect(relayed).toHaveLength(firstCount + 1);
+    expect(relayed.at(-1)).toMatchObject({
+      islandId: 'starter-island', x: 4.2, z: -43, onBoat: true, boatId: 'training-dinghy',
+    });
+  });
+
   it('drops the boat id when the player is on foot', () => {
     let clock = 1_000;
     const hub = new RealtimeHub(undefined, () => clock, 200, true);
