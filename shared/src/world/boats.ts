@@ -21,7 +21,7 @@ export const AUTHORITATIVE_BOAT_DEFINITIONS: Record<string, AuthoritativeBoatDef
 
 export const BOAT_WORLD_TICK_MS = 100;
 export const BOAT_WORLD_SNAPSHOT_RANGE = 220;
-export const BOAT_WORLD_BOUNDARY = 520;
+export const BOAT_WORLD_BOUNDARY = 704;
 export const BOAT_BOARD_RANGE = 10;
 export const BOAT_INPUT_MIN_INTERVAL_MS = 50;
 export const BOAT_CANNON_COOLDOWN_MS = 1_800;
@@ -31,11 +31,11 @@ export const BOAT_RESPAWN_MS = 15_000;
 /** Server-owned dock positions. A summon intent never contains a client position. */
 export const BOAT_DOCK_SPAWNS: Record<string, { x: number; z: number; heading: number }> = {
   'starter-island': { x: 4.2, z: -43, heading: Math.PI },
-  'mist-jungle': { x: 113, z: -45, heading: Math.PI / 2 },
-  'sunscar-desert': { x: 175, z: 75, heading: 0 },
-  'azure-frost': { x: 84, z: 190, heading: -Math.PI / 2 },
-  'tempest-sky': { x: -71, z: 210, heading: -Math.PI / 2 },
-  'ember-volcano': { x: -212, z: 139, heading: Math.PI },
+  'mist-jungle': { x: 113, z: -125, heading: Math.PI / 2 },
+  'sunscar-desert': { x: 365, z: -90, heading: 0 },
+  'azure-frost': { x: 549, z: 90, heading: -Math.PI / 2 },
+  'tempest-sky': { x: 484, z: 330, heading: -Math.PI / 2 },
+  'ember-volcano': { x: 243, z: 539, heading: Math.PI },
 };
 
 export type BoatWorldState = 'docked' | 'sailing' | 'sunk' | 'respawning';
@@ -58,7 +58,7 @@ export interface BoatWorldSnapshot {
   respawnAt?: number;
 }
 
-export type BoatIntentAction = 'summon' | 'board' | 'disembark' | 'input' | 'fire';
+export type BoatIntentAction = 'summon' | 'board' | 'take-helm' | 'leave-helm' | 'disembark' | 'input' | 'fire';
 
 export interface RealtimeBoatIntent {
   type: 'boat-intent';
@@ -68,5 +68,7 @@ export interface RealtimeBoatIntent {
   throttle?: number;
   steer?: number;
   anchor?: boolean;
+  /** One-shot request to engage the boat's server-authoritative speed boost. */
+  boost?: boolean;
   fireSide?: 'port' | 'starboard';
 }
