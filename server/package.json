@@ -18,6 +18,7 @@
     "db:seed:dev": "tsx src/persistence/runSeed.ts",
     "dev": "npm run build:economy && tsx watch src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
+    "presmoke": "npm run build",
     "smoke": "node scripts/smoke-runtime.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build:economy && vitest run --no-file-parallelism"
