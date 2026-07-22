@@ -4,11 +4,13 @@ import {
   PVP_MELEE_DAMAGE,
   PVP_MELEE_KNOCKBACK_DURATION,
   PVP_MELEE_KNOCKBACK_SPEED,
+  PVP_MELEE_HITSTUN_DURATION,
   PVP_MELEE_RANGE,
   PVP_RESPAWN_MS,
   PVP_SKILL_DAMAGE,
   PVP_SKILL_KNOCKBACK_DURATION,
   PVP_SKILL_KNOCKBACK_SPEED,
+  PVP_SKILL_HITSTUN_DURATION,
   PVP_SKILL_RANGE,
 } from '@pirate-fruit/shared';
 import type { RealtimeCombatRejectReason, RealtimeKnockback } from '@pirate-fruit/shared';
@@ -85,6 +87,7 @@ function knockbackFor(
     directionZ: dz / length,
     speed: kind === 'skill' ? PVP_SKILL_KNOCKBACK_SPEED : PVP_MELEE_KNOCKBACK_SPEED,
     duration: kind === 'skill' ? PVP_SKILL_KNOCKBACK_DURATION : PVP_MELEE_KNOCKBACK_DURATION,
+    stunDuration: kind === 'skill' ? PVP_SKILL_HITSTUN_DURATION : PVP_MELEE_HITSTUN_DURATION,
   };
 }
 
@@ -176,7 +179,10 @@ export class CombatAuthority {
     const defeated = target.hp <= 0;
     if (defeated) target.respawnAt = now + PVP_RESPAWN_MS;
     const knockback = knockbackFor(attackerPos, targetPos, kind, defeated);
-    if (knockback) target.hitstunUntil = Math.max(target.hitstunUntil, now + knockback.duration * 1_000);
+    if (knockback) {
+      const stunDuration = knockback.stunDuration ?? knockback.duration;
+      target.hitstunUntil = Math.max(target.hitstunUntil, now + stunDuration * 1_000);
+    }
     return {
       accepted: true,
       resolution: {

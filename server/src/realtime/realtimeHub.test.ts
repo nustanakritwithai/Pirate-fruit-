@@ -327,7 +327,7 @@ describe('S15 PvP combat authority', () => {
       | undefined;
     expect(hitToTarget).toMatchObject({ attackerId: 'char-a', targetId: 'char-b' });
     expect(hitToTarget!.hp).toBeLessThan(hitToTarget!.maxHp);
-    expect(hitToTarget!.knockback).toMatchObject({ speed: 10, duration: 0.34 });
+    expect(hitToTarget!.knockback).toMatchObject({ speed: 10, duration: 0.34, stunDuration: 0.4 });
     // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
     expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
     expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
