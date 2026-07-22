@@ -7,6 +7,7 @@ import {
   BOAT_INPUT_MIN_INTERVAL_MS,
   BOAT_RESPAWN_MS,
   BOAT_WORLD_BOUNDARY,
+  ISLAND_LAYOUT_OFFSETS,
   type BoatWorldSnapshot,
 } from '@pirate-fruit/shared';
 
@@ -24,6 +25,8 @@ export interface BoatWorldRow extends BoatWorldSnapshot {}
 interface BoatRuntime extends BoatWorldSnapshot {
   throttle: number;
   steer: number;
+  boostTimer: number;
+  boostCooldown: number;
   lastInputAt: number;
   lastCannonAt: number;
 }
@@ -32,6 +35,7 @@ export interface BoatTickResult {
   dirtyByIsland: Map<string, BoatWorldSnapshot[]>;
   respawns: BoatWorldSnapshot[];
   collisionDamage: Array<{ boat: BoatWorldSnapshot; damage: number }>;
+  islandTransitions: Array<{ fromIslandId: string; toIslandId: string; boat: BoatWorldSnapshot }>;
 }
 
 export interface CannonResolution {
@@ -72,6 +76,8 @@ export class BoatSimulation {
         passengerIds: [...row.passengerIds],
         throttle: 0,
         steer: 0,
+        boostTimer: 0,
+        boostCooldown: 0,
         lastInputAt: 0,
         lastCannonAt: 0,
       });
@@ -126,6 +132,8 @@ export class BoatSimulation {
       passengerIds: [],
       throttle: 0,
       steer: 0,
+      boostTimer: 0,
+      boostCooldown: 0,
       lastInputAt: 0,
       lastCannonAt: 0,
     };
@@ -140,8 +148,27 @@ export class BoatSimulation {
     if (Math.hypot(boat.x - x, boat.z - z) > BOAT_BOARD_RANGE) return null;
     this.removePassenger(characterId);
     if (!boat.passengerIds.includes(characterId)) boat.passengerIds.push(characterId);
-    if (characterId === boat.ownerId && !boat.helmId) boat.helmId = characterId;
     return snapshotOf(boat);
+  }
+
+  takeHelm(entityId: string, characterId: string): BoatWorldSnapshot | null {
+    const boat = this.boats.get(entityId);
+    if (!boat || !boat.passengerIds.includes(characterId) || boat.helmId && boat.helmId !== characterId) return null;
+    if (boat.state === 'sunk' || boat.state === 'respawning') return null;
+    boat.helmId = characterId;
+    boat.anchor = false;
+    return snapshotOf(boat);
+  }
+
+  leaveHelm(characterId: string): BoatWorldSnapshot | null {
+    for (const boat of this.boats.values()) {
+      if (boat.helmId !== characterId) continue;
+      boat.helmId = undefined;
+      boat.throttle = 0;
+      boat.steer = 0;
+      return snapshotOf(boat);
+    }
+    return null;
   }
 
   disembark(characterId: string): BoatWorldSnapshot | null {
@@ -166,12 +193,10 @@ export class BoatSimulation {
   disconnect(characterId: string): BoatWorldSnapshot | null {
     for (const boat of this.boats.values()) {
       if (!boat.passengerIds.includes(characterId)) continue;
-      if (boat.helmId === characterId) {
-        boat.throttle = 0;
-        boat.steer = 0;
-        boat.anchor = true;
-      }
-      return snapshotOf(boat);
+      boat.anchor = true;
+      boat.throttle = 0;
+      boat.steer = 0;
+      return this.disembark(characterId);
     }
     return null;
   }
@@ -183,6 +208,7 @@ export class BoatSimulation {
     throttle: number,
     steer: number,
     anchor?: boolean,
+    boost?: boolean,
   ): BoatWorldSnapshot | null {
     const boat = this.boats.get(entityId);
     if (!boat || boat.helmId !== characterId || boat.state === 'sunk' || boat.state === 'respawning') return null;
@@ -191,6 +217,10 @@ export class BoatSimulation {
     boat.throttle = Math.max(-1, Math.min(1, Number.isFinite(throttle) ? throttle : 0));
     boat.steer = Math.max(-1, Math.min(1, Number.isFinite(steer) ? steer : 0));
     if (typeof anchor === 'boolean') boat.anchor = anchor;
+    if (boost === true && !boat.anchor && boat.boostCooldown <= 0) {
+      boat.boostTimer = 1_200;
+      boat.boostCooldown = 4_000;
+    }
     return snapshotOf(boat);
   }
 
@@ -228,6 +258,7 @@ export class BoatSimulation {
     const dirtyByIsland = new Map<string, BoatWorldSnapshot[]>();
     const respawns: BoatWorldSnapshot[] = [];
     const collisionDamage: Array<{ boat: BoatWorldSnapshot; damage: number }> = [];
+    const islandTransitions: BoatTickResult['islandTransitions'] = [];
     const previous = new Map<string, { x: number; z: number }>();
     const dt = Math.max(0, Math.min(dtMs, 250)) / 1_000;
 
@@ -244,14 +275,29 @@ export class BoatSimulation {
         continue;
       }
       const definition = AUTHORITATIVE_BOAT_DEFINITIONS[boat.definitionId]!;
-      const target = boat.anchor ? 0 : boat.throttle >= 0 ? boat.throttle * definition.maxSpeed : boat.throttle * definition.reverseSpeed;
-      const rate = boat.speed < target ? definition.acceleration : definition.drag * 8;
+      boat.boostTimer = Math.max(0, boat.boostTimer - dtMs);
+      boat.boostCooldown = Math.max(0, boat.boostCooldown - dtMs);
+      const boostScale = boat.boostTimer > 0 ? 1.35 : 1;
+      const target = boat.anchor
+        ? 0
+        : boat.throttle >= 0
+          ? boat.throttle * definition.maxSpeed * boostScale
+          : boat.throttle * definition.reverseSpeed;
+      const rate = boat.speed < target
+        ? definition.acceleration * (boat.boostTimer > 0 ? 1.7 : 1)
+        : definition.drag * 8;
       const step = Math.max(-rate * dt, Math.min(rate * dt, target - boat.speed));
       boat.speed += step;
       const turnFactor = Math.max(0.12, Math.min(1, Math.abs(boat.speed) / 3));
       boat.heading -= boat.steer * definition.turnSpeed * turnFactor * (boat.speed < 0 ? -1 : 1) * dt;
       boat.x += Math.sin(boat.heading) * boat.speed * dt;
       boat.z += Math.cos(boat.heading) * boat.speed * dt;
+      const nextIslandId = this.nearestIslandId(boat.x, boat.z);
+      if (nextIslandId !== boat.islandId) {
+        const fromIslandId = boat.islandId;
+        boat.islandId = nextIslandId;
+        islandTransitions.push({ fromIslandId, toIslandId: nextIslandId, boat: snapshotOf(boat) });
+      }
       boat.state = Math.abs(boat.speed) > 0.15 ? 'sailing' : 'docked';
       if (Math.hypot(boat.x, boat.z) > BOAT_WORLD_BOUNDARY) {
         const old = previous.get(boat.entityId)!;
@@ -282,7 +328,20 @@ export class BoatSimulation {
       list.push(snapshotOf(boat));
       dirtyByIsland.set(boat.islandId, list);
     }
-    return { dirtyByIsland, respawns, collisionDamage };
+    return { dirtyByIsland, respawns, collisionDamage, islandTransitions };
+  }
+
+  private nearestIslandId(x: number, z: number): string {
+    let bestId = 'starter-island';
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const [islandId, center] of Object.entries(ISLAND_LAYOUT_OFFSETS)) {
+      const distance = (center.x - x) ** 2 + (center.z - z) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestId = islandId;
+      }
+    }
+    return bestId;
   }
 
   private sink(boat: BoatRuntime, now: number): void {
