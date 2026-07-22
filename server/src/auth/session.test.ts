@@ -44,6 +44,15 @@ class MemorySessionRepository implements SessionRepository {
     this.touched.add(sessionId);
   }
 
+  async renameLegacyGuest(userId: string, characterId: string, name: string): Promise<string | null> {
+    const record = [...this.records.values()].find(
+      (candidate) => candidate.userId === userId && candidate.characterId === characterId,
+    );
+    if (!record || !record.characterName.startsWith('Guest-')) return null;
+    record.characterName = name;
+    return name;
+  }
+
   async revoke(sessionId: string): Promise<boolean> {
     if (this.revoked.has(sessionId)) return false;
     this.revoked.add(sessionId);
@@ -199,6 +208,15 @@ describe('guest session API', () => {
       metrics: { sessionsCreatedTotal: 1, sessionsResumedTotal: 2 },
       features: { remoteSession: true },
     });
+
+    const renamedLegacyGuest = await server.inject({
+      method: 'POST',
+      url: '/api/session/guest',
+      headers: { cookie, origin: 'https://game.example' },
+      payload: { name: 'กัปตันคนใหม่' },
+    });
+    expect(renamedLegacyGuest.statusCode).toBe(200);
+    expect(renamedLegacyGuest.json().session.characterName).toBe('กัปตันคนใหม่');
 
     const badLogout = await server.inject({
       method: 'POST',
