@@ -79,22 +79,6 @@ export const STARTER_NPCS: NPCDefinition[] = [
     ],
   },
   {
-    id: 'market-trader-nok',
-    islandId: 'starter-island',
-    name: 'นก',
-    role: 'พ่อค้าเกาะใบไม้',
-    x: 9.5,
-    z: 10,
-    color: 0x4a8a5a,
-    action: 'trade-shop',
-    tradeVendorId: 'vendor-starter-pao',
-    dialogue: [
-      'ยินดีต้อนรับสู่ตลาดเกาะใบไม้! ราคาอาหารและไม้เปลี่ยนตามสต็อกจริง',
-      'ซื้อถูกเมื่อเกาะล้น แล่นเรือไปขายเกาะที่ขาด — ดูข่าวตลาดด้านล่างจอ',
-      'เถ้าแก่เปาข้างๆ ขายยา ถ้าต้องการเตรียมของก่อนออกเดินทาง',
-    ],
-  },
-  {
     id: 'shipwright-mek',
     islandId: 'starter-island',
     name: 'ช่างเรือเมฆ',
@@ -103,6 +87,7 @@ export const STARTER_NPCS: NPCDefinition[] = [
     z: -33,
     color: 0x5a8a9a,
     action: 'trade-shop',
+    dockId: 'starter-harbor',
     tradeVendorId: 'vendor-starter-shipyard',
     dialogue: [
       'อู่เรือผลิตชิ้นส่วนจากไม้ เหล็ก และผ้า — ราคาขึ้นลงตามวัตถุดิบ',
@@ -346,7 +331,8 @@ const NPC_HUB_OFFSETS: readonly (readonly [number, number])[] = [
 ];
 
 function isDockNpc(npc: NPCDefinition): boolean {
-  return npc.action === 'boat-shop'
+  return npc.dockId !== undefined
+    || npc.action === 'boat-shop'
     || npc.id.startsWith('dock-trader-')
     || npc.tradeVendorId?.includes('-harbor') === true;
 }

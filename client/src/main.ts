@@ -491,7 +491,15 @@ async function main(): Promise<void> {
     },
     // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
     onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
-    onWorldMonsterDelta: (islandId, updates) => sharedMonsters?.applyDelta(islandId, updates),
+    onWorldMonsterDelta: (islandId, updates) => {
+      sharedMonsters?.applyDelta(islandId, updates);
+      if (islandId !== islandManager.activeIsland) return;
+      for (const update of updates) {
+        if (!update.damage || update.damage <= 0) continue;
+        const at = sharedMonsters?.positionOf(update.spawnId);
+        if (at) effects.spawnDamageNumber(at, update.damage);
+      }
+    },
     onWorldMonsterAttack: (attack) => {
       sharedMonsters?.applyAttack(attack, selfCharacterId ?? undefined);
       const position = sharedMonsters?.positionOf(attack.spawnId);
