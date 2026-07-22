@@ -133,6 +133,9 @@ class RemoteRepositoryClient {
       try {
         const response = await this.fetcher(`${this.baseUrl}${path}`, {
           ...init,
+          // Mutation bodies are small JSON documents; keepalive lets a pagehide
+          // checkpoint finish instead of being cancelled with the closing tab.
+          keepalive: init?.method !== undefined && init.method !== 'GET',
           credentials: 'include',
           headers: {
             accept: 'application/json',
