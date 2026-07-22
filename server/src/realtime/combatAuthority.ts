@@ -161,6 +161,10 @@ export class CombatAuthority {
       return { accepted: false, reason: 'defeated' };
     }
     if (attacker.hitstunUntil > now) return { accepted: false, reason: 'stunned' };
+    // Do not stack another hit while the target is still in the authoritative
+    // hit-stun window. A combo may continue after the window expires, but a
+    // held attack cannot drain HP every cooldown tick during one stun.
+    if (target.hitstunUntil > now) return { accepted: false, reason: 'stunned' };
 
     // throttle: โจมตีเป้าเดิมถี่เกินไป = ทิ้ง (กันออโต้)
     const lastAt = attacker.lastAttackAt.get(targetId) ?? -Infinity;

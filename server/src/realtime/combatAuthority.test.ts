@@ -54,8 +54,10 @@ describe('S15 CombatAuthority', () => {
     expect(combat.resolveAttack(1_000, 'a', near, 'b', near2, 'melee')).not.toBeNull();
     // เร็วเกินไป → ทิ้ง
     expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS - 1, 'a', near, 'b', near2, 'melee')).toBeNull();
-    // พ้นคูลดาวน์ → โดนอีกครั้ง
-    expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS, 'a', near, 'b', near2, 'melee')).not.toBeNull();
+    // พ้นคูลดาวน์แต่ยังอยู่ใน hit-stun → ยังไม่โดนซ้ำ
+    expect(combat.resolveAttack(1_000 + PVP_ATTACK_MIN_INTERVAL_MS, 'a', near, 'b', near2, 'melee')).toBeNull();
+    // พ้น hit-stun → combo hit ถัดไปจึงเข้าได้
+    expect(combat.resolveAttack(1_000 + PVP_MELEE_HITSTUN_DURATION * 1_000, 'a', near, 'b', near2, 'melee')).not.toBeNull();
   });
 
   it('keeps a hit target in a short authoritative hit-stun window', () => {
@@ -90,7 +92,7 @@ describe('S15 CombatAuthority', () => {
     // ตีจนตาย (เว้นระยะคูลดาวน์)
     for (let i = 0; i < Math.ceil(PVP_MAX_HP / PVP_MELEE_DAMAGE); i += 1) {
       last = combat.resolveAttack(now, 'a', near, 'b', near2, 'melee') ?? last;
-      now += PVP_ATTACK_MIN_INTERVAL_MS;
+      now += PVP_MELEE_HITSTUN_DURATION * 1_000;
     }
     expect(last?.defeated).toBe(true);
     expect(combat.isAlive('b')).toBe(false);
