@@ -21,7 +21,10 @@ import { MonsterService } from '../monster/monsterService.js';
 import { PostgresQuestRepository } from '../quest/questRepository.js';
 import { QuestService } from '../quest/questService.js';
 import { PostgresPlayerSaveRepository } from '../player/playerSaveRepository.js';
-import { defaultPlayerState } from '../player/playerState.js';
+import {
+  PlayerDocumentValidationError,
+  defaultPlayerState,
+} from '../player/playerState.js';
 import { ProgressionService } from './progressionService.js';
 
 const CHARACTER = '11111111-1111-4111-8111-111111111111';
@@ -68,18 +71,19 @@ async function seededPool(level = 1, coins = 0): Promise<Pool> {
   return pool;
 }
 
-async function serverProgress(pool: Pool): Promise<{ level: number; exp: number }> {
+async function serverProgress(pool: Pool): Promise<{ level: number; exp: number; statPoints: number }> {
   const character = await pool.query<{ level: number }>(
     'select level from characters where id = $1',
     [CHARACTER],
   );
-  const progression = await pool.query<{ exp: string }>(
-    'select exp::text as exp from player_progression where character_id = $1',
+  const progression = await pool.query<{ exp: string; stat_points: number }>(
+    'select exp::text as exp, stat_points from player_progression where character_id = $1',
     [CHARACTER],
   );
   return {
     level: character.rows[0]?.level ?? -1,
     exp: Number(progression.rows[0]?.exp ?? '0'),
+    statPoints: progression.rows[0]?.stat_points ?? 0,
   };
 }
 
@@ -103,7 +107,7 @@ describe('S12 progression authority', () => {
       idempotencyKey: 'kills:level-walk',
       kills: [{ monsterId: 'crab', count: 3 }],
     });
-    expect(await serverProgress(pool)).toEqual({ level: 2, exp: 4 });
+    expect(await serverProgress(pool)).toEqual({ level: 2, exp: 4, statPoints: 3 });
   });
 
   it('accrues exp from quest claims on the server', async () => {
@@ -122,7 +126,7 @@ describe('S12 progression authority', () => {
       idempotencyKey: 'quest:level-walk',
     });
     // 120 exp: เลเวล 1 (86) → เลเวล 2 เหลือ 34
-    expect(await serverProgress(pool)).toEqual({ level: 2, exp: 34 });
+    expect(await serverProgress(pool)).toEqual({ level: 2, exp: 34, statPoints: 3 });
   });
 
   it('does not walk the level when progression authority is off (S11 behavior)', async () => {
@@ -181,13 +185,220 @@ describe('S12 progression authority', () => {
       },
       state,
     );
-    // level/exp ของ Server อยู่ครบ — ส่วนเหรียญ (transitional) ยังตาม save
-    expect(await serverProgress(pool)).toEqual({ level: 7, exp: 42 });
+    // level/exp/coins ของ Server อยู่ครบ แม้ client ส่งค่าปลอมมาใน full save
+    expect(await serverProgress(pool)).toEqual({ level: 7, exp: 42, statPoints: 0 });
     const coins = await pool.query<{ coins: string }>(
       'select coins::text as coins from characters where id = $1',
       [CHARACTER],
     );
-    expect(Number(coins.rows[0]?.coins)).toBe(777);
+    expect(Number(coins.rows[0]?.coins)).toBe(50);
+  });
+
+  it('accepts only stat allocations backed by server-issued points', async () => {
+    const pool = await seededPool(3, 50);
+    await pool.query(
+      `insert into player_progression (character_id, exp, stat_points)
+       values ($1, 0, 6)`,
+      [CHARACTER],
+    );
+    const saves = new PostgresPlayerSaveRepository(pool, { preserveServerProgression: true });
+    const legitimate = defaultPlayerState();
+    legitimate.progression.level = 999;
+    legitimate.progression.coins = 999_999;
+    legitimate.progression.stats.combat = 3;
+    legitimate.progression.statPoints = 4;
+    await saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:valid-stat-allocation',
+        requestHash: 'v'.repeat(64),
+        expectedRevision: 0,
+      },
+      legitimate,
+    );
+    const stored = await saves.load(CHARACTER);
+    expect(stored.state?.progression).toMatchObject({
+      level: 3,
+      coins: 50,
+      statPoints: 4,
+      stats: { combat: 3 },
+    });
+
+    const forged = defaultPlayerState();
+    forged.progression.stats.combat = 2_800;
+    forged.progression.statPoints = 0;
+    await expect(saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:forged-stat-allocation',
+        requestHash: 'f'.repeat(64),
+        expectedRevision: 1,
+      },
+      forged,
+    )).rejects.toBeInstanceOf(PlayerDocumentValidationError);
+  });
+
+  it('accepts mastery only within rewards recorded by the Server', async () => {
+    const pool = await seededPool(1, 0);
+    const monsters = new MonsterService(
+      new PostgresMonsterRepository(pool, { progressionAuthority: true }),
+    );
+    await monsters.grantKills(CHARACTER, {
+      schemaVersion: V,
+      idempotencyKey: 'kills:mastery-budget',
+      kills: [{ monsterId: 'crab', count: 1 }],
+    });
+    const saves = new PostgresPlayerSaveRepository(pool, { preserveServerProgression: true });
+
+    const forged = defaultPlayerState();
+    forged.progression.mastery['basic-brawl'].exp = 19; // crab issued exactly 18
+    await expect(saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:forged-mastery',
+        requestHash: 'm'.repeat(64),
+        expectedRevision: 0,
+      },
+      forged,
+    )).rejects.toBeInstanceOf(PlayerDocumentValidationError);
+
+    const legitimate = defaultPlayerState();
+    legitimate.progression.mastery['basic-brawl'].exp = 18;
+    await saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:valid-mastery',
+        requestHash: 'n'.repeat(64),
+        expectedRevision: 0,
+      },
+      legitimate,
+    );
+    expect((await saves.load(CHARACTER)).state?.progression.mastery['basic-brawl'].exp).toBe(18);
+  });
+
+  it('accepts equip/use but rejects forged ownership under Server inventory authority', async () => {
+    const pool = await seededPool(1, 500);
+    await pool.query('insert into player_progression (character_id) values ($1)', [CHARACTER]);
+    await pool.query(
+      `insert into player_inventory (character_id, item_id, quantity, metadata_json)
+       values ($1, 'koko', 1, '{"kind":"sword"}'::jsonb),
+              ($1, 'potion-hp', 2, '{"kind":"consumable"}'::jsonb)`,
+      [CHARACTER],
+    );
+    const saves = new PostgresPlayerSaveRepository(pool, {
+      preserveServerProgression: true,
+      preserveServerInventory: true,
+    });
+    const valid = defaultPlayerState();
+    valid.inventory.ownedSwords = ['koko'];
+    valid.inventory.consumables = { 'potion-hp': 1 };
+    valid.inventory.loadout.equippedSwordId = 'koko';
+    valid.inventory.loadout.equippedWeaponKind = 'sword';
+    await saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:valid-inventory-use',
+        requestHash: 'i'.repeat(64),
+        expectedRevision: 0,
+      },
+      valid,
+    );
+    const inventory = await pool.query<{ item_id: string; quantity: number }>(
+      `select item_id, quantity from player_inventory
+        where character_id = $1 and item_id <> '__inventory_meta__'
+        order by item_id`,
+      [CHARACTER],
+    );
+    expect(inventory.rows).toEqual([
+      { item_id: 'combat', quantity: 1 },
+      { item_id: 'koko', quantity: 1 },
+      { item_id: 'potion-hp', quantity: 1 },
+    ]);
+
+    const forged = structuredClone(valid);
+    forged.inventory.ownedFruits = ['dragon'];
+    await expect(saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:forged-inventory',
+        requestHash: 'j'.repeat(64),
+        expectedRevision: 1,
+      },
+      forged,
+    )).rejects.toBeInstanceOf(PlayerDocumentValidationError);
+  });
+
+  it('does not let a full save rewrite authoritative quest rows', async () => {
+    const pool = await seededPool(1);
+    const questRepository = new PostgresQuestRepository(pool, { progressionAuthority: true });
+    const quests = new QuestService(questRepository);
+    await quests.accept(CHARACTER, { schemaVersion: V, questId: 'starter-crabs' });
+    await quests.progress(CHARACTER, {
+      schemaVersion: V,
+      events: [{ kind: 'kill', targetId: 'crab', amount: 2 }],
+    });
+
+    const saves = new PostgresPlayerSaveRepository(pool, {
+      preserveServerProgression: true,
+      preserveServerQuests: true,
+    });
+    const state = defaultPlayerState();
+    state.progression.completedQuestIds = ['starter-crabs'];
+    state.progression.activeQuestId = null;
+    await saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:quest-authority-preserved',
+        requestHash: 'q'.repeat(64),
+        expectedRevision: 0,
+      },
+      state,
+    );
+
+    expect(await quests.state(CHARACTER)).toEqual({
+      ok: true,
+      schemaVersion: V,
+      active: { questId: 'starter-crabs', progress: [2], status: 'active' },
+      completedQuestIds: [],
+    });
+    expect((await saves.load(CHARACTER)).state?.progression).toMatchObject({
+      activeQuestId: 'starter-crabs',
+      activeQuestProgress: [2],
+      completedQuestIds: [],
+    });
+
+    await quests.progress(CHARACTER, {
+      schemaVersion: V,
+      events: [{ kind: 'kill', targetId: 'crab', amount: 3 }],
+    });
+    await saves.save(
+      {
+        characterId: CHARACTER,
+        operation: 'save',
+        idempotencyKey: 'save:ready-quest-authority-preserved',
+        requestHash: 'r'.repeat(64),
+        expectedRevision: 1,
+      },
+      state,
+    );
+    expect(await quests.state(CHARACTER)).toEqual({
+      ok: true,
+      schemaVersion: V,
+      active: { questId: 'starter-crabs', progress: [5], status: 'completed' },
+      completedQuestIds: [],
+    });
+    expect((await saves.load(CHARACTER)).state?.progression).toMatchObject({
+      activeQuestId: 'starter-crabs',
+      activeQuestProgress: [5],
+      completedQuestIds: [],
+    });
   });
 
   it('overwrites progression from saves when the flag is off (legacy behavior)', async () => {
@@ -206,7 +417,7 @@ describe('S12 progression authority', () => {
       },
       state,
     );
-    expect(await serverProgress(pool)).toEqual({ level: 12, exp: 34 });
+    expect(await serverProgress(pool)).toEqual({ level: 12, exp: 34, statPoints: 0 });
   });
 
   it('serves the authoritative progression state', async () => {
