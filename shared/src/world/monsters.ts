@@ -217,6 +217,14 @@ export interface WorldMonsterDelta {
   heading: number;
   hp: number;
   state: WorldMonsterState;
+  /** Presentation-only hit impulse emitted with the authoritative HP delta. */
+  hitReaction?: WorldMonsterHitReaction;
+}
+
+export interface WorldMonsterHitReaction {
+  directionX: number;
+  directionZ: number;
+  strength: number;
 }
 
 /** รอบจำลอง AI ของ Server (5 ครั้ง/วินาที) — คุมต้นทุน */

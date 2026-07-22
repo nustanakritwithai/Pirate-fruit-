@@ -15,6 +15,7 @@ import {
   type WorldMonsterSnapshot,
   type WorldMonsterDelta,
   type WorldMonsterReward,
+  type RealtimeKnockback,
   type BoatWorldSnapshot,
   type BoatIntentAction,
   type RealtimeCombatRejectReason,
@@ -57,7 +58,14 @@ export interface RealtimeHandlers {
   onPresence?(snapshot: RealtimePresenceSnapshot): void;
   onPresenceLeave?(playerId: string): void;
   /** S15: PvP — Server แจ้งผลการโจมตี/แพ้/เกิดใหม่ (HP เป็น authority ของ Server) */
-  onCombatHit?(hit: { attackerId: string; targetId: string; damage: number; hp: number; maxHp: number }): void;
+  onCombatHit?(hit: {
+    attackerId: string;
+    targetId: string;
+    damage: number;
+    hp: number;
+    maxHp: number;
+    knockback?: RealtimeKnockback;
+  }): void;
   onCombatDefeat?(playerId: string, byId: string): void;
   onCombatRespawn?(playerId: string, hp: number, maxHp: number): void;
   onCombatResult?(result: {
@@ -220,6 +228,7 @@ export class RealtimeClient {
         damage: message.damage,
         hp: message.hp,
         maxHp: message.maxHp,
+        knockback: message.knockback,
       });
     } else if (message.type === 'combat-defeat') {
       this.handlers.onCombatDefeat?.(message.playerId, message.byId);

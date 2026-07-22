@@ -10,6 +10,7 @@ import {
   type SharedMonsterType,
   type SharedSpawnPoint,
   type WorldMonsterDelta,
+  type WorldMonsterHitReaction,
   type WorldMonsterSnapshot,
   type WorldMonsterState,
 } from '@pirate-fruit/shared';
@@ -264,6 +265,14 @@ export class MonsterSimulation {
       monster.targetId = null;
       monster.respawnAt = now + monster.type.respawnMs;
     }
+    const dx = monster.x - attackerX;
+    const dz = monster.z - attackerZ;
+    const length = Math.hypot(dx, dz) || 1;
+    const hitReaction: WorldMonsterHitReaction = {
+      directionX: dx / length,
+      directionZ: dz / length,
+      strength: kind === 'skill' ? 0.82 : 0.64,
+    };
     return {
       spawnId,
       monsterId: monster.type.id,
@@ -272,7 +281,7 @@ export class MonsterSimulation {
       maxHp: monster.type.maxHp,
       damage,
       dead,
-      delta: this.deltaOf(monster),
+      delta: { ...this.deltaOf(monster), hitReaction },
     };
   }
 

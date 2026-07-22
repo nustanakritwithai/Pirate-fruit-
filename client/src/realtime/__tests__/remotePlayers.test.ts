@@ -131,6 +131,22 @@ describe('S13 RemotePlayers', () => {
     expect(chest.quaternion.equals(jumpChest)).toBe(false);
   });
 
+  it('shows a visible presentation recoil for an authoritative combat hit', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ x: 10, z: 20 }));
+    const ghost = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+    players.applyCombatHit('char-b', {
+      directionX: 1,
+      directionZ: 0,
+      speed: 6,
+      duration: 0.16,
+    });
+    players.update(0.016);
+    expect(ghost.position.x).toBeGreaterThan(10.2);
+    expect(ghost.position.z).toBeCloseTo(20, 1);
+  });
+
   it('renders a boat proxy when onBoat and swaps back to the player visual on foot (S14)', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

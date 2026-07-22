@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
 import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
+import type { RealtimeKnockback } from '@pirate-fruit/shared';
 import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
 import { PlayerActionAnimator } from '../animation/PlayerActionAnimator';
 import type { GraphicsTier } from '../engine/GraphicsQuality';
@@ -46,6 +47,8 @@ interface RemotePlayer {
   animation: NonNullable<RealtimePresenceSnapshot['animation']>;
   lod: RemoteLod;
   snapshot: RealtimePresenceSnapshot;
+  /** Presentation-only recoil layered over interpolated Server presence. */
+  hitOffset: THREE.Vector3;
 }
 
 function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
@@ -233,6 +236,7 @@ export class RemotePlayers implements Updatable {
         animation: snapshot.animation ?? defaultAnimation(),
         lod,
         snapshot,
+        hitOffset: new THREE.Vector3(),
       });
       return;
     }
@@ -259,6 +263,23 @@ export class RemotePlayers implements Updatable {
     player.animation = snapshot.animation ?? player.animation;
     player.snapshot = snapshot;
     player.lastSeenAt = this.now();
+  }
+
+  /** Apply a Server-confirmed hit impulse without mutating authoritative presence. */
+  applyCombatHit(playerId: string, knockback?: RealtimeKnockback): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    const directionX = Number(knockback?.directionX ?? 0);
+    const directionZ = Number(knockback?.directionZ ?? -1);
+    const length = Math.hypot(directionX, directionZ) || 1;
+    const speed = Math.max(0, Number(knockback?.speed ?? 4));
+    const duration = Math.max(0.05, Number(knockback?.duration ?? 0.16));
+    const distance = THREE.MathUtils.clamp(speed * duration * 0.55, 0.25, 1.3);
+    player.hitOffset.set((directionX / length) * distance, 0, (directionZ / length) * distance);
+    player.animation = {
+      ...player.animation,
+      combatState: knockback ? 'knockback' : 'stunned',
+    };
   }
 
   private limits(): { full: number; visible: number; boat: number; maxFull: number } {
@@ -361,6 +382,9 @@ export class RemotePlayers implements Updatable {
         : fullIds.has(playerId) ? 'full' : distance <= visibleLimit ? 'low' : 'hidden';
       this.setLod(player, desiredLod);
       player.group.position.lerp(player.target, factor);
+      player.hitOffset.multiplyScalar(Math.exp(-12 * Math.min(dt, 0.05)));
+      if (player.hitOffset.lengthSq() < 1e-5) player.hitOffset.set(0, 0, 0);
+      player.group.position.add(player.hitOffset);
       // หมุนตัวเข้าหา heading เป้าหมายแบบสั้นสุด (กันหมุนรอบเกิน)
       const current = player.group.rotation.y;
       let delta = player.targetHeading - current;
