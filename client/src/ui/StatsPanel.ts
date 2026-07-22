@@ -60,6 +60,8 @@ export class StatsPanel {
       this.render();
     });
     window.addEventListener('keydown', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
       if (event.code === 'KeyK' && !event.repeat) this.toggle();
       if (event.code === 'Escape' && this.openState) this.close();
     });
