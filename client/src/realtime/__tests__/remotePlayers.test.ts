@@ -156,7 +156,7 @@ describe('S13 RemotePlayers', () => {
     players.applyPresence(snapshot({ x: 10, z: 20 })); // frame sent before knockback
     players.update(0.016);
     const ghost = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
-    expect(ghost.position.x).toBeGreaterThan(10.4);
+    expect(ghost.position.x).toBeGreaterThan(10.8);
 
     now += 120;
     players.applyPresence(snapshot({ x: 12.2, z: 20 })); // target caught up

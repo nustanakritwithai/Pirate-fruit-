@@ -299,13 +299,13 @@ export class RemotePlayers implements Updatable {
     const duration = Math.max(0.05, Number(knockback?.duration ?? 0.16));
     // Keep remote recoil visible for the full impulse instead of capping normal
     // melee hits to the old sub-meter presentation distance.
-    const distance = THREE.MathUtils.clamp(speed * duration * 0.72, 0.25, 2.4);
+    const distance = THREE.MathUtils.clamp(speed * duration, 0.25, 3.2);
     const normalizedX = directionX / length;
     const normalizedZ = directionZ / length;
     player.hitOrigin.copy(player.target);
     player.hitDirection.set(normalizedX, 0, normalizedZ);
     player.hitDistance = distance;
-    player.hitUntil = this.now() + 900;
+    player.hitUntil = this.now() + 1_200;
     player.hitOffset.set(normalizedX * distance, 0, normalizedZ * distance);
     player.animation = {
       ...player.animation,
@@ -413,7 +413,7 @@ export class RemotePlayers implements Updatable {
         : fullIds.has(playerId) ? 'full' : distance <= visibleLimit ? 'low' : 'hidden';
       this.setLod(player, desiredLod);
       player.group.position.lerp(player.target, factor);
-      player.hitOffset.multiplyScalar(Math.exp(-4 * Math.min(dt, 0.05)));
+      player.hitOffset.multiplyScalar(Math.exp(-2 * Math.min(dt, 0.05)));
       if (player.hitOffset.lengthSq() < 1e-5) player.hitOffset.set(0, 0, 0);
       player.group.position.add(player.hitOffset);
       // หมุนตัวเข้าหา heading เป้าหมายแบบสั้นสุด (กันหมุนรอบเกิน)
