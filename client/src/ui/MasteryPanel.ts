@@ -1,4 +1,4 @@
-import { SKILLS } from '../combat/CombatData';
+import { listSkillGates, SKILL_LOCK_ENABLED } from '../combat/SkillLoadout';
 import { getMasteryExpRequired } from '../progression/MasterySystem';
 import type { ProgressionManager } from '../progression/ProgressionManager';
 import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
@@ -49,10 +49,10 @@ export class MasteryPanel {
     const level = entry?.level ?? 1;
     const exp = entry?.exp ?? 0;
     const required = getMasteryExpRequired(level);
-    const itemSkills = SKILLS.filter((skill) => skill.category === item.category);
-    const skillLines = itemSkills.length > 0 ? itemSkills.map((skill, index) => {
-      const unlocked = level >= skill.masteryRequired;
-      return `<div>${unlocked ? '✓' : '🔒'} Skill ${index + 1} — ${
+    const itemSkills = listSkillGates(item.category, item.itemId);
+    const skillLines = itemSkills.length > 0 ? itemSkills.map((skill) => {
+      const unlocked = !SKILL_LOCK_ENABLED || level >= skill.masteryRequired;
+      return `<div>${unlocked ? '✓' : '🔒'} ${skill.key} · ${skill.name} — ${
         unlocked ? 'ปลดล็อกแล้ว' : `Mastery ${skill.masteryRequired}`
       }</div>`;
     }).join('') : '<div>ยังไม่มีสกิลสำหรับอุปกรณ์ชิ้นนี้</div>';
