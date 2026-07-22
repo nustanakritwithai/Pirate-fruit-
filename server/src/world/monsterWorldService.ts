@@ -14,6 +14,17 @@ interface ServiceLogger {
   warn(fields: object, message: string): void;
 }
 
+interface PendingDeathReward {
+  characterId: string;
+  islandId: string;
+  spawnId: string;
+  monsterId: string;
+  idempotencyKey: string;
+  retryAt: number;
+  attempts: number;
+  inFlight: boolean;
+}
+
 export interface MonsterWorldServiceOptions {
   now?: () => number;
   repository?: PostgresWorldMonsterRepository;
@@ -36,6 +47,7 @@ export class MonsterWorldService implements WorldMonsterBridge {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTickAt: number;
   private persistAccumMs = 0;
+  private readonly pendingRewards = new Map<string, PendingDeathReward>();
 
   constructor(
     private readonly hub: RealtimeHub,
@@ -111,37 +123,20 @@ export class MonsterWorldService implements WorldMonsterBridge {
         });
         return;
       }
-      // Broadcast the credited death only after the same Server transaction has committed
-      // coins and progression. A retry reuses one key and therefore cannot double-grant.
-      void this.grantDeathReward(characterId, result.monsterId, idempotencyKey)
-        .then((outcome) => {
-          const granted = outcome.rewards[0];
-          this.hub.broadcastWorldMonster(result.islandId, {
-            type: 'world-monster-dead',
-            seq: 0,
-            spawnId,
-            byId: characterId,
-            reward: granted ? {
-              monsterId: granted.monsterId,
-              playerExp: granted.playerExp,
-              coins: granted.coins,
-              masteryExp: granted.masteryExp,
-              coinsTotal: outcome.coinsTotal,
-            } : undefined,
-          });
-        })
-        .catch((error) => {
-          this.options.logger?.warn(
-            { err: error, characterId, spawnId },
-            'shared monster reward failed',
-          );
-          this.hub.broadcastWorldMonster(result.islandId, {
-            type: 'world-monster-dead',
-            seq: 0,
-            spawnId,
-            byId: characterId,
-          });
-        });
+      // Keep the death pending until the idempotent reward transaction commits.
+      // A transient database outage can no longer turn a confirmed kill into a
+      // permanently reward-less death while this process remains alive.
+      this.pendingRewards.set(idempotencyKey, {
+        characterId,
+        islandId: result.islandId,
+        spawnId,
+        monsterId: result.monsterId,
+        idempotencyKey,
+        retryAt: this.now(),
+        attempts: 0,
+        inFlight: false,
+      });
+      this.processPendingRewards();
     }
   }
 
@@ -155,10 +150,45 @@ export class MonsterWorldService implements WorldMonsterBridge {
       idempotencyKey,
       kills: [{ monsterId, count: 1 }],
     };
-    try {
-      return await this.options.rewards!.grantKills(characterId, body);
-    } catch {
-      return this.options.rewards!.grantKills(characterId, body);
+    return this.options.rewards!.grantKills(characterId, body);
+  }
+
+  private processPendingRewards(): void {
+    if (!this.options.rewards) return;
+    const now = this.now();
+    for (const pending of this.pendingRewards.values()) {
+      if (pending.inFlight || pending.retryAt > now) continue;
+      pending.inFlight = true;
+      pending.attempts += 1;
+      void this.grantDeathReward(
+        pending.characterId,
+        pending.monsterId,
+        pending.idempotencyKey,
+      ).then((outcome) => {
+        const granted = outcome.rewards[0];
+        this.pendingRewards.delete(pending.idempotencyKey);
+        this.hub.broadcastWorldMonster(pending.islandId, {
+          type: 'world-monster-dead',
+          seq: 0,
+          spawnId: pending.spawnId,
+          byId: pending.characterId,
+          reward: granted ? {
+            monsterId: granted.monsterId,
+            playerExp: granted.playerExp,
+            coins: granted.coins,
+            masteryExp: granted.masteryExp,
+            coinsTotal: outcome.coinsTotal,
+          } : undefined,
+        });
+      }).catch((error) => {
+        pending.inFlight = false;
+        const delay = Math.min(30_000, 250 * 2 ** Math.min(7, pending.attempts - 1));
+        pending.retryAt = this.now() + delay;
+        this.options.logger?.warn(
+          { err: error, characterId: pending.characterId, spawnId: pending.spawnId, retryInMs: delay },
+          'shared monster reward failed; queued for retry',
+        );
+      });
     }
   }
 
@@ -167,6 +197,7 @@ export class MonsterWorldService implements WorldMonsterBridge {
     const dtMs = now - this.lastTickAt;
     this.lastTickAt = now;
     const { dirtyByIsland, respawns, attacks } = this.sim.tick(now, dtMs, this.hub.worldPlayerViews());
+    this.processPendingRewards();
     for (const [islandId, updates] of dirtyByIsland) {
       this.hub.broadcastWorldMonster(islandId, {
         type: 'world-monster-delta',
