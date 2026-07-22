@@ -39,6 +39,7 @@ interface PendingMonsterAttack {
 function renderState(state: WorldMonsterState): MonsterState {
   if (state === 'dead') return 'dead';
   if (state === 'attack') return 'attack';
+  if (state === 'stunned') return 'idle';
   if (state === 'chase' || state === 'aggro') return 'chase';
   if (state === 'return' || state === 'patrol') return 'return';
   return 'idle';
@@ -116,6 +117,7 @@ export class SharedMonsterClient implements Updatable {
   applyDelta(islandId: string, updates: readonly WorldMonsterDelta[]): void {
     if (islandId !== this.currentIslandId) return;
     for (const update of updates) {
+      if (update.cancelAttackId) this.cancelPendingAttack(update.cancelAttackId);
       const monster = this.monsters.get(update.spawnId);
       if (!monster) continue;
       if (update.state !== 'dead' && !monster.group.visible) {
@@ -149,7 +151,12 @@ export class SharedMonsterClient implements Updatable {
   applyAttack(attack: WorldMonsterAttack, localCharacterId?: string): void {
     if (attack.islandId !== this.currentIslandId || this.seenAttackIds.has(attack.attackId)) return;
     const monster = this.monsters.get(attack.spawnId);
-    if (!monster || monster.monsterId !== attack.monsterId || monster.state === 'dead') return;
+    if (
+      !monster
+      || monster.monsterId !== attack.monsterId
+      || monster.state === 'dead'
+      || monster.state === 'stunned'
+    ) return;
     this.seenAttackIds.add(attack.attackId);
     if (this.seenAttackIds.size > 1024) {
       const oldest = this.seenAttackIds.values().next().value;
@@ -168,7 +175,8 @@ export class SharedMonsterClient implements Updatable {
 
   markDead(spawnId: string): void {
     const monster = this.monsters.get(spawnId);
-      if (!monster) return;
+    if (!monster) return;
+    this.cancelPendingAttacksForSpawn(spawnId);
     monster.state = 'dead';
     monster.hp = 0;
     monster.visual.applyAuthoritativeState(0, monster.maxHp, 'dead');
@@ -223,6 +231,16 @@ export class SharedMonsterClient implements Updatable {
     this.scene.remove(monster.group);
     monster.visual.dispose();
     this.monsters.delete(spawnId);
+    this.cancelPendingAttacksForSpawn(spawnId);
+  }
+
+  private cancelPendingAttack(attackId: string): void {
+    for (let i = this.pendingAttacks.length - 1; i >= 0; i -= 1) {
+      if (this.pendingAttacks[i]?.attack.attackId === attackId) this.pendingAttacks.splice(i, 1);
+    }
+  }
+
+  private cancelPendingAttacksForSpawn(spawnId: string): void {
     for (let i = this.pendingAttacks.length - 1; i >= 0; i -= 1) {
       if (this.pendingAttacks[i]?.attack.spawnId === spawnId) this.pendingAttacks.splice(i, 1);
     }

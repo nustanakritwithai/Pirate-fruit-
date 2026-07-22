@@ -7,6 +7,7 @@ import {
   WORLD_MONSTER_SKILL_DAMAGE,
   WORLD_MONSTER_SKILL_RANGE,
   WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
+  WORLD_MONSTER_HITSTUN_MS,
   isWorldSafeZone,
   type SharedMonsterType,
   type SharedSpawnPoint,
@@ -79,6 +80,10 @@ interface MonsterRuntime {
   attackReadyAt: number;
   /** Brief post-hit recovery; Server keeps movement cadence authoritative. */
   attackRecoverUntil: number;
+  /** Server-authoritative interruption window applied by confirmed player hits. */
+  hitstunUntil: number;
+  /** Attack action that may still be waiting for its active hit frame on clients. */
+  activeAttackId: string | null;
   respawnAt: number | null;
   patrolX: number;
   patrolZ: number;
@@ -127,6 +132,8 @@ export class MonsterSimulation {
         targetId: null,
         attackReadyAt: 0,
         attackRecoverUntil: 0,
+        hitstunUntil: 0,
+        activeAttackId: null,
         respawnAt: null,
         patrolX: spawn.homeX,
         patrolZ: spawn.homeZ,
@@ -159,15 +166,18 @@ export class MonsterSimulation {
       const monster = this.monsters.get(persisted.spawnId);
       if (!monster) continue;
       monster.hp = Math.max(0, Math.min(monster.type.maxHp, persisted.hp));
-      monster.state = persisted.state;
+      // Hit-stun and pending attack frames are ephemeral and must not survive restart.
+      monster.state = persisted.state === 'stunned' ? 'idle' : persisted.state;
       monster.x = persisted.x;
       monster.z = persisted.z;
       monster.respawnAt = persisted.respawnAt;
       monster.targetId = null;
+      monster.hitstunUntil = 0;
+      monster.activeAttackId = null;
       monster.sentX = persisted.x;
       monster.sentZ = persisted.z;
       monster.sentHp = monster.hp;
-      monster.sentState = persisted.state;
+      monster.sentState = monster.state;
     }
   }
 
@@ -245,21 +255,26 @@ export class MonsterSimulation {
     if (distance(attackerX, attackerZ, monster.x, monster.z) > range) return null;
 
     const damage = kind === 'skill' ? WORLD_MONSTER_SKILL_DAMAGE : WORLD_MONSTER_MELEE_DAMAGE;
+    // Keep the latest id until it is superseded: clients schedule from receipt
+    // time, so network delay can leave the action pending after Server hitAt.
+    const cancelAttackId = monster.activeAttackId ?? undefined;
+    monster.activeAttackId = null;
     monster.hp = Math.max(0, monster.hp - damage);
     const existing = monster.contributions.get(attackerId);
     monster.contributions.set(attackerId, {
       damage: (existing?.damage ?? 0) + damage,
       lastAt: now,
     });
-    // โดนตี → aggro ใส่ผู้โจมตีทันที (ถ้ายังไม่มีเป้า) — ยังไม่ตายแน่ (return ไปแล้วถ้าตาย)
-    if (monster.targetId === null) {
-      monster.targetId = attackerId;
-      monster.state = 'chase';
-    }
+    // โดนตี → ยกเลิก attack frame ที่ยังไม่ออก, ล็อก AI และต่อเวลา stun ทุก combo hit
+    monster.targetId = attackerId;
+    monster.hitstunUntil = Math.max(monster.hitstunUntil, now + WORLD_MONSTER_HITSTUN_MS);
+    monster.attackRecoverUntil = 0;
+    monster.state = 'stunned';
     const dead = monster.hp <= 0;
     if (dead) {
       monster.state = 'dead';
       monster.targetId = null;
+      monster.hitstunUntil = 0;
       monster.respawnAt = now + monster.type.respawnMs;
     }
     const dx = monster.x - attackerX;
@@ -278,7 +293,7 @@ export class MonsterSimulation {
       maxHp: monster.type.maxHp,
       damage,
       dead,
-      delta: { ...this.deltaOf(monster), hitReaction },
+      delta: { ...this.deltaOf(monster), hitReaction, ...(cancelAttackId ? { cancelAttackId } : {}) },
     };
   }
 
@@ -313,6 +328,8 @@ export class MonsterSimulation {
     monster.targetId = null;
     monster.respawnAt = null;
     monster.attackRecoverUntil = 0;
+    monster.hitstunUntil = 0;
+    monster.activeAttackId = null;
     monster.contributions.clear();
     monster.sentX = monster.x;
     monster.sentZ = monster.z;
@@ -327,6 +344,12 @@ export class MonsterSimulation {
     playersById: Map<string, PlayerView>,
     attacks: MonsterAttackEvent[],
   ): void {
+    if (now < monster.hitstunUntil) {
+      monster.state = 'stunned';
+      return;
+    }
+    monster.hitstunUntil = 0;
+
     const type = monster.type;
     const homeDist = distance(monster.x, monster.z, monster.spawn.homeX, monster.spawn.homeZ);
     const monsterInsideSafeZone = this.safeZoneAt(monster.spawn.islandId, monster.x, monster.z);
@@ -383,8 +406,10 @@ export class MonsterSimulation {
         if (now >= monster.attackReadyAt) {
           monster.attackReadyAt = now + type.attackCooldown * 1000;
           monster.attackRecoverUntil = now + ATTACK_RECOVERY_MS;
+          const attackId = `${monster.spawn.spawnId}:${++this.attackSequence}`;
+          monster.activeAttackId = attackId;
           attacks.push({
-            attackId: `${monster.spawn.spawnId}:${++this.attackSequence}`,
+            attackId,
             spawnId: monster.spawn.spawnId,
             monsterId: type.id,
             islandId: monster.spawn.islandId,

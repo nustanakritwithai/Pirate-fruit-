@@ -476,7 +476,7 @@ async function main(): Promise<void> {
       }
     },
     onCombatResult: (result) => {
-      if (result.accepted || result.reason === 'cooldown') return;
+      if (result.accepted || result.reason === 'cooldown' || result.reason === 'duplicate') return;
       const messages: Record<string, string> = {
         'pvp-disabled': '⚔️ PK ยังไม่เปิดบนเซิร์ฟเวอร์',
         'presence-required': '⚔️ กำลังซิงก์ตำแหน่ง ลองโจมตีอีกครั้ง',
@@ -484,7 +484,7 @@ async function main(): Promise<void> {
         'different-island': '⚔️ เป้าหมายอยู่คนละเกาะ',
         'out-of-range': '⚔️ เป้าหมายอยู่นอกระยะ',
         defeated: '⚔️ ผู้เล่นนี้กำลังรอเกิดใหม่',
-        stunned: '⚔️ เป้าหมายกำลังกระเด็นอยู่',
+        stunned: '⚔️ คุณกำลังติดสตั๊นอยู่',
         'self-target': '⚔️ ไม่สามารถโจมตีตัวเองได้',
       };
       notifyPvp(messages[result.reason ?? ''] ?? '⚔️ Server ปฏิเสธการโจมตี');
