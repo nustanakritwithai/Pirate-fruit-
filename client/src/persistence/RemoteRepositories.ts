@@ -69,7 +69,9 @@ function isMutationResponse(value: unknown): value is RemoteSaveMutationResponse
   return candidate.ok === true
     && typeof candidate.revision === 'number'
     && Number.isSafeInteger(candidate.revision)
-    && candidate.revision >= 1
+    // A clean character can legitimately return revision 0 from the idempotent
+    // legacy-repair endpoint; normal save mutations still advance from 0 to 1.
+    && candidate.revision >= 0
     && typeof candidate.idempotentReplay === 'boolean'
     && typeof candidate.migrated === 'boolean';
 }
@@ -246,6 +248,26 @@ export class RemoteSaveCoordinator {
       documents: state,
     };
     await this.mutate('/api/player/cargo', 'PUT', body);
+  }
+
+  /** One-time repair for characters imported from the pre-online Local save. */
+  async resetLegacyProgress(): Promise<RemoteSaveMutationResponse> {
+    const payload = await this.client.request<unknown>('/api/player/reset-legacy-progress', {
+      method: 'POST',
+      body: '{}',
+    });
+    if (!isMutationResponse(payload)) {
+      throw new Error('Legacy progress reset response is invalid');
+    }
+    if (this.snapshot) {
+      this.snapshot = {
+        ...this.snapshot,
+        revision: payload.revision,
+        migrated: payload.migrated,
+      };
+      this.statePromise = Promise.resolve(this.snapshot);
+    }
+    return payload;
   }
 
   async migrate(

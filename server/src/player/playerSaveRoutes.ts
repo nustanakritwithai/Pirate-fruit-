@@ -172,4 +172,15 @@ export async function registerPlayerSaveRoutes(
         dependencies.playerSaves!.migrateLocal(session.record.characterId, request.body));
     },
   );
+
+  app.post(
+    '/api/player/reset-legacy-progress',
+    { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } },
+    async (request, reply) => {
+      const session = await authenticate(request, reply, dependencies, true);
+      if (!session) return reply;
+      return runMutation(request, reply, () =>
+        dependencies.playerSaves!.resetLegacyProgress(session.record.characterId));
+    },
+  );
 }

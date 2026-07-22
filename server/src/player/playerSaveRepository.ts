@@ -39,6 +39,8 @@ export interface PlayerSaveMutationIdentity {
 
 export interface PlayerSaveRepository {
   load(characterId: string): Promise<StoredRemotePlayerState>;
+  /** One-time repair for a character whose first remote save came from legacy Local data. */
+  resetLegacyProgress(characterId: string): Promise<PlayerSaveMutationResult>;
   save(
     identity: PlayerSaveMutationIdentity,
     state: CanonicalPlayerState,
@@ -142,6 +144,114 @@ export class PostgresPlayerSaveRepository implements PlayerSaveRepository {
       const result = await this.loadWithClient(client, characterId);
       await client.query('commit');
       return result;
+    } catch (error) {
+      await client.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async resetLegacyProgress(characterId: string): Promise<PlayerSaveMutationResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const character = await client.query<{
+        save_revision: string;
+        local_save_migrated_at: Date | null;
+        level: number;
+      }>(
+        `select save_revision, local_save_migrated_at, level
+           from characters
+          where id = $1
+          for update`,
+        [characterId],
+      );
+      const row = character.rows[0];
+      if (!row) throw new PlayerStateNotFoundError();
+      const revision = numberFromBigint(row.save_revision);
+      const idempotencyKey = 'legacy-progress-reset-v1';
+      const requestHash = 'legacy-progress-reset-v1';
+      const prior = await client.query<{
+        operation: PlayerSaveOperation;
+        request_hash: string;
+        resulting_revision: string;
+      }>(
+        `select operation, request_hash, resulting_revision
+           from player_save_operations
+          where character_id = $1 and idempotency_key = $2`,
+        [characterId, idempotencyKey],
+      );
+      if (prior.rows[0]) {
+        if (prior.rows[0].operation !== 'save' || prior.rows[0].request_hash !== requestHash) {
+          throw new SaveIdempotencyConflictError();
+        }
+        await client.query('commit');
+        return {
+          revision: numberFromBigint(prior.rows[0].resulting_revision),
+          idempotentReplay: true,
+          migrated: row.local_save_migrated_at !== null,
+        };
+      }
+
+      // Only repair characters that were actually imported from the old Local save.
+      // Newly-created clean online characters are left completely untouched.
+      if (row.local_save_migrated_at === null) {
+        await client.query('commit');
+        return { revision, idempotentReplay: true, migrated: false };
+      }
+
+      const progressionResult = await client.query<{ exp: string }>(
+        'select exp::text as exp from player_progression where character_id = $1',
+        [characterId],
+      );
+      const exp = progressionResult.rows[0]?.exp ?? '0';
+      const resetState = defaultPlayerState();
+      const resetProgression: CanonicalProgression = {
+        ...resetState.progression,
+        level: row.level,
+        exp: numberFromBigint(exp),
+        statPoints: Math.max(0, (row.level - 1) * 3),
+      };
+      const caps = canonicalResourceCaps(resetProgression);
+      await client.query(
+        `insert into player_progression
+          (character_id, exp, stat_points, combat, vitality, blade, ranged,
+           fruit_power, mana, mastery_json, updated_at)
+         values ($1,$2,$3,1,1,1,1,1,1,$4::jsonb,now())
+         on conflict (character_id) do update set
+           stat_points = excluded.stat_points,
+           combat = 1, vitality = 1, blade = 1, ranged = 1,
+           fruit_power = 1, mana = 1,
+           mastery_json = excluded.mastery_json, updated_at = now()`,
+        [characterId, exp, resetProgression.statPoints, JSON.stringify(resetProgression.mastery)],
+      );
+      await client.query(
+        `insert into player_stats
+          (character_id, hp, max_hp, mp, max_mp, energy, max_energy, derived_json, updated_at)
+         values ($1,$2,$3,$4,$5,$6,$7,'{}'::jsonb,now())
+         on conflict (character_id) do update set
+           hp = excluded.hp, max_hp = excluded.max_hp,
+           mp = excluded.mp, max_mp = excluded.max_mp,
+           energy = excluded.energy, max_energy = excluded.max_energy,
+           updated_at = now()`,
+        [characterId, caps.maxHp, caps.maxHp, caps.maxMp, caps.maxMp, caps.maxEnergy, caps.maxEnergy],
+      );
+      await this.persistInventory(client, characterId, resetState.inventory, resetState.loadout);
+
+      const nextRevision = revision + 1;
+      await client.query(
+        `update characters set save_revision = $2, updated_at = now() where id = $1`,
+        [characterId, String(nextRevision)],
+      );
+      await client.query(
+        `insert into player_save_operations
+          (character_id, operation, idempotency_key, request_hash, resulting_revision)
+         values ($1,'save',$2,$3,$4)`,
+        [characterId, idempotencyKey, requestHash, String(nextRevision)],
+      );
+      await client.query('commit');
+      return { revision: nextRevision, idempotentReplay: false, migrated: true };
     } catch (error) {
       await client.query('rollback').catch(() => undefined);
       throw error;

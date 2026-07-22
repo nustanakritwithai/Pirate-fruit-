@@ -94,6 +94,15 @@ function identity(
 export class PlayerSaveService {
   constructor(private readonly repository: PlayerSaveRepository) {}
 
+  /**
+   * Repair the one class of saves known to contain pre-online Local data. The repository
+   * preserves Server-owned level/EXP/coins and resets only stats/mastery/inventory.
+   */
+  async resetLegacyProgress(characterId: string): Promise<RemoteSaveMutationResponse> {
+    const result = await this.repository.resetLegacyProgress(characterId);
+    return { ok: true, ...result };
+  }
+
   async load(characterId: string): Promise<RemotePlayerStateResponse> {
     const stored = await this.repository.load(characterId);
     const documents = stored.state ? serializePlayerState(stored.state) : null;

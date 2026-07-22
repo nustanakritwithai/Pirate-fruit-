@@ -191,6 +191,14 @@ export async function initializeGamePersistence(
         fetcher: options.fetcher,
         csrfToken: session.csrfToken,
       });
+      // Repair the known pre-online character migration once. The Server preserves the
+      // authoritative level/EXP/coins and resets only legacy Stats/Mastery/Inventory.
+      // A missing/older endpoint is non-fatal so remote save remains available during rollout.
+      if (enabled(import.meta.env.VITE_ENABLE_CHARACTER_SELECT)) {
+        await coordinator.resetLegacyProgress().catch((error: unknown) => {
+          warn('Legacy character progress reset was skipped.', error);
+        });
+      }
       await recoverDirtyLocalSave(coordinator, localStorage, characterId);
       await migrateLocalSaveIfNeeded(
         coordinator,
