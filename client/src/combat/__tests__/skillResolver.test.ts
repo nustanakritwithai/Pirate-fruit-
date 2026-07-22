@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SkillLoadout, DEFAULT_SKILL_LOADOUT, SKILL_LOCK_ENABLED } from '../SkillLoadout';
+import { SkillLoadout, DEFAULT_SKILL_LOADOUT, SKILL_LOCK_ENABLED, listSkillGates } from '../SkillLoadout';
 import { resolveActiveSet } from '../SkillResolver';
 import { inferRenderType, toCastable, WEAPON_M1, type RawSkill } from '../SkillCasting';
 import { ALL_SKILL_GAMEPLAY } from '../skillGameplay';
@@ -212,5 +212,15 @@ describe('per-item mastery gating (Blox Fruits style)', () => {
       expect(combatUnlocked).toBeGreaterThan(1);
       expect(otherUnlocked).toBeGreaterThan(0);
     }
+  });
+
+  it('reports mastery gates for the exact item rather than every skill in its category', () => {
+    const combat = listSkillGates('style', 'combat');
+    const darkStep = listSkillGates('style', 'dark-step');
+
+    expect(combat.map((gate) => gate.name)).toContain('Quick Tackle');
+    expect(combat.map((gate) => gate.name)).not.toContain('Flying Kick');
+    expect(darkStep.map((gate) => gate.name)).toContain('Flying Kick');
+    expect(darkStep.map((gate) => gate.name)).not.toContain('Quick Tackle');
   });
 });
