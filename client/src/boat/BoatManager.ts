@@ -18,6 +18,7 @@ import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
 import { gameStorage, type GameStorage } from '../persistence/GameStorage';
 import type { BoatWorldSnapshot, BoatIntentAction } from '@pirate-fruit/shared';
+import { flushAndSendSummon } from './BoatAuthorityFlow';
 
 const BOOST_DURATION = 1.2;
 const BOOST_COOLDOWN = 4;
@@ -59,6 +60,9 @@ export class BoatManager {
   private authorityInputAccum = 0;
   private pendingSummonIntentId: string | null = null;
   private pendingSummonElapsed = 0;
+  private preparingSummon = false;
+  private pendingBoardIntentId: string | null = null;
+  private pendingHelmIntentId: string | null = null;
   private selectionListener: ((boatId: string) => void) | null = null;
 
   constructor(
@@ -72,7 +76,7 @@ export class BoatManager {
     private effects: Effects,
     private onBoatDestroyed: () => void,
     economy?: EconomyWallet,
-    storage: GameStorage = gameStorage(),
+    private readonly storage: GameStorage = gameStorage(),
   ) {
     this.progress = new BoatProgress(economy, storage);
     this.shop = new BoatShopUI(
@@ -111,6 +115,9 @@ export class BoatManager {
     this.authorityEntityId = null;
     this.pendingSummonIntentId = null;
     this.pendingSummonElapsed = 0;
+    this.preparingSummon = false;
+    this.pendingBoardIntentId = null;
+    this.pendingHelmIntentId = null;
   }
 
   private get authorityActive(): boolean {
@@ -165,13 +172,28 @@ export class BoatManager {
   }
 
   handleAuthorityResult(result: { intentId: string; accepted: boolean; reason?: string }): void {
-    if (result.intentId !== this.pendingSummonIntentId) return;
-    this.pendingSummonIntentId = null;
-    this.pendingSummonElapsed = 0;
-    this.shop.setStatus(
-      result.accepted ? 'Server ยืนยันการเรียกเรือแล้ว' : `เรียกเรือไม่สำเร็จ: ${result.reason ?? 'invalid'}`,
-      !result.accepted,
-    );
+    if (result.intentId === this.pendingSummonIntentId) {
+      this.pendingSummonIntentId = null;
+      this.pendingSummonElapsed = 0;
+      this.shop.setStatus(
+        result.accepted ? 'Server ยืนยันการเรียกเรือแล้ว' : `เรียกเรือไม่สำเร็จ: ${result.reason ?? 'invalid'}`,
+        !result.accepted,
+      );
+      return;
+    }
+    if (result.intentId === this.pendingBoardIntentId) {
+      this.pendingBoardIntentId = null;
+      this.hud.notify(
+        result.accepted ? 'ขึ้นเรือแล้ว — เดินไปที่พวงมาลัย ☸ แล้วกด E เพื่อบังคับเรือ'
+          : 'ขึ้นเรือไม่สำเร็จ กำลังซิงก์ตำแหน่งกับ Server',
+        !result.accepted,
+      );
+      return;
+    }
+    if (result.intentId === this.pendingHelmIntentId) {
+      this.pendingHelmIntentId = null;
+      if (!result.accepted) this.hud.notify('จับพวงมาลัยไม่สำเร็จ กรุณาลองอีกครั้ง', true);
+    }
   }
 
   /** พาผู้เล่นกลับขึ้นดาดฟ้าเรือตัวเอง (หลังยึดเรือศัตรู) — คืน false ถ้าไม่มีเรือ */
@@ -441,6 +463,10 @@ export class BoatManager {
       this.prompt.hide();
       return;
     }
+    if (this.pendingBoardIntentId) {
+      this.prompt.hide();
+      return;
+    }
     // เมื่อลงบนผิวดาดฟ้าจริงจากการกระโดด ให้ขึ้นเรือทันที ไม่ต้องกด E
     if (this.tryAutoBoard(boat)) return;
     const distance = this.controller.position.distanceTo(boat.group.position);
@@ -478,9 +504,20 @@ export class BoatManager {
   private boardDeck(boat: Boat, preservePosition = false): void {
     boat.group.updateMatrixWorld();
     this.ensureDeckProvider(boat);
+    if (this.authorityActive) {
+      if (this.pendingBoardIntentId) return;
+      this.pendingBoardIntentId = this.authority!.send('board', {
+        entityId: this.authorityEntityId ?? undefined,
+      });
+      this.prompt.hide();
+      this.hud.notify(
+        this.pendingBoardIntentId ? 'กำลังขอ Server ให้ขึ้นเรือ…' : 'ยังไม่ได้เชื่อมต่อ Server',
+        !this.pendingBoardIntentId,
+      );
+      return;
+    }
     if (!preservePosition) this.placeRiderOnDeck(boat);
     this.rider = 'deck';
-    if (this.authorityActive) this.authority!.send('board', { entityId: this.authorityEntityId ?? undefined });
     this.prevMatrix.copy(boat.group.matrixWorld);
     this.prevHeading = boat.heading;
     this.prompt.hide();
@@ -490,7 +527,10 @@ export class BoatManager {
   /** ถือพวงมาลัย = โหมดขับเรือ (ล็อกตัวละครที่พวงมาลัย) */
   private takeHelm(boat: Boat): void {
     if (this.authorityActive) {
-      this.authority!.send('take-helm', { entityId: this.authorityEntityId ?? undefined });
+      if (this.pendingHelmIntentId) return;
+      this.pendingHelmIntentId = this.authority!.send('take-helm', {
+        entityId: this.authorityEntityId ?? undefined,
+      });
       this.prompt.hide();
       return;
     }
@@ -641,7 +681,7 @@ export class BoatManager {
       return;
     }
     if (action === 'summon') {
-      this.summonSelected();
+      void this.summonSelected();
       return;
     }
     if (action === 'store') {
@@ -677,7 +717,7 @@ export class BoatManager {
     }
   }
 
-  private summonSelected(): void {
+  private async summonSelected(): Promise<void> {
     const id = this.progress.selectedBoatId;
     const definition = id ? getBoatDefinition(id) : undefined;
     if (!definition || !this.progress.owns(definition.id)) {
@@ -689,9 +729,22 @@ export class BoatManager {
       return;
     }
     if (this.authorityActive) {
-      this.pendingSummonIntentId = this.authority!.send('summon');
-      this.pendingSummonElapsed = 0;
-      this.shop.setStatus(this.pendingSummonIntentId ? 'กำลังขอ Server เรียกเรือ…' : 'ยังไม่ได้เชื่อมต่อ Server', !this.pendingSummonIntentId);
+      if (this.preparingSummon || this.pendingSummonIntentId) {
+        this.shop.setStatus('กำลังเรียกเรือ กรุณารอ Server ยืนยัน');
+        return;
+      }
+      this.preparingSummon = true;
+      this.shop.setStatus('กำลังบันทึกเรือที่เลือก…');
+      try {
+        this.pendingSummonIntentId = await flushAndSendSummon(this.storage, this.authority!);
+        this.pendingSummonElapsed = 0;
+        this.shop.setStatus(
+          this.pendingSummonIntentId ? 'กำลังขอ Server เรียกเรือ…' : 'ยังไม่ได้เชื่อมต่อ Server',
+          !this.pendingSummonIntentId,
+        );
+      } finally {
+        this.preparingSummon = false;
+      }
       return;
     }
     if (this.active) {
