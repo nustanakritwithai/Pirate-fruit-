@@ -196,9 +196,8 @@ if (process.env.SMOKE_EXPECT_AUDIO === 'true') {
   await toggle.click();
 }
 
-await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
 try {
-  await page.waitForResponse(
+  const saveResponse = page.waitForResponse(
     (response) =>
       response.url().startsWith(API_URL)
       && ['POST', 'PUT'].includes(response.request().method())
@@ -206,6 +205,8 @@ try {
       && response.status() === 200,
     { timeout: 30_000 },
   );
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  await saveResponse;
 } catch {
   fail('no successful cross-origin save write observed', { apiCalls, pageErrors });
 }
