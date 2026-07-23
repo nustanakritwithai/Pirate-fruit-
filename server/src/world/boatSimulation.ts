@@ -7,7 +7,6 @@ import {
   BOAT_INPUT_MIN_INTERVAL_MS,
   BOAT_RESPAWN_MS,
   BOAT_WORLD_BOUNDARY,
-  ISLAND_LAYOUT_OFFSETS,
   type BoatWorldSnapshot,
 } from '@pirate-fruit/shared';
 
@@ -334,8 +333,12 @@ export class BoatSimulation {
   private nearestIslandId(x: number, z: number): string {
     let bestId = 'starter-island';
     let bestDistance = Number.POSITIVE_INFINITY;
-    for (const [islandId, center] of Object.entries(ISLAND_LAYOUT_OFFSETS)) {
-      const distance = (center.x - x) ** 2 + (center.z - z) ** 2;
+    // Boat interest follows the nearest harbor rather than island terrain centres.
+    // Several docks sit far offshore (the starter dock is already closer to the
+    // mist terrain centre), which previously moved a freshly summoned boat to the
+    // wrong island on its first 100 ms tick and made boarding impossible.
+    for (const [islandId, harbor] of Object.entries(BOAT_DOCK_SPAWNS)) {
+      const distance = (harbor.x - x) ** 2 + (harbor.z - z) ** 2;
       if (distance < bestDistance) {
         bestDistance = distance;
         bestId = islandId;
