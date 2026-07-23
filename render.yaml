@@ -35,7 +35,7 @@ services:
       - key: CLIENT_ORIGIN
         value: https://pirate-fruit-u555.onrender.com
       - key: SERVER_VERSION
-        value: 0.7.1
+        value: 0.7.2
       - key: SESSION_SECRET
         generateValue: true
       - key: ENABLE_REMOTE_SESSION
