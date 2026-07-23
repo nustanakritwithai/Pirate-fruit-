@@ -18,6 +18,25 @@ import { GAMEPLAY_STORAGE_KEYS } from '../persistence/storageKeys';
 import { RemoteTradeError, type RemoteTradeExecutor } from './RemoteTradeClient';
 
 const STORAGE_KEY = GAMEPLAY_STORAGE_KEYS.cargo;
+export const REMOTE_TRADE_FLUSH_TIMEOUT_MS = 5_000;
+
+async function flushBeforeRemoteTrade(storage: GameStorage): Promise<void> {
+  if (!storage.flush) return;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      storage.flush(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = globalThis.setTimeout(() => reject(new RemoteTradeError(
+          'NETWORK',
+          'บันทึกสถานะเรือไม่ทัน ลองซื้อขายใหม่อีกครั้ง',
+        )), REMOTE_TRADE_FLUSH_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+  }
+}
 
 export interface TradeWallet {
   readonly coins: number;
@@ -122,7 +141,7 @@ export class TradeManager {
     try {
       // Boat selection determines canonical cargo capacity. Flush its pending save before
       // asking the trade authority, otherwise an immediate purchase can see the old boat.
-      await this.storage.flush?.();
+      await flushBeforeRemoteTrade(this.storage);
       const response = await this.remote!.execute({
         action,
         islandId,

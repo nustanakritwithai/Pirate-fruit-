@@ -1,6 +1,7 @@
 import { WORLD_POIS } from '../world/WorldPOI';
 import type { IslandId } from '../island/IslandTypes';
-import { layoutPoint } from '../island/IslandRegistry';
+import { findDockAt, layoutPoint } from '../island/IslandRegistry';
+import { isWorldSafeZone } from '@pirate-fruit/shared';
 
 export interface NPCDefinition {
   id: string;
@@ -322,12 +323,18 @@ const NPC_DOCK_HUBS: Record<IslandId, { x: number; z: number }> = {
 
 const NPC_HUB_OFFSETS: readonly (readonly [number, number])[] = [
   [0, 0],
-  [2.2, 0],
-  [-2.2, 0],
-  [0, 2.2],
-  [0, -2.2],
-  [1.6, 1.6],
-  [-1.6, 1.6],
+  [3.6, 0],
+  [-3.6, 0],
+  [0, 3.6],
+  [0, -3.6],
+  [2.7, 2.7],
+  [-2.7, 2.7],
+  [2.7, -2.7],
+  [-2.7, -2.7],
+  [5.2, 0],
+  [-5.2, 0],
+  [0, 5.2],
+  [0, -5.2],
 ];
 
 function isDockNpc(npc: NPCDefinition): boolean {
@@ -337,20 +344,27 @@ function isDockNpc(npc: NPCDefinition): boolean {
     || npc.tradeVendorId?.includes('-harbor') === true;
 }
 
-const npcIndexByIsland = new Map<IslandId, number>();
+const placedNpcPositionsByIsland = new Map<IslandId, { x: number; z: number }[]>();
 
 export const ALL_NPCS: NPCDefinition[] = LEGACY_ALL_NPCS.map((npc) => {
   const laidOut = {
     ...npc,
     ...layoutPoint(npc.islandId, npc.x, npc.z),
   };
-  const slot = npcIndexByIsland.get(npc.islandId) ?? 0;
-  npcIndexByIsland.set(npc.islandId, slot + 1);
   const hub = isDockNpc(npc) ? NPC_DOCK_HUBS[npc.islandId] : NPC_SAFE_HUBS[npc.islandId];
-  const [offsetX, offsetZ] = NPC_HUB_OFFSETS[slot % NPC_HUB_OFFSETS.length];
+  const placed = placedNpcPositionsByIsland.get(npc.islandId) ?? [];
+  const candidate = NPC_HUB_OFFSETS
+    .map(([offsetX, offsetZ]) => ({ x: hub.x + offsetX, z: hub.z + offsetZ }))
+    .find((point) => {
+      const validHub = isDockNpc(npc)
+        ? findDockAt(point.x, point.z)?.islandId === npc.islandId
+        : isWorldSafeZone(npc.islandId, point.x, point.z);
+      return validHub && placed.every((other) => Math.hypot(point.x - other.x, point.z - other.z) >= 3.2);
+    }) ?? hub;
+  placed.push(candidate);
+  placedNpcPositionsByIsland.set(npc.islandId, placed);
   return {
     ...laidOut,
-    x: hub.x + offsetX,
-    z: hub.z + offsetZ,
+    ...candidate,
   };
 });

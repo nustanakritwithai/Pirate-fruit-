@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { TradeManager } from '../TradeManager';
+import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
+import { REMOTE_TRADE_FLUSH_TIMEOUT_MS, TradeManager } from '../TradeManager';
+import type { GameStorage } from '../../persistence/GameStorage';
 import { essentialReserveStock } from '../living/LivingTradeConfig';
 
 const memory = new Map<string, string>();
@@ -26,6 +27,10 @@ beforeEach(() => {
     setItem: (key: string, value: string) => { memory.set(key, value); },
     removeItem: (key: string) => { memory.delete(key); },
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('TradeManager', () => {
@@ -75,5 +80,26 @@ describe('TradeManager', () => {
     expect(blocked.ok).toBe(false);
     expect(fish.stock).toBe(reserve + 2);
     expect(blocked.message).toContain('คลังยังชีพ');
+  });
+
+  it('releases a remote transaction when the pre-trade save queue hangs', async () => {
+    vi.useFakeTimers();
+    const storage: GameStorage = {
+      getItem: (key) => memory.get(key) ?? null,
+      setItem: (key, value) => { memory.set(key, value); },
+      removeItem: (key) => { memory.delete(key); },
+      flush: () => new Promise<void>(() => undefined),
+    };
+    const execute = vi.fn();
+    const trade = new TradeManager(makeWallet(), 'training-dinghy', undefined, storage);
+    trade.setRemoteExecutor({ execute });
+
+    const pending = trade.buyAsync('starter-island', 'fresh-fish', 1);
+    await vi.advanceTimersByTimeAsync(REMOTE_TRADE_FLUSH_TIMEOUT_MS);
+    const result = await pending;
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.message).toContain('บันทึกสถานะเรือไม่ทัน');
+    expect(execute).not.toHaveBeenCalled();
   });
 });

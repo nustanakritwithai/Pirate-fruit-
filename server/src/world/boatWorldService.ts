@@ -94,7 +94,7 @@ export class BoatWorldService implements BoatWorldBridge {
     let result: BoatIntentResolution;
     if (intent.action === 'summon') result = await this.summon(characterId, presence);
     else if (intent.action === 'board') result = this.board(characterId, presence, intent.entityId);
-    else if (intent.action === 'take-helm') result = this.takeHelm(characterId, intent.entityId);
+    else if (intent.action === 'take-helm') result = this.takeHelm(characterId, presence, intent.entityId);
     else if (intent.action === 'leave-helm') result = this.leaveHelm(characterId);
     else if (intent.action === 'disembark') result = this.disembark(characterId);
     else if (intent.action === 'input') result = this.input(characterId, intent);
@@ -142,11 +142,44 @@ export class BoatWorldService implements BoatWorldBridge {
     return { accepted: true, entityId: boat.entityId };
   }
 
-  private takeHelm(characterId: string, entityId?: string): BoatIntentResolution {
+  private takeHelm(
+    characterId: string,
+    presence: PresencePosition | null,
+    entityId?: string,
+  ): BoatIntentResolution {
     if (!entityId) return { accepted: false, reason: 'boat-required' };
+    const current = this.sim.stateOf(entityId);
+    if (!current) return { accepted: false, reason: 'boat-required' };
+    if (current.helmId && current.helmId !== characterId) {
+      return { accepted: false, reason: 'not-passenger-or-helm-busy' };
+    }
+
+    // A player can reach the wheel in the same render frame that auto-boarding
+    // sends its intent. Resolve that legitimate race atomically on the Server:
+    // the canonical presence must still be in boarding range, so no client can
+    // use take-helm as a teleport or bypass the normal boarding validation.
+    const passengerBoat = this.sim.boatOfPassenger(characterId);
+    let boardedHere = false;
+    if (passengerBoat?.entityId !== entityId) {
+      if (!presence) return { accepted: false, reason: 'boat-and-presence-required' };
+      const boarded = this.sim.board(
+        entityId,
+        characterId,
+        presence.islandId,
+        presence.x,
+        presence.z,
+      );
+      if (!boarded) return { accepted: false, reason: 'not-passenger-or-helm-busy' };
+      boardedHere = true;
+    }
     const boat = this.sim.takeHelm(entityId, characterId);
     if (!boat) return { accepted: false, reason: 'not-passenger-or-helm-busy' };
     this.broadcastDelta(boat);
+    if (boardedHere) {
+      this.hub.updateBoatPassengerPresence(
+        characterId, boat.islandId, boat.x, boat.z, boat.heading, boat.definitionId,
+      );
+    }
     return { accepted: true, entityId: boat.entityId };
   }
 
