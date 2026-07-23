@@ -23,6 +23,8 @@ async function testServer(database = databaseProbe(), environmentOverrides = {})
     NODE_ENV: 'test',
     CLIENT_ORIGIN: 'https://game.example',
     SERVER_VERSION: 'test-version',
+    RENDER_GIT_COMMIT: 'c0d220813f51133f638287bad23f401e424f52f5',
+    RENDER_GIT_BRANCH: 'corrective/boat-production-deploy',
     ...environmentOverrides,
   });
   const server = await buildServer({ environment, database, logger: false });
@@ -41,8 +43,29 @@ describe('server foundation', () => {
       service: 'pirate-fruit-server',
       version: 'test-version',
       protocolVersion: 1,
+      commitSha: 'c0d220813f51133f638287bad23f401e424f52f5',
     });
     expect(database.ping).not.toHaveBeenCalled();
+  });
+
+  it('reports the deployed revision and authoritative boat flag', async () => {
+    const { server } = await testServer(databaseProbe(), {
+      DATABASE_URL: 'postgresql://user:password@database.internal:5432/pirate_fruit',
+      SESSION_SECRET: 's'.repeat(32),
+      ENABLE_REMOTE_SESSION: 'true',
+      ENABLE_REALTIME: 'true',
+      ENABLE_MULTIPLAYER: 'true',
+      ENABLE_BOAT_WORLD: 'true',
+    });
+    const response = await server.inject({ method: 'GET', url: '/version' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      version: 'test-version',
+      commitSha: 'c0d220813f51133f638287bad23f401e424f52f5',
+      gitBranch: 'corrective/boat-production-deploy',
+      features: { boatWorld: true },
+    });
   });
 
   it('reports readiness and database timing', async () => {
