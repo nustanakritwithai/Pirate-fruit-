@@ -104,6 +104,22 @@ page.on('request', (request) => {
 
 await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
+// S18: Production opens Character Select. A fresh browser starts without a
+// guest cookie, so complete the same first-run form a new player sees before
+// waiting for the gameplay HUD and remote-save badge.
+const firstRunInput = page.locator('.chargate-input');
+const needsFirstRun = await Promise.race([
+  firstRunInput.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true),
+  page.locator('[data-testid="server-status"]')
+    .waitFor({ state: 'visible', timeout: 20_000 })
+    .then(() => false),
+]);
+if (needsFirstRun) {
+  await firstRunInput.fill('Smoke Pirate');
+  const firstRunSubmit = page.locator('.chargate-form button[type="submit"]');
+  await firstRunSubmit.click();
+}
+
 // 1) ป้ายสถานะต้องขึ้น SAVE REMOTE เต็มตัว (session + save + economy ครบ)
 await page
   .waitForFunction(
