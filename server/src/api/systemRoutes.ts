@@ -36,6 +36,7 @@ export async function registerSystemRoutes(
     service: SERVER_SERVICE_NAME,
     version: environment.SERVER_VERSION,
     protocolVersion: PROTOCOL_VERSION,
+    commitSha: environment.RENDER_GIT_COMMIT,
   }));
 
   app.get('/ready', { config: { rateLimit: false } }, async (_request, reply) => {
@@ -44,6 +45,7 @@ export async function registerSystemRoutes(
       service: SERVER_SERVICE_NAME,
       version: environment.SERVER_VERSION,
       protocolVersion: PROTOCOL_VERSION,
+      commitSha: environment.RENDER_GIT_COMMIT,
       database: database.enabled ? 'ready' : 'disabled',
       checkedAt: new Date().toISOString(),
     };
@@ -67,6 +69,11 @@ export async function registerSystemRoutes(
     version: environment.SERVER_VERSION,
     protocolVersion: PROTOCOL_VERSION,
     sharedVersion: SHARED_PACKAGE_VERSION,
+    commitSha: environment.RENDER_GIT_COMMIT,
+    gitBranch: environment.RENDER_GIT_BRANCH,
+    features: {
+      boatWorld: environment.ENABLE_BOAT_WORLD,
+    },
   }));
 
   app.get('/internal/status', async (request, reply) => {

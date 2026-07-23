@@ -5,6 +5,43 @@ import { BoatWorldService } from './boatWorldService.js';
 import type { BoatWorldRepository } from './boatWorldRepository.js';
 
 describe('S17 BoatWorldService', () => {
+  it('completes the production protocol sequence from summon through helm input', async () => {
+    const messages: RealtimeServerMessage[] = [];
+    const hub = {
+      attachBoatWorld: () => undefined,
+      broadcastBoat: (_island: string, message: RealtimeServerMessage) => messages.push(message),
+      updateBoatPassengerPresence: () => undefined,
+      updateDisembarkedPresence: () => undefined,
+    } as unknown as RealtimeHub;
+    const repository: BoatWorldRepository = {
+      loadAll: async () => [],
+      loadActiveBoat: async (characterId) => ({
+        entityId: 'boat-production', ownerId: characterId, definitionId: 'training-dinghy',
+        hp: 130, maxHp: 130, cargoCapacity: 8,
+      }),
+      saveAll: async () => undefined,
+    };
+    const service = new BoatWorldService(hub, { repository, now: () => 1_000 });
+    const presence = { islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: 0, onBoat: false };
+
+    const summon = await service.handleIntent('owner-production', presence,
+      { type: 'boat-intent', intentId: 'production-summon', action: 'summon' });
+    const board = await service.handleIntent('owner-production', presence,
+      { type: 'boat-intent', intentId: 'production-board', action: 'board', entityId: 'boat-production' });
+    const helm = await service.handleIntent('owner-production', presence,
+      { type: 'boat-intent', intentId: 'production-helm', action: 'take-helm', entityId: 'boat-production' });
+    const input = await service.handleIntent('owner-production', presence,
+      { type: 'boat-intent', intentId: 'production-input', action: 'input', entityId: 'boat-production', throttle: 1, steer: 0.5 });
+
+    expect([summon, board, helm, input]).toEqual([
+      { accepted: true, entityId: 'boat-production' },
+      { accepted: true, entityId: 'boat-production' },
+      { accepted: true, entityId: 'boat-production' },
+      { accepted: true, entityId: 'boat-production' },
+    ]);
+    expect(messages.filter((message) => message.type === 'boat-delta')).toHaveLength(3);
+  });
+
   it('atomically boards and takes the helm when the client intents race', async () => {
     const passengerUpdates: unknown[][] = [];
     const disembarkUpdates: unknown[][] = [];

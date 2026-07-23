@@ -3,6 +3,7 @@ export interface HealthResponse {
   service: string;
   version: string;
   protocolVersion: number;
+  commitSha?: string;
 }
 
 export interface VersionResponse {
@@ -10,6 +11,11 @@ export interface VersionResponse {
   version: string;
   protocolVersion: number;
   sharedVersion: string;
+  commitSha?: string;
+  gitBranch?: string;
+  features: {
+    boatWorld: boolean;
+  };
 }
 
 export type DatabaseReadiness = 'ready' | 'disabled' | 'unavailable';
@@ -19,6 +25,7 @@ export interface ReadyResponse {
   service: string;
   version: string;
   protocolVersion: number;
+  commitSha?: string;
   database: DatabaseReadiness;
   checkedAt: string;
 }
