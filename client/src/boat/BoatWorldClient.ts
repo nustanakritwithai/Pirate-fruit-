@@ -13,6 +13,41 @@ interface RenderedBoat {
   target: BoatWorldSnapshot;
 }
 
+interface CannonShot {
+  origin: THREE.Vector3;
+  endpoint: THREE.Vector3;
+}
+
+export function authoritativeCannonShots(
+  boat: Boat,
+  side: 'port' | 'starboard',
+  distance = 18,
+): CannonShot[] {
+  const sign = side === 'port' ? 1 : -1;
+  const leftX = Math.cos(boat.heading);
+  const leftZ = -Math.sin(boat.heading);
+  const count = Math.max(1, boat.definition.cannonsPerSide ?? 1);
+  const shots: CannonShot[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const zSpread = count > 1 ? (index - (count - 1) / 2) * 1.5 : 0.4;
+    const origin = new THREE.Vector3(
+      sign * boat.definition.width * 0.5,
+      0.9,
+      zSpread,
+    );
+    boat.group.localToWorld(origin);
+    shots.push({
+      origin,
+      endpoint: new THREE.Vector3(
+        origin.x + sign * leftX * distance,
+        origin.y - 0.15,
+        origin.z + sign * leftZ * distance,
+      ),
+    });
+  }
+  return shots;
+}
+
 /** Rendering/interpolation only. All state applied here originated from the Server. */
 export class BoatWorldClient {
   private readonly rendered = new Map<string, RenderedBoat>();
@@ -79,10 +114,30 @@ export class BoatWorldClient {
     this.applyDelta(snapshot);
   }
 
-  applyCannon(event: { targetId?: string; damage: number; x: number; z: number }): void {
-    const target = event.targetId ? this.rendered.get(event.targetId) : undefined;
-    const point = target?.boat.group.position ?? new THREE.Vector3(event.x, WATER_LEVEL, event.z);
-    this.effects.spawnBoatImpact(point, event.damage > 0);
+  applyCannon(event: {
+    attackerId: string;
+    targetId?: string;
+    side: 'port' | 'starboard';
+    damage: number;
+    x: number;
+    z: number;
+  }): void {
+    const localBoat = this.localBoats.activeAuthorityEntityId === event.attackerId
+      ? this.localBoats.activeBoat
+      : null;
+    const attacker = localBoat ?? this.rendered.get(event.attackerId)?.boat;
+    if (attacker) {
+      for (const shot of authoritativeCannonShots(attacker, event.side)) {
+        this.effects.spawnGunShot(shot.origin, shot.endpoint, 0xffb45b, false);
+      }
+    }
+    if (event.damage <= 0 || !event.targetId) return;
+    const localTarget = this.localBoats.activeAuthorityEntityId === event.targetId
+      ? this.localBoats.activeBoat
+      : null;
+    const target = localTarget ?? this.rendered.get(event.targetId)?.boat;
+    const point = target?.group.position ?? new THREE.Vector3(event.x, WATER_LEVEL, event.z);
+    this.effects.spawnBoatImpact(point, true);
   }
 
   update(dt: number): void {

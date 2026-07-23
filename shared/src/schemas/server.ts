@@ -14,7 +14,19 @@ export interface VersionResponse {
   commitSha?: string;
   gitBranch?: string;
   features: {
+    remoteSession: boolean;
+    economyServer: boolean;
+    remoteSave: boolean;
+    tradeServer: boolean;
+    realtime: boolean;
+    questServer: boolean;
+    monsterServer: boolean;
+    progressionServer: boolean;
+    multiplayer: boolean;
+    pvp: boolean;
     boatWorld: boolean;
+    sharedWorldMonsters: boolean;
+    characterSelect: boolean;
   };
 }
 

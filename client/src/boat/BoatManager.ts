@@ -17,7 +17,11 @@ import { carryRider, deckBoundsFor, deckHeightAt, withinDeck, worldToDeckLocal }
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
 import { gameStorage, type GameStorage } from '../persistence/GameStorage';
-import type { BoatWorldSnapshot, BoatIntentAction } from '@pirate-fruit/shared';
+import {
+  BOAT_CANNON_COOLDOWN_MS,
+  type BoatWorldSnapshot,
+  type BoatIntentAction,
+} from '@pirate-fruit/shared';
 import { flushAndSendSummon } from './BoatAuthorityFlow';
 
 const BOOST_DURATION = 1.2;
@@ -63,6 +67,8 @@ export class BoatManager {
   private preparingSummon = false;
   private pendingBoardIntentId: string | null = null;
   private pendingHelmIntentId: string | null = null;
+  private readonly pendingCannonIntentIds = new Set<string>();
+  private authorityCannonCooldown = 0;
   private selectionListener: ((boatId: string) => void) | null = null;
 
   constructor(
@@ -102,6 +108,18 @@ export class BoatManager {
     return this.progress.selectedBoatId;
   }
 
+  get activeAuthorityEntityId(): string | null {
+    return this.authorityEntityId;
+  }
+
+  get cannonCooldownFraction(): number {
+    return THREE.MathUtils.clamp(
+      this.authorityCannonCooldown / (BOAT_CANNON_COOLDOWN_MS / 1_000),
+      0,
+      1,
+    );
+  }
+
   get shopOpen(): boolean {
     return this.shop.isOpen;
   }
@@ -118,6 +136,8 @@ export class BoatManager {
     this.preparingSummon = false;
     this.pendingBoardIntentId = null;
     this.pendingHelmIntentId = null;
+    this.pendingCannonIntentIds.clear();
+    this.authorityCannonCooldown = 0;
   }
 
   private get authorityActive(): boolean {
@@ -193,6 +213,10 @@ export class BoatManager {
     if (result.intentId === this.pendingHelmIntentId) {
       this.pendingHelmIntentId = null;
       if (!result.accepted) this.hud.notify('จับพวงมาลัยไม่สำเร็จ กรุณาลองอีกครั้ง', true);
+      return;
+    }
+    if (this.pendingCannonIntentIds.delete(result.intentId) && result.accepted) {
+      this.authorityCannonCooldown = BOAT_CANNON_COOLDOWN_MS / 1_000;
     }
   }
 
@@ -228,6 +252,7 @@ export class BoatManager {
 
   update(dt: number): void {
     this.elapsed += dt;
+    this.authorityCannonCooldown = Math.max(0, this.authorityCannonCooldown - dt);
     this.hud.update(this.active, dt);
     if (this.pendingSummonIntentId) {
       this.pendingSummonElapsed += dt;
@@ -390,10 +415,11 @@ export class BoatManager {
       }
       const cannon = this.input.consumeCannon();
       if (cannon === 1 || cannon === 2) {
-        this.authority!.send('fire', {
+        const intentId = this.authority!.send('fire', {
           entityId: this.authorityEntityId ?? undefined,
           fireSide: cannon === 1 ? 'port' : 'starboard',
         });
+        if (intentId) this.pendingCannonIntentIds.add(intentId);
       }
       return;
     }

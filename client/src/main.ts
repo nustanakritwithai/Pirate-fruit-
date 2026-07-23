@@ -65,6 +65,7 @@ import {
   initializeRemoteSession,
   recoverRemoteSession,
   refreshRemoteSession,
+  resolveRemoteApiUrl,
 } from './session/RemoteSession';
 import { runCharacterGate } from './session/CharacterGate';
 import {
@@ -82,6 +83,7 @@ import {
 } from './audio';
 import type { OnboardingDirector } from './onboarding/OnboardingDirector';
 import { createAuthoritativeResyncHandler } from './realtime/AuthoritativeResync';
+import { fetchRuntimeFeatures, resolveSharedMonsterMode } from './realtime/RuntimeFeatures';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -382,6 +384,7 @@ async function main(): Promise<void> {
   // S13: ผู้เล่นคนอื่นบนเกาะเดียวกัน (เปิดด้วย VITE_ENABLE_MULTIPLAYER) — แสดงผลล้วน
   const multiplayerEnabled = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true'
     || import.meta.env.VITE_ENABLE_MULTIPLAYER === '1';
+  const runtimeFeatures = await fetchRuntimeFeatures(resolveRemoteApiUrl());
   const remotePlayers = multiplayerEnabled
     ? new RemotePlayers(game.scene, islandManager.activeIsland, () => Date.now(), {
       focus: () => controller.position,
@@ -403,8 +406,11 @@ async function main(): Promise<void> {
   };
   // S16: มอนสเตอร์กลาง — Server จำลอง AI/HP/death/respawn (ต้องเปิด multiplayer ก่อน)
   const sharedWorldMonstersEnabled = multiplayerEnabled
-    && (import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === 'true'
-      || import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === '1');
+    && resolveSharedMonsterMode(
+      import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === 'true'
+        || import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === '1',
+      runtimeFeatures,
+    );
   const sharedMonsters = sharedWorldMonstersEnabled
     ? new SharedMonsterClient(
         game.scene,
@@ -1055,7 +1061,9 @@ async function main(): Promise<void> {
         : controller.dashCooldownFraction,
     () => playerCombat.attackCooldownFraction,
   );
-  touchControls?.bindCannonCooldown(() => navalCombat.playerFireCooldownFraction);
+  touchControls?.bindCannonCooldown(() => (
+    boatWorldEnabled ? boatManager.cannonCooldownFraction : navalCombat.playerFireCooldownFraction
+  ));
   navalCombat.onCannonArmed = (side) => touchControls?.setCannonArmed(side);
   navalCombat.onAudioEvent = (event, position) => {
     audio.play(`boat.${event}`, { position });
