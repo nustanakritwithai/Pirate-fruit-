@@ -33,6 +33,25 @@ describe('S17 BoatSimulation', () => {
     expect(sim.summon({ ...canonical('bad', 'owner'), definitionId: 'client-invented-boat' }, 'starter-island')).toBeNull();
   });
 
+  it('keeps a newly summoned starter boat on the starter island after the first world tick', () => {
+    const sim = new BoatSimulation();
+    const boat = sim.summon(canonical('boat-starter', 'owner-starter'), 'starter-island', 1_000)!;
+
+    sim.tick(1_100, 100);
+
+    expect(sim.stateOf(boat.entityId)).toMatchObject({
+      islandId: 'starter-island',
+      ...BOAT_DOCK_SPAWNS['starter-island'],
+    });
+    expect(sim.board(
+      boat.entityId,
+      'owner-starter',
+      'starter-island',
+      BOAT_DOCK_SPAWNS['starter-island']!.x,
+      BOAT_DOCK_SPAWNS['starter-island']!.z,
+    )?.passengerIds).toContain('owner-starter');
+  });
+
   it('accepts clamped helm input but never a client position', () => {
     const sim = new BoatSimulation();
     sim.restore([row({ entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'] })]);
@@ -100,11 +119,11 @@ describe('S17 BoatSimulation', () => {
     expect(Math.hypot(after.x, after.z)).toBeLessThanOrEqual(BOAT_WORLD_BOUNDARY);
   });
 
-  it('moves boat interest to the nearest island while sailing', () => {
+  it('moves boat interest to the nearest harbor while sailing between islands', () => {
     const sim = new BoatSimulation();
     sim.restore([row({
       entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'],
-      x: 0, z: -39.5, heading: Math.PI, speed: 9,
+      x: 61, z: -86, heading: Math.PI, speed: 9,
     })]);
     sim.setInput(1_000, 'owner-a', 'boat-a', 1, 0, false);
     const result = sim.tick(1_250, 250);
