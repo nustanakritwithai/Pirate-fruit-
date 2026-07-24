@@ -195,6 +195,114 @@ describe('S3 persistence repositories', () => {
     });
   });
 
+  it('reloads the latest Server revision and retries one stale pagehide collision', async () => {
+    const state: PersistedPlayerState = {
+      schemaVersion: 1,
+      checkpoint: null,
+      progression: 'latest-local-progress',
+      inventory: null,
+      boats: null,
+      loadout: null,
+    };
+    let remoteRevision = 231;
+    let saveAttempts = 0;
+    const saveBodies: Array<{ expectedRevision: number; idempotencyKey: string }> = [];
+    const fetcher: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/player/state')) {
+        return Response.json({
+          ok: true,
+          schemaVersion: 1,
+          revision: remoteRevision,
+          migrated: true,
+          state,
+          cargo: { schemaVersion: 1, cargo: null },
+        });
+      }
+      if (url.endsWith('/api/player/save') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as {
+          expectedRevision: number;
+          idempotencyKey: string;
+        };
+        saveBodies.push(body);
+        saveAttempts += 1;
+        if (saveAttempts === 1) {
+          // The previous page's pagehide write lands after this page loaded revision 231.
+          remoteRevision = 232;
+          return Response.json({
+            ok: false,
+            error: {
+              code: 'STALE_SAVE_REVISION',
+              message: 'Save revision is stale; current revision is 232',
+            },
+            currentRevision: 232,
+          }, { status: 409 });
+        }
+        remoteRevision = 233;
+        return Response.json({
+          ok: true,
+          revision: remoteRevision,
+          idempotentReplay: false,
+          migrated: true,
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    };
+    const coordinator = new RemoteSaveCoordinator('https://server.example', { fetcher });
+
+    await coordinator.load();
+    await expect(coordinator.savePlayer(state)).resolves.toBeUndefined();
+
+    expect(saveBodies.map((body) => body.expectedRevision)).toEqual([231, 232]);
+    expect(saveBodies[1].idempotencyKey).not.toBe(saveBodies[0].idempotencyKey);
+    expect(coordinator.revision).toBe(233);
+  });
+
+  it('serializes concurrent save documents onto one revision timeline', async () => {
+    const state: PersistedPlayerState = {
+      schemaVersion: 1,
+      checkpoint: null,
+      progression: 'progress',
+      inventory: null,
+      boats: null,
+      loadout: null,
+    };
+    let remoteRevision = 10;
+    const expectedRevisions: number[] = [];
+    const fetcher: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/player/state')) {
+        return Response.json({
+          ok: true,
+          schemaVersion: 1,
+          revision: remoteRevision,
+          migrated: true,
+          state,
+          cargo: { schemaVersion: 1, cargo: null },
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as { expectedRevision: number };
+      expectedRevisions.push(body.expectedRevision);
+      remoteRevision += 1;
+      return Response.json({
+        ok: true,
+        revision: remoteRevision,
+        idempotentReplay: false,
+        migrated: true,
+      });
+    };
+    const coordinator = new RemoteSaveCoordinator('https://server.example', { fetcher });
+
+    await Promise.all([
+      coordinator.savePlayer(state),
+      coordinator.saveCargo({ schemaVersion: 1, cargo: 'cargo' }),
+      coordinator.saveCheckpoint('checkpoint'),
+    ]);
+
+    expect(expectedRevisions).toEqual([10, 11, 12]);
+    expect(coordinator.revision).toBe(13);
+  });
+
   it('supports the idempotent legacy progress repair endpoint', async () => {
     const calls: string[] = [];
     const fetcher: FetchLike = async (input, init) => {

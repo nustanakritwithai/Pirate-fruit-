@@ -187,6 +187,7 @@ export class RemoteSaveCoordinator {
   private readonly client: RemoteRepositoryClient;
   private statePromise: Promise<RemotePlayerStateResponse> | null = null;
   private snapshot: RemotePlayerStateResponse | null = null;
+  private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor(baseUrl: string, options: RemoteSaveCoordinatorOptions = {}) {
     this.client = new RemoteRepositoryClient(baseUrl, options);
@@ -221,36 +222,45 @@ export class RemoteSaveCoordinator {
   }
 
   async savePlayer(state: PersistedPlayerState): Promise<void> {
-    await this.ensureLoaded();
-    const body: RemotePlayerSaveRequest = {
-      schemaVersion: REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
-      expectedRevision: this.revision,
-      idempotencyKey: newIdempotencyKey('save'),
-      documents: state,
-    };
-    await this.mutate('/api/player/save', 'POST', body);
+    await this.mutateRevisioned(
+      '/api/player/save',
+      'POST',
+      'save',
+      (expectedRevision, idempotencyKey): RemotePlayerSaveRequest => ({
+        schemaVersion: REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
+        expectedRevision,
+        idempotencyKey,
+        documents: state,
+      }),
+    );
   }
 
   async saveCheckpoint(checkpoint: string | null): Promise<void> {
-    await this.ensureLoaded();
-    const body: RemoteCheckpointSaveRequest = {
-      schemaVersion: REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
-      expectedRevision: this.revision,
-      idempotencyKey: newIdempotencyKey('checkpoint'),
-      checkpoint,
-    };
-    await this.mutate('/api/player/checkpoint', 'PUT', body);
+    await this.mutateRevisioned(
+      '/api/player/checkpoint',
+      'PUT',
+      'checkpoint',
+      (expectedRevision, idempotencyKey): RemoteCheckpointSaveRequest => ({
+        schemaVersion: REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
+        expectedRevision,
+        idempotencyKey,
+        checkpoint,
+      }),
+    );
   }
 
   async saveCargo(state: PersistedCargoState): Promise<void> {
-    await this.ensureLoaded();
-    const body: RemoteCargoSaveRequest = {
-      schemaVersion: REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
-      expectedRevision: this.revision,
-      idempotencyKey: newIdempotencyKey('cargo'),
-      documents: state,
-    };
-    await this.mutate('/api/player/cargo', 'PUT', body);
+    await this.mutateRevisioned(
+      '/api/player/cargo',
+      'PUT',
+      'cargo',
+      (expectedRevision, idempotencyKey): RemoteCargoSaveRequest => ({
+        schemaVersion: REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
+        expectedRevision,
+        idempotencyKey,
+        documents: state,
+      }),
+    );
   }
 
   /** One-time repair for characters imported from the pre-online Local save. */
@@ -282,11 +292,66 @@ export class RemoteSaveCoordinator {
       idempotencyKey: idempotency,
       documents,
     };
-    return this.mutate('/api/player/migrate-local', 'POST', body);
+    return this.enqueueMutation(
+      () => this.mutate('/api/player/migrate-local', 'POST', body),
+    );
   }
 
   private async ensureLoaded(): Promise<void> {
     if (!this.snapshot) await this.load();
+  }
+
+  /**
+   * Keep every save document on one revision timeline. A second browser page can finish its
+   * pagehide write after this page has loaded, so one stale collision is expected and safe to
+   * rebase. Reload the canonical Server state, then retry once with a fresh idempotency key.
+   * Repeated contention still bubbles to the Local fallback instead of looping or overwriting.
+   */
+  private mutateRevisioned<TBody>(
+    path: string,
+    method: 'POST' | 'PUT',
+    operation: 'save' | 'checkpoint' | 'cargo',
+    body: (expectedRevision: number, idempotencyKey: string) => TBody,
+  ): Promise<RemoteSaveMutationResponse> {
+    return this.enqueueMutation(async () => {
+      await this.ensureLoaded();
+      try {
+        return await this.mutate(
+          path,
+          method,
+          body(this.revision, newIdempotencyKey(operation)),
+        );
+      } catch (error) {
+        if (
+          !(error instanceof RemotePersistenceError)
+          || error.status !== 409
+          || error.code !== 'STALE_SAVE_REVISION'
+        ) {
+          throw error;
+        }
+        const latest = await this.load(true);
+        if (
+          error.currentRevision !== undefined
+          && latest.revision < error.currentRevision
+        ) {
+          throw error;
+        }
+        return this.mutate(
+          path,
+          method,
+          body(latest.revision, newIdempotencyKey(operation)),
+        );
+      }
+    });
+  }
+
+  private enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationQueue.then(operation);
+    this.mutationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   private async mutate(
