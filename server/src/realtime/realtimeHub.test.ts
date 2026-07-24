@@ -470,6 +470,57 @@ describe('S15 PvP combat authority', () => {
 });
 
 describe('S16 shared monster bridge', () => {
+  it('seeds the new island monster and boat snapshots when a passenger sails across islands', () => {
+    const hub = new RealtimeHub(undefined, () => 1_000, 200, true);
+    hub.attachWorldMonsters({
+      snapshotMessageForIsland: (islandId) => ({
+        type: 'world-monster-snapshot',
+        seq: 0,
+        islandId,
+        monsters: [],
+      }),
+      handleHit: () => undefined,
+    });
+    hub.attachBoatWorld({
+      snapshotMessageForIsland: (islandId) => ({
+        type: 'boat-snapshot',
+        seq: 0,
+        islandId,
+        boats: [],
+      }),
+      handleIntent: async () => ({ accepted: true }),
+      isPassenger: () => true,
+      passengerBoat: () => null,
+      removePlayer: () => undefined,
+    });
+    const socket = new FakeSocket();
+    const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
+    hub.handleClientMessage(connection, JSON.stringify({
+      type: 'move',
+      islandId: 'starter-island',
+      x: 4,
+      y: 0,
+      z: -43,
+      heading: 0,
+      onBoat: false,
+    }));
+    socket.sent.length = 0;
+
+    hub.updateBoatPassengerPresence(
+      'char-a',
+      'mist-jungle',
+      113,
+      -125,
+      Math.PI / 2,
+      'training-dinghy',
+    );
+
+    expect(socket.sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'world-monster-snapshot', islandId: 'mist-jungle' }),
+      expect.objectContaining({ type: 'boat-snapshot', islandId: 'mist-jungle' }),
+    ]));
+  });
+
   it('forwards a validated world-monster-hit with the server-known presence', () => {
     const hub = new RealtimeHub(undefined, () => 1_000, 200, true);
     const hits: Parameters<WorldMonsterBridge['handleHit']>[] = [];

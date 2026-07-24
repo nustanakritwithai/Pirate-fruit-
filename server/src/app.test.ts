@@ -64,7 +64,21 @@ describe('server foundation', () => {
       version: 'test-version',
       commitSha: 'c0d220813f51133f638287bad23f401e424f52f5',
       gitBranch: 'corrective/boat-production-deploy',
-      features: { boatWorld: true },
+      features: {
+        remoteSession: true,
+        economyServer: false,
+        remoteSave: false,
+        tradeServer: false,
+        realtime: true,
+        questServer: false,
+        monsterServer: false,
+        progressionServer: false,
+        multiplayer: true,
+        pvp: false,
+        boatWorld: true,
+        sharedWorldMonsters: false,
+        characterSelect: false,
+      },
     });
   });
 

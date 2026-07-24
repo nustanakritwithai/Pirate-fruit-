@@ -77,6 +77,7 @@ jobs:
       ENABLE_PVP: 'true'
       ENABLE_SHARED_WORLD_MONSTERS: 'true'
       ENABLE_BOAT_WORLD: 'true'
+      ENABLE_CHARACTER_SELECT: 'true'
       PORT: '10000'
       VITE_API_URL: http://127.0.0.1:10000
       VITE_USE_REMOTE_SERVER: 'true'
@@ -91,6 +92,7 @@ jobs:
       VITE_ENABLE_PVP: 'true'
       VITE_ENABLE_SHARED_WORLD_MONSTERS: 'true'
       VITE_ENABLE_BOAT_WORLD: 'true'
+      VITE_ENABLE_CHARACTER_SELECT: 'true'
       SMOKE_EXPECT_REALTIME: 'true'
       SMOKE_EXPECT_QUEST: 'true'
       SMOKE_EXPECT_MONSTER: 'true'

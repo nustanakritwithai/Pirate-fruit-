@@ -577,11 +577,21 @@ export class RealtimeHub {
   ): void {
     for (const connection of this.connections) {
       if (connection.characterId !== characterId) continue;
+      const islandChanged = connection.presence?.islandId !== islandId;
       connection.presence = { islandId, x, y: 0, z, heading, onBoat: true, boatId: definitionId };
-      for (const other of this.connections) {
-        if (other === connection || !other.presence || !presenceWithinInterest(connection.presence, other.presence)) continue;
-        this.sendTo(other, presenceMessage(connection));
+      if (islandChanged) {
+        // Boat ticks update canonical presence before the next client heartbeat.
+        // Seed the passenger directly here; otherwise the client clears the old
+        // island and waits forever for a monster snapshot that handleMove will
+        // no longer recognize as an island transition.
+        if (this.worldMonsters) {
+          this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(islandId));
+        }
+        if (this.boatWorld) {
+          this.sendTo(connection, this.boatWorld.snapshotMessageForIsland(islandId));
+        }
       }
+      this.relayPresence(connection);
     }
   }
 

@@ -35,7 +35,7 @@ services:
       - key: CLIENT_ORIGIN
         value: https://pirate-fruit-u555.onrender.com
       - key: SERVER_VERSION
-        value: 0.7.2
+        value: 0.7.3
       - key: SESSION_SECRET
         generateValue: true
       - key: ENABLE_REMOTE_SESSION
@@ -44,37 +44,28 @@ services:
         value: 'true'
       - key: ENABLE_REMOTE_SAVE
         value: 'true'
-      # S8 Trade Authority — ปิดไว้จนกว่าจะผ่าน integration verification บน production
-      # (ฝั่ง client ต้อง build ด้วย VITE_ENABLE_TRADE_SERVER=true พร้อมกันตอนเปิดใช้)
+      # Production rollout: user has explicitly enabled the complete authority stack.
+      # Code/schema defaults remain false for new environments; this Blueprint mirrors Production.
       - key: ENABLE_TRADE_SERVER
-        value: 'false'
-      # S9 WebSocket Foundation — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_REALTIME=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_REALTIME
-        value: 'false'
-      # S10 Quest/Reward Authority — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_QUEST_SERVER=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_QUEST_SERVER
-        value: 'false'
-      # S11 Monster Reward Authority — ปิดจนกว่าจะ verify (client ต้อง build ด้วย VITE_ENABLE_MONSTER_SERVER=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_MONSTER_SERVER
-        value: 'false'
-      # S12 Progression Authority — level เดินจาก EXP ที่ Server แจก (ต้องเปิด QUEST+MONSTER ก่อน; client ต้อง build ด้วย VITE_ENABLE_PROGRESSION_SERVER=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_PROGRESSION_SERVER
-        value: 'false'
-      # S13 Multiplayer Movement — presence relay บน WebSocket (ต้องเปิด ENABLE_REALTIME ก่อน; client ต้อง build ด้วย VITE_ENABLE_MULTIPLAYER=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_MULTIPLAYER
-        value: 'false'
-      # S15 Multiplayer Combat Authority (PvP) — Server เป็นเจ้าของ HP/ดาเมจ (ต้องเปิด ENABLE_MULTIPLAYER ก่อน; client ต้อง build ด้วย VITE_ENABLE_PVP=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_PVP
-        value: 'false'
-      # S16 Shared Monster World — Server จำลองมอนสเตอร์กลาง (ต้องเปิด ENABLE_MULTIPLAYER ก่อน; client ต้อง build ด้วย VITE_ENABLE_SHARED_WORLD_MONSTERS=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_SHARED_WORLD_MONSTERS
-        value: 'false'
-      # S17 Authoritative Boat World — Server owns boat movement/HP/cannon/passengers.
+        value: 'true'
       - key: ENABLE_BOAT_WORLD
-        value: 'false'
-      # S18 Character Select — หน้า login แขก + เลือก/สร้าง/ลบตัวละคร (ต้องเปิด ENABLE_REMOTE_SESSION; client ต้อง build ด้วย VITE_ENABLE_CHARACTER_SELECT=true พร้อมกัน)
+        value: 'true'
       - key: ENABLE_CHARACTER_SELECT
-        value: 'false'
+        value: 'true'
 
 databases:
   - name: pirate-fruit-db

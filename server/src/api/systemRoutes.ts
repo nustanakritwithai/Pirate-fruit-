@@ -72,7 +72,19 @@ export async function registerSystemRoutes(
     commitSha: environment.RENDER_GIT_COMMIT,
     gitBranch: environment.RENDER_GIT_BRANCH,
     features: {
+      remoteSession: environment.ENABLE_REMOTE_SESSION,
+      economyServer: environment.ENABLE_ECONOMY_SERVER,
+      remoteSave: environment.ENABLE_REMOTE_SAVE,
+      tradeServer: environment.ENABLE_TRADE_SERVER,
+      realtime: environment.ENABLE_REALTIME,
+      questServer: environment.ENABLE_QUEST_SERVER,
+      monsterServer: environment.ENABLE_MONSTER_SERVER,
+      progressionServer: environment.ENABLE_PROGRESSION_SERVER,
+      multiplayer: environment.ENABLE_MULTIPLAYER,
+      pvp: environment.ENABLE_PVP,
       boatWorld: environment.ENABLE_BOAT_WORLD,
+      sharedWorldMonsters: environment.ENABLE_SHARED_WORLD_MONSTERS,
+      characterSelect: environment.ENABLE_CHARACTER_SELECT,
     },
   }));
 
