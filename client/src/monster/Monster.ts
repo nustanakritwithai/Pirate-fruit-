@@ -71,6 +71,7 @@ class HealthBar {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private texture: THREE.CanvasTexture;
+  private drawnFraction = Number.NaN;
 
   constructor(private level: number, private isBoss: boolean, headHeight: number) {
     this.canvas = document.createElement('canvas');
@@ -88,6 +89,16 @@ class HealthBar {
   }
 
   draw(fraction: number): void {
+    const nextFraction = THREE.MathUtils.clamp(
+      Number.isFinite(fraction) ? fraction : 0,
+      0,
+      1,
+    );
+    // Position/state deltas arrive up to 5 times per second during combat.
+    // Re-uploading the unchanged canvas to the GPU for every one of them
+    // causes periodic frame spikes on mobile after sustained fighting.
+    if (Math.abs(nextFraction - this.drawnFraction) < 1e-6) return;
+    this.drawnFraction = nextFraction;
     const { ctx, canvas } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // ป้ายเลเวล
@@ -99,9 +110,9 @@ class HealthBar {
     const x = 2, y = 16, w = canvas.width - 4, h = 10;
     ctx.fillStyle = 'rgba(0,0,0,.6)';
     ctx.fillRect(x, y, w, h);
-    const c = fraction > 0.5 ? '#5fd66a' : fraction > 0.22 ? '#e9c341' : '#e0432e';
+    const c = nextFraction > 0.5 ? '#5fd66a' : nextFraction > 0.22 ? '#e9c341' : '#e0432e';
     ctx.fillStyle = c;
-    ctx.fillRect(x + 1, y + 1, Math.max(0, (w - 2) * fraction), h - 2);
+    ctx.fillRect(x + 1, y + 1, Math.max(0, (w - 2) * nextFraction), h - 2);
     ctx.strokeStyle = 'rgba(255,255,255,.55)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
