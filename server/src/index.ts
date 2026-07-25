@@ -12,6 +12,7 @@ import { PostgresPlayerSaveRepository } from './player/playerSaveRepository.js';
 import { PlayerSaveService } from './player/playerSaveService.js';
 import { PostgresEconomyWorldRepository } from './economy/economyWorldRepository.js';
 import { EconomyRuntime, type EconomyRuntimeLogger } from './economy/economyRuntime.js';
+import { shouldBroadcastEconomySnapshot } from './economy/economyRealtimePolicy.js';
 import { startGuestCleanup } from './auth/sessionCleanup.js';
 import { RealtimeHub } from './realtime/realtimeHub.js';
 import { MonsterWorldService } from './world/monsterWorldService.js';
@@ -71,9 +72,13 @@ async function start(): Promise<void> {
     ? new EconomyRuntime({
         repository: new PostgresEconomyWorldRepository(pool),
         logger: deferredEconomyLogger,
-        // S9: push โลกเศรษฐกิจให้ทุก connection ทันทีหลัง persist (tick หรือ trade)
+        // Full economy documents are demand-driven. A background five-second tick must
+        // not make every connected browser parse a large snapshot on its render thread.
         onSnapshotPersisted: realtime
-          ? (snapshot) => realtime.broadcastEconomy(snapshot.tick, JSON.stringify(snapshot.document))
+          ? (snapshot, reason) => {
+              if (!shouldBroadcastEconomySnapshot(reason)) return;
+              realtime.broadcastEconomy(snapshot.tick, JSON.stringify(snapshot.document));
+            }
           : undefined,
       })
     : undefined;

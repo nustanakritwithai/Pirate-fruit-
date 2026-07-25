@@ -286,6 +286,7 @@ async function main(): Promise<void> {
   const tradeRouteHint = new TradeRouteHint();
   const economyDebug = new EconomyDebugPanel(tradeManager.living);
   const economyHud = new EconomyMobileHUD(tradeManager);
+  let requestFreshEconomy = (): void => undefined;
   persistence.subscribeStatus((event) => {
     if (event.scope === 'economy') {
       tradeManager.living.setServerReadOnly(persistence.requestedEconomyMode === 'remote');
@@ -297,10 +298,12 @@ async function main(): Promise<void> {
     economyPanel,
     () => {
       controller.setControlsEnabled(false);
+      requestFreshEconomy();
       economyPanel.open(() => controller.setControlsEnabled(true));
     },
     () => {
       controller.setControlsEnabled(false);
+      requestFreshEconomy();
       economyPanel.openAlerts(() => controller.setControlsEnabled(true));
     },
   );
@@ -367,6 +370,9 @@ async function main(): Promise<void> {
       .finally(() => {
         remotePollInFlight = false;
       });
+  };
+  requestFreshEconomy = (): void => {
+    if (persistence.requestedEconomyMode === 'remote') pollRemoteEconomy();
   };
   const resyncAuthoritativeState = createAuthoritativeResyncHandler({
     refreshEconomy: pollRemoteEconomy,
@@ -743,12 +749,21 @@ async function main(): Promise<void> {
       } else {
         remoteSaveRecoveryAccum = 0;
       }
-      if (persistence.requestedEconomyMode === 'remote' && !realtime?.connected) {
+      // A disconnected socket must not turn the old five-second full-world poll
+      // back into a gameplay hitch. Poll while the player is actively viewing economy UI.
+      const economySurfaceOpen = tradeShop.isOpen || economyPanel.isOpen;
+      if (
+        persistence.requestedEconomyMode === 'remote'
+        && !realtime?.connected
+        && economySurfaceOpen
+      ) {
         remotePollAccum += elapsedMs;
         if (remotePollAccum >= REMOTE_ECONOMY_TICK_INTERVAL_MS) {
           remotePollAccum = 0;
           pollRemoteEconomy();
         }
+      } else {
+        remotePollAccum = 0;
       }
       if (persistence.requestedEconomyMode === 'local') {
         livingTickAccum += elapsedMs;
@@ -789,6 +804,7 @@ async function main(): Promise<void> {
     },
     openTradeShop: (npc) => {
       controller.setControlsEnabled(false);
+      requestFreshEconomy();
       tradeShop.open(npc.islandId, npc.tradeVendorId, () => controller.setControlsEnabled(true));
     },
   });

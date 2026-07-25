@@ -190,6 +190,25 @@ describe('S7 economy runtime', () => {
     await runtime.stop();
   });
 
+  it('labels background ticks separately from player-driven mutations', async () => {
+    const repository = new MemoryEconomyRepository();
+    const persisted: string[] = [];
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory,
+      setInterval: (() => ({}) as ReturnType<typeof setInterval>) as unknown as typeof setInterval,
+      clearInterval: vi.fn() as unknown as typeof clearInterval,
+      onSnapshotPersisted: (_snapshot, reason) => persisted.push(reason),
+    });
+
+    await runtime.start();
+    await runtime.pulseNow();
+    await runtime.executeExclusive(() => 'ok');
+
+    expect(persisted).toEqual(['initialize', 'tick', 'mutation']);
+    await runtime.stop();
+  });
+
   it('rolls back prepared trade work when the economy snapshot cannot persist', async () => {
     const repository = new MemoryEconomyRepository();
     const runtime = new EconomyRuntime({
