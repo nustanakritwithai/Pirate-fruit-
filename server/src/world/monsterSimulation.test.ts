@@ -116,6 +116,22 @@ describe('S16 MonsterSimulation', () => {
     expect(sim.stateOf('s-crab')).toBe('stunned');
   });
 
+  it('does not resend an immediate hit delta on the following simulation tick', () => {
+    let now = 1_000;
+    const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);
+
+    const hit = sim.applyHit(now, 's-crab', 'p1', 0, 0, 'melee');
+    expect(hit?.delta).toMatchObject({
+      hp: SHARED_MONSTER_TYPES.crab.maxHp - WORLD_MONSTER_MELEE_DAMAGE,
+      state: 'stunned',
+      damage: WORLD_MONSTER_MELEE_DAMAGE,
+    });
+
+    now += 200;
+    const nextTick = sim.tick(now, 200, [player('p1', 'starter-island', 0, 0)]);
+    expect(nextTick.dirtyByIsland.get('starter-island')).toBeUndefined();
+  });
+
   it('drops a target that disappears from the world and returns home', () => {
     let now = 1_000;
     const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);
