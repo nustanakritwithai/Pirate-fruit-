@@ -32,6 +32,8 @@ export interface EconomyRuntimeSnapshot {
   lastTickAt: Date | null;
 }
 
+export type EconomyPersistReason = 'initialize' | 'tick' | 'mutation' | 'rollback';
+
 export interface EconomyAtomicWork<T> {
   result: T;
   commit(): Promise<void>;
@@ -49,8 +51,11 @@ export interface EconomyRuntimeOptions {
   snapshotRetention?: number;
   setInterval?: typeof globalThis.setInterval;
   clearInterval?: typeof globalThis.clearInterval;
-  /** S9: เรียกหลัง persist สำเร็จทุกครั้ง (tick/trade) — ใช้ push realtime */
-  onSnapshotPersisted?: (snapshot: EconomyRuntimeSnapshot) => void;
+  /** เรียกหลัง persist สำเร็จ พร้อมสาเหตุ เพื่อแยก background tick จาก mutation ที่ต้อง push */
+  onSnapshotPersisted?: (
+    snapshot: EconomyRuntimeSnapshot,
+    reason: EconomyPersistReason,
+  ) => void;
 }
 
 const silentLogger: EconomyRuntimeLogger = {
@@ -144,7 +149,7 @@ export class EconomyRuntime {
       }
       if (!this.lease || !this.engine) throw new Error('ECONOMY_NOT_READY');
       const result = await fn(this.engine);
-      await this.persist(this.engine.snapshot(), this.now());
+      await this.persist(this.engine.snapshot(), this.now(), 'mutation');
       return result;
     };
     const run = this.pulseQueue.then(step);
@@ -175,7 +180,7 @@ export class EconomyRuntime {
       let economyPersisted = false;
       try {
         work = await fn(this.engine);
-        await this.persist(this.engine.snapshot(), this.now());
+        await this.persist(this.engine.snapshot(), this.now(), 'mutation');
         economyPersisted = true;
         await work.commit();
         return work.result;
@@ -184,7 +189,7 @@ export class EconomyRuntime {
         this.engine = await this.engineFactory(before.document);
         if (economyPersisted) {
           try {
-            await this.persist(before, this.now());
+            await this.persist(before, this.now(), 'rollback');
           } catch (rollbackError) {
             this.engine = null;
             this.cached = null;
@@ -234,11 +239,15 @@ export class EconomyRuntime {
           (this.catchUpTickedAt?.getTime() ?? this.now().getTime()) + steps * this.tickIntervalMs,
         ),
       );
-      await this.persist(this.engine.snapshot(), this.catchUpRemaining > 0 ? this.catchUpTickedAt : this.now());
+      await this.persist(
+        this.engine.snapshot(),
+        this.catchUpRemaining > 0 ? this.catchUpTickedAt : this.now(),
+        'tick',
+      );
       return;
     }
     this.engine.advance();
-    await this.persist(this.engine.snapshot(), this.now());
+    await this.persist(this.engine.snapshot(), this.now(), 'tick');
   }
 
   private async initializeLeader(lease: EconomyLeaderLease): Promise<void> {
@@ -254,14 +263,22 @@ export class EconomyRuntime {
     this.catchUpTickedAt = stored?.lastTickAt
       ? new Date(stored.lastTickAt.getTime() + missedTicks * this.tickIntervalMs)
       : now;
-    await this.persist(this.engine.snapshot(), this.catchUpRemaining > 0 ? this.catchUpTickedAt : now);
+    await this.persist(
+      this.engine.snapshot(),
+      this.catchUpRemaining > 0 ? this.catchUpTickedAt : now,
+      'initialize',
+    );
     this.logger.info(
       { worldId: REMOTE_ECONOMY_WORLD_ID, tick: this.engine.tick, missedTicks, catchUpRemaining: this.catchUpRemaining },
       'economy leadership acquired',
     );
   }
 
-  private async persist(snapshot: EconomyEngineSnapshot, tickedAt: Date): Promise<void> {
+  private async persist(
+    snapshot: EconomyEngineSnapshot,
+    tickedAt: Date,
+    reason: EconomyPersistReason,
+  ): Promise<void> {
     if (!this.lease) throw new Error('Cannot persist economy without leadership');
     await this.lease.save({
       worldId: REMOTE_ECONOMY_WORLD_ID,
@@ -278,7 +295,7 @@ export class EconomyRuntime {
       document: snapshot.document,
       lastTickAt: tickedAt,
     };
-    this.options.onSnapshotPersisted?.(this.cached);
+    this.options.onSnapshotPersisted?.(this.cached, reason);
   }
 
   private fromStored(stored: StoredEconomyWorld): EconomyRuntimeSnapshot {
