@@ -8,6 +8,7 @@ import {
   WORLD_MONSTER_SKILL_RANGE,
   WORLD_MONSTER_ATTACK_HIT_DELAY_MS,
   WORLD_MONSTER_HITSTUN_MS,
+  WORLD_MONSTER_TICK_MS,
   isWorldSafeZone,
   type SharedMonsterType,
   type SharedSpawnPoint,
@@ -104,6 +105,8 @@ const DEAGGRO_MULTIPLIER = 1.3; // เป้าหนีไกลเกินน
 // ให้แต่ละตัว "รักษาพื้นที่" ของมัน หนีพ้นเขตนี้ = ปลอดภัย
 const MAX_LEASH_DISTANCE = 26;
 const ATTACK_RECOVERY_MS = 280;
+const ACTIVE_POSITION_SYNC_MS = WORLD_MONSTER_TICK_MS;
+const AMBIENT_POSITION_SYNC_MS = 450;
 
 function distance(ax: number, az: number, bx: number, bz: number): number {
   return Math.hypot(ax - bx, az - bz);
@@ -492,8 +495,11 @@ export class MonsterSimulation {
     const moveThreshold = active ? 0.05 : 0.6;
     const moved = Math.hypot(monster.x - monster.sentX, monster.z - monster.sentZ) > moveThreshold;
     if (!hpChanged && !stateChanged) {
-      // sync ตำแหน่งล้วนได้ไม่เกิน ~2 ครั้ง/วินาที ต่อตัว (กัน browser อิ่มตัว)
-      if (!moved || now - monster.lastDeltaAt < 450) return;
+      // Active combat movement follows the 5 Hz simulation tick so clients do
+      // not alternate between catching up and stopping. Ambient patrols retain
+      // the lower rate to keep island-wide bandwidth bounded.
+      const syncInterval = active ? ACTIVE_POSITION_SYNC_MS : AMBIENT_POSITION_SYNC_MS;
+      if (!moved || now - monster.lastDeltaAt < syncInterval) return;
     } else if (!moved && !hpChanged && !stateChanged) {
       return;
     }
