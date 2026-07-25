@@ -329,15 +329,37 @@ if (process.env.SMOKE_EXPECT_PROGRESSION === 'true') {
   }
 }
 
-// 4) S9 realtime: เมื่อเปิด flag ต้องมี WS เชื่อมจริง + ได้ welcome และ economy push
+// 4) S9 realtime: เมื่อเปิด flag ต้องมี WS welcome และ economy bootstrap ผ่าน REST
 if (process.env.SMOKE_EXPECT_REALTIME === 'true') {
   const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline
-    && !(wsEvents.frames.includes('welcome') && wsEvents.frames.includes('economy'))) {
+  while (Date.now() < deadline && !wsEvents.frames.includes('welcome')) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  if (wsEvents.opened === 0 || !wsEvents.frames.includes('welcome') || !wsEvents.frames.includes('economy')) {
-    fail('realtime websocket did not deliver welcome + economy frames', { wsEvents, apiCalls });
+  if (wsEvents.opened === 0 || !wsEvents.frames.includes('welcome')) {
+    fail('realtime websocket did not deliver the welcome frame', { wsEvents, apiCalls });
+  }
+
+  // Background economy ticks must not push the full world document over WebSocket.
+  // Verify the replacement bootstrap path from the real browser instead so CORS,
+  // credentials and the authoritative economy endpoint remain covered.
+  const economyProbe = await page.evaluate(async (api) => {
+    try {
+      const response = await fetch(`${api}/api/economy/world`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      const payload = await response.json().catch(() => null);
+      return {
+        ok: response.ok,
+        status: response.status,
+        hasWorld: Boolean(payload && typeof payload === 'object'),
+      };
+    } catch (error) {
+      return { ok: false, status: null, hasWorld: false, error: String(error) };
+    }
+  }, API_URL);
+  if (!economyProbe.ok || economyProbe.status !== 200 || !economyProbe.hasWorld) {
+    fail('economy REST bootstrap failed from the browser', { economyProbe, wsEvents, apiCalls });
   }
 }
 
