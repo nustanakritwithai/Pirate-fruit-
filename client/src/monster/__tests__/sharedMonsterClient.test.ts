@@ -73,6 +73,44 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(scene.getObjectByName('monster:crab')).toBeUndefined();
   });
 
+  it('continues smooth presentation motion between authoritative movement deltas', () => {
+    let now = 1_000;
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => now);
+    client.applySnapshot('starter-island', [snapshot({ x: 0, z: 0, state: 'chase' })]);
+    const rendered = scene.getObjectByName('monster:crab') as THREE.Group;
+
+    now += 200;
+    client.applyDelta('starter-island', [{
+      spawnId: 'starter-crab-1',
+      x: 0.8,
+      z: 0,
+      heading: Math.PI / 2,
+      hp: 70,
+      state: 'chase',
+    }]);
+    for (let frame = 0; frame < 12; frame += 1) {
+      now += 1_000 / 60;
+      client.update(1 / 60);
+    }
+
+    // The visual keeps advancing instead of braking at x=0.8 while waiting
+    // for the next 5 Hz Server delta.
+    expect(rendered.position.x).toBeGreaterThan(0.8);
+
+    client.applyDelta('starter-island', [{
+      spawnId: 'starter-crab-1',
+      x: 0.8,
+      z: 0,
+      heading: Math.PI / 2,
+      hp: 70,
+      state: 'idle',
+    }]);
+    now += 1_000;
+    client.update(1);
+    expect(rendered.position.x).toBeCloseTo(0.8, 2);
+  });
+
   it('reports a lethal shared-monster hit exactly when HP reaches zero', () => {
     expect(resolveSharedMonsterPlayerDamage(10, 12, (amount) => amount)).toEqual({
       hp: 0,

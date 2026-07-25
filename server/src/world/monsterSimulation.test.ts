@@ -60,6 +60,21 @@ describe('S16 MonsterSimulation', () => {
     expect(action).toHaveLength(0);
   });
 
+  it('publishes active chase movement on every 5 Hz simulation tick', () => {
+    let now = 1_000;
+    const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);
+    const target = [player('p1', 'starter-island', 8, 0)];
+
+    const first = sim.tick(now, 200, target);
+    expect(first.dirtyByIsland.get('starter-island')).toHaveLength(1);
+
+    now += 200;
+    const second = sim.tick(now, 200, target);
+    expect(second.dirtyByIsland.get('starter-island')).toHaveLength(1);
+    expect(second.dirtyByIsland.get('starter-island')![0]!.x)
+      .toBeGreaterThan(first.dirtyByIsland.get('starter-island')![0]!.x);
+  });
+
   it('holds position for one recovery beat after an attack before chasing again', () => {
     let now = 1_000;
     const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);

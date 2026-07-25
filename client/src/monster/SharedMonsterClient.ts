@@ -19,11 +19,16 @@ import {
 } from '@pirate-fruit/shared';
 
 const LERP_PER_SECOND = 8;
+const MAX_EXTRAPOLATION_MS = 300;
+const MAX_PRESENTATION_SPEED = 8;
 
 interface SharedMonster {
   visual: Monster;
   group: THREE.Group;
   target: THREE.Vector3;
+  renderTarget: THREE.Vector3;
+  velocity: THREE.Vector3;
+  lastTargetAt: number;
   targetHeading: number;
   hp: number;
   maxHp: number;
@@ -43,6 +48,13 @@ function renderState(state: WorldMonsterState): MonsterState {
   if (state === 'chase' || state === 'aggro') return 'chase';
   if (state === 'return' || state === 'patrol') return 'return';
   return 'idle';
+}
+
+function isMovingState(state: WorldMonsterState): boolean {
+  return state === 'aggro'
+    || state === 'chase'
+    || state === 'return'
+    || state === 'patrol';
 }
 
 export interface SharedMonsterDamageResolution {
@@ -130,7 +142,24 @@ export class SharedMonsterClient implements Updatable {
       if (update.state !== 'dead' && !monster.group.visible) {
         monster.group.visible = true;
       }
-      monster.target.set(update.x, this.heightAt(update.x, update.z), update.z);
+      const receivedAt = this.now();
+      const elapsed = Math.max(0.05, (receivedAt - monster.lastTargetAt) / 1_000);
+      const nextY = this.heightAt(update.x, update.z);
+      if (isMovingState(update.state)) {
+        monster.velocity.set(
+          (update.x - monster.target.x) / elapsed,
+          0,
+          (update.z - monster.target.z) / elapsed,
+        );
+        const speed = Math.hypot(monster.velocity.x, monster.velocity.z);
+        if (speed > MAX_PRESENTATION_SPEED) {
+          monster.velocity.multiplyScalar(MAX_PRESENTATION_SPEED / speed);
+        }
+      } else {
+        monster.velocity.set(0, 0, 0);
+      }
+      monster.target.set(update.x, nextY, update.z);
+      monster.lastTargetAt = receivedAt;
       monster.targetHeading = update.heading;
       const wasHit = update.hp < monster.hp && update.state !== 'dead';
       monster.hp = update.hp;
@@ -186,6 +215,7 @@ export class SharedMonsterClient implements Updatable {
     this.cancelPendingAttacksForSpawn(spawnId);
     monster.state = 'dead';
     monster.hp = 0;
+    monster.velocity.set(0, 0, 0);
     monster.visual.applyAuthoritativeState(0, monster.maxHp, 'dead');
   }
 
@@ -215,6 +245,9 @@ export class SharedMonsterClient implements Updatable {
         visual,
         group,
         target: new THREE.Vector3(snapshot.x, groundY, snapshot.z),
+        renderTarget: new THREE.Vector3(snapshot.x, groundY, snapshot.z),
+        velocity: new THREE.Vector3(),
+        lastTargetAt: this.now(),
         targetHeading: snapshot.heading,
         hp: snapshot.hp,
         maxHp: snapshot.maxHp,
@@ -225,6 +258,9 @@ export class SharedMonsterClient implements Updatable {
       return;
     }
     monster.target.set(snapshot.x, this.heightAt(snapshot.x, snapshot.z), snapshot.z);
+    monster.renderTarget.copy(monster.target);
+    monster.velocity.set(0, 0, 0);
+    monster.lastTargetAt = this.now();
     monster.targetHeading = snapshot.heading;
     monster.hp = snapshot.hp;
     monster.maxHp = snapshot.maxHp;
@@ -328,9 +364,20 @@ export class SharedMonsterClient implements Updatable {
 
   update(dt: number): void {
     const factor = 1 - Math.exp(-LERP_PER_SECOND * dt);
+    const now = this.now();
     for (const monster of this.monsters.values()) {
       if (!monster.group.visible) continue;
-      monster.group.position.lerp(monster.target, factor);
+      monster.renderTarget.copy(monster.target);
+      if (isMovingState(monster.state)) {
+        const extrapolation = Math.min(
+          MAX_EXTRAPOLATION_MS,
+          Math.max(0, now - monster.lastTargetAt),
+        ) / 1_000;
+        monster.renderTarget.x += monster.velocity.x * extrapolation;
+        monster.renderTarget.z += monster.velocity.z * extrapolation;
+        monster.renderTarget.y = this.heightAt(monster.renderTarget.x, monster.renderTarget.z);
+      }
+      monster.group.position.lerp(monster.renderTarget, factor);
       const current = monster.group.rotation.y;
       let delta = monster.targetHeading - current;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
