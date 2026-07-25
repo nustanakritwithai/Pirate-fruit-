@@ -288,6 +288,21 @@ export class MonsterSimulation {
       directionZ: dz / length,
       strength: kind === 'skill' ? 0.82 : 0.64,
     };
+    const delta: WorldMonsterDelta = {
+      ...this.deltaOf(monster),
+      damage,
+      hitReaction,
+      ...(cancelAttackId ? { cancelAttackId } : {}),
+    };
+    // MonsterWorldService broadcasts this hit delta immediately. Keep the
+    // dirty baseline in sync so the next 5 Hz tick does not resend the same
+    // HP/state/position a second time. Movement or a later state transition
+    // still emits normally.
+    monster.lastDeltaAt = now;
+    monster.sentX = monster.x;
+    monster.sentZ = monster.z;
+    monster.sentHp = monster.hp;
+    monster.sentState = monster.state;
     return {
       spawnId,
       monsterId: monster.type.id,
@@ -296,12 +311,7 @@ export class MonsterSimulation {
       maxHp: monster.type.maxHp,
       damage,
       dead,
-      delta: {
-        ...this.deltaOf(monster),
-        damage,
-        hitReaction,
-        ...(cancelAttackId ? { cancelAttackId } : {}),
-      },
+      delta,
     };
   }
 

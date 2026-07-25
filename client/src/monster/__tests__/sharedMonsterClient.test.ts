@@ -111,6 +111,52 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(rendered.position.x).toBeCloseTo(0.8, 2);
   });
 
+  it('uploads the health bar texture only when authoritative HP changes', () => {
+    let now = 1_000;
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => now);
+    client.applySnapshot('starter-island', [snapshot({ x: 0, z: 0, state: 'chase' })]);
+    const rendered = scene.getObjectByName('monster:crab') as THREE.Group;
+    const healthBar = rendered.children.find((child) => child instanceof THREE.Sprite) as THREE.Sprite;
+    const texture = (healthBar.material as THREE.SpriteMaterial).map!;
+    const initialVersion = texture.version;
+
+    for (let tick = 1; tick <= 30; tick += 1) {
+      now += 200;
+      client.applyDelta('starter-island', [{
+        spawnId: 'starter-crab-1',
+        x: tick * 0.4,
+        z: 0,
+        heading: Math.PI / 2,
+        hp: 70,
+        state: 'chase',
+      }]);
+    }
+    expect(texture.version).toBe(initialVersion);
+
+    now += 200;
+    client.applyDelta('starter-island', [{
+      spawnId: 'starter-crab-1',
+      x: 12.4,
+      z: 0,
+      heading: Math.PI / 2,
+      hp: 64,
+      state: 'stunned',
+    }]);
+    expect(texture.version).toBe(initialVersion + 1);
+
+    now += 200;
+    client.applyDelta('starter-island', [{
+      spawnId: 'starter-crab-1',
+      x: 12.4,
+      z: 0,
+      heading: Math.PI / 2,
+      hp: 64,
+      state: 'stunned',
+    }]);
+    expect(texture.version).toBe(initialVersion + 1);
+  });
+
   it('reports a lethal shared-monster hit exactly when HP reaches zero', () => {
     expect(resolveSharedMonsterPlayerDamage(10, 12, (amount) => amount)).toEqual({
       hp: 0,
