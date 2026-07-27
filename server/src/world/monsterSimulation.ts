@@ -249,6 +249,7 @@ export class MonsterSimulation {
     attackerX: number,
     attackerZ: number,
     kind: 'melee' | 'skill',
+    damageMultiplier = 1,
   ): MonsterHitResult | null {
     const monster = this.monsters.get(spawnId);
     if (!monster || monster.state === 'dead' || monster.hp <= 0) return null;
@@ -257,7 +258,11 @@ export class MonsterSimulation {
     const range = kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE;
     if (distance(attackerX, attackerZ, monster.x, monster.z) > range) return null;
 
-    const damage = kind === 'skill' ? WORLD_MONSTER_SKILL_DAMAGE : WORLD_MONSTER_MELEE_DAMAGE;
+    const baseDamage = kind === 'skill' ? WORLD_MONSTER_SKILL_DAMAGE : WORLD_MONSTER_MELEE_DAMAGE;
+    const safeMultiplier = Number.isFinite(damageMultiplier)
+      ? Math.max(1, Math.min(100, damageMultiplier))
+      : 1;
+    const damage = Math.max(1, Math.round(baseDamage * safeMultiplier));
     // Keep the latest id until it is superseded: clients schedule from receipt
     // time, so network delay can leave the action pending after Server hitAt.
     const cancelAttackId = monster.activeAttackId ?? undefined;

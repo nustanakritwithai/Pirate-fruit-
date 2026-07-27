@@ -15,6 +15,7 @@ import { EconomyRuntime, type EconomyRuntimeLogger } from './economy/economyRunt
 import { shouldBroadcastEconomySnapshot } from './economy/economyRealtimePolicy.js';
 import { startGuestCleanup } from './auth/sessionCleanup.js';
 import { RealtimeHub } from './realtime/realtimeHub.js';
+import { PostgresCombatProfileProvider } from './realtime/combatProfile.js';
 import { MonsterWorldService } from './world/monsterWorldService.js';
 import { PostgresWorldMonsterRepository } from './world/worldMonsterRepository.js';
 import { BoatWorldService } from './world/boatWorldService.js';
@@ -66,6 +67,7 @@ async function start(): Promise<void> {
         200,
         environment.ENABLE_MULTIPLAYER,
         environment.ENABLE_PVP,
+        pool ? new PostgresCombatProfileProvider(pool) : undefined,
       )
     : undefined;
   const economy = pool && environment.ENABLE_ECONOMY_SERVER

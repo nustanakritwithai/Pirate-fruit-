@@ -42,6 +42,26 @@ describe('S15 CombatAuthority', () => {
     expect(result).toMatchObject({ damage: PVP_SKILL_DAMAGE, knockback: { speed: PVP_SKILL_KNOCKBACK_SPEED } });
   });
 
+  it('applies the Server stat multiplier and Vitality max HP together', () => {
+    const combat = new CombatAuthority();
+    const result = combat.resolveAttack(
+      1_000,
+      'a',
+      near,
+      'b',
+      near2,
+      'melee',
+      2,
+      100,
+      145,
+    );
+    expect(result).toMatchObject({
+      damage: PVP_MELEE_DAMAGE * 2,
+      hp: 145 - PVP_MELEE_DAMAGE * 2,
+      maxHp: 145,
+    });
+  });
+
   it('rejects attacks out of range, on self, and on the dead', () => {
     const combat = new CombatAuthority();
     expect(combat.resolveAttack(1_000, 'a', near, 'b', far, 'melee')).toBeNull();

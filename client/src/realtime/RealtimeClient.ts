@@ -20,6 +20,7 @@ import {
   type BoatWorldSnapshot,
   type BoatIntentAction,
   type RealtimeCombatRejectReason,
+  type CombatStatCategory,
 } from '@pirate-fruit/shared';
 import { getRemoteSession } from '../session/RemoteSession';
 
@@ -290,10 +291,15 @@ export class RealtimeClient {
   }
 
   /** S15: รายงานเจตนาโจมตีผู้เล่นอีกคน — Server ตัดสินดาเมจ/HP เอง (ไม่ส่งดาเมจ) */
-  sendAttack(targetId: string, kind: 'melee' | 'skill', skillId?: string): string | null {
+  sendAttack(
+    targetId: string,
+    kind: 'melee' | 'skill',
+    skillId?: string,
+    category?: CombatStatCategory,
+  ): string | null {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return null;
     const intentId = `atk-${++this.attackIntentSequence}`;
-    this.socket.send(JSON.stringify({ type: 'attack', intentId, targetId, kind, skillId }));
+    this.socket.send(JSON.stringify({ type: 'attack', intentId, targetId, kind, skillId, category }));
     return intentId;
   }
 
@@ -303,17 +309,31 @@ export class RealtimeClient {
   }
 
   /** S16: รายงานเจตนาตีมอนสเตอร์กลาง — Server ตัดสินดาเมจ/ตาย/contribution เอง */
-  sendMonsterHit(spawnId: string, kind: 'melee' | 'skill'): void {
-    this.sendMonsterHits([spawnId], kind);
+  sendMonsterHit(
+    spawnId: string,
+    kind: 'melee' | 'skill',
+    category?: CombatStatCategory,
+  ): void {
+    this.sendMonsterHits([spawnId], kind, category);
   }
 
   /** One authoritative action may hit an AoE set; one intent id prevents replaying the set. */
-  sendMonsterHits(spawnIds: readonly string[], kind: 'melee' | 'skill'): string | null {
+  sendMonsterHits(
+    spawnIds: readonly string[],
+    kind: 'melee' | 'skill',
+    category?: CombatStatCategory,
+  ): string | null {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return null;
     const targets = [...new Set(spawnIds)].slice(0, 16);
     if (targets.length === 0) return null;
     const intentId = `mob-${++this.monsterIntentSequence}`;
-    this.socket.send(JSON.stringify({ type: 'world-monster-hit', intentId, spawnIds: targets, kind }));
+    this.socket.send(JSON.stringify({
+      type: 'world-monster-hit',
+      intentId,
+      spawnIds: targets,
+      kind,
+      category,
+    }));
     return intentId;
   }
 

@@ -4,9 +4,30 @@ import {
   REALTIME_MAX_CLIENT_MESSAGE_BYTES,
   PVP_ATTACK_MIN_INTERVAL_MS,
   PVP_MELEE_HITSTUN_DURATION,
+  statDamageMultiplier,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
 import { RealtimeHub, type RealtimeSocket, type WorldMonsterBridge } from './realtimeHub.js';
+import {
+  defaultCombatProfile,
+  type AuthoritativeCombatProfile,
+} from './combatProfile.js';
+
+function combatProfile(
+  stats: Partial<AuthoritativeCombatProfile['stats']> = {},
+  overrides: Partial<AuthoritativeCombatProfile> = {},
+): AuthoritativeCombatProfile {
+  const base = defaultCombatProfile();
+  const nextStats = { ...base.stats, ...stats };
+  return {
+    ...base,
+    ...overrides,
+    stats: nextStats,
+    maxHp: 100 + (nextStats.vitality - 1) * 5,
+    maxEnergy: 100 + (nextStats.combat - 1) * 5,
+    maxMp: 100 + (nextStats.mana - 1) * 5,
+  };
+}
 
 class FakeSocket implements RealtimeSocket {
   readyState = 1;
@@ -368,6 +389,56 @@ describe('S15 PvP combat authority', () => {
     expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
   });
 
+  it('uses persisted attacker stats and target Vitality in authoritative PvP', async () => {
+    let clock = 1_000;
+    const attackerProfile = combatProfile(
+      { blade: 50 },
+      {
+        weaponCategory: 'sword',
+        activeSkillCategory: 'sword',
+        allowedSkillCategories: ['sword'],
+      },
+    );
+    const targetProfile = combatProfile({ vitality: 10 });
+    const hub = new RealtimeHub(
+      undefined,
+      () => clock,
+      200,
+      true,
+      true,
+      {
+        profile: async (characterId) =>
+          characterId === 'char-a' ? attackerProfile : targetProfile,
+      },
+    );
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
+
+    hub.handleClientMessage(ca, JSON.stringify({
+      type: 'attack',
+      intentId: 'stat-pvp-1',
+      targetId: 'char-b',
+      kind: 'melee',
+      category: 'sword',
+    }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const hit = b.sent.find((message) => message.type === 'combat-hit');
+    const expectedDamage = Math.round(7 * statDamageMultiplier(attackerProfile.stats, 'sword'));
+    expect(hit).toMatchObject({
+      type: 'combat-hit',
+      damage: expectedDamage,
+      maxHp: 145,
+      hp: 145 - expectedDamage,
+    });
+  });
+
   it('accepts new combo intents during target stun but rejects a replayed intent', () => {
     let clock = 1_000;
     const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
@@ -588,6 +659,48 @@ describe('S16 shared monster bridge', () => {
     }));
 
     expect(hits).toEqual([['char-a', 'starter-island', 22, -4, 'starter-crab-1', 'skill']]);
+  });
+
+  it('forwards only the Server-owned stat multiplier to shared monsters', async () => {
+    const profile = combatProfile(
+      { fruitPower: 50, ranged: 500 },
+      {
+        weaponCategory: 'style',
+        activeSkillCategory: 'fruit',
+        allowedSkillCategories: ['style', 'fruit'],
+      },
+    );
+    const hub = new RealtimeHub(
+      undefined,
+      () => 1_000,
+      200,
+      true,
+      false,
+      { profile: async () => profile },
+    );
+    const hits: Parameters<WorldMonsterBridge['handleHit']>[] = [];
+    hub.attachWorldMonsters({
+      snapshotMessageForIsland: (islandId) => ({
+        type: 'world-monster-snapshot', seq: 0, islandId, monsters: [],
+      }),
+      handleHit: (...hit) => { hits.push(hit); },
+    });
+    const connection = hub.register(new FakeSocket(), 'user-a', 'char-a', 'Alice')!;
+    hub.handleClientMessage(connection, JSON.stringify({
+      type: 'move', islandId: 'starter-island', x: 22, y: 0, z: -4, heading: 0, onBoat: false,
+    }));
+    hub.handleClientMessage(connection, JSON.stringify({
+      type: 'world-monster-hit',
+      intentId: 'mob-stat-1',
+      spawnIds: ['starter-crab-1'],
+      kind: 'skill',
+      // Gun is not equipped, so the Server must fall back to the active Fruit category.
+      category: 'gun',
+    }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(hits[0]?.[6]).toBeCloseTo(statDamageMultiplier(profile.stats, 'fruit'));
   });
 
   it('deduplicates a monster action while allowing one action to hit an AoE set', () => {

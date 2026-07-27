@@ -165,6 +165,16 @@ describe('S16 MonsterSimulation', () => {
     expect(sim.contributorsOf('s-crab', now + WORLD_MONSTER_CONTRIBUTION_WINDOW_MS + 1)).toHaveLength(0);
   });
 
+  it('scales authoritative monster damage from a Server-owned stat multiplier', () => {
+    const now = 5_000;
+    const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);
+    const hit = sim.applyHit(now, 's-crab', 'p1', 1, 0, 'melee', 2);
+    expect(hit?.damage).toBe(WORLD_MONSTER_MELEE_DAMAGE * 2);
+    expect(sim.contributorsOf('s-crab', now)).toEqual([
+      { characterId: 'p1', damage: WORLD_MONSTER_MELEE_DAMAGE * 2 },
+    ]);
+  });
+
   it('kills a monster then respawns it full after the delay (shared death)', () => {
     let now = 0;
     const sim = new MonsterSimulation(() => now, SPAWNS, NO_SAFE_ZONES);

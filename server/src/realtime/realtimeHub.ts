@@ -11,8 +11,15 @@ import {
   type BoatWorldSnapshot,
   isWorldSafeZone,
   type RealtimeCombatRejectReason,
+  type CombatStatCategory,
 } from '@pirate-fruit/shared';
 import { CombatAuthority, type AttackKind } from './combatAuthority.js';
+import {
+  combatDamageMultiplier,
+  defaultCombatProfile,
+  type AuthoritativeCombatProfile,
+  type CombatProfileProvider,
+} from './combatProfile.js';
 import type { PlayerView } from '../world/monsterSimulation.js';
 
 /**
@@ -28,6 +35,7 @@ export interface WorldMonsterBridge {
     z: number,
     spawnId: string,
     kind: AttackKind,
+    damageMultiplier?: number,
   ): void;
 }
 
@@ -110,6 +118,12 @@ const MAX_MONSTER_TARGETS_PER_ACTION = 16;
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readCombatCategory(value: unknown): CombatStatCategory | undefined {
+  return value === 'style' || value === 'sword' || value === 'gun' || value === 'fruit'
+    ? value
+    : undefined;
 }
 
 /** อ่าน+ตรวจ payload ของ move (พิกัดต้องเป็นตัวเลขจำกัด, islandId สั้น ๆ) */
@@ -231,6 +245,8 @@ export class RealtimeHub {
     private readonly presenceEnabled = false,
     /** S15: เปิด PvP combat authority — ปิด = ไม่รับ attack */
     private readonly pvpEnabled = false,
+    /** Server-owned Stats + persisted equipment; absent keeps legacy base values for tests/staging. */
+    private readonly combatProfiles?: CombatProfileProvider,
   ) {}
 
   get connectionCount(): number {
@@ -480,6 +496,64 @@ export class RealtimeHub {
       isWorldSafeZone(attackerPos.islandId, attackerPos.x, attackerPos.z)
       || isWorldSafeZone(targetPos.islandId, targetPos.x, targetPos.z)
     ) return reject('target-unavailable');
+    const requestedCategory = readCombatCategory(message.category);
+    if (message.category !== undefined && !requestedCategory) {
+      this.drop(connection, 1008, 'invalid attack category');
+      return;
+    }
+    if (this.combatProfiles) {
+      void Promise.all([
+        this.combatProfiles.profile(connection.characterId),
+        this.combatProfiles.profile(targetId),
+      ]).then(([attackerProfile, targetProfile]) => {
+        this.finishAttack(
+          connection,
+          targetId,
+          intentId,
+          suppliedIntentId,
+          kind,
+          requestedCategory,
+          attackerPos,
+          targetPos,
+          attackerProfile,
+          targetProfile,
+        );
+      }).catch((error) => {
+        this.logger.warn(
+          { err: error, characterId: connection.characterId, targetId },
+          'authoritative combat profile lookup failed',
+        );
+        reject('target-unavailable');
+      });
+      return;
+    }
+    const fallback = defaultCombatProfile();
+    this.finishAttack(
+      connection,
+      targetId,
+      intentId,
+      suppliedIntentId,
+      kind,
+      requestedCategory,
+      attackerPos,
+      targetPos,
+      fallback,
+      fallback,
+    );
+  }
+
+  private finishAttack(
+    connection: RealtimeConnection,
+    targetId: string,
+    intentId: string,
+    suppliedIntentId: string | undefined,
+    kind: AttackKind,
+    requestedCategory: CombatStatCategory | undefined,
+    attackerPos: PresencePosition,
+    targetPos: PresencePosition,
+    attackerProfile: AuthoritativeCombatProfile,
+    targetProfile: AuthoritativeCombatProfile,
+  ): void {
     const decision = this.combat.resolveAttackDetailed(
       this.now(),
       connection.characterId,
@@ -488,8 +562,21 @@ export class RealtimeHub {
       targetPos,
       kind,
       suppliedIntentId,
+      combatDamageMultiplier(attackerProfile, kind, requestedCategory),
+      attackerProfile.maxHp,
+      targetProfile.maxHp,
     );
-    if (!decision.accepted) return reject(decision.reason);
+    if (!decision.accepted) {
+      this.sendTo(connection, {
+        type: 'combat-result',
+        seq: 0,
+        intentId,
+        targetId,
+        accepted: false,
+        reason: decision.reason,
+      });
+      return;
+    }
     const resolution = decision.resolution;
     this.sendTo(connection, {
       type: 'combat-result', seq: 0, intentId, targetId, accepted: true,
@@ -707,17 +794,62 @@ export class RealtimeHub {
     connection.lastMonsterActionAt = now;
     connection.monsterActionsInWindow += 1;
     const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
+    const requestedCategory = readCombatCategory(message.category);
+    if (message.category !== undefined && !requestedCategory) {
+      this.drop(connection, 1008, 'invalid world-monster-hit category');
+      return;
+    }
     const presence = connection.presence;
     if (!presence) return; // ต้องมีตำแหน่ง (Server วัดระยะเอง — ไม่เชื่อพิกัด client)
-    for (const spawnId of new Set(rawSpawnIds as string[])) {
-      this.worldMonsters.handleHit(
-        connection.characterId,
-        presence.islandId,
-        presence.x,
-        presence.z,
-        spawnId,
-        kind,
-      );
+    const spawnIds = [...new Set(rawSpawnIds as string[])];
+    if (this.combatProfiles) {
+      void this.combatProfiles.profile(connection.characterId).then((profile) => {
+        this.dispatchWorldMonsterHits(
+          connection,
+          presence,
+          spawnIds,
+          kind,
+          combatDamageMultiplier(profile, kind, requestedCategory),
+        );
+      }).catch((error) => {
+        this.logger.warn(
+          { err: error, characterId: connection.characterId },
+          'authoritative monster combat profile lookup failed',
+        );
+      });
+      return;
+    }
+    this.dispatchWorldMonsterHits(connection, presence, spawnIds, kind);
+  }
+
+  private dispatchWorldMonsterHits(
+    connection: RealtimeConnection,
+    presence: PresencePosition,
+    spawnIds: readonly string[],
+    kind: AttackKind,
+    damageMultiplier?: number,
+  ): void {
+    for (const spawnId of spawnIds) {
+      if (damageMultiplier === undefined) {
+        this.worldMonsters?.handleHit(
+          connection.characterId,
+          presence.islandId,
+          presence.x,
+          presence.z,
+          spawnId,
+          kind,
+        );
+      } else {
+        this.worldMonsters?.handleHit(
+          connection.characterId,
+          presence.islandId,
+          presence.x,
+          presence.z,
+          spawnId,
+          kind,
+          damageMultiplier,
+        );
+      }
     }
   }
 
