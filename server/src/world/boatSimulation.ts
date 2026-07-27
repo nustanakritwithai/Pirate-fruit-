@@ -3,6 +3,7 @@ import {
   BOAT_BOARD_RANGE,
   BOAT_CANNON_COOLDOWN_MS,
   BOAT_CANNON_RANGE,
+  BOAT_DOCK_OFFSHORE_DIRECTIONS,
   BOAT_DOCK_SPAWNS,
   BOAT_INPUT_MIN_INTERVAL_MS,
   BOAT_RESPAWN_MS,
@@ -112,13 +113,18 @@ export class BoatSimulation {
     const previous = this.boats.get(canonical.entityId);
     if (previous && (previous.state === 'sunk' || previous.state === 'respawning')
       && previous.respawnAt !== undefined && now < previous.respawnAt) return null;
+    const spawn = this.openDockSpawn(
+      islandId,
+      canonical.entityId,
+      definition.collisionRadius,
+    );
     const boat: BoatRuntime = {
       entityId: canonical.entityId,
       ownerId: canonical.ownerId,
       definitionId: canonical.definitionId,
       islandId,
-      x: dock.x,
-      z: dock.z,
+      x: spawn.x,
+      z: spawn.z,
       heading: dock.heading,
       speed: 0,
       hp: previous && previous.hp > 0
@@ -139,6 +145,20 @@ export class BoatSimulation {
     this.removePassenger(canonical.ownerId);
     this.boats.set(boat.entityId, boat);
     return snapshotOf(boat);
+  }
+
+  /**
+   * A world boat exists only while its owner is in the realtime session.
+   * Owned-boat inventory/HP remains persistent; the physical entity does not.
+   */
+  despawnOwnedBy(characterId: string): BoatWorldSnapshot | null {
+    for (const boat of this.boats.values()) {
+      if (boat.ownerId !== characterId) continue;
+      const snapshot = snapshotOf(boat);
+      this.boats.delete(boat.entityId);
+      return snapshot;
+    }
+    return null;
   }
 
   board(entityId: string, characterId: string, islandId: string, x: number, z: number): BoatWorldSnapshot | null {
@@ -345,6 +365,40 @@ export class BoatSimulation {
       }
     }
     return bestId;
+  }
+
+  /**
+   * Keep concurrent summons out of the same collision circle. Dock headings
+   * are visual orientation only, so explicit harbor vectors extend later slots
+   * into open water without assuming every legacy dock faces the same way.
+   */
+  private openDockSpawn(
+    islandId: string,
+    replacingEntityId: string,
+    collisionRadius: number,
+  ): { x: number; z: number } {
+    const dock = BOAT_DOCK_SPAWNS[islandId]!;
+    const offshore = BOAT_DOCK_OFFSHORE_DIRECTIONS[islandId] ?? { x: 0, z: -1 };
+    const live = [...this.boats.values()].filter((boat) =>
+      boat.entityId !== replacingEntityId
+      && boat.islandId === islandId
+      && boat.state !== 'sunk'
+      && boat.state !== 'respawning');
+    for (let distance = 0; distance <= 96; distance += 2) {
+      const x = dock.x + offshore.x * distance;
+      const z = dock.z + offshore.z * distance;
+      const clear = live.every((boat) => {
+        const otherRadius = AUTHORITATIVE_BOAT_DEFINITIONS[boat.definitionId]!.collisionRadius;
+        return Math.hypot(boat.x - x, boat.z - z) >= collisionRadius + otherRadius + 1;
+      });
+      if (clear) return { x, z };
+    }
+    // The lane is bounded and deterministic; this is reachable only under
+    // extreme harbor saturation, where the furthest open-water slot is safest.
+    return {
+      x: dock.x + offshore.x * 96,
+      z: dock.z + offshore.z * 96,
+    };
   }
 
   private sink(boat: BoatRuntime, now: number): void {
