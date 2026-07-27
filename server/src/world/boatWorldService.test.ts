@@ -5,6 +5,75 @@ import { BoatWorldService } from './boatWorldService.js';
 import type { BoatWorldRepository } from './boatWorldRepository.js';
 
 describe('S17 BoatWorldService', () => {
+  it('starts without restoring physical boats from a previous server session', async () => {
+    let loadCalls = 0;
+    const stale = {
+      entityId: 'stale-boat', ownerId: 'offline-owner', definitionId: 'training-dinghy',
+      islandId: 'starter-island', x: 4.2, z: -43, heading: Math.PI, speed: 0,
+      hp: 130, maxHp: 130, anchor: true, state: 'docked' as const, passengerIds: [],
+    };
+    const repository: BoatWorldRepository = {
+      loadAll: async () => {
+        loadCalls += 1;
+        return [stale];
+      },
+      loadActiveBoat: async () => null,
+      saveAll: async () => undefined,
+    };
+    const hub = {
+      attachBoatWorld: () => undefined,
+      broadcastBoat: () => undefined,
+      updateBoatPassengerPresence: () => undefined,
+      updateDisembarkedPresence: () => undefined,
+    } as unknown as RealtimeHub;
+    const service = new BoatWorldService(hub, { repository });
+
+    await service.load();
+
+    expect(loadCalls).toBe(0);
+    expect(service.snapshotMessageForIsland('starter-island')).toMatchObject({
+      type: 'boat-snapshot',
+      boats: [],
+    });
+  });
+
+  it('removes the owner boat and publishes an empty snapshot on disconnect', async () => {
+    const messages: RealtimeServerMessage[] = [];
+    const saved: string[][] = [];
+    const hub = {
+      attachBoatWorld: () => undefined,
+      broadcastBoat: (_island: string, message: RealtimeServerMessage) => messages.push(message),
+      updateBoatPassengerPresence: () => undefined,
+      updateDisembarkedPresence: () => undefined,
+    } as unknown as RealtimeHub;
+    const repository: BoatWorldRepository = {
+      loadAll: async () => [],
+      loadActiveBoat: async (characterId) => ({
+        entityId: 'boat-owner', ownerId: characterId, definitionId: 'training-dinghy',
+        hp: 130, maxHp: 130, cargoCapacity: 8,
+      }),
+      saveAll: async (rows) => {
+        saved.push(rows.map((row) => row.entityId));
+      },
+    };
+    const service = new BoatWorldService(hub, { repository, now: () => 1_000 });
+    const presence = {
+      islandId: 'starter-island', x: 4.2, y: 0, z: -43, heading: 0, onBoat: false,
+    };
+    await service.handleIntent('owner-a', presence,
+      { type: 'boat-intent', intentId: 'summon-owner', action: 'summon' });
+
+    service.removePlayer('owner-a');
+    await Promise.resolve();
+
+    expect(saved).toContainEqual(['boat-owner']);
+    expect(messages.at(-1)).toMatchObject({
+      type: 'boat-snapshot',
+      islandId: 'starter-island',
+      boats: [],
+    });
+  });
+
   it('completes the production protocol sequence from summon through helm input', async () => {
     const messages: RealtimeServerMessage[] = [];
     const hub = {

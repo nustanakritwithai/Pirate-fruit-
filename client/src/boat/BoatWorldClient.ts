@@ -73,6 +73,10 @@ export class BoatWorldClient {
   applyDelta(snapshot: BoatWorldSnapshot): void {
     const selfCharacterId = this.getSelfCharacterId();
     if (snapshot.ownerId === selfCharacterId) {
+      // A snapshot can arrive before remote-session hydration. If the same
+      // entity was provisionally rendered as remote, remove that visual before
+      // handing it to BoatManager or two hulls will occupy the same transform.
+      this.remove(snapshot.entityId);
       const rider = snapshot.helmId === selfCharacterId
         ? 'helm'
         : snapshot.passengerIds.includes(selfCharacterId ?? '') ? 'deck' : 'off';

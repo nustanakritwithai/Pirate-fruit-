@@ -52,6 +52,41 @@ describe('S17 BoatSimulation', () => {
     )?.passengerIds).toContain('owner-starter');
   });
 
+  it('allocates a clear open-water slot so a docked boat cannot collision-lock propulsion', () => {
+    const sim = new BoatSimulation();
+    const first = sim.summon(canonical('boat-a', 'owner-a'), 'starter-island', 1_000)!;
+    const second = sim.summon(canonical('boat-b', 'owner-b'), 'starter-island', 1_000)!;
+    const radius = AUTHORITATIVE_BOAT_DEFINITIONS['training-dinghy']!.collisionRadius;
+
+    expect(Math.hypot(second.x - first.x, second.z - first.z)).toBeGreaterThanOrEqual(
+      radius * 2 + 1,
+    );
+    expect(second.z).toBeLessThan(first.z);
+
+    expect(sim.board(second.entityId, 'owner-b', second.islandId, second.x, second.z)).not.toBeNull();
+    expect(sim.takeHelm(second.entityId, 'owner-b')).not.toBeNull();
+    expect(sim.setInput(1_100, 'owner-b', second.entityId, 1, 0, false)).not.toBeNull();
+    sim.tick(1_200, 100);
+
+    const moved = sim.stateOf(second.entityId)!;
+    expect(moved.speed).toBeGreaterThan(0);
+    expect(Math.hypot(moved.x - second.x, moved.z - second.z)).toBeGreaterThan(0);
+  });
+
+  it('despawns the physical boat with its owner while preserving the final snapshot', () => {
+    const sim = new BoatSimulation();
+    const boat = sim.summon(canonical('boat-a', 'owner-a'), 'starter-island', 1_000)!;
+    sim.board(boat.entityId, 'guest', boat.islandId, boat.x, boat.z);
+
+    expect(sim.despawnOwnedBy('owner-a')).toMatchObject({
+      entityId: 'boat-a',
+      ownerId: 'owner-a',
+      passengerIds: ['guest'],
+    });
+    expect(sim.stateOf('boat-a')).toBeNull();
+    expect(sim.snapshotForIsland('starter-island')).toEqual([]);
+  });
+
   it('accepts clamped helm input but never a client position', () => {
     const sim = new BoatSimulation();
     sim.restore([row({ entityId: 'boat-a', ownerId: 'owner-a', helmId: 'owner-a', passengerIds: ['owner-a'] })]);

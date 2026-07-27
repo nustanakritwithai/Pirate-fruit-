@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BOAT_DOCK_OFFSHORE_DIRECTIONS,
+  BOAT_DOCK_SPAWNS,
+} from '@pirate-fruit/shared';
+import {
   DOCKS,
   ISLANDS,
   SPAWN_POINTS,
@@ -82,6 +86,18 @@ describe('multi-island registry', () => {
       expect(findDockAt(dock.boatSpawn.x, dock.boatSpawn.z)?.id).toBe(dock.id);
       expect(worldHeightAt(dock.boatSpawn.x, dock.boatSpawn.z)).toBeLessThan(0.05);
       expect(getIsland(dock.islandId).dockIds).toContain(dock.id);
+    }
+  });
+
+  it('keeps every authoritative overflow lane in navigable water', () => {
+    for (const [islandId, spawn] of Object.entries(BOAT_DOCK_SPAWNS)) {
+      const offshore = BOAT_DOCK_OFFSHORE_DIRECTIONS[islandId]!;
+      for (const distance of [0, 8, 16, 32, 64, 96]) {
+        expect(worldHeightAt(
+          spawn.x + offshore.x * distance,
+          spawn.z + offshore.z * distance,
+        )).toBeLessThan(0.05);
+      }
     }
   });
 });

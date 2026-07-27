@@ -38,6 +38,16 @@ export const BOAT_DOCK_SPAWNS: Record<string, { x: number; z: number; heading: n
   'ember-volcano': { x: 243, z: 539, heading: Math.PI },
 };
 
+/** Unit vectors from each harbor into navigable water, independent of visual heading. */
+export const BOAT_DOCK_OFFSHORE_DIRECTIONS: Record<string, { x: number; z: number }> = {
+  'starter-island': { x: 0, z: -1 },
+  'mist-jungle': { x: -1, z: 0 },
+  'sunscar-desert': { x: 0, z: -1 },
+  'azure-frost': { x: 1, z: 0 },
+  'tempest-sky': { x: 1, z: 0 },
+  'ember-volcano': { x: 0, z: 1 },
+};
+
 export type BoatWorldState = 'docked' | 'sailing' | 'sunk' | 'respawning';
 
 export interface BoatWorldSnapshot {

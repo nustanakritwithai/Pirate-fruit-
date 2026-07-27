@@ -46,12 +46,10 @@ export class BoatWorldService implements BoatWorldBridge {
   }
 
   async load(): Promise<void> {
-    if (!this.options.repository) return;
-    try {
-      this.sim.restore(await this.options.repository.loadAll());
-    } catch (error) {
-      this.options.logger?.warn({ err: error }, 'boat world restore failed; starting empty');
-    }
+    // Physical boats are session-scoped. Restoring world_boat_state here made
+    // abandoned boats appear at login with no connected owner, and concurrent
+    // summons at the same dock then collision-locked propulsion. Canonical
+    // ownership, upgrades, cargo, and HP continue to live in player_boats.
   }
 
   start(): void {
@@ -79,7 +77,27 @@ export class BoatWorldService implements BoatWorldBridge {
   }
 
   removePlayer(characterId: string): void {
-    // Keep passenger membership for reconnect, but stop/anchor an abandoned helm.
+    const owned = this.sim.despawnOwnedBy(characterId);
+    if (owned) {
+      // Save the last authoritative HP before removing the session entity.
+      void this.options.repository?.saveAll([owned]).catch((error) => {
+        this.options.logger?.warn({ err: error }, 'boat despawn persist failed');
+      });
+      for (const passengerId of owned.passengerIds) {
+        const sideX = Math.cos(owned.heading) * 4;
+        const sideZ = -Math.sin(owned.heading) * 4;
+        this.hub.updateDisembarkedPresence(
+          passengerId,
+          owned.islandId,
+          owned.x + sideX,
+          owned.z + sideZ,
+          owned.heading,
+        );
+      }
+      // A full island snapshot is the protocol's authoritative removal signal.
+      this.hub.broadcastBoat(owned.islandId, this.snapshotMessageForIsland(owned.islandId));
+      return;
+    }
     const changed = this.sim.disconnect(characterId);
     if (changed) this.broadcastDelta(changed);
   }
