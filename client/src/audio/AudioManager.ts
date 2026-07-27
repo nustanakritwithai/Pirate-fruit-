@@ -123,7 +123,13 @@ export class AudioManager {
 
   bindAutoplayUnlock(target: EventTarget): void {
     if (!this.enabled || this.unlockCleanup) return;
-    const unlock = (): void => { void this.unlock(); };
+    // Keep the gesture recovery hook for the lifetime of the manager. Mobile browsers
+    // may suspend an already-unlocked AudioContext after an app switch, screen lock,
+    // phone call or memory pressure without a reliable visibility transition.
+    const unlock = (event: Event): void => {
+      if (typeof KeyboardEvent !== 'undefined' && event instanceof KeyboardEvent && event.repeat) return;
+      void this.unlock();
+    };
     const types = ['pointerdown', 'touchend', 'keydown'] as const;
     for (const type of types) target.addEventListener(type, unlock, { capture: true, passive: true });
     this.unlockCleanup = () => {
@@ -144,7 +150,7 @@ export class AudioManager {
 
   async unlock(): Promise<boolean> {
     if (!this.enabled) return false;
-    if (this.statusValue === 'running') return true;
+    if (this.statusValue === 'running' && this.backend.isRunning()) return true;
     if (this.unlockInFlight) return this.unlockInFlight;
     const attempt = this.performUnlock();
     this.unlockInFlight = attempt;
@@ -162,7 +168,6 @@ export class AudioManager {
         this.setStatus('failed');
         return false;
       }
-      this.unlockCleanup?.();
       this.applyVolumes();
       this.setStatus('running');
       this.applyMusicState(true);

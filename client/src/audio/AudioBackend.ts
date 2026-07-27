@@ -6,6 +6,7 @@ import type {
 } from './types';
 
 export interface AudioBackend {
+  isRunning(): boolean;
   unlock(): Promise<boolean>;
   setBusVolume(bus: AudioBus | 'master', value: number): void;
   playMusic(track: MusicTrack, fadeMs: number, onEnded: () => void): Promise<void>;
@@ -60,6 +61,10 @@ export class BrowserAudioBackend implements AudioBackend {
   ]);
 
   constructor(private readonly maxVoices: number) {}
+
+  isRunning(): boolean {
+    return this.context?.state === 'running';
+  }
 
   async unlock(): Promise<boolean> {
     try {

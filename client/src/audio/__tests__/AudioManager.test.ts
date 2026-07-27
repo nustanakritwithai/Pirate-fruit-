@@ -9,13 +9,15 @@ import type { AudioBus, AudioCueDefinition, AudioPosition, MusicObservation, Mus
 
 class FakeBackend implements AudioBackend {
   unlockCalls = 0;
+  running = false;
   music: MusicTrack['id'][] = [];
   cues: string[] = [];
   stopped = 0;
   suspended = 0;
   resumed = 0;
   volumes = new Map<string, number>();
-  async unlock(): Promise<boolean> { this.unlockCalls++; return true; }
+  isRunning(): boolean { return this.running; }
+  async unlock(): Promise<boolean> { this.unlockCalls++; this.running = true; return true; }
   setBusVolume(bus: AudioBus | 'master', value: number): void { this.volumes.set(bus, value); }
   async playMusic(track: MusicTrack, _fadeMs: number, _onEnded: () => void): Promise<void> { this.music.push(track.id); }
   stopMusic(): void { this.stopped++; }
@@ -23,8 +25,8 @@ class FakeBackend implements AudioBackend {
   setTension(): void {}
   playCue(cue: AudioCueDefinition, _position?: AudioPosition): void { this.cues.push(cue.id); }
   setListener(): void {}
-  async suspend(): Promise<void> { this.suspended++; }
-  async resume(): Promise<boolean> { this.resumed++; return true; }
+  async suspend(): Promise<void> { this.suspended++; this.running = false; }
+  async resume(): Promise<boolean> { this.resumed++; this.running = true; return true; }
   dispose(): void {}
 }
 
@@ -48,6 +50,48 @@ describe('AudioManager', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(backend.unlockCalls).toBe(1);
+    expect(manager.status).toBe('running');
+  });
+
+  it('recovers on the next gesture when an unlocked browser context is suspended externally', async () => {
+    const backend = new FakeBackend();
+    const manager = new AudioManager({ enabled: true, backend, storage: null });
+    const target = new EventTarget();
+    manager.bindAutoplayUnlock(target);
+    target.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(backend.unlockCalls).toBe(1);
+
+    backend.running = false;
+    target.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(backend.unlockCalls).toBe(2);
+    expect(manager.status).toBe('running');
+  });
+
+  it('keeps gesture recovery active after an initial unlock failure', async () => {
+    const backend = new FakeBackend();
+    backend.unlock = async () => {
+      backend.unlockCalls++;
+      backend.running = backend.unlockCalls > 1;
+      return backend.running;
+    };
+    const manager = new AudioManager({ enabled: true, backend, storage: null });
+    const target = new EventTarget();
+    manager.bindAutoplayUnlock(target);
+
+    target.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manager.status).toBe('failed');
+
+    target.dispatchEvent(new Event('pointerdown'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(backend.unlockCalls).toBe(2);
     expect(manager.status).toBe('running');
   });
 
