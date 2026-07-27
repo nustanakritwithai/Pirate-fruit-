@@ -640,11 +640,14 @@ async function main(): Promise<void> {
     onBoatSnapshot: (islandId, boats) => boatWorldClient?.applySnapshot(islandId, boats),
     onBoatDelta: (boat) => boatWorldClient?.applyDelta(boat),
     onBoatCannon: (event) => {
-      boatWorldClient?.applyCannon(event);
-      audio.play('boat.cannon', {
-        eventId: `boat-cannon:${event.attackerId}:${event.targetId ?? 'miss'}:${event.x}:${event.z}`,
-        position: { x: event.x, y: 0.5, z: event.z },
-      });
+      const firedBySelf = event.attackerId === boatManager.activeAuthorityEntityId;
+      boatWorldClient?.applyCannon(event, firedBySelf);
+      if (!firedBySelf) {
+        audio.play('boat.cannon', {
+          eventId: `boat-cannon:${event.attackerId}:${event.targetId ?? 'miss'}:${event.x}:${event.z}`,
+          position: { x: event.x, y: 0.5, z: event.z },
+        });
+      }
       if (event.damage > 0) audio.play('boat.hit', {
         eventId: `boat-hit:${event.attackerId}:${event.targetId ?? 'unknown'}:${event.targetHp ?? 'x'}`,
         position: { x: event.x, y: 0.5, z: event.z },
@@ -1077,10 +1080,11 @@ async function main(): Promise<void> {
         : controller.dashCooldownFraction,
     () => playerCombat.attackCooldownFraction,
   );
-  touchControls?.bindCannonCooldown(() => (
-    boatWorldEnabled ? boatManager.cannonCooldownFraction : navalCombat.playerFireCooldownFraction
-  ));
+  // NavalCombat consumes the broadside input in both local and authoritative
+  // modes, so its projectile cooldown is the one the button must display.
+  touchControls?.bindCannonCooldown(() => navalCombat.playerFireCooldownFraction);
   navalCombat.onCannonArmed = (side) => touchControls?.setCannonArmed(side);
+  navalCombat.onPlayerCannonFired = (side) => boatManager.requestAuthoritativeCannon(side);
   navalCombat.onAudioEvent = (event, position) => {
     audio.play(`boat.${event}`, { position });
   };
