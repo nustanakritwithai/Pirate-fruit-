@@ -90,6 +90,17 @@ describe('S9 realtime client', () => {
     client.stop();
   });
 
+  it('allows an island transition to request a fresh authoritative snapshot', () => {
+    const { client, sockets } = harness();
+    client.start();
+    sockets[0].welcome();
+
+    expect(client.requestResync()).toBe(true);
+    expect(JSON.parse(sockets[0].sent.at(-1)!)).toEqual({ type: 'resync' });
+    client.stop();
+    expect(client.requestResync()).toBe(false);
+  });
+
   it('reconnects with exponential backoff after a disconnect', () => {
     const { client, sockets, events } = harness();
     client.start();

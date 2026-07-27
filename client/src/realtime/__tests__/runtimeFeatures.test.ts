@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchRuntimeFeatures, resolveSharedMonsterMode } from '../RuntimeFeatures';
+import {
+  fetchRuntimeFeatures,
+  resolveSharedMonsterMode,
+  shouldSuppressLocalMonsters,
+} from '../RuntimeFeatures';
 
 describe('runtime feature handshake', () => {
   it('keeps local monsters when the live Server explicitly has shared monsters disabled', async () => {
@@ -35,5 +39,11 @@ describe('runtime feature handshake', () => {
 
     expect(runtime).toBeNull();
     expect(resolveSharedMonsterMode(true, runtime)).toBe(true);
+  });
+
+  it('keeps local monsters while the session/realtime client is unavailable at boot', () => {
+    expect(shouldSuppressLocalMonsters(true, false)).toBe(false);
+    expect(shouldSuppressLocalMonsters(true, true)).toBe(true);
+    expect(shouldSuppressLocalMonsters(false, true)).toBe(false);
   });
 });

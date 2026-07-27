@@ -3,6 +3,7 @@ import {
   MONSTER_PROTOCOL_SCHEMA_VERSION,
   SHARED_MONSTER_TYPES,
   SHARED_WORLD_SPAWNS,
+  WORLD_MONSTER_SNAPSHOT_INTERVAL_MS,
   WORLD_MONSTER_SKILL_DAMAGE,
   type MonsterKillsResponse,
   type RealtimeServerMessage,
@@ -11,6 +12,40 @@ import type { RealtimeHub } from '../realtime/realtimeHub.js';
 import { MonsterWorldService } from './monsterWorldService.js';
 
 describe('MonsterWorldService rewards', () => {
+  it('periodically reseeds occupied islands after a lost transition snapshot', () => {
+    let now = 1_000;
+    const broadcasts: Array<{ islandId: string; message: RealtimeServerMessage }> = [];
+    const hub = {
+      worldPlayerViews: () => [{
+        characterId: 'character-a',
+        islandId: 'mist-jungle',
+        x: 170,
+        z: -138,
+      }],
+      broadcastWorldMonster: (islandId: string, message: RealtimeServerMessage) => {
+        broadcasts.push({ islandId, message });
+      },
+    } as unknown as RealtimeHub;
+    const service = new MonsterWorldService(hub, { now: () => now });
+
+    now += WORLD_MONSTER_SNAPSHOT_INTERVAL_MS;
+    (service as unknown as { tick(): void }).tick();
+
+    const reseed = broadcasts.find(({ message }) => message.type === 'world-monster-snapshot');
+    expect(reseed).toMatchObject({
+      islandId: 'mist-jungle',
+      message: {
+        type: 'world-monster-snapshot',
+        islandId: 'mist-jungle',
+      },
+    });
+    expect(
+      reseed?.message.type === 'world-monster-snapshot'
+        ? reseed.message.monsters.length
+        : 0,
+    ).toBeGreaterThan(0);
+  });
+
   it('commits one idempotent reward before broadcasting the credited death', async () => {
     const broadcasts: RealtimeServerMessage[] = [];
     const hub = {

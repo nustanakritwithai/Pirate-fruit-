@@ -51,3 +51,14 @@ export function resolveSharedMonsterMode(
   if (!buildRequested) return false;
   return runtime?.sharedWorldMonsters ?? true;
 }
+
+/**
+ * Never remove the offline monster world unless a realtime client was actually
+ * created. A recovered online session reload will switch authority on next boot.
+ */
+export function shouldSuppressLocalMonsters(
+  sharedModeEnabled: boolean,
+  realtimeAvailable: boolean,
+): boolean {
+  return sharedModeEnabled && realtimeAvailable;
+}
