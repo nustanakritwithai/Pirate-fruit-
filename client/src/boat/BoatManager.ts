@@ -43,6 +43,33 @@ export interface BoatAuthorityAdapter {
   }): string | null;
 }
 
+export interface AuthoritativeBoatPresentationPose {
+  x: number;
+  z: number;
+  heading: number;
+  speed: number;
+}
+
+/** Smooth one render frame toward a short dead-reckoned Server boat pose. */
+export function interpolateAuthoritativeBoatPose(
+  current: AuthoritativeBoatPresentationPose,
+  target: Pick<BoatWorldSnapshot, 'x' | 'z' | 'heading' | 'speed'>,
+  dt: number,
+  snapshotAgeSeconds: number,
+): AuthoritativeBoatPresentationPose {
+  const age = Math.min(0.16, Math.max(0, snapshotAgeSeconds));
+  const predictedX = target.x + Math.sin(target.heading) * target.speed * age;
+  const predictedZ = target.z + Math.cos(target.heading) * target.speed * age;
+  let headingDelta = target.heading - current.heading;
+  headingDelta = Math.atan2(Math.sin(headingDelta), Math.cos(headingDelta));
+  return {
+    x: THREE.MathUtils.damp(current.x, predictedX, 14, dt),
+    z: THREE.MathUtils.damp(current.z, predictedZ, 14, dt),
+    heading: current.heading + headingDelta * (1 - Math.exp(-14 * dt)),
+    speed: THREE.MathUtils.damp(current.speed, target.speed, 12, dt),
+  };
+}
+
 export class BoatManager {
   private active: Boat | null = null;
   private readonly progress: BoatProgress;
@@ -62,6 +89,8 @@ export class BoatManager {
   private authority: BoatAuthorityAdapter | null = null;
   private authorityEntityId: string | null = null;
   private authorityInputAccum = 0;
+  private authorityTarget: BoatWorldSnapshot | null = null;
+  private authorityTargetReceivedAt = 0;
   private pendingSummonIntentId: string | null = null;
   private pendingSummonElapsed = 0;
   private preparingSummon = false;
@@ -131,6 +160,8 @@ export class BoatManager {
   setAuthority(adapter: BoatAuthorityAdapter | null): void {
     this.authority = adapter;
     this.authorityEntityId = null;
+    this.authorityTarget = null;
+    this.authorityTargetReceivedAt = 0;
     this.pendingSummonIntentId = null;
     this.pendingSummonElapsed = 0;
     this.preparingSummon = false;
@@ -146,6 +177,7 @@ export class BoatManager {
 
   /** Absolute state from S17 Server; never accepts client-computed HP/position. */
   applyAuthoritativeBoat(snapshot: BoatWorldSnapshot, serverRider: BoatRiderState = 'off'): void {
+    const previousEntityId = this.authorityEntityId;
     this.authorityEntityId = snapshot.entityId;
     let boat = this.active;
     if (boat && boat.definition.id !== snapshot.definitionId) {
@@ -155,6 +187,7 @@ export class BoatManager {
       this.active = null;
       boat = null;
     }
+    const createVisual = !boat;
     if (!boat) {
       const definition = this.progress.getRuntimeDefinition(snapshot.definitionId)
         ?? getBoatDefinition(snapshot.definitionId);
@@ -164,12 +197,23 @@ export class BoatManager {
       this.active = boat;
       this.ensureDeckProvider(boat);
     }
+    this.authorityTarget = { ...snapshot, passengerIds: [...snapshot.passengerIds] };
+    this.authorityTargetReceivedAt = performance.now();
     boat.group.visible = snapshot.state !== 'sunk' && snapshot.state !== 'respawning';
-    boat.group.position.x = snapshot.x;
-    boat.group.position.z = snapshot.z;
-    boat.heading = snapshot.heading;
-    boat.group.rotation.y = snapshot.heading;
-    boat.speed = snapshot.speed;
+    const presentationGap = Math.hypot(
+      boat.group.position.x - snapshot.x,
+      boat.group.position.z - snapshot.z,
+    );
+    // First ownership handoff, respawn/island transfer, and large corrections
+    // are teleports. Ordinary 100 ms world ticks are interpolated in update()
+    // so the local helm never visibly snaps between Server coordinates.
+    if (createVisual || previousEntityId !== snapshot.entityId || presentationGap > 18) {
+      boat.group.position.x = snapshot.x;
+      boat.group.position.z = snapshot.z;
+      boat.heading = snapshot.heading;
+      boat.group.rotation.y = snapshot.heading;
+      boat.speed = snapshot.speed;
+    }
     boat.hp = snapshot.hp;
     boat.anchor = snapshot.anchor;
     if (serverRider !== this.rider) {
@@ -218,6 +262,20 @@ export class BoatManager {
     if (this.pendingCannonIntentIds.delete(result.intentId) && result.accepted) {
       this.authorityCannonCooldown = BOAT_CANNON_COOLDOWN_MS / 1_000;
     }
+  }
+
+  /**
+   * NavalCombat owns the local pirate-ship projectile. Mirror the same broadside
+   * to the Server so player-vs-player boats remain authoritative without making
+   * two systems compete to consume the cannon input.
+   */
+  requestAuthoritativeCannon(side: 'port' | 'starboard'): void {
+    if (!this.authorityActive || !this.authorityEntityId) return;
+    const intentId = this.authority!.send('fire', {
+      entityId: this.authorityEntityId,
+      fireSide: side,
+    });
+    if (intentId) this.pendingCannonIntentIds.add(intentId);
   }
 
   /** พาผู้เล่นกลับขึ้นดาดฟ้าเรือตัวเอง (หลังยึดเรือศัตรู) — คืน false ถ้าไม่มีเรือ */
@@ -291,6 +349,7 @@ export class BoatManager {
 
     const previousX = boat.group.position.x;
     const previousZ = boat.group.position.z;
+    if (this.authorityActive) this.updateAuthoritativePresentation(boat, dt);
     if (boat.state === 'piloted') {
       this.updatePiloted(boat, dt);
     } else if (!this.authorityActive) {
@@ -413,14 +472,6 @@ export class BoatManager {
           boost: boostRequested,
         });
       }
-      const cannon = this.input.consumeCannon();
-      if (cannon === 1 || cannon === 2) {
-        const intentId = this.authority!.send('fire', {
-          entityId: this.authorityEntityId ?? undefined,
-          fireSide: cannon === 1 ? 'port' : 'starboard',
-        });
-        if (intentId) this.pendingCannonIntentIds.add(intentId);
-      }
       return;
     }
 
@@ -469,6 +520,26 @@ export class BoatManager {
     boat.heading -= boat.turnVelocity * dt;
     // เลี้ยวแรงเสียความเร็วเล็กน้อย (แรงต้านน้ำ)
     boat.speed *= 1 - Math.min(0.3, Math.abs(boat.turnVelocity) * 0.22) * dt;
+  }
+
+  private updateAuthoritativePresentation(boat: Boat, dt: number): void {
+    const target = this.authorityTarget;
+    if (!target || target.entityId !== this.authorityEntityId) return;
+    const pose = interpolateAuthoritativeBoatPose(
+      {
+        x: boat.group.position.x,
+        z: boat.group.position.z,
+        heading: boat.heading,
+        speed: boat.speed,
+      },
+      target,
+      dt,
+      Math.max(0, performance.now() - this.authorityTargetReceivedAt) / 1_000,
+    );
+    boat.group.position.x = pose.x;
+    boat.group.position.z = pose.z;
+    boat.heading = pose.heading;
+    boat.speed = pose.speed;
   }
 
   private updateIdle(boat: Boat, dt: number): void {

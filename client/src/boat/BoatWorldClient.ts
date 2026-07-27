@@ -125,12 +125,12 @@ export class BoatWorldClient {
     damage: number;
     x: number;
     z: number;
-  }): void {
+  }, suppressAttackerPresentation = false): void {
     const localBoat = this.localBoats.activeAuthorityEntityId === event.attackerId
       ? this.localBoats.activeBoat
       : null;
     const attacker = localBoat ?? this.rendered.get(event.attackerId)?.boat;
-    if (attacker) {
+    if (attacker && !suppressAttackerPresentation) {
       for (const shot of authoritativeCannonShots(attacker, event.side)) {
         this.effects.spawnGunShot(shot.origin, shot.endpoint, 0xffb45b, false);
       }

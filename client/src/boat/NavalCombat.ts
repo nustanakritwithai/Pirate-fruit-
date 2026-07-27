@@ -94,6 +94,26 @@ interface Cannonball extends CannonballState {
   damage: number;
 }
 
+export interface NavalAuthorityPlan {
+  /** Pirate AI is still a local gameplay world until an NPC boat authority exists. */
+  simulatePirateShips: boolean;
+  renderPirateShips: boolean;
+  allowLocalPirateDamage: boolean;
+  /** Player boats additionally mirror their broadside to Server PvP authority. */
+  mirrorPlayerBroadside: boolean;
+}
+
+export function resolveNavalAuthorityPlan(
+  playerBoatServerAuthoritative: boolean,
+): NavalAuthorityPlan {
+  return {
+    simulatePirateShips: true,
+    renderPirateShips: true,
+    allowLocalPirateDamage: true,
+    mirrorPlayerBroadside: playerBoatServerAuthoritative,
+  };
+}
+
 /** แปลงนิยามเรือศัตรู → BoatDefinition ขั้นต่ำสำหรับ createBoatModel */
 function toModelDefinition(defn: EnemyShipDefinition): BoatDefinition {
   return {
@@ -134,7 +154,10 @@ export class NavalCombat {
   private readonly aimFill: THREE.MeshBasicMaterial;
   private readonly aimRim: THREE.MeshBasicMaterial;
   private nextShipInstanceId = 1;
+  private readonly authorityPlan: NavalAuthorityPlan;
   onCannonArmed?: (side: 0 | 1 | 2) => void;
+  /** Mirror a locally rendered pirate broadside to the authoritative player-boat world. */
+  onPlayerCannonFired?: (side: 'port' | 'starboard') => void;
   /** Presentation-only hook; never participates in naval damage or authority decisions. */
   onAudioEvent?: (event: 'cannon' | 'hit' | 'sinking', position: THREE.Vector3) => void;
 
@@ -151,17 +174,15 @@ export class NavalCombat {
     textures: WorldTextures,
     graphics: GraphicsProfile,
     private notify?: (message: string) => void,
-    private readonly serverAuthoritative = false,
+    playerBoatServerAuthoritative = false,
   ) {
+    this.authorityPlan = resolveNavalAuthorityPlan(playerBoatServerAuthoritative);
     const definitions = new Map(PIRATE_SHIP_TIERS.map((definition) => [definition.tier, definition]));
     for (const spawn of PIRATE_SPAWNS) {
       const definition = definitions.get(spawn.tier) ?? PIRATE_CUTTER;
       this.ships.push(this.spawnShip(definition, spawn, textures, graphics));
     }
-    if (serverAuthoritative) {
-      for (const ship of this.ships) ship.group.visible = false;
-    }
-
+    for (const ship of this.ships) ship.group.visible = this.authorityPlan.renderPirateShips;
     const makeArc = (inner: number, outer: number, material: THREE.MeshBasicMaterial) => {
       const geometry = new THREE.RingGeometry(inner, outer, 42, 1, -0.95, 1.9);
       geometry.rotateX(-Math.PI / 2);
@@ -197,8 +218,7 @@ export class NavalCombat {
     damage: number,
     hitShips?: Set<string>,
   ): boolean {
-    if (this.serverAuthoritative) return false;
-    if (this.boats.riderState !== 'deck') return false;
+    if (!this.authorityPlan.allowLocalPirateDamage || this.boats.riderState !== 'deck') return false;
     let target: EnemyShip | null = null;
     let best = Number.POSITIVE_INFINITY;
     for (const ship of this.ships) {
@@ -296,11 +316,7 @@ export class NavalCombat {
 
   update(dt: number): void {
     this.elapsed += dt;
-    if (this.serverAuthoritative) {
-      this.aimArc.visible = false;
-      this.prompt.hide();
-      return;
-    }
+    if (!this.authorityPlan.simulatePirateShips) return;
     this.playerFireCooldown = Math.max(0, this.playerFireCooldown - dt);
 
     const playerBoat = this.boats.activeBoat;
@@ -632,13 +648,14 @@ export class NavalCombat {
       this.aimArc.visible = true;
       this.updateAimArc();
       this.onCannonArmed?.(desired === 1 ? 1 : 2);
-      this.notify?.(desired === 1 ? '💣 เปิดกราบซ้าย — กดซ้ำเพื่อยิง' : '💣 เปิดกราบขวา — กดซ้ำเพื่อยิง');
-      return;
     }
     if (this.playerFireCooldown > 0) return;
     this.playerFireCooldown = PLAYER_FIRE_COOLDOWN;
     this.onAudioEvent?.('cannon', boat.group.position);
     const side = this.armedSide;
+    if (this.authorityPlan.mirrorPlayerBroadside) {
+      this.onPlayerCannonFired?.(side === 1 ? 'port' : 'starboard');
+    }
     const target = this.nearestShipTo(bx, bz, side, leftX, leftZ);
 
     const count = Math.max(1, boat.definition.cannonsPerSide ?? 1);
