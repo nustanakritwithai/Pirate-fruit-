@@ -15,7 +15,7 @@ Signature SFX combine a small number of oscillator/noise layers: cannon body plu
 ## Runtime structure
 
 - `AudioManager`: lifecycle, buses, settings, dedupe, visibility handling and safe failure boundary.
-- `BrowserAudioBackend`: Web Audio graph, two streaming music decks, procedural synthesis, voice priority and spatial panners.
+- `BrowserAudioBackend`: Web Audio graph, scheduled procedural music layers, voice priority and spatial panners.
 - `MusicStateMachine`: pure priority resolution and stable transitions.
 - `AudioRuntimeBridge`: read-only polling bridge for movement, combat and boat state.
 - `AudioRegistry`: data-driven procedural fallback definitions for all A1 cue categories.
@@ -25,9 +25,9 @@ The buses are `master`, `music`, `ambience`, `sfx`, and `ui`. Master, music, amb
 
 ## Autoplay and loading
 
-Construction creates no `AudioContext`, media element or network request. The first `pointerdown`, `touchend` or `keydown` calls `unlock()`. Music elements are created with `preload="none"`, and a music URL is assigned only after unlock and a resolved music state. This keeps initial audio transfer at zero before the gesture.
+Construction creates no `AudioContext`, media element or network request. The first `pointerdown`, `touchend` or `keydown` calls `unlock()`. The lightweight gesture hook remains active so a later gesture can recover an AudioContext suspended by an app switch, screen lock, phone call or browser memory pressure; a context that is already running returns immediately. Procedural music scheduling begins only after unlock and a resolved music state, keeping initial audio transfer at zero before the gesture.
 
-Music is streamed through two `HTMLAudioElement` sources routed into Web Audio. This avoids decoding all tracks into large PCM buffers on mobile. A crossfade briefly uses two streams, then clears the old element and URL.
+Music is synthesized in short scheduled layers. A crossfade briefly overlaps the old and new procedural layers, then stops and disconnects the old layer.
 
 ## Music priority
 
