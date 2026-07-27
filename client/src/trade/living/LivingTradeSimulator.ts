@@ -313,7 +313,12 @@ export class LivingTradeSimulator {
     return getFactoryStatus(cell, this.world.factories);
   }
 
-  tick(): void {
+  /**
+   * Split one deterministic economy tick into small, resumable units. The synchronous
+   * browser/test path drains the iterator immediately; the Server can yield between
+   * units so realtime WebSocket timers are not starved by the five-second pulse.
+   */
+  private *tickSteps(): Generator<void, void, void> {
     if (this.serverReadOnly) return;
     this.world.tick += 1;
     this.tickLog = [];
@@ -321,25 +326,35 @@ export class LivingTradeSimulator {
     for (const cell of this.world.cells) {
       produceGoods(cell);
       consumeGoods(cell);
+      yield;
     }
 
     const factoryEvents = updateAdaptiveEconomy(this.world);
     appendFactoryEventsToLog(factoryEvents, this.tickLog, this.world.tick);
+    yield;
 
     for (const cell of this.world.cells) {
       runProduction(cell, this.tickLog, this.world.factories);
       updateDemand(cell);
       updatePrices(cell);
       resolveSpoilage(cell, this.tickLog, this.world.spoilageReduction);
+      yield;
     }
 
     spreadDemand(this.world);
+    yield;
     updateWorldModifiers(this.world);
+    yield;
     updatePlayerEconomy(this.world, this.tickLog, this.contractWallet ?? undefined);
+    yield;
     this.runDynamicTrade();
+    yield;
     moveCargo(this.world, this.tickLog);
+    yield;
     scheduleImportConvoys(this.world, this.tickLog);
+    yield;
     updateEconomyGenome(this.world);
+    yield;
 
     for (const entry of this.tickLog) entry.tick = this.world.tick;
     this.world.log = prependBounded(
@@ -347,6 +362,7 @@ export class LivingTradeSimulator {
       this.tickLog,
       LIVING_ECONOMY_BOUNDS.maxEconomyLogEntries,
     );
+    yield;
 
     const newNews = generateNewsFromTick(this.world, this.tickLog);
     this.world.news = mergeNewsBatch(
@@ -354,8 +370,20 @@ export class LivingTradeSimulator {
       newNews,
       LIVING_ECONOMY_BOUNDS.maxNewsEntries,
     );
+    yield;
     trimEconomyWorldState(this.world);
+    yield;
     this.persist();
+  }
+
+  tick(): void {
+    for (const _step of this.tickSteps()) {
+      // Intentionally drain without yielding to preserve the existing synchronous API.
+    }
+  }
+
+  async tickCooperatively(yieldControl: () => Promise<void>): Promise<void> {
+    for (const _step of this.tickSteps()) await yieldControl();
   }
 
   tickMany(count: number): void {

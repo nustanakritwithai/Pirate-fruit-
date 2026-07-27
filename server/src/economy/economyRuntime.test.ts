@@ -209,6 +209,42 @@ describe('S7 economy runtime', () => {
     await runtime.stop();
   });
 
+  it('uses cooperative engine advancement when the bundled engine supports it', async () => {
+    const repository = new MemoryEconomyRepository();
+    let tick = 0;
+    const synchronousAdvance = vi.fn(() => {
+      tick += 1;
+    });
+    const cooperativeAdvance = vi.fn(async () => {
+      tick += 1;
+    });
+    const cooperativeFactory: EconomyEngineFactory = async () => ({
+      get tick() { return tick; },
+      advance: synchronousAdvance,
+      advanceCooperatively: cooperativeAdvance,
+      snapshot: () => ({ tick, documentVersion: 8, document: documentAt(tick) }),
+      quoteBuy: () => ({ unitPrice: 10, tradableStock: 100 }),
+      quoteSell: () => ({ unitPrice: 8, feeRate: 0.05 }),
+      applyBuy: () => undefined,
+      applySell: () => undefined,
+      cargoFits: () => true,
+    });
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory: cooperativeFactory,
+      setInterval: (() => ({}) as ReturnType<typeof setInterval>) as unknown as typeof setInterval,
+      clearInterval: vi.fn() as unknown as typeof clearInterval,
+    });
+
+    await runtime.start();
+    await runtime.pulseNow();
+
+    expect(cooperativeAdvance).toHaveBeenCalledOnce();
+    expect(synchronousAdvance).not.toHaveBeenCalled();
+    expect((await runtime.getSnapshot()).tick).toBe(1);
+    await runtime.stop();
+  });
+
   it('rolls back prepared trade work when the economy snapshot cannot persist', async () => {
     const repository = new MemoryEconomyRepository();
     const runtime = new EconomyRuntime({

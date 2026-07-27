@@ -36,6 +36,10 @@ export interface BundledSellQuote {
   feeRate: number;
 }
 
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function decode(document: unknown) {
   if (document === null || document === undefined) return null;
   try {
@@ -64,6 +68,9 @@ export function createEconomyEngine(initialDocument?: unknown) {
     },
     advance(): void {
       simulator.tick();
+    },
+    async advanceCooperatively(): Promise<void> {
+      await simulator.tickCooperatively(yieldToEventLoop);
     },
     snapshot(): BundledEconomySnapshot {
       const serialized = serializeEconomyState(simulator.state);
