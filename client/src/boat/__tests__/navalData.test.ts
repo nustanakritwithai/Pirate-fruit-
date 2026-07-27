@@ -10,6 +10,7 @@ import {
   PIRATE_SKIFF,
   PIRATE_SHIP_TIERS,
   PIRATE_SPAWNS,
+  resolveBroadsideCommand,
   steerToward,
   stepCannonball,
   type CannonballState,
@@ -68,6 +69,13 @@ describe('NavalData — AI เรือโจรสลัด', () => {
     expect(decideShipState('chase', defn.aggroRange * 1.5, true, defn)).toBe('patrol');
   });
 
+  it('ลดระยะมองเห็นของทุกระดับ แต่ยังมากกว่าระยะยิง', () => {
+    expect(PIRATE_SHIP_TIERS.map((ship) => ship.aggroRange)).toEqual([34, 40, 52, 62]);
+    for (const ship of PIRATE_SHIP_TIERS) {
+      expect(ship.aggroRange).toBeGreaterThan(ship.fireRange);
+    }
+  });
+
   it('steerToward เลี้ยวจำกัดอัตราและถูกทิศ (รวม wrap ข้าม ±π)', () => {
     // เลี้ยวทีละไม่เกิน turnSpeed·dt
     const turned = steerToward(0, Math.PI / 2, 1, 0.1);
@@ -75,6 +83,28 @@ describe('NavalData — AI เรือโจรสลัด', () => {
     // ข้ามรอยต่อ -π/π ต้องเลือกทางสั้น
     const wrapped = steerToward(Math.PI * 0.95, -Math.PI * 0.95, 1, 0.1);
     expect(wrapped).toBeGreaterThan(Math.PI * 0.95); // หมุนต่อไปทาง +
+  });
+});
+
+describe('NavalData — ปืนใหญ่สองจังหวะ', () => {
+  it('กดครั้งแรกเปิดกราบ และกดกราบเดิมครั้งที่สองจึงยิง', () => {
+    const armed = resolveBroadsideCommand(0, 1, 0);
+    expect(armed).toEqual({ armedSide: 1, fire: false });
+    expect(resolveBroadsideCommand(armed.armedSide, 1, 0)).toEqual({
+      armedSide: 1,
+      fire: true,
+    });
+  });
+
+  it('สลับกราบต้องเปิดกราบใหม่ก่อน และไม่ยิงระหว่างคูลดาวน์', () => {
+    expect(resolveBroadsideCommand(1, -1, 0)).toEqual({
+      armedSide: -1,
+      fire: false,
+    });
+    expect(resolveBroadsideCommand(-1, -1, 0.1)).toEqual({
+      armedSide: -1,
+      fire: false,
+    });
   });
 });
 

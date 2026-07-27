@@ -44,7 +44,7 @@ export const PIRATE_SKIFF: EnemyShipDefinition = {
   cruiseSpeed: 3.8,
   chaseSpeed: 7.8,
   turnSpeed: 1.15,
-  aggroRange: 48,
+  aggroRange: 34,
   fireRange: 22,
   fireCooldown: 4.8,
   cannonDamage: 8,
@@ -68,7 +68,7 @@ export const PIRATE_CUTTER: EnemyShipDefinition = {
   cruiseSpeed: 3.2,
   chaseSpeed: 7.5,
   turnSpeed: 0.85,
-  aggroRange: 55,
+  aggroRange: 40,
   fireRange: 26,
   fireCooldown: 3.2,
   cannonDamage: 14,
@@ -92,7 +92,7 @@ export const PIRATE_BRIG: EnemyShipDefinition = {
   cruiseSpeed: 2.9,
   chaseSpeed: 6.4,
   turnSpeed: 0.65,
-  aggroRange: 70,
+  aggroRange: 52,
   fireRange: 38,
   fireCooldown: 4.3,
   cannonDamage: 23,
@@ -116,7 +116,7 @@ export const PIRATE_GALLEON: EnemyShipDefinition = {
   cruiseSpeed: 2.5,
   chaseSpeed: 5.5,
   turnSpeed: 0.48,
-  aggroRange: 85,
+  aggroRange: 62,
   fireRange: 48,
   fireCooldown: 5,
   cannonDamage: 36,
@@ -182,6 +182,28 @@ export const CANNONBALL_LIFETIME = 6;
 export const PLAYER_CANNON_DAMAGE = 42;
 /** คูลดาวน์ยิงชุด (broadside) ของผู้เล่น */
 export const PLAYER_FIRE_COOLDOWN = 2.4;
+
+export type PlayerBroadside = 1 | -1;
+
+export interface BroadsideCommandResolution {
+  armedSide: PlayerBroadside;
+  fire: boolean;
+}
+
+/**
+ * ปืนใหญ่ใช้คำสั่งสองจังหวะ: ครั้งแรกเปิด/เปลี่ยนกราบ ครั้งถัดไปจึงยิง
+ * ถ้ายังคูลดาวน์อยู่ กราบยังเปิดค้างแต่ยังไม่ยิง
+ */
+export function resolveBroadsideCommand(
+  armedSide: 0 | PlayerBroadside,
+  desiredSide: PlayerBroadside,
+  cooldownRemaining: number,
+): BroadsideCommandResolution {
+  return {
+    armedSide: desiredSide,
+    fire: armedSide === desiredSide && cooldownRemaining <= 0,
+  };
+}
 
 export interface CannonballState {
   x: number;

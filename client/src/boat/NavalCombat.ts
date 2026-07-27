@@ -32,6 +32,7 @@ import {
   PIRATE_SPAWNS,
   PLAYER_CANNON_DAMAGE,
   PLAYER_FIRE_COOLDOWN,
+  resolveBroadsideCommand,
   SHIP_RESPAWN_SECONDS,
   steerToward,
   stepCannonball,
@@ -643,13 +644,19 @@ export class NavalCombat {
       const nearest = this.nearestShipTo(bx, bz, 0, leftX, leftZ);
       desired = nearest && (nearest.group.position.x - bx) * leftX + (nearest.group.position.z - bz) * leftZ >= 0 ? 1 : -1;
     }
-    if (this.armedSide !== desired) {
-      this.armedSide = desired;
+    const command = resolveBroadsideCommand(this.armedSide, desired, this.playerFireCooldown);
+    if (this.armedSide !== command.armedSide) {
+      this.armedSide = command.armedSide;
       this.aimArc.visible = true;
       this.updateAimArc();
       this.onCannonArmed?.(desired === 1 ? 1 : 2);
+      this.notify?.(
+        desired === 1
+          ? '💣 เปิดกราบซ้าย — กดซ้ำเพื่อยิง'
+          : '💣 เปิดกราบขวา — กดซ้ำเพื่อยิง',
+      );
     }
-    if (this.playerFireCooldown > 0) return;
+    if (!command.fire) return;
     this.playerFireCooldown = PLAYER_FIRE_COOLDOWN;
     this.onAudioEvent?.('cannon', boat.group.position);
     const side = this.armedSide;
