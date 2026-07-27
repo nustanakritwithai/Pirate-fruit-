@@ -9,7 +9,7 @@ import {
 import { LivingTradeSimulator } from '../LivingTradeSimulator';
 import { ECONOMY_CONFIG } from '../LivingTradeConfig';
 import { resolveMarketState } from '../EconomyRules';
-import type { CommodityState } from '../types';
+import type { CommodityState, EconomyWorldState } from '../types';
 
 function sampleItem(overrides: Partial<CommodityState> = {}): CommodityState {
   return {
@@ -37,6 +37,16 @@ function sampleItem(overrides: Partial<CommodityState> = {}): CommodityState {
     },
     ...overrides,
   };
+}
+
+function canonicalizeEphemeralValues(world: Readonly<EconomyWorldState>): EconomyWorldState {
+  return JSON.parse(JSON.stringify(world, (key, value: unknown) => {
+    if (key === 'createdAt' && typeof value === 'number') return 0;
+    if (typeof value === 'string') {
+      return value.replace(/^(gpress|news|order|ship|contract|history)-\d+$/, '$1-generated');
+    }
+    return value;
+  })) as EconomyWorldState;
 }
 
 describe('LivingTradeFormulas', () => {
@@ -191,6 +201,30 @@ describe('LivingTradeSimulator — Economic CA', () => {
     const leafFood = sim.getCommodity('leaf-island', 'fresh-fish')!;
     expect(afterPrice).toBeGreaterThanOrEqual(beforePrice);
     expect(leafFood.memory.recentBuyVolume).toBeGreaterThan(0);
+  });
+
+  it('keeps cooperative server ticks identical to synchronous simulation', async () => {
+    const initialWorld = structuredClone(sim.state);
+    const synchronous = new LivingTradeSimulator({
+      initialWorld: structuredClone(initialWorld),
+      persist: () => undefined,
+    });
+    const cooperative = new LivingTradeSimulator({
+      initialWorld: structuredClone(initialWorld),
+      persist: () => undefined,
+    });
+    let yields = 0;
+
+    synchronous.tick();
+    await cooperative.tickCooperatively(async () => {
+      yields += 1;
+      await Promise.resolve();
+    });
+
+    expect(yields).toBeGreaterThan(1);
+    expect(canonicalizeEphemeralValues(cooperative.state)).toEqual(
+      canonicalizeEphemeralValues(synchronous.state),
+    );
   });
 
   it('player buy reduces stock', () => {

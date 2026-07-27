@@ -229,9 +229,10 @@ export class EconomyRuntime {
       return;
     }
     if (!this.engine) throw new Error('Economy leader has no simulation engine');
+    const engine = this.engine;
     if (this.catchUpRemaining > 0) {
       const steps = Math.min(this.maxCatchUpTicks, this.catchUpRemaining);
-      for (let index = 0; index < steps; index++) this.engine.advance();
+      for (let index = 0; index < steps; index++) await this.advanceEngine(engine);
       this.catchUpRemaining -= steps;
       this.catchUpTickedAt = new Date(
         Math.min(
@@ -240,38 +241,47 @@ export class EconomyRuntime {
         ),
       );
       await this.persist(
-        this.engine.snapshot(),
+        engine.snapshot(),
         this.catchUpRemaining > 0 ? this.catchUpTickedAt : this.now(),
         'tick',
       );
       return;
     }
-    this.engine.advance();
-    await this.persist(this.engine.snapshot(), this.now(), 'tick');
+    await this.advanceEngine(engine);
+    await this.persist(engine.snapshot(), this.now(), 'tick');
   }
 
   private async initializeLeader(lease: EconomyLeaderLease): Promise<void> {
     const stored = await lease.load(REMOTE_ECONOMY_WORLD_ID);
     this.engine = await this.engineFactory(stored?.document);
+    const engine = this.engine;
     const now = this.now();
     const totalMissedTicks = stored?.lastTickAt
       ? Math.max(0, Math.floor((now.getTime() - stored.lastTickAt.getTime()) / this.tickIntervalMs))
       : 0;
     const missedTicks = Math.min(this.maxCatchUpTicks, totalMissedTicks);
-    for (let index = 0; index < missedTicks; index++) this.engine.advance();
+    for (let index = 0; index < missedTicks; index++) await this.advanceEngine(engine);
     this.catchUpRemaining = Math.max(0, totalMissedTicks - missedTicks);
     this.catchUpTickedAt = stored?.lastTickAt
       ? new Date(stored.lastTickAt.getTime() + missedTicks * this.tickIntervalMs)
       : now;
     await this.persist(
-      this.engine.snapshot(),
+      engine.snapshot(),
       this.catchUpRemaining > 0 ? this.catchUpTickedAt : now,
       'initialize',
     );
     this.logger.info(
-      { worldId: REMOTE_ECONOMY_WORLD_ID, tick: this.engine.tick, missedTicks, catchUpRemaining: this.catchUpRemaining },
+      { worldId: REMOTE_ECONOMY_WORLD_ID, tick: engine.tick, missedTicks, catchUpRemaining: this.catchUpRemaining },
       'economy leadership acquired',
     );
+  }
+
+  private async advanceEngine(engine: EconomyEngine): Promise<void> {
+    if (engine.advanceCooperatively) {
+      await engine.advanceCooperatively();
+      return;
+    }
+    engine.advance();
   }
 
   private async persist(

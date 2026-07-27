@@ -22,6 +22,8 @@ export interface EconomySellQuote {
 export interface EconomyEngine {
   readonly tick: number;
   advance(): void;
+  /** Server path that yields between deterministic simulation phases. */
+  advanceCooperatively?(): Promise<void>;
   snapshot(): EconomyEngineSnapshot;
   // S8 Trade Authority — สูตรเดียวกับ browser ผ่าน bundle เดียวกัน
   quoteBuy(islandId: string, commodityId: string, quantity: number): EconomyBuyQuote | null;
