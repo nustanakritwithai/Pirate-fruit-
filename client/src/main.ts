@@ -74,6 +74,7 @@ import {
   PVP_SKILL_RANGE,
   WORLD_MONSTER_MELEE_RANGE,
   WORLD_MONSTER_SKILL_RANGE,
+  type CombatStatCategory,
 } from '@pirate-fruit/shared';
 import { ServerStatusBadge } from './ui/ServerStatusBadge';
 import {
@@ -973,7 +974,15 @@ async function main(): Promise<void> {
   // S16: และต่อ M1/สกิลเข้ากับมอนสเตอร์กลาง — หาตัวในกรวยหน้าแล้วส่ง "เจตนาตี" ให้ Server ตัดสิน
   if (realtime && (multiplayerEnabled || sharedWorldMonstersEnabled)) {
     const CONE_HALF_ANGLE = Math.PI / 3; // ~120° กรวยหน้า
-    playerCombat.onPvpAttack = ({ origin, forwardX, forwardZ, kind, skillId, range: requestedRange }) => {
+    playerCombat.onPvpAttack = ({
+      origin,
+      forwardX,
+      forwardZ,
+      kind,
+      category,
+      skillId,
+      range: requestedRange,
+    }) => {
       if (pvpEnabled && remotePlayers) {
         const range = Math.min(
           kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE,
@@ -990,14 +999,25 @@ async function main(): Promise<void> {
             controller.heading = Math.atan2(target.x - origin.x, target.z - origin.z);
           }
           const targetIds = targets.length > 0 ? targets.slice(0, 8) : [targetId];
-          for (const id of targetIds) realtime.sendAttack(id, kind, skillId);
+          const statCategory = category === 'utility'
+            ? undefined
+            : category as CombatStatCategory;
+          for (const id of targetIds) realtime.sendAttack(id, kind, skillId, statCategory);
           playerCombat?.markCombatActivity();
         }
       } else if (multiplayerEnabled && !pvpEnabled) {
         notifyPvp('⚔️ PK ยังไม่เปิดใน build นี้');
       }
     };
-    playerCombat.onSharedMonsterAttack = ({ origin, forwardX, forwardZ, kind, range: requestedRange, area }) => {
+    playerCombat.onSharedMonsterAttack = ({
+      origin,
+      forwardX,
+      forwardZ,
+      kind,
+      category,
+      range: requestedRange,
+      area,
+    }) => {
       if (!sharedMonsters) return;
       const range = Math.min(
         kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
@@ -1008,7 +1028,11 @@ async function main(): Promise<void> {
         : sharedMonsters.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE);
       const item = playerCombat?.activeItem;
       if (item) for (const spawnId of spawnIds) sharedMonsterRewardSources.set(spawnId, { ...item });
-      realtime.sendMonsterHits(spawnIds, kind);
+      realtime.sendMonsterHits(
+        spawnIds,
+        kind,
+        category === 'utility' ? undefined : category as CombatStatCategory,
+      );
     };
     if (pvpEnabled) {
       let lastBlocking = false;

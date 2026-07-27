@@ -235,10 +235,10 @@ describe('S9 realtime client', () => {
     client.start();
     const socket = sockets[0];
     socket.welcome();
-    const intentId = client.sendAttack('char-b', 'melee');
+    const intentId = client.sendAttack('char-b', 'melee', undefined, 'sword');
     expect(intentId).toEqual(expect.any(String));
     expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({
-      type: 'attack', intentId, targetId: 'char-b', kind: 'melee',
+      type: 'attack', intentId, targetId: 'char-b', kind: 'melee', category: 'sword',
     });
     socket.push({
       type: 'combat-result', seq: 2, intentId: intentId!, targetId: 'char-b',

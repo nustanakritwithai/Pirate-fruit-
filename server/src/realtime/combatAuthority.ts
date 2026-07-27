@@ -32,6 +32,7 @@ export interface CombatPosition {
 
 interface CombatState {
   hp: number;
+  maxHp: number;
   /** null = ยังไม่ตาย; ตัวเลข = เวลาที่จะเกิดใหม่ (ms) */
   respawnAt: number | null;
   /** Server-authoritative hit-stun window; prevents immediate counterattacks. */
@@ -71,8 +72,12 @@ export interface RespawnEvent {
   maxHp: number;
 }
 
-function damageFor(kind: AttackKind): number {
-  return kind === 'skill' ? PVP_SKILL_DAMAGE : PVP_MELEE_DAMAGE;
+function damageFor(kind: AttackKind, multiplier = 1): number {
+  const safeMultiplier = Number.isFinite(multiplier)
+    ? Math.max(1, Math.min(100, multiplier))
+    : 1;
+  const base = kind === 'skill' ? PVP_SKILL_DAMAGE : PVP_MELEE_DAMAGE;
+  return Math.max(1, Math.round(base * safeMultiplier));
 }
 
 const ATTACK_INTENT_TTL_MS = 30_000;
@@ -112,10 +117,14 @@ export class CombatAuthority {
   }
 
   /** ผู้เล่นเข้าร่วม — เริ่มด้วย HP เต็ม (idempotent) */
-  ensure(playerId: string): void {
+  ensure(playerId: string, maxHp?: number): void {
+    const normalizedMaxHp = typeof maxHp === 'number' && Number.isFinite(maxHp)
+      ? Math.max(PVP_MAX_HP, Math.floor(maxHp))
+      : PVP_MAX_HP;
     if (!this.states.has(playerId)) {
       this.states.set(playerId, {
-        hp: PVP_MAX_HP,
+        hp: normalizedMaxHp,
+        maxHp: normalizedMaxHp,
         respawnAt: null,
         hitstunUntil: 0,
         lastAttackAt: new Map(),
@@ -124,7 +133,17 @@ export class CombatAuthority {
         guard: PVP_GUARD_MAX,
         lastGuardAt: 0,
       });
+      return;
     }
+    const state = this.states.get(playerId)!;
+    if (maxHp === undefined) return;
+    if (state.maxHp === normalizedMaxHp) return;
+    // Preserve missing HP when Vitality changes instead of healing damage for free.
+    state.hp = Math.min(
+      normalizedMaxHp,
+      Math.max(0, state.hp + normalizedMaxHp - state.maxHp),
+    );
+    state.maxHp = normalizedMaxHp;
   }
 
   /** ตัดการเชื่อมต่อ → ลบสถานะ + ลบ throttle ที่คนอื่นมีต่อผู้เล่นนี้ */
@@ -161,8 +180,22 @@ export class CombatAuthority {
     targetId: string,
     targetPos: CombatPosition | null,
     kind: AttackKind,
+    attackerDamageMultiplier = 1,
+    attackerMaxHp = PVP_MAX_HP,
+    targetMaxHp = PVP_MAX_HP,
   ): AttackResolution | null {
-    const decision = this.resolveAttackDetailed(now, attackerId, attackerPos, targetId, targetPos, kind);
+    const decision = this.resolveAttackDetailed(
+      now,
+      attackerId,
+      attackerPos,
+      targetId,
+      targetPos,
+      kind,
+      undefined,
+      attackerDamageMultiplier,
+      attackerMaxHp,
+      targetMaxHp,
+    );
     return decision.accepted ? decision.resolution : null;
   }
 
@@ -174,11 +207,14 @@ export class CombatAuthority {
     targetPos: CombatPosition | null,
     kind: AttackKind,
     intentId?: string,
+    attackerDamageMultiplier = 1,
+    attackerMaxHp = PVP_MAX_HP,
+    targetMaxHp = PVP_MAX_HP,
   ): AttackDecision {
     if (attackerId === targetId) return { accepted: false, reason: 'self-target' };
     if (!attackerPos || !targetPos) return { accepted: false, reason: 'presence-required' };
-    this.ensure(attackerId);
-    this.ensure(targetId);
+    this.ensure(attackerId, attackerMaxHp);
+    this.ensure(targetId, targetMaxHp);
     const attacker = this.states.get(attackerId)!;
     const target = this.states.get(targetId)!;
     if (intentId && !this.claimIntent(attacker, intentId, now)) {
@@ -204,7 +240,7 @@ export class CombatAuthority {
 
     attacker.lastAttackAt.set(targetId, now);
     this.refreshGuard(target, now);
-    const baseDamage = damageFor(kind);
+    const baseDamage = damageFor(kind, attackerDamageMultiplier);
     const blocked = target.blocking && target.guard > 0;
     const damage = blocked ? Math.max(1, Math.ceil(baseDamage * PVP_BLOCK_DAMAGE_RATIO)) : baseDamage;
     let guardBroken = false;
@@ -227,7 +263,7 @@ export class CombatAuthority {
       resolution: {
         damage,
         hp: target.hp,
-        maxHp: PVP_MAX_HP,
+        maxHp: target.maxHp,
         defeated,
         knockback,
         blocked,
@@ -264,14 +300,14 @@ export class CombatAuthority {
     const respawned: RespawnEvent[] = [];
     for (const [playerId, state] of this.states) {
       if (state.respawnAt !== null && now >= state.respawnAt) {
-        state.hp = PVP_MAX_HP;
+        state.hp = state.maxHp;
         state.respawnAt = null;
         state.hitstunUntil = 0;
         state.blocking = false;
         state.guard = PVP_GUARD_MAX;
         state.lastGuardAt = now;
         state.lastAttackAt.clear();
-        respawned.push({ playerId, hp: PVP_MAX_HP, maxHp: PVP_MAX_HP });
+        respawned.push({ playerId, hp: state.maxHp, maxHp: state.maxHp });
       }
     }
     return respawned;

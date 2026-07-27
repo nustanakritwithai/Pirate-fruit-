@@ -105,8 +105,17 @@ export class MonsterWorldService implements WorldMonsterBridge {
     z: number,
     spawnId: string,
     kind: AttackKind,
+    damageMultiplier = 1,
   ): void {
-    const result = this.sim.applyHit(this.now(), spawnId, characterId, x, z, kind);
+    const result = this.sim.applyHit(
+      this.now(),
+      spawnId,
+      characterId,
+      x,
+      z,
+      kind,
+      damageMultiplier,
+    );
     if (!result) return;
     this.hub.broadcastWorldMonster(result.islandId, {
       type: 'world-monster-delta',

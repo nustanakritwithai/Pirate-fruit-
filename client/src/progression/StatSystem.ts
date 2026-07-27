@@ -5,6 +5,11 @@ import type {
   PlayerStatId,
   PlayerStats,
 } from './ProgressionTypes';
+import {
+  resourceCapsForStats,
+  statDamageMultiplier,
+  type CombatStatCategory,
+} from '@pirate-fruit/shared';
 
 export const PLAYER_STAT_IDS: readonly PlayerStatId[] = [
   'combat',
@@ -20,24 +25,15 @@ export function isPlayerStatId(value: unknown): value is PlayerStatId {
 }
 
 export function getMaxHp(stats: PlayerStats): number {
-  return (
-    PROGRESSION_CONFIG.baseHealth +
-    (Math.max(1, stats.vitality) - 1) * PROGRESSION_CONFIG.healthPerVitality
-  );
+  return resourceCapsForStats(stats).maxHp;
 }
 
 export function getMaxEnergy(stats: PlayerStats): number {
-  return (
-    PROGRESSION_CONFIG.baseEnergy +
-    (Math.max(1, stats.combat) - 1) * PROGRESSION_CONFIG.energyPerCombat
-  );
+  return resourceCapsForStats(stats).maxEnergy;
 }
 
 export function getMaxMp(stats: PlayerStats): number {
-  return (
-    PROGRESSION_CONFIG.baseMana +
-    (Math.max(1, stats.mana) - 1) * PROGRESSION_CONFIG.manaPerMana
-  );
+  return resourceCapsForStats(stats).maxMp;
 }
 
 export function getRelevantStat(category: LoadoutCategory): PlayerStatId | null {
@@ -51,7 +47,7 @@ export function getRelevantStat(category: LoadoutCategory): PlayerStatId | null 
 export function getStatDamageMultiplier(stats: PlayerStats, category: LoadoutCategory): number {
   const statId = getRelevantStat(category);
   if (!statId) return 1;
-  return 1 + (Math.max(1, stats[statId]) - 1) * PROGRESSION_CONFIG.damagePerStatPoint;
+  return statDamageMultiplier(stats, category as CombatStatCategory);
 }
 
 export function spendStatPoint(

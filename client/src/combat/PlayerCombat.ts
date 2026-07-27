@@ -255,6 +255,7 @@ export class PlayerCombat {
     forwardX: number;
     forwardZ: number;
     kind: 'melee' | 'skill';
+    category: LoadoutCategory;
     skillId?: string;
     /** Client presentation/targeting range; Server still validates authority. */
     range: number;
@@ -267,6 +268,7 @@ export class PlayerCombat {
     forwardZ: number;
     range: number;
     kind: 'melee' | 'skill';
+    category: LoadoutCategory;
     area?: number;
   }) => void;
 
@@ -766,6 +768,7 @@ export class PlayerCombat {
         forwardX: forward.x,
         forwardZ: forward.z,
         kind: 'melee',
+        category: this.set.weaponCategory,
         range: m1.range,
       });
       this.onSharedMonsterAttack?.({
@@ -773,6 +776,7 @@ export class PlayerCombat {
         forwardX: forward.x,
         forwardZ: forward.z,
         kind: 'melee',
+        category: this.set.weaponCategory,
         range: m1.range,
       });
 
@@ -954,6 +958,7 @@ export class PlayerCombat {
       forwardX: dirX,
       forwardZ: dirZ,
       kind: 'skill',
+      category: skill.category,
       skillId: skill.id,
       range: this.skillTargetRange(skill),
     });
@@ -963,6 +968,7 @@ export class PlayerCombat {
         forwardX: dirX,
         forwardZ: dirZ,
         kind: 'skill',
+        category: skill.category,
         range: this.skillTargetRange(skill),
         ...(skill.renderType === 'aoe' || skill.renderType === 'buff'
           ? { area: Math.max(0.5, skill.radius) }
@@ -1259,6 +1265,7 @@ export class PlayerCombat {
           forwardX: dir.x,
           forwardZ: dir.z,
           kind: 'skill',
+          category: s.source.category,
           range: s.attackRange,
         });
         if (target) {
@@ -1341,6 +1348,7 @@ export class PlayerCombat {
       forwardX: ch.dirX,
       forwardZ: ch.dirZ,
       kind: 'skill',
+      category: ch.source.category,
       range: ch.skill.range,
       ...(ch.kind === 'beam' ? { area: Math.max(0.5, ch.skill.radius) } : {}),
     });
@@ -1434,6 +1442,7 @@ export class PlayerCombat {
           forwardX: 0,
           forwardZ: 1,
           kind: 'skill',
+          category: zone.source.category,
           range: zone.radius,
           area: zone.radius,
         });
@@ -1475,6 +1484,7 @@ export class PlayerCombat {
           forwardX: 0,
           forwardZ: 1,
           kind: 'skill',
+          category: field.source.category,
           range: field.radius,
           area: field.radius,
         });

@@ -327,6 +327,11 @@ export interface RealtimeAttack {
   targetId: string;
   /** ชนิดการโจมตี — Server ใช้เลือกดาเมจจากตารางของตัวเอง (ไม่รับดาเมจจาก Client) */
   kind: 'melee' | 'skill';
+  /**
+   * Stat family requested by the equipped action. Server accepts it only when
+   * its persisted loadout profile allows the category; it is never a damage value.
+   */
+  category?: import('../progression/stats.js').CombatStatCategory;
   /** ข้อมูลประกอบ (log/telemetry) — ไม่มีผลต่อดาเมจ */
   skillId?: string;
 }
@@ -348,6 +353,8 @@ export interface RealtimeWorldMonsterHit {
   intentId: string;
   spawnIds: string[];
   kind: 'melee' | 'skill';
+  /** Server validates this against persisted equipment before choosing a stat. */
+  category?: import('../progression/stats.js').CombatStatCategory;
 }
 
 export type RealtimeClientMessage =

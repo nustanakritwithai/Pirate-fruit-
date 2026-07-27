@@ -10,6 +10,7 @@ import {
   type IslandId,
   type PersistedCargoState,
   type PersistedPlayerState,
+  resourceCapsForStats,
 } from '@pirate-fruit/shared';
 
 const MAX_SAFE_VALUE = Number.MAX_SAFE_INTEGER;
@@ -277,11 +278,7 @@ function resourceCaps(progression: CanonicalProgression): {
   maxEnergy: number;
   maxMp: number;
 } {
-  return {
-    maxHp: 100 + (progression.stats.vitality - 1) * 5,
-    maxEnergy: 100 + (progression.stats.combat - 1) * 5,
-    maxMp: 100 + (progression.stats.mana - 1) * 5,
-  };
+  return resourceCapsForStats(progression.stats);
 }
 
 export function sanitizeCheckpoint(
