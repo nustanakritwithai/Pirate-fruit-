@@ -369,6 +369,9 @@ export class RealtimeHub {
       }
       connection.lastMoveAt = now;
       if (firstMove || islandChanged) {
+        if (this.worldMonsters) {
+          this.sendTo(connection, this.worldMonsters.snapshotMessageForIsland(aboard.islandId));
+        }
         this.sendTo(connection, this.boatWorld!.snapshotMessageForIsland(aboard.islandId));
       }
       // The client keeps sending only a heartbeat while aboard. Relay the

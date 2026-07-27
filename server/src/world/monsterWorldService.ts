@@ -1,6 +1,7 @@
 import {
   MONSTER_PROTOCOL_SCHEMA_VERSION,
   SHARED_WORLD_SPAWNS,
+  WORLD_MONSTER_SNAPSHOT_INTERVAL_MS,
   WORLD_MONSTER_TICK_MS,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
@@ -47,6 +48,7 @@ export class MonsterWorldService implements WorldMonsterBridge {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTickAt: number;
   private persistAccumMs = 0;
+  private snapshotAccumMs = 0;
   private readonly pendingRewards = new Map<string, PendingDeathReward>();
 
   constructor(
@@ -196,7 +198,8 @@ export class MonsterWorldService implements WorldMonsterBridge {
     const now = this.now();
     const dtMs = now - this.lastTickAt;
     this.lastTickAt = now;
-    const { dirtyByIsland, respawns, attacks } = this.sim.tick(now, dtMs, this.hub.worldPlayerViews());
+    const players = this.hub.worldPlayerViews();
+    const { dirtyByIsland, respawns, attacks } = this.sim.tick(now, dtMs, players);
     this.processPendingRewards();
     for (const [islandId, updates] of dirtyByIsland) {
       this.hub.broadcastWorldMonster(islandId, {
@@ -222,6 +225,18 @@ export class MonsterWorldService implements WorldMonsterBridge {
         seq: 0,
         attack,
       });
+    }
+    // A transition snapshot can race ahead of the Client's island detector, and
+    // WebSocket reconnects can miss a one-shot seed. Periodic full snapshots for
+    // occupied islands make the authoritative renderer self-healing without
+    // broadcasting every island or changing combat authority.
+    this.snapshotAccumMs += dtMs;
+    if (this.snapshotAccumMs >= WORLD_MONSTER_SNAPSHOT_INTERVAL_MS) {
+      this.snapshotAccumMs %= WORLD_MONSTER_SNAPSHOT_INTERVAL_MS;
+      const occupiedIslands = new Set(players.map((player) => player.islandId));
+      for (const islandId of occupiedIslands) {
+        this.hub.broadcastWorldMonster(islandId, this.snapshotMessageForIsland(islandId));
+      }
     }
     this.persistAccumMs += dtMs;
     if (this.persistAccumMs >= this.persistIntervalMs) {

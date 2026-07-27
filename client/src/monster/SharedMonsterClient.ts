@@ -88,6 +88,7 @@ export function resolveSharedMonsterPlayerDamage(
 
 export class SharedMonsterClient implements Updatable {
   private readonly monsters = new Map<string, SharedMonster>();
+  private readonly pendingSnapshots = new Map<string, readonly WorldMonsterSnapshot[]>();
   private readonly pendingAttacks: PendingMonsterAttack[] = [];
   private readonly seenAttackIds = new Set<string>();
   private currentIslandId: string;
@@ -111,18 +112,31 @@ export class SharedMonsterClient implements Updatable {
     return position?.clone();
   }
 
-  /** ผู้เล่นเราย้ายเกาะ → ล้างมอนสเตอร์เกาะเก่า (Server จะ seed snapshot เกาะใหม่) */
-  setIsland(islandId: string): void {
-    if (islandId === this.currentIslandId) return;
+  /**
+   * ผู้เล่นเราย้ายเกาะ → ล้างมอนสเตอร์เกาะเก่า แล้วใช้ snapshot ที่อาจมาถึง
+   * ก่อน IslandManager ตรวจพบการขึ้นฝั่ง. คืน true เพื่อให้ caller ขอ resync สดอีกครั้ง.
+   */
+  setIsland(islandId: string): boolean {
+    if (islandId === this.currentIslandId) return false;
     this.currentIslandId = islandId;
     this.pendingAttacks.length = 0;
     this.seenAttackIds.clear();
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
+    const pending = this.pendingSnapshots.get(islandId);
+    this.pendingSnapshots.delete(islandId);
+    if (pending) this.applySnapshot(islandId, pending);
+    return true;
   }
 
   /** full snapshot — แทนที่ทั้งเกาะ (join/resync) */
   applySnapshot(islandId: string, monsters: readonly WorldMonsterSnapshot[]): void {
-    if (islandId !== this.currentIslandId) return;
+    if (islandId !== this.currentIslandId) {
+      // Boat authority can cross the Server island boundary slightly before the
+      // local terrain detector. Keep that one-shot seed instead of discarding it.
+      this.pendingSnapshots.set(islandId, [...monsters]);
+      return;
+    }
+    this.pendingSnapshots.delete(islandId);
     const seen = new Set<string>();
     for (const snapshot of monsters) {
       seen.add(snapshot.spawnId);
@@ -388,5 +402,6 @@ export class SharedMonsterClient implements Updatable {
 
   dispose(): void {
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
+    this.pendingSnapshots.clear();
   }
 }

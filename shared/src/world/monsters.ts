@@ -252,6 +252,7 @@ export interface WorldMonsterHitReaction {
 /** รอบจำลอง AI ของ Server (5 ครั้ง/วินาที) — คุมต้นทุน */
 export const WORLD_MONSTER_TICK_MS = 200;
 /** ส่ง full snapshot ซ้ำทุกช่วงนี้ (กันหลุด) นอกเหนือจาก snapshot ตอน join/resync */
+export const WORLD_MONSTER_SNAPSHOT_INTERVAL_MS = 5_000;
 /** ระยะสนใจ: ส่ง delta ให้เฉพาะผู้เล่นที่อยู่ใกล้กว่านี้ (world units) */
 export const WORLD_MONSTER_INTEREST_RANGE = 80;
 /** ระยะสูงสุดที่นับว่าตีมอนสเตอร์ถึง (วัดจาก presence ผู้เล่น) */

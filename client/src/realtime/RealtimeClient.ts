@@ -195,7 +195,7 @@ export class RealtimeClient {
       // (presence เป็น absolute ใช้ได้เลย; economy ใหม่กว่าเดิมแน่นอน)
       this.lastSeq = message.seq;
       this.handlers.onResync();
-      this.socket?.send(JSON.stringify({ type: 'resync' }));
+      this.requestResync();
       this.dispatch(message);
       return;
     }
@@ -280,6 +280,13 @@ export class RealtimeClient {
   }): void {
     if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
     this.socket.send(JSON.stringify({ type: 'move', ...position }));
+  }
+
+  /** Ask the Server to reseed the current authoritative island/world state. */
+  requestResync(): boolean {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return false;
+    this.socket.send(JSON.stringify({ type: 'resync' }));
+    return true;
   }
 
   /** S15: รายงานเจตนาโจมตีผู้เล่นอีกคน — Server ตัดสินดาเมจ/HP เอง (ไม่ส่งดาเมจ) */

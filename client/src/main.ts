@@ -83,7 +83,11 @@ import {
 } from './audio';
 import type { OnboardingDirector } from './onboarding/OnboardingDirector';
 import { createAuthoritativeResyncHandler } from './realtime/AuthoritativeResync';
-import { fetchRuntimeFeatures, resolveSharedMonsterMode } from './realtime/RuntimeFeatures';
+import {
+  fetchRuntimeFeatures,
+  resolveSharedMonsterMode,
+  shouldSuppressLocalMonsters,
+} from './realtime/RuntimeFeatures';
 
 async function main(): Promise<void> {
   const container = document.getElementById('app')!;
@@ -695,8 +699,9 @@ async function main(): Promise<void> {
     let presenceTick = 0;
     setInterval(() => {
       remotePlayers?.setIsland(islandManager.activeIsland);
-      sharedMonsters?.setIsland(islandManager.activeIsland);
+      const sharedIslandChanged = sharedMonsters?.setIsland(islandManager.activeIsland) ?? false;
       if (!realtime.connected) return;
+      if (sharedIslandChanged) realtime.requestResync();
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
       const locomotion = controller.moveState.swimming
@@ -915,7 +920,7 @@ async function main(): Promise<void> {
       },
     },
     // S16: เปิด shared world monsters → ปิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server)
-    sharedWorldMonstersEnabled,
+    shouldSuppressLocalMonsters(sharedWorldMonstersEnabled, realtime !== null),
   );
 
   // Naval Combat (เรือ Phase 2-3) — เรือโจรสลัด AI + ปืนใหญ่ + Boarding

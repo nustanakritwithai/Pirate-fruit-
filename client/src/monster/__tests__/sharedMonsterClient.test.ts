@@ -111,6 +111,27 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(rendered.position.x).toBeCloseTo(0.8, 2);
   });
 
+  it('keeps an early boat-transition snapshot until the local island changes', () => {
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);
+    const jungle = snapshot({
+      spawnId: 'jungle-bandit-1',
+      monsterId: 'jungle-bandit',
+      islandId: 'mist-jungle',
+      x: 170,
+      z: -138,
+      hp: 240,
+      maxHp: 240,
+    });
+
+    client.applySnapshot('mist-jungle', [jungle]);
+    expect(client.count).toBe(0);
+    expect(client.setIsland('mist-jungle')).toBe(true);
+    expect(client.count).toBe(1);
+    expect(scene.getObjectByName('monster:jungle-bandit')).toBeDefined();
+    expect(client.setIsland('mist-jungle')).toBe(false);
+  });
+
   it('uploads the health bar texture only when authoritative HP changes', () => {
     let now = 1_000;
     const scene = new THREE.Scene();
