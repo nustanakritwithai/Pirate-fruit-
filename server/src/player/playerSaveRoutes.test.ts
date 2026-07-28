@@ -15,6 +15,7 @@ import type {
   StoredRemotePlayerState,
 } from './playerSaveRepository.js';
 import { PlayerSaveService } from './playerSaveService.js';
+import type { CanonicalPlayerState } from './playerState.js';
 
 class MemorySessions implements SessionRepository {
   readonly records = new Map<string, StoredSessionRecord>();
@@ -35,6 +36,7 @@ class MemorySessions implements SessionRepository {
 class RecordingPlayerSaves implements PlayerSaveRepository {
   readonly loads: string[] = [];
   readonly saves: PlayerSaveMutationIdentity[] = [];
+  readonly savedStates: CanonicalPlayerState[] = [];
   async load(characterId: string): Promise<StoredRemotePlayerState> {
     this.loads.push(characterId);
     return { revision: 0, migrated: false, state: null };
@@ -43,20 +45,24 @@ class RecordingPlayerSaves implements PlayerSaveRepository {
     this.loads.push(`reset:${characterId}`);
     return { revision: 1, idempotentReplay: false, migrated: true };
   }
-  async save(identity: PlayerSaveMutationIdentity) {
+  async save(identity: PlayerSaveMutationIdentity, state: CanonicalPlayerState) {
     this.saves.push(identity);
+    this.savedStates.push(state);
     return { revision: 1, idempotentReplay: false, migrated: false };
   }
-  async saveCheckpoint(identity: PlayerSaveMutationIdentity) {
+  async saveCheckpoint(identity: PlayerSaveMutationIdentity, state: CanonicalPlayerState) {
     this.saves.push(identity);
+    this.savedStates.push(state);
     return { revision: 1, idempotentReplay: false, migrated: false };
   }
-  async saveCargo(identity: PlayerSaveMutationIdentity) {
+  async saveCargo(identity: PlayerSaveMutationIdentity, state: CanonicalPlayerState) {
     this.saves.push(identity);
+    this.savedStates.push(state);
     return { revision: 1, idempotentReplay: false, migrated: false };
   }
-  async migrate(identity: PlayerSaveMutationIdentity) {
+  async migrate(identity: PlayerSaveMutationIdentity, state: CanonicalPlayerState) {
     this.saves.push(identity);
+    this.savedStates.push(state);
     return { revision: 1, idempotentReplay: false, migrated: true };
   }
 }
@@ -69,6 +75,41 @@ const openServers: Array<Awaited<ReturnType<typeof buildServer>>> = [];
 afterEach(async () => Promise.all(openServers.splice(0).map((server) => server.close())));
 
 describe('S6 player save API', () => {
+  it('replaces a forged REST checkpoint with the realtime canonical position', async () => {
+    const saves = new RecordingPlayerSaves();
+    const service = new PlayerSaveService(saves, {
+      authoritativePositionOf: () => ({
+        islandId: 'starter-island',
+        x: 4,
+        y: 2,
+        z: 8,
+        heading: 1.25,
+      }),
+    });
+
+    await service.saveCheckpoint('char-a', {
+      schemaVersion: 1,
+      expectedRevision: 0,
+      idempotencyKey: 'checkpoint:authority-test',
+      checkpoint: JSON.stringify({
+        saveVersion: 4,
+        islandId: 'starter-island',
+        spawnId: 'starter-village',
+        x: 500,
+        y: 20,
+        z: 500,
+        heading: 3,
+      }),
+    });
+
+    expect(saves.savedStates[0]?.checkpoint).toMatchObject({
+      islandId: 'starter-island',
+      spawnId: 'starter-village',
+      position: { x: 4, y: 2, z: 8 },
+      heading: 1.25,
+    });
+  });
+
   it('isolates browser identities and rejects Client-supplied identity', async () => {
     const environment = loadEnvironment({
       NODE_ENV: 'test',

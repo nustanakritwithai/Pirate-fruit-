@@ -1,4 +1,5 @@
 import type { LevelSystemConfig } from '../types';
+import { PVP_UNLOCK_LEVEL } from '@pirate-fruit/shared';
 
 /** ค่าคงที่หลักจาก Blox Fruits Wiki — Levels / Experience */
 export const LEVEL_SYSTEM_CONFIG: LevelSystemConfig = {
@@ -7,6 +8,6 @@ export const LEVEL_SYSTEM_CONFIG: LevelSystemConfig = {
   maxStatPointsEqualsMaxLevel: true,
   totalExpToMaxLevel: 143_840_871_332,
   expFormulaDescription: 'EXP to level up = floor(2 × currentLevel^2.3 + 84)',
-  pvpUnlockLevel: 20,
+  pvpUnlockLevel: PVP_UNLOCK_LEVEL,
   pvpReenableMinutesAfterDeath: 15,
 } as const;

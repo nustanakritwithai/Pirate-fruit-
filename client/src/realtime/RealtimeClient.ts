@@ -70,11 +70,26 @@ export interface RealtimeHandlers {
   }): void;
   onCombatDefeat?(playerId: string, byId: string): void;
   onCombatRespawn?(playerId: string, hp: number, maxHp: number): void;
+  onCombatState?(state: {
+    playerId: string;
+    hp: number;
+    maxHp: number;
+    defeated: boolean;
+    engaged: boolean;
+  }): void;
   onCombatResult?(result: {
     intentId: string;
     targetId: string;
     accepted: boolean;
     reason?: RealtimeCombatRejectReason;
+  }): void;
+  onMovementCorrection?(correction: {
+    islandId: string;
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+    reason: 'initial-anchor' | 'speed' | 'island';
   }): void;
   /** S16: มอนสเตอร์กลาง — snapshot/delta/dead/respawn (Server เป็นเจ้าของ) */
   onWorldMonsterSnapshot?(islandId: string, monsters: WorldMonsterSnapshot[]): void;
@@ -239,8 +254,12 @@ export class RealtimeClient {
       this.handlers.onCombatDefeat?.(message.playerId, message.byId);
     } else if (message.type === 'combat-respawn') {
       this.handlers.onCombatRespawn?.(message.playerId, message.hp, message.maxHp);
+    } else if (message.type === 'combat-state') {
+      this.handlers.onCombatState?.(message);
     } else if (message.type === 'combat-result') {
       this.handlers.onCombatResult?.(message);
+    } else if (message.type === 'movement-correction') {
+      this.handlers.onMovementCorrection?.(message);
     } else if (message.type === 'world-monster-snapshot') {
       this.handlers.onWorldMonsterSnapshot?.(message.islandId, message.monsters);
     } else if (message.type === 'world-monster-delta') {

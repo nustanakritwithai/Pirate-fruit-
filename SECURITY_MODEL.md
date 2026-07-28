@@ -124,14 +124,15 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 
 
 ## S13 — Multiplayer presence
-- ช่อง `move` เป็น presence relay ล้วน — Server ไม่เชื่อพิกัดเป็น authority ใด ๆ (ไม่มีผลเงิน/รางวัล/collision); ผู้เล่นเห็นกันเดินได้แต่ยังชนกันไม่ได้ในเฟสนี้
+- ช่อง `move` เป็น desired position เท่านั้น; Server seed จาก PostgreSQL checkpoint, จำกัดความเร็ว และปฏิเสธ client-selected island transition ก่อนใช้กับ presence/PvP/safe zone
 - validate payload (พิกัดต้องเป็นตัวเลขจำกัด, islandId ≤96 ตัว) + throttle 80ms/relay + จำกัดขนาดข้อความ 1KB เดิม — กัน broadcast flood
 - กรอง relay ตามเกาะ: presence ไม่รั่วข้ามเกาะ (ลด surface + payload)
 - ตัวตน presence (playerId/name) มาจาก session ที่ auth แล้ว — client ปลอมชื่อคนอื่นไม่ได้ (Server แนบจาก characterName ของ connection เอง)
+- REST checkpoint ใช้ canonical position จาก RealtimeHub จึงส่ง save ปลอมแล้ว reconnect เพื่อวาร์ปไม่ได้
 
 
 ## S13 — Multiplayer presence
-- ช่อง `move` เป็น presence relay ล้วน — Server ไม่เชื่อพิกัดเป็น authority ใด ๆ (ไม่มีผลเงิน/รางวัล/collision); ผู้เล่นเห็นกันเดินได้แต่ยังชนกันไม่ได้ในเฟสนี้
+- Server relay เฉพาะ canonical position หลังตรวจ movement budget; packet ที่วาร์ปหรือเปลี่ยนเกาะเองได้ `movement-correction`
 - validate payload (พิกัดเป็นตัวเลขจำกัด, islandId ≤96) + throttle 80ms/relay + จำกัดขนาดข้อความ 1KB เดิม — กัน broadcast flood
 - กรอง relay ตามเกาะ: presence ไม่รั่วข้ามเกาะ
 - ตัวตน presence (playerId/name) แนบจาก session ที่ auth แล้วฝั่ง Server (characterName ของ connection) — client ปลอมชื่อ/ตัวตนคนอื่นไม่ได้
@@ -143,8 +144,9 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 
 ## S15 — PvP combat authority
 - **ห้ามเชื่อดาเมจจาก Client**: ข้อความ `attack` ไม่มีฟิลด์ดาเมจ — Server เลือกดาเมจจากตารางคงที่ตาม `kind` เท่านั้น (client ปั้นเลขดาเมจไม่ได้)
-- **Server เป็นเจ้าของ HP**: HP การต่อสู้อยู่ในหน่วยความจำ Server (ephemeral ต่อ session, ไม่ persist) — Client ปรับหลอดเลือดตามค่า `hp/maxHp` ที่ Server ส่ง (โดนเราเอง) ไม่ใช่ตัวตัดสินเอง
-- **ระยะ/ตำแหน่งวัดจากฝั่ง Server**: ใช้ presence ล่าสุดที่ auth แล้ว — client ยิงข้ามเกาะ/นอกระยะ/ใส่ตัวเองไม่ได้ (ปัดตกเงียบ); ตัวตนผู้โจมตี (`attackerId`) แนบจาก connection ของ Server
+- **Server เป็นเจ้าของ HP**: HP คงข้าม reconnect 15 นาทีและส่ง `combat-state` คืนทันที; refresh จึงไม่ฟื้นเลือด/ล้างสถานะตาย (ไม่ persist ข้าม process restart)
+- **ระยะ/ตำแหน่งวัดจากฝั่ง Server**: ใช้ canonical movement ที่ตรวจ speed/island แล้ว — client ยิงข้ามเกาะ/วาร์ปเข้าระยะ/ใส่ตัวเองไม่ได้
+- **Level gate ฝั่ง Server**: ทั้งผู้โจมตีและเป้าหมายต้องมี `characters.level >= 20`; level จาก packet/save ไม่มีผล
 - **กันสแปม/ออโต้**: throttle ต่อคู่ผู้โจมตี→เป้า (`PVP_ATTACK_MIN_INTERVAL_MS`) — ยิงถี่เกินถูกทิ้ง; ตาย/เกิดใหม่ Server เป็นคนตั้งเวลา (`PVP_RESPAWN_MS`)
 - ยังไม่มีผลต่อเศรษฐกิจ/รางวัล: แพ้ PvP ไม่เสียเหรียญ/ของ (ephemeral duel) — reward-on-kill เป็นงานอนาคต; ปิดด้วย `ENABLE_PVP=false` default ในโปรดักชัน
 

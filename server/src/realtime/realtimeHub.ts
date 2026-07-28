@@ -10,6 +10,7 @@ import {
   type RealtimeBoatIntent,
   type BoatWorldSnapshot,
   isWorldSafeZone,
+  PVP_UNLOCK_LEVEL,
   type RealtimeCombatRejectReason,
   type CombatStatCategory,
 } from '@pirate-fruit/shared';
@@ -20,6 +21,11 @@ import {
   type AuthoritativeCombatProfile,
   type CombatProfileProvider,
 } from './combatProfile.js';
+import {
+  MovementAuthority,
+  type MovementAnchorProvider,
+  type MovementPosition,
+} from './movementAuthority.js';
 import type { PlayerView } from '../world/monsterSimulation.js';
 
 /**
@@ -99,6 +105,10 @@ export interface RealtimeConnection {
   lastMonsterActionAt: number;
   monsterActionWindowAt: number;
   monsterActionsInWindow: number;
+  /** False only while a PostgreSQL checkpoint anchor is being loaded. */
+  movementReady: boolean;
+  /** Latest desired move received during asynchronous anchor hydration. */
+  pendingMove: PresencePosition | null;
 }
 
 export interface RealtimeHubLogger {
@@ -232,6 +242,8 @@ export class RealtimeHub {
   private combatTicker: ReturnType<typeof setInterval> | null = null;
   /** S15: แหล่งความจริงของ HP PvP — Client ส่งได้แค่เจตนาโจมตี */
   private readonly combat = new CombatAuthority();
+  /** Canonical on-foot coordinates used by PvP/safe-zone/monster authority. */
+  private readonly movement = new MovementAuthority();
   /** S16: สะพานไป MonsterWorld (null = ปิด shared world monsters) */
   private worldMonsters: WorldMonsterBridge | null = null;
   /** S17: authoritative boat world; null preserves S14 boat presence fallback. */
@@ -247,10 +259,17 @@ export class RealtimeHub {
     private readonly pvpEnabled = false,
     /** Server-owned Stats + persisted equipment; absent keeps legacy base values for tests/staging. */
     private readonly combatProfiles?: CombatProfileProvider,
+    /** Production seeds the first canonical coordinate from PostgreSQL. */
+    private readonly movementAnchors?: MovementAnchorProvider,
   ) {}
 
   get connectionCount(): number {
     return this.connections.size;
+  }
+
+  /** REST saves use the same canonical coordinate as PvP and safe-zone checks. */
+  authoritativePositionOf(characterId: string): MovementPosition | null {
+    return this.movement.positionOf(characterId);
   }
 
   /** รับ connection ที่ผ่าน session auth แล้ว — ส่ง welcome ทันที */
@@ -278,6 +297,8 @@ export class RealtimeHub {
       lastMonsterActionAt: -Infinity,
       monsterActionWindowAt: this.now(),
       monsterActionsInWindow: 0,
+      movementReady: !this.movementAnchors || this.movement.connect(characterId),
+      pendingMove: null,
     };
     this.connections.add(connection);
     if (this.pvpEnabled) this.combat.ensure(characterId);
@@ -288,6 +309,8 @@ export class RealtimeHub {
       serverTime: new Date(this.now()).toISOString(),
       heartbeatIntervalMs: REALTIME_HEARTBEAT_INTERVAL_MS,
     });
+    if (this.pvpEnabled) this.syncCombatState(connection);
+    if (this.presenceEnabled && !connection.movementReady) this.prepareMovement(connection);
     return connection;
   }
 
@@ -297,9 +320,13 @@ export class RealtimeHub {
     if (wasPresent && connection.presence) {
       this.broadcastPresenceLeave(connection);
     }
-    // S15: ไม่มี connection ของ character นี้เหลือแล้ว → ล้างสถานะ PvP
+    // Keep combat/movement state across a network reconnect. Refreshing must not
+    // become a free heal or a new first-position teleport.
     if (this.pvpEnabled && !this.hasCharacter(connection.characterId)) {
-      this.combat.remove(connection.characterId);
+      this.combat.disconnect(connection.characterId, this.now());
+    }
+    if (this.presenceEnabled && !this.hasCharacter(connection.characterId)) {
+      this.movement.disconnect(connection.characterId, this.now());
     }
     if (!this.hasCharacter(connection.characterId)) this.boatWorld?.removePlayer(connection.characterId);
     for (const other of this.connections) other.visiblePeerIds.delete(connection.characterId);
@@ -380,6 +407,13 @@ export class RealtimeHub {
         islandId: aboard.islandId, x: aboard.x, y: 0, z: aboard.z,
         heading: aboard.heading, onBoat: true, boatId: aboard.definitionId,
       };
+      this.movement.setAuthoritative(connection.characterId, {
+        islandId: aboard.islandId,
+        x: aboard.x,
+        y: 0,
+        z: aboard.z,
+        heading: aboard.heading,
+      }, now);
       if (!firstMove && !islandChanged && now - connection.lastMoveAt < REALTIME_MOVE_MIN_INTERVAL_MS) {
         return;
       }
@@ -406,8 +440,39 @@ export class RealtimeHub {
       position.onBoat = false;
       position.boatId = undefined;
     }
+    if (!connection.movementReady) {
+      connection.pendingMove = position;
+      return;
+    }
+    this.applyOnFootMove(connection, position);
+  }
+
+  private applyOnFootMove(
+    connection: RealtimeConnection,
+    requested: PresencePosition,
+    fromInitialAnchor = false,
+  ): void {
     // throttle: ส่งถี่เกินก็อัปเดตตำแหน่งแต่ไม่ relay (กัน broadcast ท่วม)
     const now = this.now();
+    const decision = this.movement.move(connection.characterId, requested, now);
+    const position: PresencePosition = {
+      ...requested,
+      ...decision.position,
+      onBoat: this.boatWorld ? false : requested.onBoat,
+      boatId: this.boatWorld ? undefined : requested.boatId,
+    };
+    if (!decision.accepted) {
+      this.sendTo(connection, {
+        type: 'movement-correction',
+        seq: 0,
+        islandId: position.islandId,
+        x: position.x,
+        y: position.y,
+        z: position.z,
+        heading: position.heading,
+        reason: fromInitialAnchor ? 'initial-anchor' : decision.reason,
+      });
+    }
     const firstMove = connection.presence === null;
     const islandChanged = connection.presence?.islandId !== position.islandId;
     connection.presence = position;
@@ -427,6 +492,25 @@ export class RealtimeHub {
       }
     }
     this.relayPresence(connection);
+  }
+
+  private prepareMovement(connection: RealtimeConnection): void {
+    void this.movementAnchors!.anchor(connection.characterId).then((anchor) => {
+      if (!this.connections.has(connection)) return;
+      this.movement.seed(connection.characterId, anchor, this.now());
+      connection.movementReady = true;
+      const pending = connection.pendingMove;
+      connection.pendingMove = null;
+      if (pending) this.applyOnFootMove(connection, pending, true);
+    }).catch((error) => {
+      this.logger.warn(
+        { err: error, characterId: connection.characterId },
+        'authoritative movement anchor lookup failed',
+      );
+      if (this.connections.has(connection)) {
+        this.drop(connection, 1011, 'movement authority unavailable');
+      }
+    });
   }
 
   /**
@@ -554,6 +638,20 @@ export class RealtimeHub {
     attackerProfile: AuthoritativeCombatProfile,
     targetProfile: AuthoritativeCombatProfile,
   ): void {
+    if (
+      attackerProfile.level < PVP_UNLOCK_LEVEL
+      || targetProfile.level < PVP_UNLOCK_LEVEL
+    ) {
+      this.sendTo(connection, {
+        type: 'combat-result',
+        seq: 0,
+        intentId,
+        targetId,
+        accepted: false,
+        reason: 'pvp-level-locked',
+      });
+      return;
+    }
     const decision = this.combat.resolveAttackDetailed(
       this.now(),
       connection.characterId,
@@ -602,6 +700,38 @@ export class RealtimeHub {
         byId: connection.characterId,
       });
     }
+  }
+
+  private syncCombatState(connection: RealtimeConnection): void {
+    const send = (maxHp?: number) => {
+      if (!this.connections.has(connection)) return;
+      this.combat.ensure(connection.characterId, maxHp);
+      const state = this.combat.stateOf(connection.characterId)!;
+      this.sendTo(connection, {
+        type: 'combat-state',
+        seq: 0,
+        playerId: connection.characterId,
+        hp: state.hp,
+        maxHp: state.maxHp,
+        defeated: state.defeated,
+        engaged: state.engaged,
+      });
+    };
+    if (!this.combatProfiles) {
+      send();
+      return;
+    }
+    void this.combatProfiles.profile(connection.characterId)
+      .then((profile) => send(profile.maxHp))
+      .catch((error) => {
+        this.logger.warn(
+          { err: error, characterId: connection.characterId },
+          'authoritative combat reconnect sync failed',
+        );
+        if (this.connections.has(connection)) {
+          this.drop(connection, 1011, 'combat authority unavailable');
+        }
+      });
   }
 
   /** presence ล่าสุดของ character (connection แรกที่มี presence) — null ถ้าไม่มี */
@@ -665,6 +795,8 @@ export class RealtimeHub {
     heading: number,
     definitionId: string,
   ): void {
+    const canonical: MovementPosition = { islandId, x, y: 0, z, heading };
+    this.movement.setAuthoritative(characterId, canonical, this.now());
     for (const connection of this.connections) {
       if (connection.characterId !== characterId) continue;
       const islandChanged = connection.presence?.islandId !== islandId;
@@ -693,6 +825,8 @@ export class RealtimeHub {
     z: number,
     heading: number,
   ): void {
+    const canonical: MovementPosition = { islandId, x, y: 0, z, heading };
+    this.movement.setAuthoritative(characterId, canonical, this.now());
     for (const connection of this.connections) {
       if (connection.characterId !== characterId) continue;
       connection.presence = { islandId, x, y: 0, z, heading, onBoat: false };
@@ -887,6 +1021,7 @@ export class RealtimeHub {
         this.drop(connection, 1001, 'idle timeout');
       }
     }
+    this.movement.prune(this.now());
   }
 
   closeAll(): void {

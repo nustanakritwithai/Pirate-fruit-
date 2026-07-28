@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import {
+  ISLAND_IDS,
   PERSISTED_CARGO_SCHEMA_VERSION,
   PERSISTED_PLAYER_SCHEMA_VERSION,
   REMOTE_PLAYER_SAVE_SCHEMA_VERSION,
+  SPAWN_ID_BY_ISLAND,
+  WORLD_SAFE_ZONES,
+  type IslandId,
   type RemoteCargoSaveRequest,
   type RemoteCheckpointSaveRequest,
   type RemoteLocalMigrationRequest,
@@ -22,7 +26,19 @@ import {
   sanitizeCheckpoint,
   sanitizePlayerDocuments,
   serializePlayerState,
+  type CanonicalCheckpoint,
+  type CanonicalPlayerState,
 } from './playerState.js';
+
+export interface AuthoritativeCheckpointProvider {
+  authoritativePositionOf(characterId: string): {
+    islandId: string;
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+  } | null;
+}
 
 const document = z.string().max(48 * 1024).nullable();
 const idempotencyKey = z.string().min(16).max(128).regex(/^[A-Za-z0-9:_-]+$/);
@@ -92,7 +108,18 @@ function identity(
 }
 
 export class PlayerSaveService {
-  constructor(private readonly repository: PlayerSaveRepository) {}
+  private checkpointAuthority?: AuthoritativeCheckpointProvider;
+
+  constructor(
+    private readonly repository: PlayerSaveRepository,
+    checkpointAuthority?: AuthoritativeCheckpointProvider,
+  ) {
+    this.checkpointAuthority = checkpointAuthority;
+  }
+
+  attachCheckpointAuthority(authority: AuthoritativeCheckpointProvider): void {
+    this.checkpointAuthority = authority;
+  }
 
   /**
    * Repair the one class of saves known to contain pre-online Local data. The repository
@@ -121,7 +148,8 @@ export class PlayerSaveService {
 
   async savePlayer(characterId: string, input: unknown): Promise<RemoteSaveMutationResponse> {
     const body: RemotePlayerSaveRequest = playerSaveRequest.parse(input);
-    const state = sanitizePlayerDocuments(body.documents);
+    const proposed = sanitizePlayerDocuments(body.documents);
+    const state = await this.withAuthoritativeCheckpoint(characterId, proposed);
     const result = await this.repository.save(identity(characterId, 'save', body), state);
     return { ok: true, ...result };
   }
@@ -133,7 +161,12 @@ export class PlayerSaveService {
     const body: RemoteCheckpointSaveRequest = checkpointSaveRequest.parse(input);
     const current = await this.repository.load(characterId);
     const base = current.state ?? defaultPlayerState();
-    const checkpoint = sanitizeCheckpoint(body.checkpoint, base.progression);
+    const proposed = sanitizeCheckpoint(body.checkpoint, base.progression);
+    const checkpoint = await this.authoritativeCheckpoint(
+      characterId,
+      proposed,
+      current.state?.checkpoint,
+    );
     const result = await this.repository.saveCheckpoint(
       identity(characterId, 'checkpoint', body),
       { ...base, checkpoint },
@@ -156,11 +189,71 @@ export class PlayerSaveService {
 
   async migrateLocal(characterId: string, input: unknown): Promise<RemoteSaveMutationResponse> {
     const body: RemoteLocalMigrationRequest = migrationRequest.parse(input);
-    const state = sanitizeLocalMigrationDocuments(
+    const proposed = sanitizeLocalMigrationDocuments(
       body.documents,
       { schemaVersion: PERSISTED_CARGO_SCHEMA_VERSION, cargo: body.documents.cargo },
     );
+    const state = await this.withAuthoritativeCheckpoint(characterId, proposed);
     const result = await this.repository.migrate(identity(characterId, 'migration', body), state);
     return { ok: true, ...result };
+  }
+
+  private async withAuthoritativeCheckpoint(
+    characterId: string,
+    state: CanonicalPlayerState,
+  ): Promise<CanonicalPlayerState> {
+    if (!this.checkpointAuthority) return state;
+    const canonical = this.checkpointAuthority.authoritativePositionOf(characterId);
+    const stored = canonical ? undefined : (await this.repository.load(characterId)).state?.checkpoint;
+    return {
+      ...state,
+      checkpoint: this.authoritativeCheckpointFrom(state.checkpoint, canonical, stored),
+    };
+  }
+
+  private async authoritativeCheckpoint(
+    characterId: string,
+    proposed: CanonicalCheckpoint,
+    stored?: CanonicalCheckpoint,
+  ): Promise<CanonicalCheckpoint> {
+    if (!this.checkpointAuthority) return proposed;
+    const canonical = this.checkpointAuthority.authoritativePositionOf(characterId);
+    return this.authoritativeCheckpointFrom(proposed, canonical, stored);
+  }
+
+  private authoritativeCheckpointFrom(
+    proposed: CanonicalCheckpoint,
+    canonical: ReturnType<AuthoritativeCheckpointProvider['authoritativePositionOf']>,
+    stored?: CanonicalCheckpoint,
+  ): CanonicalCheckpoint {
+    if (canonical && ISLAND_IDS.includes(canonical.islandId as IslandId)) {
+      const islandId = canonical.islandId as IslandId;
+      return {
+        ...proposed,
+        islandId,
+        spawnId: SPAWN_ID_BY_ISLAND[islandId],
+        position: { x: canonical.x, y: canonical.y, z: canonical.z },
+        heading: canonical.heading,
+      };
+    }
+    if (stored) {
+      return {
+        ...proposed,
+        islandId: stored.islandId,
+        spawnId: stored.spawnId,
+        position: { ...stored.position },
+        heading: stored.heading,
+      };
+    }
+    const fallback = WORLD_SAFE_ZONES.find(
+      (zone) => zone.islandId === 'starter-island' && zone.kind === 'spawn',
+    )!;
+    return {
+      ...proposed,
+      islandId: 'starter-island',
+      spawnId: SPAWN_ID_BY_ISLAND['starter-island'],
+      position: { x: fallback.x, y: 0, z: fallback.z },
+      heading: 0,
+    };
   }
 }

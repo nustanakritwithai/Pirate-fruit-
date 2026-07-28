@@ -19,7 +19,7 @@ async function poolWithProfile(): Promise<Pool> {
   const adapter = memory.adapters.createPg();
   const pool = new adapter.Pool() as unknown as Pool;
   pools.push(pool);
-  await pool.query('create table characters (id text primary key)');
+  await pool.query('create table characters (id text primary key, level integer not null)');
   await pool.query(`
     create table player_progression (
       character_id text primary key,
@@ -34,7 +34,7 @@ async function poolWithProfile(): Promise<Pool> {
       metadata_json jsonb
     )
   `);
-  await pool.query(`insert into characters (id) values ('char-a')`);
+  await pool.query(`insert into characters (id, level) values ('char-a', 27)`);
   await pool.query(`
     insert into player_progression
       (character_id, combat, vitality, blade, ranged, fruit_power, mana)
@@ -57,6 +57,7 @@ describe('authoritative combat profile', () => {
     const provider = new PostgresCombatProfileProvider(pool, () => 1_000, 0);
     const profile = await provider.profile('char-a');
 
+    expect(profile.level).toBe(27);
     expect(profile.stats).toEqual({
       combat: 10,
       vitality: 20,

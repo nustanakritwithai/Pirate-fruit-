@@ -16,6 +16,7 @@ import { shouldBroadcastEconomySnapshot } from './economy/economyRealtimePolicy.
 import { startGuestCleanup } from './auth/sessionCleanup.js';
 import { RealtimeHub } from './realtime/realtimeHub.js';
 import { PostgresCombatProfileProvider } from './realtime/combatProfile.js';
+import { PostgresMovementAnchorProvider } from './realtime/movementAuthority.js';
 import { MonsterWorldService } from './world/monsterWorldService.js';
 import { PostgresWorldMonsterRepository } from './world/worldMonsterRepository.js';
 import { BoatWorldService } from './world/boatWorldService.js';
@@ -68,8 +69,10 @@ async function start(): Promise<void> {
         environment.ENABLE_MULTIPLAYER,
         environment.ENABLE_PVP,
         pool ? new PostgresCombatProfileProvider(pool) : undefined,
+        pool ? new PostgresMovementAnchorProvider(pool) : undefined,
       )
     : undefined;
+  if (realtime && playerSaves) playerSaves.attachCheckpointAuthority(realtime);
   const economy = pool && environment.ENABLE_ECONOMY_SERVER
     ? new EconomyRuntime({
         repository: new PostgresEconomyWorldRepository(pool),

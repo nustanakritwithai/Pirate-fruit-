@@ -153,8 +153,38 @@ export interface RealtimeCombatRespawn {
   maxHp: number;
 }
 
+/** Authoritative self-state sent on connect/reconnect so refreshing cannot heal PvP damage. */
+export interface RealtimeCombatState {
+  type: 'combat-state';
+  seq: number;
+  playerId: string;
+  hp: number;
+  maxHp: number;
+  defeated: boolean;
+  /** False for a fresh full-health state; avoids overwriting unrelated local PvE damage. */
+  engaged: boolean;
+}
+
+export type RealtimeMovementCorrectionReason =
+  | 'initial-anchor'
+  | 'speed'
+  | 'island';
+
+/** Canonical position correction after the Server rejects/clamps an untrusted move. */
+export interface RealtimeMovementCorrection {
+  type: 'movement-correction';
+  seq: number;
+  islandId: string;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  reason: RealtimeMovementCorrectionReason;
+}
+
 export type RealtimeCombatRejectReason =
   | 'pvp-disabled'
+  | 'pvp-level-locked'
   | 'self-target'
   | 'presence-required'
   | 'target-unavailable'
@@ -284,7 +314,9 @@ export type RealtimeServerMessage =
   | RealtimeCombatHit
   | RealtimeCombatDefeat
   | RealtimeCombatRespawn
+  | RealtimeCombatState
   | RealtimeCombatResult
+  | RealtimeMovementCorrection
   | RealtimeWorldMonsterSnapshot
   | RealtimeWorldMonsterDelta
   | RealtimeWorldMonsterAttack
@@ -377,6 +409,8 @@ export const REALTIME_MOVE_MIN_INTERVAL_MS = 80;
  * แต่ไม่มีผลต่อ authority)
  */
 export const PVP_MAX_HP = 100;
+/** Characters below this Server-owned level cannot attack or be targeted by PvP. */
+export const PVP_UNLOCK_LEVEL = 20;
 /** ดาเมจต่อครั้งตามชนิด — คงที่ กัน Client ปั้นดาเมจ (จูนสมดุลภายหลังได้) */
 export const PVP_MELEE_DAMAGE = 7;
 export const PVP_SKILL_DAMAGE = 16;

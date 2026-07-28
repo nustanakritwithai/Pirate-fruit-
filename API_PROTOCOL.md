@@ -215,13 +215,14 @@ Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อ
 
 ### Client → Server: `{type:'move', islandId, x, y, z, heading, onBoat}`
 - ข้อยกเว้นเดียวของช่อง push-only: client ส่ง move ได้ (ยังส่ง ping ได้เหมือนเดิม; type อื่นยังปิด 1008)
-- ไม่ใช่ authority: เป็นแค่ presence relay — ไม่มีผล gameplay/collision/รางวัล; payload ผิดรูป (พิกัดไม่ใช่ตัวเลข) ปิด 1008
+- Client ส่งตำแหน่งที่ต้องการ แต่ Server seed จาก checkpoint ใน PostgreSQL, จำกัดความเร็วแบบ token bucket และไม่รับการเปลี่ยนเกาะจาก packet; payload ผิดรูปปิด 1008
 - Throttle: ส่งถี่กว่า `REALTIME_MOVE_MIN_INTERVAL_MS` (80ms) Server เก็บตำแหน่งล่าสุดแต่ไม่ relay
 
 ### Server → Client: `{type:'presence', seq, playerId, name, islandId, x, y, z, heading, onBoat}` / `{type:'presence-leave', seq, playerId}`
 - Server relay ตำแหน่งให้เฉพาะผู้เล่น**บนเกาะเดียวกัน**; ผู้เล่นที่เพิ่งปรากฏ/ย้ายเกาะจะได้ presence ของคนอื่นบนเกาะทันที (seed)
 - presence เป็นข้อมูล ephemeral: ใช้ seq stream เดียวกับ economy แต่ client apply ได้เลยแม้ seq กระโดด (ตำแหน่งสัมบูรณ์ทับของเก่า) — resync ยังทำงานให้ economy ตามปกติ
 - disconnect → broadcast presence-leave ให้ islanders
+- `{type:'movement-correction', ...canonicalPosition, reason}` แก้ Client กลับเมื่อพยายามวาร์ป/เปลี่ยนเกาะเอง; REST checkpoint เขียนจาก canonical position เดียวกัน
 
 
 ## S13 — Multiplayer Movement (presence relay)
@@ -230,7 +231,7 @@ Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อ
 
 ### Client → Server: `{type:'move', islandId, x, y, z, heading, onBoat}`
 - ข้อยกเว้นเดียวของช่อง push-only: client ส่ง move ได้ (ยังส่ง ping ได้; type อื่นยังปิด 1008)
-- ไม่ใช่ authority — presence relay ล้วน (ไม่มีผล gameplay/collision/รางวัล); พิกัดไม่ใช่ตัวเลขจำกัด/islandId ว่าง → ปิด 1008
+- ตำแหน่งที่ใช้กับ gameplay เป็น canonical ฝั่ง Server: seed จาก checkpoint, จำกัดความเร็ว และเปลี่ยนเกาะผ่าน Boat World; พิกัดผิดรูป/islandId ว่าง → ปิด 1008
 - Throttle: ส่งถี่กว่า `REALTIME_MOVE_MIN_INTERVAL_MS` (80ms) Server เก็บตำแหน่งล่าสุดแต่ไม่ relay
 - client เกม: ส่งทุก 100ms ผ่าน `setInterval` (จงใจไม่ผูก rAF game loop — แท็บพื้นหลังโดน throttle จน presence ไม่ไหล)
 
@@ -238,6 +239,7 @@ Flag: `ENABLE_MULTIPLAYER` (ต้องเปิด `ENABLE_REALTIME` ก่อ
 - Server relay ตำแหน่งให้เฉพาะผู้เล่น**บนเกาะเดียวกัน**; ผู้เล่นที่เพิ่งปรากฏ/ย้ายเกาะจะได้ presence ของคนอื่นบนเกาะทันที (seed)
 - presence เป็น ephemeral: ใช้ seq stream เดียวกับ economy แต่ client apply ได้เลยแม้ seq กระโดด (ตำแหน่งสัมบูรณ์ทับของเก่า) — resync ยังทำงานให้ economy ตามปกติ
 - disconnect → broadcast presence-leave ให้ islanders
+- move ที่เกินขอบเขตได้ `movement-correction`; Server relay เฉพาะ canonical position ไม่ relay พิกัดปลอม
 
 
 ## S14 — Boat/Naval Multiplayer (boat presence)
@@ -256,14 +258,14 @@ Server เป็น**เจ้าของ HP/ดาเมจการต่อ�
 
 ### Client → Server: `{type:'attack', targetId, kind:'melee'|'skill', skillId?}`
 - **ไม่มีฟิลด์ดาเมจ** — Client ส่งดาเมจมาไม่ได้ (กันโกง); `kind` แค่เลือกดาเมจจาก**ตารางคงที่ของ Server** (`PVP_MELEE_DAMAGE`/`PVP_SKILL_DAMAGE`)
-- Server ตรวจเอง: อยู่เกาะเดียวกัน (จาก presence), ระยะ ≤ `PVP_MELEE_RANGE`/`PVP_SKILL_RANGE` (วัดจาก presence ล่าสุดของทั้งคู่ — Server เป็นคนรู้ตำแหน่ง), คูลดาวน์ต่อเป้า ≥ `PVP_ATTACK_MIN_INTERVAL_MS`, เป้า/ผู้โจมตียังไม่ตาย, ไม่ใช่ตัวเอง — ปัดตกเงียบ ๆ ถ้าไม่ผ่าน (ไม่ปิด connection); `targetId` ผิดรูป → ปิด 1008
+- Server ตรวจเอง: ทั้งคู่เลเวล ≥ `PVP_UNLOCK_LEVEL` (20), อยู่เกาะเดียวกันจาก canonical movement, อยู่ในระยะ, ผ่านคูลดาวน์, ยังไม่ตาย และไม่ใช่ตัวเอง; `targetId` ผิดรูป → ปิด 1008
 - `skillId` เป็นแค่ metadata (log) — ไม่มีผลต่อดาเมจ
 
-### Server → Client: `combat-hit` / `combat-defeat` / `combat-respawn`
+### Server → Client: `combat-state` / `combat-hit` / `combat-defeat` / `combat-respawn`
 - `{type:'combat-hit', seq, attackerId, targetId, damage, hp, maxHp}` — broadcast ให้ผู้เล่นบนเกาะเดียวกัน (เป้าปรับหลอดเลือดตาม `hp/maxHp` = authority; คนอื่นเด้งเลขดาเมจเหนือหัวเป้า)
 - `{type:'combat-defeat', seq, playerId, byId}` — เป้า HP หมด; Client ของเป้า → กลับจุดปลอดภัย, คนอื่น → ซ่อนผีชั่วคราว
 - `{type:'combat-respawn', seq, playerId, hp, maxHp}` — Server ตั้งเวลา `PVP_RESPAWN_MS` แล้วรีเซ็ต HP เต็ม + broadcast (มี combat ticker แยกจาก reaper)
-- HP PvP เป็น **ephemeral ต่อ session** (ไม่ persist ลง DB) — ตัดการเชื่อมต่อ = ลบทิ้ง
+- HP PvP คงใน Server ตลอด reconnect combat window; reconnect ได้ `combat-state` เดิม จึงรีเฟรชเพื่อฟื้นเลือด/หนีสถานะตายไม่ได้ (ยังไม่ persist ข้าม Server restart)
 
 ## S16 — Shared Monster & NPC World State
 

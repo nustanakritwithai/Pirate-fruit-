@@ -7,6 +7,7 @@
  */
 
 import { chromium } from 'playwright';
+import { randomUUID } from 'node:crypto';
 
 const GAME_URL = process.env.SMOKE_GAME_URL ?? 'http://127.0.0.1:4173';
 const API_URL = process.env.SMOKE_API_URL ?? 'http://127.0.0.1:10000';
@@ -15,6 +16,61 @@ function fail(message, extra) {
   console.error(`SMOKE FAIL: ${message}`);
   if (extra) console.error(JSON.stringify(extra, null, 2));
   process.exit(1);
+}
+
+async function seedSmokeAuthorityFixtures(characterIds, boatCharacterId) {
+  const pvpEnabled = process.env.SMOKE_EXPECT_PVP === 'true';
+  const boatEnabled = process.env.SMOKE_EXPECT_BOAT_WORLD === 'true';
+  if (!pvpEnabled && !boatEnabled) return;
+  if (!process.env.DATABASE_URL) {
+    fail('authority smoke requires DATABASE_URL to seed canonical fixtures');
+  }
+  const ids = [...new Set(characterIds.filter(Boolean))];
+  if (ids.length !== characterIds.length) {
+    fail('could not resolve both authority smoke character ids', { characterIds });
+  }
+  const { Pool } = await import('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    await pool.query('begin');
+    if (pvpEnabled) {
+      const result = await pool.query(
+        `update characters
+            set level = greatest(level, 20),
+                updated_at = now()
+          where id = any($1::uuid[])`,
+        [ids],
+      );
+      if (result.rowCount !== ids.length) {
+        fail('could not seed level-20 PvP smoke fixtures', {
+          characterIds: ids,
+          updated: result.rowCount,
+        });
+      }
+    }
+    if (boatEnabled) {
+      if (!boatCharacterId) fail('could not resolve the boat smoke character id');
+      await pool.query(
+        'update player_boats set is_active = false where character_id = $1',
+        [boatCharacterId],
+      );
+      await pool.query(
+        `insert into player_boats
+          (id, character_id, boat_definition_id, name, level, hp, max_hp,
+           cargo_capacity, upgrades_json, is_active, updated_at)
+         values ($1,$2,'training-dinghy','Training Dinghy',1,130,130,8,'{}'::jsonb,true,now())
+         on conflict (character_id, boat_definition_id) do update set
+           is_active = true, updated_at = now()`,
+        [randomUUID(), boatCharacterId],
+      );
+    }
+    await pool.query('commit');
+  } catch (error) {
+    await pool.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    await pool.end();
+  }
 }
 
 // SMOKE_CHROMIUM: ระบุ chromium binary เอง (สำหรับรันนอก CI ที่ browser revision ไม่ตรง)
@@ -370,8 +426,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // ให้ผลนิ่งใน headless CI: เปิด session ของตัวเอง ต่อ /ws แล้วส่ง move บนเกาะเดียวกัน
   // page1 (เบราว์เซอร์จริง, มี presence อยู่แล้ว) ต้องได้เฟรม presence ของผู้เล่นคนที่สอง
   await page.evaluate(() => {
+    const controller = window.__combat?.controller;
+    if (!controller) return;
     window.__realtime?.sendMove?.({
-      islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false,
+      islandId: 'starter-island',
+      x: controller.position.x,
+      y: controller.position.y,
+      z: controller.position.z,
+      heading: controller.heading,
+      onBoat: false,
     });
   });
   await new Promise((resolve) => setTimeout(resolve, 250));
@@ -383,10 +446,16 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   });
   const guestPayload = await guest.json().catch(() => null);
   const peerCharacterId = guestPayload?.session?.characterId ?? null;
+  const browserCharacterId = await page.evaluate(() => window.__characterId ?? null);
+  await seedSmokeAuthorityFixtures(
+    [browserCharacterId, peerCharacterId],
+    browserCharacterId,
+  );
   // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
   const peerDiag = {
     guestStatus: guest.status, peerCharacterId, frames: [], gotPage1Presence: false,
-    combat: [], worldDeltas: [], worldDead: [], boatDeltas: [], error: null, closed: null,
+    combat: [], worldDeltas: [], worldDead: [], boatDeltas: [], movementCorrections: 0,
+    error: null, closed: null,
   };
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
@@ -395,7 +464,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const peerOpen = new Promise((resolve) => { resolvePeerOpen = resolve; });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
-  let peerX = 12;
+  let peerX = 0;
   let peerY = 0;
   let peerZ = 8;
   let peerMoveSequence = 0;
@@ -422,6 +491,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         }
       }
       if (message?.type === 'world-monster-dead') peerDiag.worldDead.push(message.spawnId);
+      if (message?.type === 'movement-correction') {
+        peerX = message.x;
+        peerY = message.y;
+        peerZ = message.z;
+        peerDiag.movementCorrections += 1;
+      }
       if (message?.type === 'boat-delta') {
         peerDiag.boatDeltas.push(message.boat);
         if (peerDiag.boatDeltas.length > 200) {
@@ -452,12 +527,20 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   let pumpDiag = { hasRealtime: false, connected: false, sent: 0 };
   const pumpSelfMove = () => page.evaluate(() => {
     const rt = window.__realtime;
+    const controller = window.__combat?.controller;
     const out = {
       hasRealtime: Boolean(rt), connected: Boolean(rt && rt.connected), sent: false,
       presence: (window.__smokeRealtime?.presence ?? []).slice(-10),
     };
-    if (rt && typeof rt.sendMove === 'function') {
-      rt.sendMove({ islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false });
+    if (rt && controller && typeof rt.sendMove === 'function') {
+      rt.sendMove({
+        islandId: 'starter-island',
+        x: controller.position.x,
+        y: controller.position.y,
+        z: controller.position.z,
+        heading: controller.heading,
+        onBoat: false,
+      });
       out.sent = true;
     }
     return out;
@@ -500,6 +583,71 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     });
   }
 
+  // Move the smoke actors through the same bounded movement path a legitimate
+  // client can take. The old smoke teleported directly to combat coordinates,
+  // which is now correctly clamped by movement authority.
+  const walkBrowserTo = async (targetX, targetZ) => {
+    let current = await page.evaluate(() => {
+      const controller = window.__combat?.controller;
+      return controller
+        ? { x: controller.position.x, y: controller.position.y, z: controller.position.z }
+        : null;
+    });
+    if (!current) fail('browser movement fixture could not resolve the controller');
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
+      const result = await page.evaluate(({ x, z }) => {
+        const rt = window.__realtime;
+        const controller = window.__combat?.controller;
+        if (!rt?.connected || !controller) return null;
+        const dx = x - controller.position.x;
+        const dz = z - controller.position.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance <= 0.1) {
+          return { x: controller.position.x, y: controller.position.y, z: controller.position.z };
+        }
+        const step = Math.min(6, distance);
+        const nextX = controller.position.x + dx / distance * step;
+        const nextZ = controller.position.z + dz / distance * step;
+        controller.teleport(nextX, controller.position.y, nextZ);
+        rt.sendMove({
+          islandId: 'starter-island',
+          x: nextX,
+          y: controller.position.y,
+          z: nextZ,
+          heading: controller.heading,
+          onBoat: false,
+        });
+        return { x: nextX, y: controller.position.y, z: nextZ };
+      }, { x: targetX, z: targetZ });
+      if (!result) fail('browser disconnected while walking the PvP smoke fixture', { current });
+      current = result;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
+      fail('browser movement fixture did not reach its target', { current, targetX, targetZ });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  };
+  const walkPeerTo = async (targetX, targetZ) => {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && Math.hypot(targetX - peerX, targetZ - peerZ) > 0.1) {
+      const dx = targetX - peerX;
+      const dz = targetZ - peerZ;
+      const distance = Math.hypot(dx, dz);
+      const step = Math.min(6, distance);
+      peerX += dx / distance * step;
+      peerZ += dz / distance * step;
+      if (peer.readyState !== 1) fail('peer disconnected while walking the PvP smoke fixture', { peerDiag });
+      peerMove();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (Math.hypot(targetX - peerX, targetZ - peerZ) > 0.1) {
+      fail('peer movement fixture did not reach its target', { peerX, peerZ, targetX, targetZ });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  };
+
   // S15 PvP: browser จริงโจมตี peer → peer ต้องได้ combat-hit ที่ Server ตัดสินเอง
   // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority ข้าม client จริง ไม่เชื่อ Client)
   const pvpDiag = { hasTarget: false, gameplayAttacks: 0, gotHit: false, browserSawTarget: false };
@@ -515,9 +663,11 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     // Keep the PvP authority smoke outside the starter-village safe zone.
     // Repeat these authoritative positions because the live gameplay loop may publish
     // the headless avatar's visual spawn position between smoke attempts.
-    peerX = 31;
+    await Promise.all([
+      walkBrowserTo(30, 8),
+      walkPeerTo(31, 8),
+    ]);
     peerY = 0;
-    peerZ = 8;
     if (peer.readyState === 1) peerMove();
     await page.evaluate(() => {
       if (window.__combat?.controller) window.__combat.controller.heading = Math.PI / 2;
@@ -560,18 +710,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   };
   if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true') {
     const spawnId = 'starter-crab-1';
+    await walkBrowserTo(22, -4);
     const peerSawDamage = () => peerDiag.worldDeltas.some((d) => d.spawnId === spawnId && d.hp < 70);
     const peerSawDead = () => peerDiag.worldDead.includes(spawnId);
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline && !peerSawDead()) {
       const sent = await page.evaluate((targetSpawnId) => {
         const rt = window.__realtime;
-        if (!rt || !rt.connected || typeof rt.sendMonsterHit !== 'function') return false;
-        // move + intent อยู่บน socket เดียวกันและส่งติดกัน: Server จึงเห็นตำแหน่ง spawn
-        // ก่อนวัดระยะ โดยไม่พึ่ง timer/rAF ของ browser หรือ outbound queue ของ Node peer
-        rt.sendMove({ islandId: 'starter-island', x: 22, y: 0, z: -4, heading: 0, onBoat: false });
-        rt.sendMonsterHit(targetSpawnId, 'skill');
-        return true;
+        if (!rt || !rt.connected || typeof rt.sendMonsterHits !== 'function') return false;
+        return Boolean(rt.sendMonsterHits([targetSpawnId], 'skill'));
       }, spawnId);
       if (sent) {
         worldDiag.hitsSent += 1;
@@ -596,28 +743,25 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     resolutionSource: null, inputSent: 0, peerMoved: false,
   };
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
-    // A new account intentionally owns no boat. Acquire the free starter through the real
-    // shop/storage path, then wait for the credentialed cross-origin save before summoning.
-    // This keeps the smoke subject to the same canonical player_boats gate as production.
+    // The canonical active boat is seeded with the other authority fixtures above. Mirror
+    // that free starter through the real Client progression path so the Browser's selected
+    // boat and the Server-owned entity exercise the same definition without coupling this
+    // S17 authority gate to the separate Remote Save/CORS gate at the start of the smoke.
     const selectedBoat = await page.evaluate(() => window.__boat?.selectedBoatId ?? null);
     if (selectedBoat !== 'training-dinghy') {
-      const saveResponse = page.waitForResponse(
-        (response) => new URL(response.url()).pathname === '/api/player/save'
-          && response.request().method() === 'POST'
-          && response.status() === 200,
-        { timeout: 30_000 },
-      );
       // Exercise the real progression purchase path directly. The shop overlay is
       // presentation-only and may be suppressed when the headless avatar is briefly
       // mounted by an authoritative boat snapshot from the preceding scenario.
-      const purchase = await page.evaluate(() => window.__boat?.progress?.purchase('training-dinghy') ?? null);
+      const purchase = await page.evaluate(
+        () => window.__boat?.progress?.purchase('training-dinghy') ?? null,
+      );
       if (!purchase?.ok) fail('could not acquire starter boat through progression', { purchase });
-      await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-      boatDiag.saveStatus = (await saveResponse).status();
+      boatDiag.saveStatus = 'client-mirrored';
     }
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
     );
+    await walkBrowserTo(4.2, -43);
     boatDiag.intentId = await page.evaluate(() => {
       const rt = window.__realtime;
       rt?.sendMove({

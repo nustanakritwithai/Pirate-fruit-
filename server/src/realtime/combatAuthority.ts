@@ -21,7 +21,7 @@ import type { RealtimeCombatRejectReason, RealtimeKnockback } from '@pirate-frui
  * ส่วนดาเมจ/HP/ตาย/เกิดใหม่ คิดที่นี่ล้วน — ค่าจาก Client ไม่มีผล (กันโกง)
  *
  * เป็นคลาส pure (ไม่รู้จัก socket): รับตำแหน่งจาก presence ของ hub เข้ามาเป็นพารามฯ
- * → ทดสอบง่าย. HP เป็น ephemeral ต่อ session (ไม่ persist) — ตัดการเชื่อมต่อ = ลบทิ้ง
+ * → ทดสอบง่าย. HP คงอยู่ข้าม reconnect ใน combat window เพื่อปิดช่อง refresh-heal
  */
 
 export interface CombatPosition {
@@ -44,6 +44,10 @@ interface CombatState {
   blocking: boolean;
   guard: number;
   lastGuardAt: number;
+  /** Keep damaged/defeated state across a short disconnect instead of healing on refresh. */
+  disconnectedAt: number | null;
+  /** True after participating in PvP; fresh states must not overwrite unrelated PvE HP. */
+  engaged: boolean;
 }
 
 export type AttackKind = 'melee' | 'skill';
@@ -72,6 +76,13 @@ export interface RespawnEvent {
   maxHp: number;
 }
 
+export interface CombatStateSnapshot {
+  hp: number;
+  maxHp: number;
+  defeated: boolean;
+  engaged: boolean;
+}
+
 function damageFor(kind: AttackKind, multiplier = 1): number {
   const safeMultiplier = Number.isFinite(multiplier)
     ? Math.max(1, Math.min(100, multiplier))
@@ -85,6 +96,7 @@ const MAX_PROCESSED_ATTACK_INTENTS = 256;
 const PVP_GUARD_MAX = 100;
 const PVP_GUARD_REGEN_PER_SECOND = 18;
 const PVP_BLOCK_DAMAGE_RATIO = 0.25;
+const PVP_RECONNECT_STATE_RETENTION_MS = 15 * 60_000;
 
 function rangeFor(kind: AttackKind): number {
   return kind === 'skill' ? PVP_SKILL_RANGE : PVP_MELEE_RANGE;
@@ -132,10 +144,13 @@ export class CombatAuthority {
         blocking: false,
         guard: PVP_GUARD_MAX,
         lastGuardAt: 0,
+        disconnectedAt: null,
+        engaged: false,
       });
       return;
     }
     const state = this.states.get(playerId)!;
+    state.disconnectedAt = null;
     if (maxHp === undefined) return;
     if (state.maxHp === normalizedMaxHp) return;
     // Preserve missing HP when Vitality changes instead of healing damage for free.
@@ -150,6 +165,24 @@ export class CombatAuthority {
   remove(playerId: string): void {
     this.states.delete(playerId);
     for (const state of this.states.values()) state.lastAttackAt.delete(playerId);
+  }
+
+  /** Network loss retains HP/death long enough that refresh cannot become a heal action. */
+  disconnect(playerId: string, now: number): void {
+    const state = this.states.get(playerId);
+    if (state) state.disconnectedAt = now;
+  }
+
+  stateOf(playerId: string): CombatStateSnapshot | undefined {
+    const state = this.states.get(playerId);
+    return state
+      ? {
+          hp: state.hp,
+          maxHp: state.maxHp,
+          defeated: state.respawnAt !== null,
+          engaged: state.engaged,
+        }
+      : undefined;
   }
 
   /** HP ปัจจุบัน (ทดสอบ/แสดงผล) — undefined = ไม่รู้จัก */
@@ -239,6 +272,8 @@ export class CombatAuthority {
     if (dx * dx + dy * dy + dz * dz > range * range) return { accepted: false, reason: 'out-of-range' };
 
     attacker.lastAttackAt.set(targetId, now);
+    attacker.engaged = true;
+    target.engaged = true;
     this.refreshGuard(target, now);
     const baseDamage = damageFor(kind, attackerDamageMultiplier);
     const blocked = target.blocking && target.guard > 0;
@@ -307,9 +342,22 @@ export class CombatAuthority {
         state.guard = PVP_GUARD_MAX;
         state.lastGuardAt = now;
         state.lastAttackAt.clear();
+        state.engaged = false;
         respawned.push({ playerId, hp: state.maxHp, maxHp: state.maxHp });
       }
     }
+    this.pruneDisconnected(now);
     return respawned;
+  }
+
+  private pruneDisconnected(now: number): void {
+    for (const [playerId, state] of this.states) {
+      if (
+        state.disconnectedAt !== null
+        && now - state.disconnectedAt >= PVP_RECONNECT_STATE_RETENTION_MS
+      ) {
+        this.remove(playerId);
+      }
+    }
   }
 }
