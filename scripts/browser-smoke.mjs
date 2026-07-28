@@ -425,7 +425,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
   const peerDiag = {
     guestStatus: guest.status, peerCharacterId, frames: [], gotPage1Presence: false,
-    combat: [], worldDeltas: [], worldDead: [], boatDeltas: [], error: null, closed: null,
+    combat: [], worldDeltas: [], worldDead: [], boatDeltas: [], movementCorrections: 0,
+    error: null, closed: null,
   };
   const cookie2 = guest.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const wsUrl = `${API_URL.replace(/^http/, 'ws')}/ws`;
@@ -461,6 +462,12 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         }
       }
       if (message?.type === 'world-monster-dead') peerDiag.worldDead.push(message.spawnId);
+      if (message?.type === 'movement-correction') {
+        peerX = message.x;
+        peerY = message.y;
+        peerZ = message.z;
+        peerDiag.movementCorrections += 1;
+      }
       if (message?.type === 'boat-delta') {
         peerDiag.boatDeltas.push(message.boat);
         if (peerDiag.boatDeltas.length > 200) {
@@ -558,34 +565,35 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
         : null;
     });
     if (!current) fail('browser movement fixture could not resolve the controller');
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
-      const dx = targetX - current.x;
-      const dz = targetZ - current.z;
-      const distance = Math.hypot(dx, dz);
-      const step = Math.min(2, distance);
-      current = {
-        ...current,
-        x: current.x + dx / distance * step,
-        z: current.z + dz / distance * step,
-      };
-      const sent = await page.evaluate((next) => {
+      const result = await page.evaluate(({ x, z }) => {
         const rt = window.__realtime;
         const controller = window.__combat?.controller;
-        if (!rt?.connected || !controller) return false;
-        controller.teleport(next.x, controller.position.y, next.z);
+        if (!rt?.connected || !controller) return null;
+        const dx = x - controller.position.x;
+        const dz = z - controller.position.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance <= 0.1) {
+          return { x: controller.position.x, y: controller.position.y, z: controller.position.z };
+        }
+        const step = Math.min(6, distance);
+        const nextX = controller.position.x + dx / distance * step;
+        const nextZ = controller.position.z + dz / distance * step;
+        controller.teleport(nextX, controller.position.y, nextZ);
         rt.sendMove({
           islandId: 'starter-island',
-          x: next.x,
+          x: nextX,
           y: controller.position.y,
-          z: next.z,
+          z: nextZ,
           heading: controller.heading,
           onBoat: false,
         });
-        return true;
-      }, current);
-      if (!sent) fail('browser disconnected while walking the PvP smoke fixture', { current });
-      await new Promise((resolve) => setTimeout(resolve, 125));
+        return { x: nextX, y: controller.position.y, z: nextZ };
+      }, { x: targetX, z: targetZ });
+      if (!result) fail('browser disconnected while walking the PvP smoke fixture', { current });
+      current = result;
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
     if (Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
       fail('browser movement fixture did not reach its target', { current, targetX, targetZ });
@@ -593,17 +601,17 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     await new Promise((resolve) => setTimeout(resolve, 250));
   };
   const walkPeerTo = async (targetX, targetZ) => {
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && Math.hypot(targetX - peerX, targetZ - peerZ) > 0.1) {
       const dx = targetX - peerX;
       const dz = targetZ - peerZ;
       const distance = Math.hypot(dx, dz);
-      const step = Math.min(2, distance);
+      const step = Math.min(6, distance);
       peerX += dx / distance * step;
       peerZ += dz / distance * step;
       if (peer.readyState !== 1) fail('peer disconnected while walking the PvP smoke fixture', { peerDiag });
       peerMove();
-      await new Promise((resolve) => setTimeout(resolve, 125));
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
     if (Math.hypot(targetX - peerX, targetZ - peerZ) > 0.1) {
       fail('peer movement fixture did not reach its target', { peerX, peerZ, targetX, targetZ });
