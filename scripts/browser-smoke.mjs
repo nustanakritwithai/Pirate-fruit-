@@ -17,6 +17,36 @@ function fail(message, extra) {
   process.exit(1);
 }
 
+async function promoteSmokePvpCharacters(characterIds) {
+  if (process.env.SMOKE_EXPECT_PVP !== 'true') return;
+  if (!process.env.DATABASE_URL) {
+    fail('PvP smoke requires DATABASE_URL to seed eligible level-20 fixtures');
+  }
+  const ids = [...new Set(characterIds.filter(Boolean))];
+  if (ids.length !== characterIds.length) {
+    fail('could not resolve both PvP smoke character ids', { characterIds });
+  }
+  const { Pool } = await import('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const result = await pool.query(
+      `update characters
+          set level = greatest(level, 20),
+              updated_at = now()
+        where id = any($1::uuid[])`,
+      [ids],
+    );
+    if (result.rowCount !== ids.length) {
+      fail('could not seed level-20 PvP smoke fixtures', {
+        characterIds: ids,
+        updated: result.rowCount,
+      });
+    }
+  } finally {
+    await pool.end();
+  }
+}
+
 // SMOKE_CHROMIUM: ระบุ chromium binary เอง (สำหรับรันนอก CI ที่ browser revision ไม่ตรง)
 const browser = await chromium.launch({
   executablePath: process.env.SMOKE_CHROMIUM || undefined,
@@ -370,8 +400,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // ให้ผลนิ่งใน headless CI: เปิด session ของตัวเอง ต่อ /ws แล้วส่ง move บนเกาะเดียวกัน
   // page1 (เบราว์เซอร์จริง, มี presence อยู่แล้ว) ต้องได้เฟรม presence ของผู้เล่นคนที่สอง
   await page.evaluate(() => {
+    const controller = window.__combat?.controller;
+    if (!controller) return;
     window.__realtime?.sendMove?.({
-      islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false,
+      islandId: 'starter-island',
+      x: controller.position.x,
+      y: controller.position.y,
+      z: controller.position.z,
+      heading: controller.heading,
+      onBoat: false,
     });
   });
   await new Promise((resolve) => setTimeout(resolve, 250));
@@ -383,6 +420,8 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   });
   const guestPayload = await guest.json().catch(() => null);
   const peerCharacterId = guestPayload?.session?.characterId ?? null;
+  const browserCharacterId = await page.evaluate(() => window.__characterId ?? null);
+  await promoteSmokePvpCharacters([browserCharacterId, peerCharacterId]);
   // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
   const peerDiag = {
     guestStatus: guest.status, peerCharacterId, frames: [], gotPage1Presence: false,
@@ -395,7 +434,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const peerOpen = new Promise((resolve) => { resolvePeerOpen = resolve; });
   // S14: ผู้เล่นคนที่สองแล่นเรือ war-galleon — presence ต้องพา boatId ถึงหน้าเกม
   const NAVAL = process.env.SMOKE_EXPECT_NAVAL === 'true';
-  let peerX = 12;
+  let peerX = 0;
   let peerY = 0;
   let peerZ = 8;
   let peerMoveSequence = 0;
@@ -452,12 +491,20 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   let pumpDiag = { hasRealtime: false, connected: false, sent: 0 };
   const pumpSelfMove = () => page.evaluate(() => {
     const rt = window.__realtime;
+    const controller = window.__combat?.controller;
     const out = {
       hasRealtime: Boolean(rt), connected: Boolean(rt && rt.connected), sent: false,
       presence: (window.__smokeRealtime?.presence ?? []).slice(-10),
     };
-    if (rt && typeof rt.sendMove === 'function') {
-      rt.sendMove({ islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, onBoat: false });
+    if (rt && controller && typeof rt.sendMove === 'function') {
+      rt.sendMove({
+        islandId: 'starter-island',
+        x: controller.position.x,
+        y: controller.position.y,
+        z: controller.position.z,
+        heading: controller.heading,
+        onBoat: false,
+      });
       out.sent = true;
     }
     return out;
@@ -500,6 +547,70 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     });
   }
 
+  // Move the smoke actors through the same bounded movement path a legitimate
+  // client can take. The old smoke teleported directly to combat coordinates,
+  // which is now correctly clamped by movement authority.
+  const walkBrowserTo = async (targetX, targetZ) => {
+    let current = await page.evaluate(() => {
+      const controller = window.__combat?.controller;
+      return controller
+        ? { x: controller.position.x, y: controller.position.y, z: controller.position.z }
+        : null;
+    });
+    if (!current) fail('browser movement fixture could not resolve the controller');
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline && Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
+      const dx = targetX - current.x;
+      const dz = targetZ - current.z;
+      const distance = Math.hypot(dx, dz);
+      const step = Math.min(2, distance);
+      current = {
+        ...current,
+        x: current.x + dx / distance * step,
+        z: current.z + dz / distance * step,
+      };
+      const sent = await page.evaluate((next) => {
+        const rt = window.__realtime;
+        const controller = window.__combat?.controller;
+        if (!rt?.connected || !controller) return false;
+        controller.teleport(next.x, controller.position.y, next.z);
+        rt.sendMove({
+          islandId: 'starter-island',
+          x: next.x,
+          y: controller.position.y,
+          z: next.z,
+          heading: controller.heading,
+          onBoat: false,
+        });
+        return true;
+      }, current);
+      if (!sent) fail('browser disconnected while walking the PvP smoke fixture', { current });
+      await new Promise((resolve) => setTimeout(resolve, 125));
+    }
+    if (Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
+      fail('browser movement fixture did not reach its target', { current, targetX, targetZ });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  };
+  const walkPeerTo = async (targetX, targetZ) => {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline && Math.hypot(targetX - peerX, targetZ - peerZ) > 0.1) {
+      const dx = targetX - peerX;
+      const dz = targetZ - peerZ;
+      const distance = Math.hypot(dx, dz);
+      const step = Math.min(2, distance);
+      peerX += dx / distance * step;
+      peerZ += dz / distance * step;
+      if (peer.readyState !== 1) fail('peer disconnected while walking the PvP smoke fixture', { peerDiag });
+      peerMove();
+      await new Promise((resolve) => setTimeout(resolve, 125));
+    }
+    if (Math.hypot(targetX - peerX, targetZ - peerZ) > 0.1) {
+      fail('peer movement fixture did not reach its target', { peerX, peerZ, targetX, targetZ });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  };
+
   // S15 PvP: browser จริงโจมตี peer → peer ต้องได้ combat-hit ที่ Server ตัดสินเอง
   // (ดาเมจ/HP มาจาก Server — พิสูจน์ authority ข้าม client จริง ไม่เชื่อ Client)
   const pvpDiag = { hasTarget: false, gameplayAttacks: 0, gotHit: false, browserSawTarget: false };
@@ -515,9 +626,11 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     // Keep the PvP authority smoke outside the starter-village safe zone.
     // Repeat these authoritative positions because the live gameplay loop may publish
     // the headless avatar's visual spawn position between smoke attempts.
-    peerX = 31;
+    await Promise.all([
+      walkBrowserTo(30, 8),
+      walkPeerTo(31, 8),
+    ]);
     peerY = 0;
-    peerZ = 8;
     if (peer.readyState === 1) peerMove();
     await page.evaluate(() => {
       if (window.__combat?.controller) window.__combat.controller.heading = Math.PI / 2;
@@ -560,18 +673,15 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   };
   if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true') {
     const spawnId = 'starter-crab-1';
+    await walkBrowserTo(22, -4);
     const peerSawDamage = () => peerDiag.worldDeltas.some((d) => d.spawnId === spawnId && d.hp < 70);
     const peerSawDead = () => peerDiag.worldDead.includes(spawnId);
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline && !peerSawDead()) {
       const sent = await page.evaluate((targetSpawnId) => {
         const rt = window.__realtime;
-        if (!rt || !rt.connected || typeof rt.sendMonsterHit !== 'function') return false;
-        // move + intent อยู่บน socket เดียวกันและส่งติดกัน: Server จึงเห็นตำแหน่ง spawn
-        // ก่อนวัดระยะ โดยไม่พึ่ง timer/rAF ของ browser หรือ outbound queue ของ Node peer
-        rt.sendMove({ islandId: 'starter-island', x: 22, y: 0, z: -4, heading: 0, onBoat: false });
-        rt.sendMonsterHit(targetSpawnId, 'skill');
-        return true;
+        if (!rt || !rt.connected || typeof rt.sendMonsterHits !== 'function') return false;
+        return Boolean(rt.sendMonsterHits([targetSpawnId], 'skill'));
       }, spawnId);
       if (sent) {
         worldDiag.hitsSent += 1;
