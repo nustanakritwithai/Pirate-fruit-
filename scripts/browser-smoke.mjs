@@ -715,27 +715,34 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   };
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
     // A new account intentionally owns no boat. Acquire the free starter through the real
-    // shop/storage path, then wait for the credentialed cross-origin save before summoning.
+    // shop/storage path, then flush the credentialed cross-origin save before summoning.
     // This keeps the smoke subject to the same canonical player_boats gate as production.
     const selectedBoat = await page.evaluate(() => window.__boat?.selectedBoatId ?? null);
     if (selectedBoat !== 'training-dinghy') {
-      const saveResponse = page.waitForResponse(
-        (response) => new URL(response.url()).pathname === '/api/player/save'
-          && response.request().method() === 'POST'
-          && response.status() === 200,
-        { timeout: 30_000 },
-      );
       // Exercise the real progression purchase path directly. The shop overlay is
       // presentation-only and may be suppressed when the headless avatar is briefly
       // mounted by an authoritative boat snapshot from the preceding scenario.
-      const purchase = await page.evaluate(() => window.__boat?.progress?.purchase('training-dinghy') ?? null);
-      if (!purchase?.ok) fail('could not acquire starter boat through progression', { purchase });
-      await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-      boatDiag.saveStatus = (await saveResponse).status();
+      const purchase = await page.evaluate(async () => {
+        const boat = window.__boat;
+        const result = boat?.progress?.purchase('training-dinghy') ?? null;
+        await boat?.storage?.flush?.();
+        return {
+          result,
+          persistenceError: boat?.storage?.lastError
+            ? String(boat.storage.lastError).slice(0, 300)
+            : null,
+        };
+      });
+      if (purchase?.persistenceError) {
+        fail('could not persist starter boat through the remote repository', { purchase });
+      }
+      if (!purchase?.result?.ok) fail('could not acquire starter boat through progression', { purchase });
+      boatDiag.saveStatus = 'flushed';
     }
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
     );
+    await walkBrowserTo(4.2, -43);
     boatDiag.intentId = await page.evaluate(() => {
       const rt = window.__realtime;
       rt?.sendMove({
