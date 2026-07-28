@@ -504,6 +504,19 @@ async function main(): Promise<void> {
       remotePlayers?.applyPresence(snapshot);
     },
     onPresenceLeave: (playerId) => remotePlayers?.remove(playerId),
+    onMovementCorrection: (correction) => {
+      controller.teleport(correction.x, correction.y, correction.z);
+      controller.heading = correction.heading;
+      remotePlayers?.setIsland(correction.islandId);
+      sharedMonsters?.setIsland(correction.islandId);
+      if (correction.reason !== 'initial-anchor') {
+        touchControls?.notify(
+          correction.reason === 'island'
+            ? 'Server ปรับตำแหน่งกลับ — ต้องเดินทางข้ามเกาะด้วยเรือ'
+            : 'Server ปรับตำแหน่งกลับให้ตรงกับความเร็วที่อนุญาต',
+        );
+      }
+    },
     // S15: ผล PvP จาก Server (authority) — โดนเราเอง = ปรับหลอดเลือดตาม Server
     onCombatHit: ({ attackerId, targetId, damage, hp, maxHp, knockback }) => {
       audioBridge?.markCombat();
@@ -560,10 +573,26 @@ async function main(): Promise<void> {
         remotePlayers?.markRespawn(playerId);
       }
     },
+    onCombatState: ({ playerId, hp, maxHp, defeated, engaged }) => {
+      if (playerId !== getSelfCharacterId() || !engaged) return;
+      selfPvpHp = Math.max(0, Math.min(maxHp, hp));
+      selfPvpDefeated = defeated;
+      controller.hp = defeated
+        ? 0
+        : Math.max(0, Math.min(
+            controller.hpMax,
+            Math.round(controller.hpMax * selfPvpHp / Math.max(1, maxHp)),
+          ));
+      if (defeated) {
+        spawnManager.teleportToCheckpoint();
+        playerCombat?.notifyDamaged();
+      }
+    },
     onCombatResult: (result) => {
       if (result.accepted || result.reason === 'cooldown' || result.reason === 'duplicate') return;
       const messages: Record<string, string> = {
         'pvp-disabled': '⚔️ PK ยังไม่เปิดบนเซิร์ฟเวอร์',
+        'pvp-level-locked': '⚔️ PvP ปลดล็อกเมื่อผู้เล่นทั้งสองถึงเลเวล 20',
         'presence-required': '⚔️ กำลังซิงก์ตำแหน่ง ลองโจมตีอีกครั้ง',
         'target-unavailable': '⚔️ เป้าหมายหลุดการเชื่อมต่อแล้ว',
         'different-island': '⚔️ เป้าหมายอยู่คนละเกาะ',

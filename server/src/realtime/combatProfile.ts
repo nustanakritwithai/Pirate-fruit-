@@ -1,4 +1,5 @@
 import {
+  PVP_UNLOCK_LEVEL,
   resourceCapsForStats,
   statDamageMultiplier,
   type CharacterStats,
@@ -8,6 +9,7 @@ import type { Pool } from 'pg';
 import type { AttackKind } from './combatAuthority.js';
 
 export interface AuthoritativeCombatProfile {
+  level: number;
   stats: CharacterStats;
   maxHp: number;
   maxEnergy: number;
@@ -32,6 +34,7 @@ export const DEFAULT_COMBAT_STATS: CharacterStats = {
 
 export function defaultCombatProfile(): AuthoritativeCombatProfile {
   return {
+    level: PVP_UNLOCK_LEVEL,
     stats: { ...DEFAULT_COMBAT_STATS },
     ...resourceCapsForStats(DEFAULT_COMBAT_STATS),
     weaponCategory: 'style',
@@ -76,6 +79,7 @@ export function combatDamageMultiplier(
 }
 
 interface ProfileRow {
+  level: number | null;
   combat: number | null;
   vitality: number | null;
   blade: number | null;
@@ -108,7 +112,7 @@ export class PostgresCombatProfileProvider implements CombatProfileProvider {
     if (cached && cached.expiresAt > now) return cached.value;
 
     const result = await this.pool.query<ProfileRow>(
-      `select p.combat, p.vitality, p.blade, p.ranged, p.fruit_power, p.mana,
+      `select c.level, p.combat, p.vitality, p.blade, p.ranged, p.fruit_power, p.mana,
               e.metadata_json
          from characters c
          left join player_progression p on p.character_id = c.id
@@ -155,6 +159,9 @@ export class PostgresCombatProfileProvider implements CombatProfileProvider {
       ? [equippedWeapon, 'fruit']
       : [equippedWeapon];
     const value: AuthoritativeCombatProfile = {
+      level: typeof row.level === 'number' && Number.isFinite(row.level)
+        ? Math.max(1, Math.floor(row.level))
+        : 1,
       stats,
       ...resourceCapsForStats(stats),
       weaponCategory: equippedWeapon,

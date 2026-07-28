@@ -152,6 +152,43 @@ describe('S13 presence relay', () => {
     expect(aPresence).toMatchObject({ type: 'presence', playerId: 'char-b', name: 'Bob', x: 1, z: 1 });
   });
 
+  it('clamps a forged first-position teleport from the PostgreSQL anchor', async () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(
+      undefined,
+      () => clock,
+      200,
+      true,
+      false,
+      undefined,
+      {
+        anchor: async () => ({
+          islandId: 'starter-island',
+          x: 0,
+          y: 0,
+          z: 8,
+          heading: 0,
+        }),
+      },
+    );
+    const socket = new FakeSocket();
+    const connection = hub.register(socket, 'user-a', 'char-a', 'Alice')!;
+
+    hub.handleClientMessage(connection, moved('starter-island', 500, 500));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const correction = socket.sent.find((message) => message.type === 'movement-correction');
+    expect(correction).toMatchObject({
+      type: 'movement-correction',
+      islandId: 'starter-island',
+      reason: 'initial-anchor',
+    });
+    if (correction?.type === 'movement-correction') {
+      expect(Math.hypot(correction.x, correction.z - 8)).toBeLessThanOrEqual(8.001);
+    }
+  });
+
   it('does not relay across different islands', () => {
     let clock = 1_000;
     const hub = new RealtimeHub(undefined, () => clock, 200, true);
@@ -176,18 +213,18 @@ describe('S13 presence relay', () => {
 
     hub.handleClientMessage(ca, moved('starter-island', 0, 0));
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 500, 0));
+    hub.handleClientMessage(cb, moved('starter-island', 245, 0));
     expect(a.sent.some((message) => message.type === 'presence')).toBe(false);
     expect(b.sent.some((message) => message.type === 'presence')).toBe(false);
 
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 10, 0));
+    hub.handleClientMessage(cb, moved('starter-island', 239, 0));
     expect(a.sent.find((message) => message.type === 'presence')).toMatchObject({ playerId: 'char-b' });
     expect(b.sent.find((message) => message.type === 'presence')).toMatchObject({ playerId: 'char-a' });
 
     const seedsBefore = b.sent.filter((message) => message.type === 'presence').length;
     clock += 100;
-    hub.handleClientMessage(cb, moved('starter-island', 11, 0));
+    hub.handleClientMessage(cb, moved('starter-island', 238, 0));
     expect(b.sent.filter((message) => message.type === 'presence')).toHaveLength(seedsBefore);
   });
 
@@ -387,6 +424,78 @@ describe('S15 PvP combat authority', () => {
     // ผู้โจมตีก็ได้รับ event (แสดงเลขดาเมจเหนือหัวเป้า)
     expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(true);
     expect(a.sent.find((message) => message.type === 'combat-result')).toMatchObject({ accepted: true });
+  });
+
+  it('retains damaged HP and sends it back after reconnect', () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(undefined, () => clock, 200, true, true);
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
+    hub.handleClientMessage(ca, attack('char-b', 'melee', 'reconnect-hit'));
+    const hit = b.sent.find((message) => message.type === 'combat-hit');
+    expect(hit).toMatchObject({ targetId: 'char-b', hp: 93, maxHp: 100 });
+
+    hub.unregister(cb);
+    clock += 100;
+    const reconnected = new FakeSocket();
+    hub.register(reconnected, 'user-b', 'char-b', 'Bob');
+
+    expect(reconnected.sent.find((message) => message.type === 'combat-state')).toMatchObject({
+      type: 'combat-state',
+      playerId: 'char-b',
+      hp: 93,
+      maxHp: 100,
+      defeated: false,
+      engaged: true,
+    });
+  });
+
+  it('enforces the level-20 PvP gate from Server-owned profiles', async () => {
+    let clock = 1_000;
+    const hub = new RealtimeHub(
+      undefined,
+      () => clock,
+      200,
+      true,
+      true,
+      {
+        profile: async (characterId) => combatProfile(
+          {},
+          { level: characterId === 'char-a' ? 19 : 20 },
+        ),
+      },
+    );
+    const a = new FakeSocket();
+    const b = new FakeSocket();
+    const ca = hub.register(a, 'user-a', 'char-a', 'Alice')!;
+    const cb = hub.register(b, 'user-b', 'char-b', 'Bob')!;
+    hub.handleClientMessage(ca, moved('starter-island', 30, 0));
+    clock += 100;
+    hub.handleClientMessage(cb, moved('starter-island', 31, 1));
+
+    hub.handleClientMessage(ca, attack('char-b', 'melee', 'level-gate'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(a.sent.filter((message) => message.type === 'combat-result').at(-1)).toMatchObject({
+      accepted: false,
+      reason: 'pvp-level-locked',
+    });
+    expect(b.sent.some((message) => message.type === 'combat-hit')).toBe(false);
+
+    hub.handleClientMessage(cb, attack('char-a', 'melee', 'level-gate-target'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(b.sent.filter((message) => message.type === 'combat-result').at(-1)).toMatchObject({
+      accepted: false,
+      reason: 'pvp-level-locked',
+    });
+    expect(a.sent.some((message) => message.type === 'combat-hit')).toBe(false);
   });
 
   it('uses persisted attacker stats and target Vitality in authoritative PvP', async () => {

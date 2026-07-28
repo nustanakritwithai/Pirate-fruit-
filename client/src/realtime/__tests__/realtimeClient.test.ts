@@ -248,6 +248,64 @@ describe('S9 realtime client', () => {
     client.stop();
   });
 
+  it('dispatches reconnect combat state and movement corrections', () => {
+    const sockets: FakeSocket[] = [];
+    const combatStates: unknown[] = [];
+    const corrections: unknown[] = [];
+    const client = new RealtimeClient('ws://test/ws', {
+      onEconomy: () => undefined,
+      onResync: () => undefined,
+      onCombatState: (state) => combatStates.push(state),
+      onMovementCorrection: (correction) => corrections.push(correction),
+    }, {
+      webSocketFactory: () => {
+        const socket = new FakeSocket(); sockets.push(socket); return socket;
+      },
+    });
+    client.start();
+    sockets[0].welcome();
+    sockets[0].push({
+      type: 'combat-state',
+      seq: 2,
+      playerId: 'char-a',
+      hp: 48,
+      maxHp: 100,
+      defeated: false,
+      engaged: true,
+    });
+    sockets[0].push({
+      type: 'movement-correction',
+      seq: 3,
+      islandId: 'starter-island',
+      x: 4,
+      y: 1,
+      z: 8,
+      heading: 0.5,
+      reason: 'speed',
+    });
+
+    expect(combatStates).toEqual([{
+      playerId: 'char-a',
+      hp: 48,
+      maxHp: 100,
+      defeated: false,
+      engaged: true,
+      type: 'combat-state',
+      seq: 2,
+    }]);
+    expect(corrections).toEqual([{
+      islandId: 'starter-island',
+      x: 4,
+      y: 1,
+      z: 8,
+      heading: 0.5,
+      reason: 'speed',
+      type: 'movement-correction',
+      seq: 3,
+    }]);
+    client.stop();
+  });
+
   it('forwards the Server-computed combat knockback impulse', () => {
     const sockets: FakeSocket[] = [];
     const hits: unknown[] = [];
