@@ -7,6 +7,7 @@
  */
 
 import { chromium } from 'playwright';
+import { randomUUID } from 'node:crypto';
 
 const GAME_URL = process.env.SMOKE_GAME_URL ?? 'http://127.0.0.1:4173';
 const API_URL = process.env.SMOKE_API_URL ?? 'http://127.0.0.1:10000';
@@ -17,31 +18,56 @@ function fail(message, extra) {
   process.exit(1);
 }
 
-async function promoteSmokePvpCharacters(characterIds) {
-  if (process.env.SMOKE_EXPECT_PVP !== 'true') return;
+async function seedSmokeAuthorityFixtures(characterIds, boatCharacterId) {
+  const pvpEnabled = process.env.SMOKE_EXPECT_PVP === 'true';
+  const boatEnabled = process.env.SMOKE_EXPECT_BOAT_WORLD === 'true';
+  if (!pvpEnabled && !boatEnabled) return;
   if (!process.env.DATABASE_URL) {
-    fail('PvP smoke requires DATABASE_URL to seed eligible level-20 fixtures');
+    fail('authority smoke requires DATABASE_URL to seed canonical fixtures');
   }
   const ids = [...new Set(characterIds.filter(Boolean))];
   if (ids.length !== characterIds.length) {
-    fail('could not resolve both PvP smoke character ids', { characterIds });
+    fail('could not resolve both authority smoke character ids', { characterIds });
   }
   const { Pool } = await import('pg');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    const result = await pool.query(
-      `update characters
-          set level = greatest(level, 20),
-              updated_at = now()
-        where id = any($1::uuid[])`,
-      [ids],
-    );
-    if (result.rowCount !== ids.length) {
-      fail('could not seed level-20 PvP smoke fixtures', {
-        characterIds: ids,
-        updated: result.rowCount,
-      });
+    await pool.query('begin');
+    if (pvpEnabled) {
+      const result = await pool.query(
+        `update characters
+            set level = greatest(level, 20),
+                updated_at = now()
+          where id = any($1::uuid[])`,
+        [ids],
+      );
+      if (result.rowCount !== ids.length) {
+        fail('could not seed level-20 PvP smoke fixtures', {
+          characterIds: ids,
+          updated: result.rowCount,
+        });
+      }
     }
+    if (boatEnabled) {
+      if (!boatCharacterId) fail('could not resolve the boat smoke character id');
+      await pool.query(
+        'update player_boats set is_active = false where character_id = $1',
+        [boatCharacterId],
+      );
+      await pool.query(
+        `insert into player_boats
+          (id, character_id, boat_definition_id, name, level, hp, max_hp,
+           cargo_capacity, upgrades_json, is_active, updated_at)
+         values ($1,$2,'training-dinghy','Training Dinghy',1,130,130,8,'{}'::jsonb,true,now())
+         on conflict (character_id, boat_definition_id) do update set
+           is_active = true, updated_at = now()`,
+        [randomUUID(), boatCharacterId],
+      );
+    }
+    await pool.query('commit');
+  } catch (error) {
+    await pool.query('rollback').catch(() => undefined);
+    throw error;
   } finally {
     await pool.end();
   }
@@ -421,7 +447,10 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   const guestPayload = await guest.json().catch(() => null);
   const peerCharacterId = guestPayload?.session?.characterId ?? null;
   const browserCharacterId = await page.evaluate(() => window.__characterId ?? null);
-  await promoteSmokePvpCharacters([browserCharacterId, peerCharacterId]);
+  await seedSmokeAuthorityFixtures(
+    [browserCharacterId, peerCharacterId],
+    browserCharacterId,
+  );
   // เก็บ diagnostic ทุกด้าน เพื่อชี้จุดพังได้แน่ชัดจาก log ของ CI
   const peerDiag = {
     guestStatus: guest.status, peerCharacterId, frames: [], gotPage1Presence: false,
@@ -714,30 +743,20 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     resolutionSource: null, inputSent: 0, peerMoved: false,
   };
   if (process.env.SMOKE_EXPECT_BOAT_WORLD === 'true') {
-    // A new account intentionally owns no boat. Acquire the free starter through the real
-    // shop/storage path, then flush the credentialed cross-origin save before summoning.
-    // This keeps the smoke subject to the same canonical player_boats gate as production.
+    // The canonical active boat is seeded with the other authority fixtures above. Mirror
+    // that free starter through the real Client progression path so the Browser's selected
+    // boat and the Server-owned entity exercise the same definition without coupling this
+    // S17 authority gate to the separate Remote Save/CORS gate at the start of the smoke.
     const selectedBoat = await page.evaluate(() => window.__boat?.selectedBoatId ?? null);
     if (selectedBoat !== 'training-dinghy') {
       // Exercise the real progression purchase path directly. The shop overlay is
       // presentation-only and may be suppressed when the headless avatar is briefly
       // mounted by an authoritative boat snapshot from the preceding scenario.
-      const purchase = await page.evaluate(async () => {
-        const boat = window.__boat;
-        const result = boat?.progress?.purchase('training-dinghy') ?? null;
-        await boat?.storage?.flush?.();
-        return {
-          result,
-          persistenceError: boat?.storage?.lastError
-            ? String(boat.storage.lastError).slice(0, 300)
-            : null,
-        };
-      });
-      if (purchase?.persistenceError) {
-        fail('could not persist starter boat through the remote repository', { purchase });
-      }
-      if (!purchase?.result?.ok) fail('could not acquire starter boat through progression', { purchase });
-      boatDiag.saveStatus = 'flushed';
+      const purchase = await page.evaluate(
+        () => window.__boat?.progress?.purchase('training-dinghy') ?? null,
+      );
+      if (!purchase?.ok) fail('could not acquire starter boat through progression', { purchase });
+      boatDiag.saveStatus = 'client-mirrored';
     }
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
