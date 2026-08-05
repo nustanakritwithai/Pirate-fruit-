@@ -3,7 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { sessionCookieName } from '../auth/sessionCookie.js';
 import type { AuthenticatedSession, SessionService } from '../auth/sessionService.js';
-import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
+import { rejectUntrustedOrigin } from '../auth/originGuard.js';
+import type { ServerEnvironment } from '../config/environment.js';
 import { MonsterRejectedError } from './monsterRepository.js';
 import type { MonsterService } from './monsterService.js';
 
@@ -44,13 +45,7 @@ async function authenticate(
       .send(apiError(request, 'FEATURE_DISABLED', 'Server monster rewards are disabled'));
     return null;
   }
-  const origin = request.headers.origin;
-  if (origin && !allowedOrigins(environment).has(origin)) {
-    await reply
-      .status(403)
-      .send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
-    return null;
-  }
+  if (await rejectUntrustedOrigin(request, reply, environment, apiError)) return null;
   const cookie = request.cookies[sessionCookieName(environment)];
   const session = await dependencies.sessions.authenticate(cookie);
   if (!session) {

@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { REALTIME_MAX_CLIENT_MESSAGE_BYTES } from '@pirate-fruit/shared';
 import { sessionCookieName } from '../auth/sessionCookie.js';
 import type { SessionService } from '../auth/sessionService.js';
-import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
+import { isTrustedOrigin, type ServerEnvironment } from '../config/environment.js';
 import type { RealtimeHub, RealtimeSocket } from './realtimeHub.js';
 
 interface RealtimeRouteDependencies {
@@ -31,7 +31,7 @@ export async function registerRealtimeRoutes(
 
   app.get('/ws', { websocket: true }, async (socket, request) => {
     const origin = request.headers.origin;
-    if (origin && !allowedOrigins(environment).has(origin)) {
+    if (!isTrustedOrigin(origin, environment)) {
       socket.close(4403, 'origin not allowed');
       return;
     }

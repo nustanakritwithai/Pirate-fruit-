@@ -116,6 +116,18 @@ describe('S9 realtime hub', () => {
     hub.broadcastEconomy(1, '{}');
     expect(hub.connectionCount).toBe(0);
   });
+
+  it('rejects more than two concurrent sockets for the same character', () => {
+    const hub = new RealtimeHub(undefined, () => Date.now(), 200, false, false, undefined, undefined, 2);
+    const first = new FakeSocket();
+    const second = new FakeSocket();
+    const third = new FakeSocket();
+    expect(hub.register(first, 'user-a', 'char-a')).not.toBeNull();
+    expect(hub.register(second, 'user-a', 'char-a')).not.toBeNull();
+    expect(hub.register(third, 'user-a', 'char-a')).toBeNull();
+    expect(third.closedWith?.code).toBe(1013);
+    expect(hub.connectionCount).toBe(2);
+  });
 });
 
 describe('S13 presence relay', () => {

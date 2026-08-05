@@ -3,7 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { sessionCookieName } from '../auth/sessionCookie.js';
 import type { AuthenticatedSession, SessionService } from '../auth/sessionService.js';
-import { isTrustedOrigin, type ServerEnvironment } from '../config/environment.js';
+import { rejectUntrustedOrigin } from '../auth/originGuard.js';
+import type { ServerEnvironment } from '../config/environment.js';
 import {
   LocalMigrationAlreadyAppliedError,
   PlayerStateNotFoundError,
@@ -51,10 +52,7 @@ async function authenticate(
       .send(apiError(request, 'FEATURE_DISABLED', 'Remote player saves are disabled'));
     return null;
   }
-  if (unsafe && !isTrustedOrigin(request.headers.origin, dependencies.environment)) {
-    await reply
-      .status(403)
-      .send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
+  if (unsafe && await rejectUntrustedOrigin(request, reply, dependencies.environment, apiError)) {
     return null;
   }
   const cookie = request.cookies[sessionCookieName(dependencies.environment)];

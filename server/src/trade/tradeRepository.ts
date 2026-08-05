@@ -231,11 +231,18 @@ function preparedMutation(
   let settled = false;
   const settle = async (operation: 'commit' | 'rollback'): Promise<void> => {
     if (settled) return;
-    settled = true;
     try {
       await client.query(operation);
-    } finally {
+      settled = true;
       client.release();
+    } catch (error) {
+      if (operation === 'commit') {
+        await client.query('rollback').catch(() => undefined);
+      }
+      settled = true;
+      const releaseError = error instanceof Error ? error : new Error(String(error));
+      client.release(releaseError);
+      throw error;
     }
   };
   return {
