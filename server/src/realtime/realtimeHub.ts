@@ -261,6 +261,7 @@ export class RealtimeHub {
     private readonly combatProfiles?: CombatProfileProvider,
     /** Production seeds the first canonical coordinate from PostgreSQL. */
     private readonly movementAnchors?: MovementAnchorProvider,
+    private readonly maxConnectionsPerCharacter = 2,
   ) {}
 
   get connectionCount(): number {
@@ -279,6 +280,13 @@ export class RealtimeHub {
     characterId: string,
     characterName = 'Pirate',
   ): RealtimeConnection | null {
+    const activeForCharacter = [...this.connections].filter(
+      (connection) => connection.characterId === characterId,
+    ).length;
+    if (activeForCharacter >= this.maxConnectionsPerCharacter) {
+      socket.close(1013, 'too many connections for character');
+      return null;
+    }
     if (this.connections.size >= this.maxConnections) {
       socket.close(1013, 'realtime capacity reached');
       return null;

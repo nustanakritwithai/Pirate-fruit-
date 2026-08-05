@@ -3,7 +3,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { sessionCookieName } from '../auth/sessionCookie.js';
 import type { SessionService } from '../auth/sessionService.js';
-import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
+import { rejectUntrustedOrigin } from '../auth/originGuard.js';
+import type { ServerEnvironment } from '../config/environment.js';
 import { ShopRejectedError, type ShopService } from './shopService.js';
 
 interface Dependencies {
@@ -25,10 +26,7 @@ export async function registerShopRoutes(app: FastifyInstance, dependencies: Dep
       if (!environment.ENABLE_PROGRESSION_SERVER || !environment.ENABLE_REMOTE_SESSION || !sessions || !shop) {
         return reply.status(503).send(apiError(request, 'FEATURE_DISABLED', 'Server shop is disabled'));
       }
-      const origin = request.headers.origin;
-      if (origin && !allowedOrigins(environment).has(origin)) {
-        return reply.status(403).send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
-      }
+      if (await rejectUntrustedOrigin(request, reply, environment, apiError)) return reply;
       const session = await sessions.authenticate(request.cookies[sessionCookieName(environment)]);
       if (!session) return reply.status(401).send(apiError(request, 'SESSION_REQUIRED', 'A valid session is required'));
       if (!sessions.validateCsrf(session, request.headers['x-csrf-token'])) {

@@ -130,6 +130,36 @@ describe('S9 realtime route (real WebSocket)', () => {
     expect(code).toBe(4403);
   });
 
+  it('rejects missing Origin at upgrade when strict origin mode is enabled', async () => {
+    const environment = loadEnvironment({
+      NODE_ENV: 'test',
+      CLIENT_ORIGIN: 'https://game.example',
+      ENABLE_REMOTE_SESSION: 'true',
+      ENABLE_REALTIME: 'true',
+      STRICT_ORIGIN_MODE: 'true',
+      SESSION_SECRET: 's'.repeat(32),
+      DATABASE_URL: 'postgresql://user:password@database.internal:5432/pirate_fruit',
+    });
+    const sessions = new SessionService(new MemorySessionRepository(), 's'.repeat(32), 30);
+    const hub = new RealtimeHub();
+    const server = await buildServer({
+      environment,
+      database: createDatabaseProbe(),
+      sessions,
+      realtime: hub,
+      logger: false,
+    });
+    servers.push(server);
+    await server.listen({ host: '127.0.0.1', port: 0 });
+    const port = server.addresses()[0]!.port;
+    const issued = await sessions.createGuest();
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { cookie: `pf_session=${issued.rawToken}` },
+    });
+    const code = await new Promise<number>((resolve) => socket.once('close', resolve));
+    expect(code).toBe(4403);
+  });
+
   it('is absent (404 upgrade failure) when the flag is disabled', async () => {
     const environment = loadEnvironment({
       NODE_ENV: 'test',

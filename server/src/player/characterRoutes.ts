@@ -11,7 +11,8 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { expiredSessionCookieOptions, sessionCookieName } from '../auth/sessionCookie.js';
 import type { AuthenticatedSession, SessionService } from '../auth/sessionService.js';
-import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
+import { rejectUntrustedOrigin } from '../auth/originGuard.js';
+import type { ServerEnvironment } from '../config/environment.js';
 import { toSummary, type PostgresCharacterRepository } from './characterRepository.js';
 
 /**
@@ -56,14 +57,8 @@ async function authenticate(
       .send(apiError(request, 'FEATURE_DISABLED', 'Character select is disabled'));
     return null;
   }
-  if (unsafe) {
-    const origin = request.headers.origin;
-    if (origin && !allowedOrigins(dependencies.environment).has(origin)) {
-      await reply
-        .status(403)
-        .send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
-      return null;
-    }
+  if (unsafe && await rejectUntrustedOrigin(request, reply, dependencies.environment, apiError)) {
+    return null;
   }
   const cookie = request.cookies[sessionCookieName(dependencies.environment)];
   const session = await dependencies.sessions!.authenticate(cookie);

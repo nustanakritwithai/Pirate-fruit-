@@ -32,7 +32,7 @@ security controls.
 - After guest creation, the Client performs an authenticated `/api/session/me` read
   before reporting Session Online. A response body alone is not treated as proof that
   the browser retained the HttpOnly cookie.
-- HMAC CSRF tokens and exact Origin checks protect unsafe routes.
+- HMAC CSRF tokens and Origin checks protect unsafe routes when `STRICT_ORIGIN_MODE=true` (production default in `render.yaml`); with the flag off, missing `Origin` is trusted for server-to-server tooling.
 - CORS permits credentials only for configured Client origins.
 - Guest creation has a stricter endpoint rate limit.
 
