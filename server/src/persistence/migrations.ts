@@ -6,7 +6,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { Pool, PoolClient } from 'pg';
 
-export const DATABASE_SCHEMA_VERSION = 9;
+export const DATABASE_SCHEMA_VERSION = 10;
 export const CORE_MIGRATION_TAG = '0000_s4_core_schema';
 export const PLAYER_SAVE_MIGRATION_TAG = '0001_s6_remote_player_save';
 export const QUEST_CLAIMS_MIGRATION_TAG = '0002_s10_quest_claims';
@@ -16,6 +16,7 @@ export const WORLD_MONSTER_STATE_MIGRATION_TAG = '0005_s16_world_monster_state';
 export const WORLD_BOAT_STATE_MIGRATION_TAG = '0006_s17_world_boat_state';
 export const SESSION_ACTIVE_CHARACTER_MIGRATION_TAG = '0007_s18_session_active_character';
 export const AUTHORITATIVE_SHOP_MIGRATION_TAG = '0008_authoritative_shop';
+export const PLAYER_SAVE_IDEMPOTENCY_SCOPE_MIGRATION_TAG = '0009_player_save_idempotency_scope';
 export const ROLLBACK_CONFIRMATION = 'rollback-s4-core';
 const DATABASE_MIGRATION_LOCK_ID = 1_347_565_126;
 
@@ -29,6 +30,7 @@ const DATABASE_MIGRATIONS = [
   { version: 7, name: WORLD_BOAT_STATE_MIGRATION_TAG },
   { version: 8, name: SESSION_ACTIVE_CHARACTER_MIGRATION_TAG },
   { version: 9, name: AUTHORITATIVE_SHOP_MIGRATION_TAG },
+  { version: 10, name: PLAYER_SAVE_IDEMPOTENCY_SCOPE_MIGRATION_TAG },
 ] as const;
 
 export interface MigrationResult {
@@ -134,6 +136,10 @@ export async function rollbackS4Database(
 ): Promise<void> {
   const rollbackSql = (
     await Promise.all([
+      readFile(
+        join(migrationsFolder, 'rollback', `${PLAYER_SAVE_IDEMPOTENCY_SCOPE_MIGRATION_TAG}.down.sql`),
+        'utf8',
+      ),
       readFile(
         join(migrationsFolder, 'rollback', `${AUTHORITATIVE_SHOP_MIGRATION_TAG}.down.sql`),
         'utf8',

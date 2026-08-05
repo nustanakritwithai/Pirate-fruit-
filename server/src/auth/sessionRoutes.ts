@@ -5,7 +5,7 @@ import {
   type SessionResponse,
 } from '@pirate-fruit/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
+import { isTrustedOrigin, type ServerEnvironment } from '../config/environment.js';
 import type { RuntimeMetrics } from '../observability/runtimeMetrics.js';
 import {
   expiredSessionCookieOptions,
@@ -44,8 +44,7 @@ function hasTrustedOrigin(
   request: FastifyRequest,
   environment: ServerEnvironment,
 ): boolean {
-  const origin = request.headers.origin;
-  return !origin || allowedOrigins(environment).has(origin);
+  return isTrustedOrigin(request.headers.origin, environment);
 }
 
 export async function registerSessionRoutes(

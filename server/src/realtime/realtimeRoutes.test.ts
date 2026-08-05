@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { FastifyInstance } from 'fastify';
-import type { RealtimeServerMessage } from '@pirate-fruit/shared';
+import {
+  REALTIME_IDLE_TIMEOUT_MS,
+  type RealtimeServerMessage,
+} from '@pirate-fruit/shared';
 import { buildServer } from '../app.js';
 import { loadEnvironment } from '../config/environment.js';
 import { createDatabaseProbe } from '../persistence/database.js';
@@ -152,5 +155,46 @@ describe('S9 realtime route (real WebSocket)', () => {
       socket.once('error', () => resolve(true));
     });
     expect(failed).toBe(true);
+  });
+
+  it('reaps idle WebSocket connections through the route reaper', async () => {
+    let nowMs = 1_000_000;
+    const environment = loadEnvironment({
+      NODE_ENV: 'test',
+      CLIENT_ORIGIN: 'https://game.example',
+      ENABLE_REMOTE_SESSION: 'true',
+      ENABLE_REALTIME: 'true',
+      SESSION_SECRET: 's'.repeat(32),
+      DATABASE_URL: 'postgresql://user:password@database.internal:5432/pirate_fruit',
+    });
+    const sessions = new SessionService(new MemorySessionRepository(), 's'.repeat(32), 30);
+    const hub = new RealtimeHub(undefined, () => nowMs);
+    const server = await buildServer({
+      environment,
+      database: createDatabaseProbe(),
+      sessions,
+      realtime: hub,
+      logger: false,
+    });
+    servers.push(server);
+    await server.listen({ host: '127.0.0.1', port: 0 });
+    const port = server.addresses()[0]!.port;
+    const issued = await sessions.createGuest();
+    hub.startReaper(50);
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { cookie: `pf_session=${issued.rawToken}` },
+    });
+    await nextMessage(socket);
+
+    nowMs += REALTIME_IDLE_TIMEOUT_MS + 1_000;
+    hub.reapIdle();
+    const code = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('socket was not reaped')), 1_000);
+      socket.once('close', (closedCode) => {
+        clearTimeout(timer);
+        resolve(closedCode);
+      });
+    });
+    expect(code).toBe(1001);
   });
 });

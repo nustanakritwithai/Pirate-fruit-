@@ -146,7 +146,7 @@ are disabled until their owning authoritative phase. Do not market S7 as secure 
 - **ห้ามเชื่อดาเมจจาก Client**: ข้อความ `attack` ไม่มีฟิลด์ดาเมจ — Server เลือกดาเมจจากตารางคงที่ตาม `kind` เท่านั้น (client ปั้นเลขดาเมจไม่ได้)
 - **Server เป็นเจ้าของ HP**: HP คงข้าม reconnect 15 นาทีและส่ง `combat-state` คืนทันที; refresh จึงไม่ฟื้นเลือด/ล้างสถานะตาย (ไม่ persist ข้าม process restart)
 - **ระยะ/ตำแหน่งวัดจากฝั่ง Server**: ใช้ canonical movement ที่ตรวจ speed/island แล้ว — client ยิงข้ามเกาะ/วาร์ปเข้าระยะ/ใส่ตัวเองไม่ได้
-- **Level gate ฝั่ง Server**: ทั้งผู้โจมตีและเป้าหมายต้องมี `characters.level >= 20`; level จาก packet/save ไม่มีผล
+- **Level gate ฝั่ง Server**: ทั้งผู้โจมตีและเป้าหมายต้องมี `characters.level >= 20` — ใช้ได้จริงเมื่อ `ENABLE_PROGRESSION_SERVER=true` (level มาจาก EXP ที่ Server แจก); ถ้าเปิด `ENABLE_PVP` โดยไม่เปิด progression authority ค่า level ยังมาจาก client save และ gate ถูก bypass ได้
 - **กันสแปม/ออโต้**: throttle ต่อคู่ผู้โจมตี→เป้า (`PVP_ATTACK_MIN_INTERVAL_MS`) — ยิงถี่เกินถูกทิ้ง; ตาย/เกิดใหม่ Server เป็นคนตั้งเวลา (`PVP_RESPAWN_MS`)
 - ยังไม่มีผลต่อเศรษฐกิจ/รางวัล: แพ้ PvP ไม่เสียเหรียญ/ของ (ephemeral duel) — reward-on-kill เป็นงานอนาคต; ปิดด้วย `ENABLE_PVP=false` default ในโปรดักชัน
 

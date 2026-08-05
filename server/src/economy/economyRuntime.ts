@@ -191,6 +191,15 @@ export class EconomyRuntime {
           try {
             await this.persist(before, this.now(), 'rollback');
           } catch (rollbackError) {
+            this.logger.error(
+              {
+                err: error,
+                rollbackErr: rollbackError,
+                tick: before.tick,
+                reason: 'rollback',
+              },
+              'economy trade rollback persist failed after commit failure; leadership released for reconciliation',
+            );
             this.engine = null;
             this.cached = null;
             await this.releaseLease();
@@ -265,6 +274,16 @@ export class EconomyRuntime {
     this.catchUpTickedAt = stored?.lastTickAt
       ? new Date(stored.lastTickAt.getTime() + missedTicks * this.tickIntervalMs)
       : now;
+    if (this.catchUpRemaining > 1_440) {
+      this.logger.warn(
+        {
+          catchUpRemaining: this.catchUpRemaining,
+          estimatedCatchUpPulses: Math.ceil(this.catchUpRemaining / this.maxCatchUpTicks),
+          totalMissedTicks,
+        },
+        'Economy catch-up is large; economy will fast-forward for an extended period',
+      );
+    }
     await this.persist(
       engine.snapshot(),
       this.catchUpRemaining > 0 ? this.catchUpTickedAt : now,
