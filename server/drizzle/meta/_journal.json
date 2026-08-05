@@ -64,6 +64,13 @@
       "when": 1784682000000,
       "tag": "0008_authoritative_shop",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784768400000,
+      "tag": "0009_player_save_idempotency_scope",
+      "breakpoints": true
     }
   ]
 }

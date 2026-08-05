@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowedOrigins, loadEnvironment } from './environment.js';
+import { allowedOrigins, isTrustedOrigin, loadEnvironment } from './environment.js';
 
 describe('server environment', () => {
   it('provides safe local defaults', () => {
@@ -72,5 +72,37 @@ describe('server environment', () => {
     });
 
     expect(environment.NODE_ENV).toBe('production');
+  });
+
+  it('rejects PvP without authoritative progression', () => {
+    expect(() => loadEnvironment({
+      NODE_ENV: 'test',
+      CLIENT_ORIGIN: 'https://game.example',
+      DATABASE_URL: 'postgresql://localhost/pirate_fruit_test',
+      SESSION_SECRET: 's'.repeat(32),
+      ENABLE_REMOTE_SESSION: 'true',
+      ENABLE_REALTIME: 'true',
+      ENABLE_MULTIPLAYER: 'true',
+      ENABLE_PVP: 'true',
+    })).toThrow(/ENABLE_PROGRESSION_SERVER/);
+  });
+
+  it('requires Origin on unsafe routes when strict origin mode is enabled', () => {
+    const environment = loadEnvironment({
+      NODE_ENV: 'test',
+      STRICT_ORIGIN_MODE: 'true',
+      CLIENT_ORIGIN: 'https://game.example',
+    });
+    expect(isTrustedOrigin(undefined, environment)).toBe(false);
+    expect(isTrustedOrigin('https://game.example', environment)).toBe(true);
+    expect(isTrustedOrigin('https://attacker.example', environment)).toBe(false);
+  });
+
+  it('trusts missing Origin by default for server-to-server callers', () => {
+    const environment = loadEnvironment({
+      NODE_ENV: 'test',
+      CLIENT_ORIGIN: 'https://game.example',
+    });
+    expect(isTrustedOrigin(undefined, environment)).toBe(true);
   });
 });

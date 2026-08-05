@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { sessionCookieName } from '../auth/sessionCookie.js';
 import type { AuthenticatedSession, SessionService } from '../auth/sessionService.js';
-import { allowedOrigins, type ServerEnvironment } from '../config/environment.js';
+import { isTrustedOrigin, type ServerEnvironment } from '../config/environment.js';
 import {
   LocalMigrationAlreadyAppliedError,
   PlayerStateNotFoundError,
@@ -18,6 +18,9 @@ interface PlayerSaveRouteDependencies {
   sessions?: SessionService;
   playerSaves?: PlayerSaveService;
 }
+
+/** 5 docs × 48 KB + migrate-local cargo (6th) + JSON envelope — must exceed global bodyLimit. */
+export const PLAYER_SAVE_BODY_LIMIT = 300 * 1024;
 
 function apiError(
   request: FastifyRequest,
@@ -48,14 +51,11 @@ async function authenticate(
       .send(apiError(request, 'FEATURE_DISABLED', 'Remote player saves are disabled'));
     return null;
   }
-  if (unsafe) {
-    const origin = request.headers.origin;
-    if (origin && !allowedOrigins(dependencies.environment).has(origin)) {
-      await reply
-        .status(403)
-        .send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
-      return null;
-    }
+  if (unsafe && !isTrustedOrigin(request.headers.origin, dependencies.environment)) {
+    await reply
+      .status(403)
+      .send(apiError(request, 'UNTRUSTED_ORIGIN', 'Request origin is not allowed'));
+    return null;
   }
   const cookie = request.cookies[sessionCookieName(dependencies.environment)];
   const session = await dependencies.sessions!.authenticate(cookie);
@@ -131,7 +131,10 @@ export async function registerPlayerSaveRoutes(
 
   app.post(
     '/api/player/save',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    {
+      bodyLimit: PLAYER_SAVE_BODY_LIMIT,
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const session = await authenticate(request, reply, dependencies, true);
       if (!session) return reply;
@@ -142,7 +145,10 @@ export async function registerPlayerSaveRoutes(
 
   app.put(
     '/api/player/checkpoint',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    {
+      bodyLimit: PLAYER_SAVE_BODY_LIMIT,
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const session = await authenticate(request, reply, dependencies, true);
       if (!session) return reply;
@@ -153,7 +159,10 @@ export async function registerPlayerSaveRoutes(
 
   app.put(
     '/api/player/cargo',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    {
+      bodyLimit: PLAYER_SAVE_BODY_LIMIT,
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const session = await authenticate(request, reply, dependencies, true);
       if (!session) return reply;
@@ -164,7 +173,10 @@ export async function registerPlayerSaveRoutes(
 
   app.post(
     '/api/player/migrate-local',
-    { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } },
+    {
+      bodyLimit: PLAYER_SAVE_BODY_LIMIT,
+      config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    },
     async (request, reply) => {
       const session = await authenticate(request, reply, dependencies, true);
       if (!session) return reply;

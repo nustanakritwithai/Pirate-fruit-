@@ -268,4 +268,106 @@ describe('S7 economy runtime', () => {
     expect((await runtime.getSnapshot()).tick).toBe(0);
     await runtime.stop();
   });
+
+  it('warns when catch-up backlog exceeds two hours of missed ticks', async () => {
+    const now = new Date('2026-01-08T00:00:00.000Z');
+    const repository = new MemoryEconomyRepository({
+      worldId: 'main',
+      schemaVersion: 1,
+      tick: 0,
+      document: documentAt(0),
+      lastTickAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const warnings: object[] = [];
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory,
+      now: () => now,
+      maxCatchUpTicks: 12,
+      logger: {
+        info: () => undefined,
+        warn: (fields) => warnings.push(fields),
+        error: () => undefined,
+      },
+      setInterval: (() => 1) as unknown as typeof setInterval,
+      clearInterval: (() => undefined) as typeof clearInterval,
+    });
+
+    await runtime.start();
+    expect(warnings.some((fields) => 'catchUpRemaining' in fields)).toBe(true);
+    await runtime.stop();
+  });
+
+  it('processes very large catch-up queues across multiple pulses', async () => {
+    const now = new Date('2026-01-01T02:00:00.000Z');
+    const repository = new MemoryEconomyRepository({
+      worldId: 'main',
+      schemaVersion: 1,
+      tick: 0,
+      document: documentAt(0),
+      lastTickAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory,
+      now: () => now,
+      maxCatchUpTicks: 12,
+      setInterval: (() => 1) as unknown as typeof setInterval,
+      clearInterval: (() => undefined) as typeof clearInterval,
+    });
+
+    await runtime.start();
+    const initialTick = repository.saves[0]?.tick ?? 0;
+    expect(initialTick).toBe(12);
+    for (let pulse = 0; pulse < 100; pulse += 1) await runtime.pulseNow();
+    expect((await runtime.getSnapshot()).tick).toBeGreaterThan(initialTick);
+    await runtime.stop();
+  });
+
+  it('releases leadership when rollback persist fails after a commit failure', async () => {
+    const repository = new MemoryEconomyRepository();
+    let saveCount = 0;
+    const originalAcquire = repository.tryAcquireLeadership.bind(repository);
+    repository.tryAcquireLeadership = async () => {
+      const lease = await originalAcquire();
+      if (!lease) return null;
+      return {
+        ...lease,
+        save: async (write) => {
+          saveCount += 1;
+          if (saveCount === 3) throw new Error('rollback persist failed');
+          return lease.save(write);
+        },
+      };
+    };
+    const errors: object[] = [];
+    const runtime = new EconomyRuntime({
+      repository,
+      engineFactory,
+      logger: {
+        info: () => undefined,
+        warn: () => undefined,
+        error: (fields) => errors.push(fields),
+      },
+      setInterval: (() => ({}) as ReturnType<typeof setInterval>) as unknown as typeof setInterval,
+      clearInterval: vi.fn() as unknown as typeof clearInterval,
+    });
+    await runtime.start();
+    const commit = vi.fn(async () => {
+      throw new Error('trade commit failed');
+    });
+    const rollback = vi.fn(async () => undefined);
+
+    await expect(runtime.executeAtomic(async (engine) => {
+      engine.advance();
+      return { result: 'ok', commit, rollback };
+    })).rejects.toThrow('Trade and economy rollback failed');
+
+    expect(rollback).toHaveBeenCalledOnce();
+    expect(errors.some((fields) => 'rollbackErr' in fields)).toBe(true);
+    expect(runtime.isLeader).toBe(false);
+    await runtime.stop();
+  });
 });

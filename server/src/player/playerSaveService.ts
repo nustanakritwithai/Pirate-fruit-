@@ -41,6 +41,7 @@ export interface AuthoritativeCheckpointProvider {
 }
 
 const document = z.string().max(48 * 1024).nullable();
+/** Per-request idempotency key — must be unique per character across all save operations (save/checkpoint/cargo/migration). */
 const idempotencyKey = z.string().min(16).max(128).regex(/^[A-Za-z0-9:_-]+$/);
 const expectedRevision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 

@@ -41,6 +41,8 @@ const environmentSchema = z
     ENABLE_SHARED_WORLD_MONSTERS: booleanFromEnvironment.default(false),
     ENABLE_BOAT_WORLD: booleanFromEnvironment.default(false),
     ENABLE_CHARACTER_SELECT: booleanFromEnvironment.default(false),
+    STRICT_ORIGIN_MODE: booleanFromEnvironment.default(false),
+    TRUSTED_PROXY_CIDR: z.string().min(1).default('10.0.0.0/8'),
   })
   .superRefine((environment, context) => {
     const origins = environment.CLIENT_ORIGIN.split(',').map((origin) => origin.trim());
@@ -199,6 +201,17 @@ const environmentSchema = z
       });
     }
 
+    // PvP level gate reads characters.level — without progression authority that value
+    // comes from client saves, so the gate is bypassable.
+    if (environment.ENABLE_PVP && !environment.ENABLE_PROGRESSION_SERVER) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENABLE_PVP'],
+        message:
+          'ENABLE_PVP=true with ENABLE_PROGRESSION_SERVER=false means the PvP level gate trusts client-reported levels. Enable ENABLE_PROGRESSION_SERVER for authoritative level enforcement.',
+      });
+    }
+
     if (environment.NODE_ENV !== 'production') return;
 
     if (!environment.DATABASE_URL) {
@@ -238,4 +251,18 @@ export function allowedOrigins(environment: ServerEnvironment): ReadonlySet<stri
       .map((origin) => origin.trim())
       .filter(Boolean),
   );
+}
+
+/**
+ * Origin guard for unsafe routes and session creation.
+ * Missing Origin is trusted by default (server-to-server / developer tools omit it;
+ * browsers always send Origin). Set STRICT_ORIGIN_MODE=true in production when
+ * only browser clients should reach CSRF-protected mutations.
+ */
+export function isTrustedOrigin(
+  origin: string | undefined,
+  environment: ServerEnvironment,
+): boolean {
+  if (environment.STRICT_ORIGIN_MODE && !origin) return false;
+  return !origin || allowedOrigins(environment).has(origin);
 }

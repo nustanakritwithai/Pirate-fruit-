@@ -249,4 +249,112 @@ describe('S6 player save API', () => {
     expect(expired.statusCode).toBe(401);
     expect(saves.saves).toHaveLength(0);
   });
+
+  it('accepts save bodies up to the player-save route body limit', async () => {
+    const environment = loadEnvironment({
+      NODE_ENV: 'test',
+      CLIENT_ORIGIN: 'https://game.example',
+      DATABASE_URL: 'postgresql://localhost/pirate_fruit_test',
+      SESSION_SECRET: 's'.repeat(32),
+      ENABLE_REMOTE_SESSION: 'true',
+      ENABLE_REMOTE_SAVE: 'true',
+    });
+    const sessions = new SessionService(new MemorySessions(), 's'.repeat(32), 30);
+    const issued = await sessions.createGuest();
+    const saves = new RecordingPlayerSaves();
+    const server = await buildServer({
+      environment,
+      database: database(),
+      sessions,
+      playerSaves: new PlayerSaveService(saves),
+      logger: false,
+    });
+    openServers.push(server);
+    const headers = {
+      cookie: `${sessionCookieName(environment)}=${issued.rawToken}`,
+      origin: 'https://game.example',
+      'x-csrf-token': issued.csrfToken,
+    };
+    const chunk = JSON.stringify({ padding: 'x'.repeat(15 * 1024) });
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/player/save',
+      headers,
+      payload: {
+        schemaVersion: 1,
+        expectedRevision: 0,
+        idempotencyKey: 'save:large-body-test',
+        documents: {
+          schemaVersion: 1,
+          checkpoint: chunk,
+          progression: chunk,
+          inventory: chunk,
+          boats: chunk,
+          loadout: chunk,
+        },
+      },
+    });
+    expect(response.statusCode).not.toBe(413);
+    expect(response.statusCode).not.toBe(400);
+  });
+
+  it('rejects unsafe save routes without a valid CSRF token', async () => {
+    const environment = loadEnvironment({
+      NODE_ENV: 'test',
+      CLIENT_ORIGIN: 'https://game.example',
+      DATABASE_URL: 'postgresql://localhost/pirate_fruit_test',
+      SESSION_SECRET: 's'.repeat(32),
+      ENABLE_REMOTE_SESSION: 'true',
+      ENABLE_REMOTE_SAVE: 'true',
+    });
+    const sessions = new SessionService(new MemorySessions(), 's'.repeat(32), 30);
+    const issued = await sessions.createGuest();
+    const saves = new RecordingPlayerSaves();
+    const server = await buildServer({
+      environment,
+      database: database(),
+      sessions,
+      playerSaves: new PlayerSaveService(saves),
+      logger: false,
+    });
+    openServers.push(server);
+    const cookie = `${sessionCookieName(environment)}=${issued.rawToken}`;
+    const origin = 'https://game.example';
+    const checkpointPayload = {
+      schemaVersion: 1,
+      expectedRevision: 0,
+      idempotencyKey: 'checkpoint:csrf-test',
+      checkpoint: null,
+    };
+
+    const missingCsrf = await server.inject({
+      method: 'PUT',
+      url: '/api/player/checkpoint',
+      headers: { cookie, origin },
+      payload: checkpointPayload,
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(JSON.parse(missingCsrf.body).error.code).toBe('CSRF_INVALID');
+
+    const invalidCsrf = await server.inject({
+      method: 'POST',
+      url: '/api/player/save',
+      headers: { cookie, origin, 'x-csrf-token': 'invalid-csrf-token-012345678901234' },
+      payload: {
+        schemaVersion: 1,
+        expectedRevision: 0,
+        idempotencyKey: 'save:csrf-test',
+        documents: {
+          schemaVersion: 1,
+          checkpoint: null,
+          progression: null,
+          inventory: null,
+          boats: null,
+          loadout: null,
+        },
+      },
+    });
+    expect(invalidCsrf.statusCode).toBe(403);
+    expect(saves.saves).toHaveLength(0);
+  });
 });

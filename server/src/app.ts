@@ -68,7 +68,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
       },
     },
     requestIdHeader: 'x-request-id',
-    trustProxy: environment.NODE_ENV === 'production',
+    trustProxy: environment.NODE_ENV === 'production' ? environment.TRUSTED_PROXY_CIDR : false,
   });
 
   await app.register(cors, {
