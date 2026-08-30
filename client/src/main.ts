@@ -13,6 +13,12 @@ import { SaveSystem } from './save/SaveSystem';
 import { loadGraphicsProfile } from './engine/GraphicsQuality';
 import { GraphicsSettings } from './ui/GraphicsSettings';
 import { SpawnManager } from './world/SpawnManager';
+import {
+  LIVING_WORLD_PORTAL,
+  POCKET_MONSTER_WORLD_PORTAL,
+  WorldPortal,
+  resolveSafePortalArrival,
+} from './world/WorldPortal';
 import { NPCManager } from './npc/NPCManager';
 import { BoatManager } from './boat/BoatManager';
 import { NavalCombat } from './boat/NavalCombat';
@@ -176,8 +182,39 @@ async function main(): Promise<void> {
 
   const spawnManager = new SpawnManager(controller, world.collision);
 
+  const portalTargetOrigin = new URLSearchParams(window.location.search).get('parentOrigin')
+    || window.location.origin;
+  const pocketMonsterPortal = new WorldPortal(
+    game.scene,
+    controller,
+    (x, z) => world.collision.heightAt(x, z),
+    () => {
+      window.parent.postMessage({
+        type: 'pocketmonster:world-warp-v1',
+        world: 'pocket-monster',
+        panel: 'throw',
+        source: 'pirate-fruit-portal',
+      }, portalTargetOrigin);
+    },
+    POCKET_MONSTER_WORLD_PORTAL,
+  );
+  const livingWorldPortal = new WorldPortal(
+    game.scene,
+    controller,
+    (x, z) => world.collision.heightAt(x, z),
+    () => {
+      window.parent.postMessage({
+        type: 'pocketmonster:world-warp-v1',
+        world: 'living-world',
+        panel: 'human',
+        source: 'pirate-fruit-living-portal',
+      }, portalTargetOrigin);
+    },
+    LIVING_WORLD_PORTAL,
+  );
+
   // โหลดตำแหน่งเดิมเฉพาะจุดที่ยังปลอดภัย ไม่งั้นกลับจุดเกิดกลางหมู่บ้าน
-  const saved = SaveSystem.load(persistence.storage);
+  const saved = resolveSafePortalArrival(SaveSystem.load(persistence.storage));
   if (saved) spawnManager.restoreCheckpoint(saved);
   if (saved && spawnManager.isSafeSavedPosition(saved)) {
     controller.teleport(
@@ -1197,6 +1234,8 @@ async function main(): Promise<void> {
   }
 
   game.add(world);
+  game.add(pocketMonsterPortal);
+  game.add(livingWorldPortal);
   game.add(islandManager);
   game.add(controller);
   game.add(boatManager);
