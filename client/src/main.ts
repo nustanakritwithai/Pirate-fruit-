@@ -56,6 +56,11 @@ import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
+import {
+  PocketMonsterParentPresence,
+  createBrowserParentPresenceHost,
+  resolvePocketMonsterParentOrigin,
+} from './realtime/PocketMonsterParentPresence';
 import { SharedMonsterClient, resolveSharedMonsterPlayerDamage } from './monster/SharedMonsterClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
@@ -184,6 +189,11 @@ async function main(): Promise<void> {
 
   const portalTargetOrigin = new URLSearchParams(window.location.search).get('parentOrigin')
     || window.location.origin;
+  const pocketMonsterParentOrigin = resolvePocketMonsterParentOrigin(
+    window.location.search,
+    window.location.origin,
+    window.parent !== window,
+  );
   const pocketMonsterPortal = new WorldPortal(
     game.scene,
     controller,
@@ -433,13 +443,26 @@ async function main(): Promise<void> {
   const multiplayerEnabled = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true'
     || import.meta.env.VITE_ENABLE_MULTIPLAYER === '1';
   const runtimeFeatures = await fetchRuntimeFeatures(resolveRemoteApiUrl());
-  const remotePlayers = multiplayerEnabled
+  const remotePlayers = (multiplayerEnabled || pocketMonsterParentOrigin !== null)
     ? new RemotePlayers(game.scene, islandManager.activeIsland, () => Date.now(), {
       focus: () => controller.position,
       tier: graphics.tier,
     })
     : null;
   if (remotePlayers) game.add(remotePlayers);
+  const pocketMonsterPresence = pocketMonsterParentOrigin && remotePlayers
+    ? new PocketMonsterParentPresence({
+      targetOrigin: pocketMonsterParentOrigin,
+      host: createBrowserParentPresenceHost(),
+      remotePlayers,
+      getPosition: () => controller.position,
+      getHeading: () => controller.heading,
+      getIslandId: () => islandManager.activeIsland,
+      heightAt: (x, z) => world.collision.heightAt(x, z),
+    })
+    : null;
+  pocketMonsterPresence?.start();
+  if (pocketMonsterPresence) game.add(pocketMonsterPresence);
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
@@ -1272,6 +1295,7 @@ async function main(): Promise<void> {
   // Local mirrors are updated first, so a browser that cannot finish network I/O still
   // retains the latest recoverable save.
   window.addEventListener('pagehide', () => {
+    pocketMonsterPresence?.dispose();
     saveSystem.save();
     progression.save();
     itemInventory.save();
