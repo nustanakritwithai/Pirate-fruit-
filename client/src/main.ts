@@ -3,7 +3,7 @@ import { Input } from './engine/Input';
 import { World } from './world/World';
 import { loadWorldTextures } from './world/textures';
 import { CharacterController } from './player/CharacterController';
-import { Player } from './player/Player';
+import { Player, derivePlayerLocomotion } from './player/Player';
 import { ThirdPersonCamera } from './camera/ThirdPersonCamera';
 import { HUD } from './ui/HUD';
 import { Minimap } from './ui/Minimap';
@@ -459,6 +459,18 @@ async function main(): Promise<void> {
       getHeading: () => controller.heading,
       getIslandId: () => islandManager.activeIsland,
       heightAt: (x, z) => world.collision.heightAt(x, z),
+      getActionVisual: () => {
+        const move = controller.moveState;
+        const combatState = playerCombat?.state ?? 'idle';
+        return {
+          locomotion: derivePlayerLocomotion(move, combatState),
+          onGround: move.onGround === true,
+          dashing: move.dashing === true,
+          combatState,
+          attackProgress: playerCombat ? 1 - playerCombat.attackCooldownFraction : 0,
+          skillAnimationProgress: playerCombat?.skillAnimationProgress ?? 1,
+        };
+      },
     })
     : null;
   pocketMonsterPresence?.start();

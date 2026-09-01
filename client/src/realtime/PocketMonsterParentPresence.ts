@@ -10,12 +10,42 @@ const MAX_PLAYER_ID_LENGTH = 80;
 const MAX_PLAYER_NAME_LENGTH = 32;
 const DEFAULT_PUBLISH_INTERVAL_MS = 100;
 
+/**
+ * Shared Pocket Monster relay vocabulary. The parent transport sanitizes to
+ * exactly these values, so the Pirate client maps its richer combat/locomotion
+ * state to/from this coarse contract instead of leaking it across the iframe.
+ */
+export const PARENT_PRESENCE_LOCOMOTION_VALUES = ['idle', 'walk', 'run', 'swim', 'jump', 'dash'] as const;
+export type ParentPresenceLocomotion = typeof PARENT_PRESENCE_LOCOMOTION_VALUES[number];
+export const PARENT_PRESENCE_COMBAT_STATES = ['idle', 'attack', 'skill', 'hurt', 'dead', 'guard'] as const;
+export type ParentPresenceCombatState = typeof PARENT_PRESENCE_COMBAT_STATES[number];
+
+export interface ParentPresenceAnimation {
+  combatState: ParentPresenceCombatState;
+  onGround: boolean;
+  dashing: boolean;
+  attackProgress?: number;
+  skillAnimationProgress?: number;
+}
+
+/** Local per-frame visual state the bridge publishes to the parent. */
+export interface ParentPresenceLocalVisual {
+  locomotion: 'idle' | 'walk' | 'run' | 'swim';
+  onGround: boolean;
+  dashing: boolean;
+  combatState: string;
+  attackProgress?: number;
+  skillAnimationProgress?: number;
+}
+
 export interface PiratePresencePlayer {
   id: string;
   name: string;
   x: number;
   z: number;
   dir: number;
+  locomotion?: ParentPresenceLocomotion;
+  animation?: ParentPresenceAnimation;
 }
 
 export interface PiratePresenceSnapshot {
@@ -52,6 +82,8 @@ export interface PocketMonsterParentPresenceOptions {
   getHeading(): number;
   getIslandId(): string;
   heightAt(x: number, z: number): number;
+  /** Optional local action/locomotion state; absent keeps the legacy pose-only contract. */
+  getActionVisual?(): ParentPresenceLocalVisual | null;
   now?: () => number;
   publishIntervalMs?: number;
 }
@@ -62,6 +94,89 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Visible hop height while a remote player is airborne between presence frames. */
+export const PARENT_PRESENCE_AIRBORNE_LIFT = 1.1;
+
+export function toParentPresenceLocomotion(
+  visual: Pick<ParentPresenceLocalVisual, 'locomotion' | 'onGround' | 'dashing'>,
+): ParentPresenceLocomotion {
+  if (!visual.onGround) return 'jump';
+  if (visual.dashing) return 'dash';
+  return visual.locomotion;
+}
+
+export function mapCombatStateToParent(state: string): ParentPresenceCombatState {
+  if (state === 'attack1' || state === 'attack2' || state === 'attack3' || state === 'attack4') return 'attack';
+  if (state === 'casting') return 'skill';
+  if (state === 'blocking') return 'guard';
+  if (state === 'stunned' || state === 'knockback' || state === 'knockdown') return 'hurt';
+  if (state === 'dead') return 'dead';
+  return 'idle';
+}
+
+function mapParentCombatStateToRemote(state: ParentPresenceCombatState):
+  'idle' | 'attack1' | 'casting' | 'blocking' | 'stunned' | 'dead' {
+  if (state === 'attack') return 'attack1';
+  if (state === 'skill') return 'casting';
+  if (state === 'guard') return 'blocking';
+  if (state === 'hurt') return 'stunned';
+  if (state === 'dead') return 'dead';
+  return 'idle';
+}
+
+/**
+ * Omits the animation payload while the player is simply standing grounded, so
+ * typical presence frames stay minimal.
+ */
+export function toParentPresenceAnimation(visual: ParentPresenceLocalVisual): ParentPresenceAnimation | null {
+  const combatState = mapCombatStateToParent(visual.combatState);
+  if (combatState === 'idle' && visual.onGround && !visual.dashing) return null;
+  const animation: ParentPresenceAnimation = {
+    combatState,
+    onGround: visual.onGround === true,
+    dashing: visual.dashing === true,
+  };
+  if (combatState === 'attack' && finiteNumber(visual.attackProgress)) {
+    animation.attackProgress = clamp01(visual.attackProgress);
+  }
+  if (combatState === 'skill' && finiteNumber(visual.skillAnimationProgress)) {
+    animation.skillAnimationProgress = clamp01(visual.skillAnimationProgress);
+  }
+  return animation;
+}
+
+function parseParentPresenceLocomotion(value: unknown): ParentPresenceLocomotion | undefined {
+  return typeof value === 'string'
+    && (PARENT_PRESENCE_LOCOMOTION_VALUES as readonly string[]).includes(value)
+    ? value as ParentPresenceLocomotion
+    : undefined;
+}
+
+function parseParentPresenceAnimation(value: unknown): ParentPresenceAnimation | undefined {
+  if (!isRecord(value)) return undefined;
+  const combatState = typeof value.combatState === 'string'
+    && (PARENT_PRESENCE_COMBAT_STATES as readonly string[]).includes(value.combatState)
+    ? value.combatState as ParentPresenceCombatState
+    : undefined;
+  if (!combatState) return undefined;
+  const animation: ParentPresenceAnimation = {
+    combatState,
+    onGround: value.onGround !== false,
+    dashing: value.dashing === true,
+  };
+  if (combatState === 'attack' && finiteNumber(value.attackProgress)) {
+    animation.attackProgress = clamp01(value.attackProgress);
+  }
+  if (combatState === 'skill' && finiteNumber(value.skillAnimationProgress)) {
+    animation.skillAnimationProgress = clamp01(value.skillAnimationProgress);
+  }
+  return animation;
 }
 
 /**
@@ -111,6 +226,8 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
       x: candidate.x,
       z: candidate.z,
       dir: finiteNumber(candidate.dir) ? candidate.dir : 0,
+      locomotion: parseParentPresenceLocomotion(candidate.locomotion),
+      animation: parseParentPresenceAnimation(candidate.animation),
     });
   }
   return { zone: POCKET_MONSTER_PIRATE_ZONE, players };
@@ -207,13 +324,24 @@ export class PocketMonsterParentPresence {
     const dir = this.options.getHeading();
     if (!finiteNumber(position?.x) || !finiteNumber(position?.z) || !finiteNumber(dir)) return;
     this.lastPublishedAt = now;
-    this.options.host.postToParent({
+    const message: Record<string, unknown> = {
       type: PIRATE_LOCAL_PRESENCE_MESSAGE,
       zone: POCKET_MONSTER_PIRATE_ZONE,
       x: position.x,
       z: position.z,
       dir,
-    }, this.options.targetOrigin);
+    };
+    try {
+      const visual = this.options.getActionVisual?.();
+      if (visual && typeof visual.locomotion === 'string' && typeof visual.onGround === 'boolean') {
+        message.locomotion = toParentPresenceLocomotion(visual);
+        const animation = toParentPresenceAnimation(visual);
+        if (animation) message.animation = animation;
+      }
+    } catch {
+      // A broken visual provider must never block the pose-only presence contract.
+    }
+    this.options.host.postToParent(message, this.options.targetOrigin);
   }
 
   private applySnapshot(snapshot: PiratePresenceSnapshot): void {
@@ -224,16 +352,45 @@ export class PocketMonsterParentPresence {
       const previous = this.previousPositions.get(player.id);
       const moved = previous ? Math.hypot(player.x - previous.x, player.z - previous.z) : 0;
       this.previousPositions.set(player.id, { x: player.x, z: player.z });
+      const groundY = this.options.heightAt(player.x, player.z);
+      const hasAction = player.locomotion !== undefined || player.animation !== undefined;
+      const airborne = player.animation !== undefined
+        ? player.animation.onGround === false
+        : player.locomotion === 'jump';
+      const dashing = player.animation?.dashing === true || player.locomotion === 'dash';
+      const baseLocomotion: 'idle' | 'walk' | 'run' | 'swim' = player.locomotion === 'walk'
+        || player.locomotion === 'run'
+        || player.locomotion === 'swim'
+        ? player.locomotion
+        : player.locomotion === undefined ? (moved > 0.15 ? 'run' : 'idle') : 'idle';
+      const locomotion: 'idle' | 'walk' | 'run' | 'swim' = airborne ? 'idle' : dashing ? 'run' : baseLocomotion;
+      let animation: NonNullable<RealtimePresenceSnapshot['animation']> | undefined;
+      if (hasAction) {
+        animation = {
+          combatState: mapParentCombatStateToRemote(player.animation?.combatState ?? 'idle'),
+          category: 'style',
+          onGround: !airborne,
+          dashing,
+          verticalVelocity: 0,
+        };
+        if (player.animation?.attackProgress !== undefined) {
+          animation.attackProgress = player.animation.attackProgress;
+        }
+        if (player.animation?.skillAnimationProgress !== undefined) {
+          animation.skillAnimationProgress = player.animation.skillAnimationProgress;
+        }
+      }
       this.remotePlayers.applyPresence({
         playerId: player.id,
         name: player.name,
         islandId,
         x: player.x,
-        y: this.options.heightAt(player.x, player.z),
+        y: groundY + (airborne ? PARENT_PRESENCE_AIRBORNE_LIFT : 0),
         z: player.z,
         heading: player.dir,
         onBoat: false,
-        locomotion: moved > 0.15 ? 'run' : 'idle',
+        locomotion,
+        ...(animation ? { animation } : {}),
       });
     }
     for (const id of this.visibleIds) {
