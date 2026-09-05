@@ -459,10 +459,10 @@ async function main(): Promise<void> {
       getHeading: () => controller.heading,
       getIslandId: () => islandManager.activeIsland,
       heightAt: (x, z) => world.collision.heightAt(x, z),
+      getActionSnapshot: () => player.sampleActionSnapshot(),
     })
     : null;
   pocketMonsterPresence?.start();
-  if (pocketMonsterPresence) game.add(pocketMonsterPresence);
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
@@ -1266,6 +1266,7 @@ async function main(): Promise<void> {
   game.add(player);
   game.add(camera);
   game.add(playerCombat);
+  if (pocketMonsterPresence) game.add(pocketMonsterPresence);
   game.add(hotkeyManager);
   game.add(equipmentVisuals);
   game.add(effects);

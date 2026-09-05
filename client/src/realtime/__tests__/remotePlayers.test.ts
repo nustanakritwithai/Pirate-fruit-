@@ -131,6 +131,63 @@ describe('S13 RemotePlayers', () => {
     expect(chest.quaternion.equals(jumpChest)).toBe(false);
   });
 
+  it('clears a completed remote action when the next snapshot has no animation', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ animation: {
+      combatState: 'attack4', category: 'style', onGround: true,
+      dashing: false, verticalVelocity: 0, attackProgress: 0.5,
+    } }));
+    const arm = scene.getObjectByName('player-rig:right-arm')!;
+    players.update(0.05);
+    const attacking = arm.quaternion.clone();
+
+    players.applyPresence(snapshot({ animation: undefined }));
+    players.update(0.05);
+    expect(arm.quaternion.equals(attacking)).toBe(false);
+  });
+
+  it('does not replay a completed session/sequence but accepts the next sequence', () => {
+    const replayScene = new THREE.Scene();
+    const controlScene = new THREE.Scene();
+    const replayPlayers = new RemotePlayers(replayScene, 'starter-island', () => 1_000);
+    const controlPlayers = new RemotePlayers(controlScene, 'starter-island', () => 1_000);
+    const action = (sequence: number) => ({
+      combatState: 'attack1' as const,
+      category: 'style' as const,
+      onGround: true,
+      dashing: false,
+      verticalVelocity: 0,
+      attackProgress: 0.5,
+      actionSessionId: 'peer_12345',
+      actionSequence: sequence,
+    });
+
+    replayPlayers.applyPresence(snapshot({ animation: action(1) }));
+    controlPlayers.applyPresence(snapshot({ animation: action(1) }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+    replayPlayers.applyPresence(snapshot({ animation: undefined }));
+    controlPlayers.applyPresence(snapshot({ animation: undefined }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+
+    // The old event arrives again after both renderers have returned to idle.
+    replayPlayers.applyPresence(snapshot({ animation: action(1) }));
+    controlPlayers.applyPresence(snapshot({ animation: undefined }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+    const replayArm = replayScene.getObjectByName('player-rig:right-arm')!;
+    const controlArm = controlScene.getObjectByName('player-rig:right-arm')!;
+    expect(replayArm.quaternion.angleTo(controlArm.quaternion)).toBeLessThan(1e-12);
+
+    // A strictly newer sequence from the same runtime is a new action.
+    replayPlayers.applyPresence(snapshot({ animation: action(2) }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+    expect(replayArm.quaternion.angleTo(controlArm.quaternion)).toBeGreaterThan(0.1);
+  });
+
   it('shows a visible presentation recoil for an authoritative combat hit', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

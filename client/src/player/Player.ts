@@ -99,12 +99,14 @@ export class Player {
     return this.sockets;
   }
 
-  update(dt: number): void {
-    const { position, heading, moveState } = this.controller;
+  /**
+   * Read the same visual snapshot that drives the local animator. The parent
+   * presence publisher calls this every game update before its network
+   * throttle, so a short action cannot disappear between 100 ms publishes.
+   */
+  sampleActionSnapshot(): PlayerActionSnapshot {
+    const { moveState } = this.controller;
     const action = this.getActionState();
-    this.group.position.copy(position);
-    this.group.rotation.y = heading;
-
     const locomotionLocked = action.combatState === 'casting' ||
       action.combatState === 'blocking' ||
       action.combatState === 'stunned' ||
@@ -115,7 +117,7 @@ export class Player {
     if (!locomotionLocked && moveState.swimming) locomotion = 'swim';
     else if (!locomotionLocked && !moveState.dashing && moveState.speed > 5) locomotion = 'run';
     else if (!locomotionLocked && !moveState.dashing && moveState.speed > 0.1) locomotion = 'walk';
-    const snapshot: PlayerActionSnapshot = {
+    return {
       combatState: action.combatState,
       category: action.category,
       locomotion,
@@ -132,6 +134,13 @@ export class Player {
       skillAnimationUltimate: action.skillAnimationUltimate,
       skillAnimationCategory: action.skillAnimationCategory,
     };
+  }
+
+  update(dt: number): void {
+    const { position, heading } = this.controller;
+    this.group.position.copy(position);
+    this.group.rotation.y = heading;
+    const snapshot = this.sampleActionSnapshot();
     this.actionAnimator?.update(dt, snapshot);
   }
 }

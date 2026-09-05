@@ -1,5 +1,7 @@
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import type { RemotePlayers } from './RemotePlayers';
+import type { PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
+import type { RealtimePlayerAnimation } from '@pirate-fruit/shared';
 
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
 export const PIRATE_LOCAL_PRESENCE_MESSAGE = 'pocketmonster:pirate-presence-v1';
@@ -9,13 +11,46 @@ const MAX_REMOTE_PLAYERS = 100;
 const MAX_PLAYER_ID_LENGTH = 80;
 const MAX_PLAYER_NAME_LENGTH = 32;
 const DEFAULT_PUBLISH_INTERVAL_MS = 100;
+const MAX_WORLD_COORDINATE = 10_000;
+const MAX_VERTICAL_VELOCITY = 100;
+const MAX_ACTION_SEQUENCE = 2_147_483_647;
+const MIN_ACTION_DURATION_MS = 80;
+const MAX_ACTION_DURATION_MS = 5_000;
+const DEFAULT_ACTION_DURATION_MS = 750;
+const MIN_TRANSIENT_LATCH_MS = 750;
+const ACTION_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+const COMBAT_STATES = new Set<RealtimePlayerAnimation['combatState']>([
+  'idle', 'attack1', 'attack2', 'attack3', 'attack4', 'casting',
+  'blocking', 'stunned', 'knockback', 'knockdown', 'dead',
+]);
+const CATEGORIES = new Set<RealtimePlayerAnimation['category']>([
+  'style', 'sword', 'gun', 'fruit', 'utility',
+]);
+const LOCOMOTION_VALUES = new Set<NonNullable<RealtimePresenceSnapshot['locomotion']>>([
+  'idle', 'walk', 'run', 'swim',
+]);
+const SKILL_ANIMATION_TYPES = new Set<NonNullable<RealtimePlayerAnimation['skillAnimationType']>>([
+  'projectile', 'beam', 'aoe', 'ground', 'dash',
+  'flurry', 'buff', 'summon', 'homing', 'teleport',
+]);
+
+interface ShortActionMetadata {
+  actionSessionId: string;
+  actionSequence: number;
+  actionDurationMs: number;
+}
+
+export type PiratePresenceAnimation = RealtimePlayerAnimation & Partial<ShortActionMetadata>;
 
 export interface PiratePresencePlayer {
   id: string;
   name: string;
   x: number;
+  y?: number;
   z: number;
   dir: number;
+  locomotion?: NonNullable<RealtimePresenceSnapshot['locomotion']>;
+  animation?: PiratePresenceAnimation;
 }
 
 export interface PiratePresenceSnapshot {
@@ -52,6 +87,10 @@ export interface PocketMonsterParentPresenceOptions {
   getHeading(): number;
   getIslandId(): string;
   heightAt(x: number, z: number): number;
+  /** Same presentation snapshot used by the local player animator. */
+  getActionSnapshot?(): PlayerActionSnapshot | null;
+  /** Deterministic override for tests; production generates one id per runtime. */
+  actionSessionId?: string;
   now?: () => number;
   publishIntervalMs?: number;
 }
@@ -62,6 +101,129 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function optionalClampedNumber(value: unknown, min: number, max: number): number | undefined {
+  return finiteNumber(value) ? clamp(value, min, max) : undefined;
+}
+
+function optionalInteger(value: unknown, min: number, max: number): number | undefined {
+  return Number.isInteger(value) && typeof value === 'number' && value >= min && value <= max
+    ? value
+    : undefined;
+}
+
+function createActionSessionId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid && ACTION_SESSION_PATTERN.test(uuid)) return uuid;
+  const random = Math.random().toString(36).slice(2, 14);
+  return `pirate_${Date.now().toString(36)}_${random}`.slice(0, 64);
+}
+
+function sanitizeActionSessionId(value: string | undefined): string {
+  return value && ACTION_SESSION_PATTERN.test(value) ? value : createActionSessionId();
+}
+
+function sanitizeLocomotion(value: unknown): NonNullable<RealtimePresenceSnapshot['locomotion']> | undefined {
+  return typeof value === 'string'
+    && LOCOMOTION_VALUES.has(value as NonNullable<RealtimePresenceSnapshot['locomotion']>)
+    ? value as NonNullable<RealtimePresenceSnapshot['locomotion']>
+    : undefined;
+}
+
+function sanitizeAnimation(value: unknown): PiratePresenceAnimation | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.combatState !== 'string'
+    || !COMBAT_STATES.has(value.combatState as RealtimePlayerAnimation['combatState'])) return undefined;
+  if (typeof value.category !== 'string'
+    || !CATEGORIES.has(value.category as RealtimePlayerAnimation['category'])) return undefined;
+  if (typeof value.onGround !== 'boolean' || typeof value.dashing !== 'boolean'
+    || !finiteNumber(value.verticalVelocity)) return undefined;
+
+  const animation: PiratePresenceAnimation = {
+    combatState: value.combatState as RealtimePlayerAnimation['combatState'],
+    category: value.category as RealtimePlayerAnimation['category'],
+    onGround: value.onGround,
+    dashing: value.dashing,
+    verticalVelocity: clamp(value.verticalVelocity, -MAX_VERTICAL_VELOCITY, MAX_VERTICAL_VELOCITY),
+  };
+  const attackProgress = optionalClampedNumber(value.attackProgress, 0, 1);
+  const hitReactionId = optionalInteger(value.hitReactionId, 0, MAX_ACTION_SEQUENCE);
+  const hitReactionAngle = optionalClampedNumber(value.hitReactionAngle, -Math.PI, Math.PI);
+  const skillAnimationProgress = optionalClampedNumber(value.skillAnimationProgress, 0, 1);
+  const skillAnimationReleaseProgress = optionalClampedNumber(value.skillAnimationReleaseProgress, 0, 1);
+  const skillAnimationVariant = optionalInteger(value.skillAnimationVariant, 0, 16);
+  if (attackProgress !== undefined) animation.attackProgress = attackProgress;
+  if (hitReactionId !== undefined) animation.hitReactionId = hitReactionId;
+  if (hitReactionAngle !== undefined) animation.hitReactionAngle = hitReactionAngle;
+  if (skillAnimationProgress !== undefined) animation.skillAnimationProgress = skillAnimationProgress;
+  if (skillAnimationReleaseProgress !== undefined) {
+    animation.skillAnimationReleaseProgress = skillAnimationReleaseProgress;
+  }
+  if (typeof value.skillAnimationType === 'string'
+    && SKILL_ANIMATION_TYPES.has(value.skillAnimationType as NonNullable<RealtimePlayerAnimation['skillAnimationType']>)) {
+    animation.skillAnimationType = value.skillAnimationType as NonNullable<RealtimePlayerAnimation['skillAnimationType']>;
+  }
+  if (skillAnimationVariant !== undefined) animation.skillAnimationVariant = skillAnimationVariant;
+  if (typeof value.skillAnimationUltimate === 'boolean') {
+    animation.skillAnimationUltimate = value.skillAnimationUltimate;
+  }
+  if (typeof value.skillAnimationCategory === 'string'
+    && CATEGORIES.has(value.skillAnimationCategory as RealtimePlayerAnimation['category'])) {
+    animation.skillAnimationCategory = value.skillAnimationCategory as RealtimePlayerAnimation['category'];
+  }
+
+  const actionSessionId = typeof value.actionSessionId === 'string' ? value.actionSessionId : undefined;
+  const actionSequence = optionalInteger(value.actionSequence, 1, MAX_ACTION_SEQUENCE);
+  const actionDurationMs = optionalInteger(value.actionDurationMs, MIN_ACTION_DURATION_MS, MAX_ACTION_DURATION_MS);
+  if (isTransientAnimation(animation)
+    && actionSessionId && ACTION_SESSION_PATTERN.test(actionSessionId)
+    && actionSequence !== undefined && actionDurationMs !== undefined) {
+    animation.actionSessionId = actionSessionId;
+    animation.actionSequence = actionSequence;
+    animation.actionDurationMs = actionDurationMs;
+  }
+  return animation;
+}
+
+function isTransientAnimation(animation: Pick<PiratePresenceAnimation, 'combatState' | 'dashing'>): boolean {
+  return animation.dashing
+    || animation.combatState === 'attack1'
+    || animation.combatState === 'attack2'
+    || animation.combatState === 'attack3'
+    || animation.combatState === 'attack4'
+    || animation.combatState === 'casting'
+    || animation.combatState === 'stunned'
+    || animation.combatState === 'knockback'
+    || animation.combatState === 'knockdown';
+}
+
+function transientKey(animation: PiratePresenceAnimation): string | null {
+  if (!isTransientAnimation(animation)) return null;
+  if (animation.combatState !== 'idle') {
+    return [
+      animation.combatState,
+      animation.category,
+      animation.skillAnimationType ?? '',
+      animation.skillAnimationVariant ?? '',
+      animation.skillAnimationUltimate === true ? 'ultimate' : '',
+    ].join(':');
+  }
+  return `dash:${animation.category}`;
+}
+
+function withoutActionMetadata(animation: PiratePresenceAnimation): PiratePresenceAnimation {
+  const {
+    actionSessionId: _actionSessionId,
+    actionSequence: _actionSequence,
+    actionDurationMs: _actionDurationMs,
+    ...current
+  } = animation;
+  return current;
 }
 
 /**
@@ -103,14 +265,20 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
       : '';
     if (!id || seen.has(id) || !finiteNumber(candidate.x) || !finiteNumber(candidate.z)) continue;
     seen.add(id);
+    const y = optionalClampedNumber(candidate.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE);
+    const locomotion = sanitizeLocomotion(candidate.locomotion);
+    const animation = sanitizeAnimation(candidate.animation);
     players.push({
       id,
       name: typeof candidate.name === 'string'
         ? candidate.name.trim().slice(0, MAX_PLAYER_NAME_LENGTH) || 'ผู้เล่นออนไลน์'
         : 'ผู้เล่นออนไลน์',
-      x: candidate.x,
-      z: candidate.z,
+      x: clamp(candidate.x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE),
+      ...(y !== undefined ? { y } : {}),
+      z: clamp(candidate.z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE),
       dir: finiteNumber(candidate.dir) ? candidate.dir : 0,
+      ...(locomotion ? { locomotion } : {}),
+      ...(animation ? { animation } : {}),
     });
   }
   return { zone: POCKET_MONSTER_PIRATE_ZONE, players };
@@ -139,6 +307,23 @@ export function createBrowserParentPresenceHost(): ParentPresenceHost {
   };
 }
 
+interface SampledLocalPresence {
+  x: number;
+  y?: number;
+  z: number;
+  dir: number;
+  locomotion?: NonNullable<RealtimePresenceSnapshot['locomotion']>;
+  animation?: PiratePresenceAnimation;
+}
+
+interface LatchedLocalAction {
+  key: string;
+  sequence: number;
+  durationMs: number;
+  expiresAt: number;
+  animation: PiratePresenceAnimation;
+}
+
 /**
  * Bridges presentation-only presence through the already-authenticated parent
  * socket. This class never opens a socket and never mutates save/gameplay state.
@@ -152,6 +337,11 @@ export class PocketMonsterParentPresence {
   private lastIslandId: string | null = null;
   private lastPublishedAt = Number.NEGATIVE_INFINITY;
   private started = false;
+  private sampledPresence: SampledLocalPresence | null = null;
+  private liveTransientKey: string | null = null;
+  private latchedAction: LatchedLocalAction | null = null;
+  private actionSequence = 0;
+  private actionSessionId: string;
 
   private readonly onMessage = (event: ParentPresenceEvent): void => {
     if (event.origin !== this.options.targetOrigin || !this.options.host.isParentSource(event.source)) return;
@@ -164,6 +354,7 @@ export class PocketMonsterParentPresence {
     this.remotePlayers = options.remotePlayers;
     this.now = options.now ?? (() => Date.now());
     this.publishIntervalMs = Math.max(50, options.publishIntervalMs ?? DEFAULT_PUBLISH_INTERVAL_MS);
+    this.actionSessionId = sanitizeActionSessionId(options.actionSessionId);
   }
 
   start(): void {
@@ -171,12 +362,14 @@ export class PocketMonsterParentPresence {
     this.started = true;
     this.options.host.addMessageListener(this.onMessage);
     this.syncIsland();
+    this.sampleLocalPresence();
     this.publishLocalPresence(true);
   }
 
   update(): void {
     if (!this.started) return;
     this.syncIsland();
+    this.sampleLocalPresence();
     this.publishLocalPresence(false);
   }
 
@@ -187,6 +380,9 @@ export class PocketMonsterParentPresence {
     for (const id of this.visibleIds) this.remotePlayers.remove(id);
     this.visibleIds.clear();
     this.previousPositions.clear();
+    this.sampledPresence = null;
+    this.liveTransientKey = null;
+    this.latchedAction = null;
   }
 
   private syncIsland(): string {
@@ -196,23 +392,113 @@ export class PocketMonsterParentPresence {
       this.remotePlayers.setIsland(islandId);
       this.visibleIds.clear();
       this.previousPositions.clear();
+      this.liveTransientKey = null;
+      this.latchedAction = null;
     }
     return islandId;
+  }
+
+  private nextActionSequence(): number {
+    if (this.actionSequence >= MAX_ACTION_SEQUENCE) {
+      this.actionSessionId = createActionSessionId();
+      this.actionSequence = 1;
+    } else {
+      this.actionSequence += 1;
+    }
+    return this.actionSequence;
+  }
+
+  /** Capture visual state every fixed update, independently from publish cadence. */
+  private sampleLocalPresence(): void {
+    const position = this.options.getPosition();
+    const dir = this.options.getHeading();
+    if (!finiteNumber(position?.x) || !finiteNumber(position?.z) || !finiteNumber(dir)) {
+      this.sampledPresence = null;
+      return;
+    }
+
+    const sampled: SampledLocalPresence = {
+      x: clamp(position.x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE),
+      ...(finiteNumber(position.y)
+        ? { y: clamp(position.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE) }
+        : {}),
+      z: clamp(position.z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE),
+      dir,
+    };
+    let animation: PiratePresenceAnimation | undefined;
+    try {
+      const actionSnapshot = this.options.getActionSnapshot?.();
+      animation = sanitizeAnimation(actionSnapshot);
+      const locomotion = sanitizeLocomotion(actionSnapshot?.locomotion);
+      if (locomotion) sampled.locomotion = locomotion;
+    } catch {
+      // Visual sampling is presentation-only and must not block pose presence.
+    }
+
+    if (animation) {
+      animation = withoutActionMetadata(animation);
+      const now = this.now();
+      const key = transientKey(animation);
+      if (key) {
+        if (key !== this.liveTransientKey) {
+          const durationMs = DEFAULT_ACTION_DURATION_MS;
+          const sequence = this.nextActionSequence();
+          this.latchedAction = {
+            key,
+            sequence,
+            durationMs,
+            expiresAt: now + Math.max(durationMs, MIN_TRANSIENT_LATCH_MS),
+            animation,
+          };
+        } else if (this.latchedAction) {
+          this.latchedAction.animation = animation;
+        }
+        this.liveTransientKey = key;
+        if (this.latchedAction) {
+          animation = {
+            ...animation,
+            actionSessionId: this.actionSessionId,
+            actionSequence: this.latchedAction.sequence,
+            actionDurationMs: this.latchedAction.durationMs,
+          };
+        }
+      } else {
+        this.liveTransientKey = null;
+        const currentStateOverridesLatch = animation.combatState === 'blocking'
+          || animation.combatState === 'dead';
+        if (currentStateOverridesLatch) this.latchedAction = null;
+        if (!currentStateOverridesLatch && animation.combatState === 'idle'
+          && this.latchedAction && now < this.latchedAction.expiresAt) {
+          animation = {
+            ...this.latchedAction.animation,
+            actionSessionId: this.actionSessionId,
+            actionSequence: this.latchedAction.sequence,
+            actionDurationMs: this.latchedAction.durationMs,
+          };
+        } else if (this.latchedAction && now >= this.latchedAction.expiresAt) {
+          this.latchedAction = null;
+        }
+      }
+      sampled.animation = animation;
+    }
+    this.sampledPresence = sampled;
   }
 
   private publishLocalPresence(force: boolean): void {
     const now = this.now();
     if (!force && now - this.lastPublishedAt < this.publishIntervalMs) return;
-    const position = this.options.getPosition();
-    const dir = this.options.getHeading();
-    if (!finiteNumber(position?.x) || !finiteNumber(position?.z) || !finiteNumber(dir)) return;
+    const presence = this.sampledPresence;
+    if (!presence) return;
     this.lastPublishedAt = now;
     this.options.host.postToParent({
       type: PIRATE_LOCAL_PRESENCE_MESSAGE,
       zone: POCKET_MONSTER_PIRATE_ZONE,
-      x: position.x,
-      z: position.z,
-      dir,
+      x: presence.x,
+      ...(presence.y !== undefined ? { y: presence.y } : {}),
+      z: presence.z,
+      dir: presence.dir,
+      ...(presence.locomotion ? { locomotion: presence.locomotion } : {}),
+      ...(presence.animation ? { animation: presence.animation } : {}),
     }, this.options.targetOrigin);
   }
 
@@ -224,16 +510,18 @@ export class PocketMonsterParentPresence {
       const previous = this.previousPositions.get(player.id);
       const moved = previous ? Math.hypot(player.x - previous.x, player.z - previous.z) : 0;
       this.previousPositions.set(player.id, { x: player.x, z: player.z });
+      const y = player.y ?? this.options.heightAt(player.x, player.z);
       this.remotePlayers.applyPresence({
         playerId: player.id,
         name: player.name,
         islandId,
         x: player.x,
-        y: this.options.heightAt(player.x, player.z),
+        y,
         z: player.z,
         heading: player.dir,
         onBoat: false,
-        locomotion: moved > 0.15 ? 'run' : 'idle',
+        locomotion: player.locomotion ?? (moved > 0.15 ? 'run' : 'idle'),
+        ...(player.animation ? { animation: player.animation } : {}),
       });
     }
     for (const id of this.visibleIds) {
