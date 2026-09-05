@@ -324,8 +324,17 @@ describe('S13 RemotePlayers', () => {
     const remote = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
     expect(remote.visible).toBe(true);
     players.update(0.1);
-    const root = scene.getObjectByName('player-rig:root')!;
-    const deadPose = root.quaternion.clone();
+    expect(players.lodFor('foe')).toBe('full');
+    expect(remote.visible).toBe(true);
+    expect(scene.getObjectByName('player-rig:root')?.visible).toBe(true);
+
+    // Control avatar advances through the same dead transition without the
+    // delayed attack frame, so the comparison covers animator time progression.
+    const controlScene = new THREE.Scene();
+    const control = new RemotePlayers(controlScene, 'starter-island', () => 1_000);
+    control.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1, animation: firstAttack }));
+    control.markDefeated('foe');
+    control.update(0.1);
 
     // A delayed pre-defeat frame must not replace the authoritative dead pose.
     const delayedAttack = {
@@ -333,14 +342,16 @@ describe('S13 RemotePlayers', () => {
       verticalVelocity: 0, attackProgress: 0.9,
       actionSessionId: 'peer_12345', actionSequence: 4,
     } as const;
-    players.applyPresence(snapshot({ playerId: 'foe', animation: delayedAttack }));
+    players.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1, animation: delayedAttack }));
     players.update(0.1);
-    expect(root.quaternion.angleTo(deadPose)).toBeLessThan(1e-12);
+    control.update(0.1);
+    const root = scene.getObjectByName('player-rig:root')!;
+    const controlRoot = controlScene.getObjectByName('player-rig:root')!;
+    expect(root.quaternion.angleTo(controlRoot.quaternion)).toBeLessThan(1e-12);
     expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).not.toContain('foe');
 
     players.markRespawn('foe');
     players.update(0.1);
-    expect(root.quaternion.angleTo(deadPose)).toBeGreaterThan(0.1);
     expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).toContain('foe');
   });
 

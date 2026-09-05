@@ -458,7 +458,10 @@ export class RemotePlayers implements Updatable {
 
   private setLod(player: RemotePlayer, lod: RemoteLod): void {
     if (lod === player.lod) {
-      player.group.visible = !player.defeated && lod !== 'hidden';
+      // Defeated is a presentation lifecycle state, not a visibility state:
+      // keep the full/low avatar rendered long enough for the dead pose. Only
+      // the distance LOD is allowed to hide the group.
+      player.group.visible = lod !== 'hidden';
       return;
     }
     const position = player.group.position.clone();
@@ -467,7 +470,7 @@ export class RemotePlayers implements Updatable {
     const avatar = buildAvatar(player.snapshot, lod);
     avatar.group.position.copy(position);
     avatar.group.rotation.y = rotationY;
-    avatar.group.visible = !player.defeated && lod !== 'hidden';
+    avatar.group.visible = lod !== 'hidden';
     this.scene.add(avatar.group);
     player.group = avatar.group;
     player.animator = avatar.animator;
