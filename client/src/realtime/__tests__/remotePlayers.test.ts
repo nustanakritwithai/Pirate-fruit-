@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { RemotePlayers } from '../RemotePlayers';
 import type { RealtimePresenceSnapshot } from '../RealtimeClient';
 
-function countMeshes(scene: THREE.Scene): number {
+function countMeshes(scene: THREE.Object3D): number {
   let n = 0;
   scene.traverse((o) => { if (o instanceof THREE.Mesh) n += 1; });
   return n;
@@ -131,6 +131,32 @@ describe('S13 RemotePlayers', () => {
     expect(chest.quaternion.equals(jumpChest)).toBe(false);
   });
 
+  it('advances render-only action progress across duplicate 4Hz samples without changing target', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    const action = {
+      combatState: 'attack1' as const,
+      category: 'sword' as const,
+      onGround: true,
+      dashing: false,
+      verticalVelocity: 0,
+      attackProgress: 0.2,
+      actionSessionId: 'peer_progress',
+      actionSequence: 1,
+      actionDurationMs: 1_000,
+    };
+    players.applyPresence(snapshot({ x: 10, z: 20, animation: action }));
+    players.update(0.1);
+    const arm = scene.getObjectByName('player-rig:right-arm')!;
+    const first = arm.quaternion.clone();
+
+    // Same action identity and same wire progress is a duplicate, not a replay.
+    players.applyPresence(snapshot({ x: 10, z: 20, animation: action }));
+    players.update(0.1);
+    expect(arm.quaternion.angleTo(first)).toBeGreaterThan(0.001);
+    expect(players.latestPositionOf('char-b')?.toArray()).toEqual([10, 0, 20]);
+  });
+
   it('clears a completed remote action when the next snapshot has no animation', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
@@ -249,26 +275,148 @@ describe('S13 RemotePlayers', () => {
     expect(players.count).toBe(1);
   });
 
-  it('uses distance LOD and hides remote avatars outside the mobile interest range', () => {
+  it('keeps every on-foot remote full-detail across device tiers and distance', () => {
+    const scene = new THREE.Scene();
+    const focus = new THREE.Vector3();
+    for (const tier of ['low', 'medium', 'high'] as const) {
+      const players = new RemotePlayers(scene, 'starter-island', () => 1_000, {
+        focus: () => focus,
+        tier,
+      });
+      const playerId = `char-${tier}`;
+      players.applyPresence(snapshot({ playerId, x: 500, z: 0 }));
+      expect(players.lodFor(playerId)).toBe('full');
+      expect(scene.getObjectByName('remote-player:pirate-v1')).toBeTruthy();
+    }
+  });
+
+  it('keeps full-rig action transforms for far and over-budget remotes', () => {
     const scene = new THREE.Scene();
     const focus = new THREE.Vector3();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000, {
       focus: () => focus,
       tier: 'low',
     });
-    players.applyPresence(snapshot({ x: 5, z: 0 }));
+    const states = [
+      'attack1', 'attack2', 'attack3', 'attack4', 'casting', 'blocking',
+      'stunned', 'knockback', 'knockdown', 'dead',
+    ] as const;
+    const remote = () => scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+    const animation = (combatState: 'idle' | typeof states[number]) => ({
+      combatState,
+      category: 'sword' as const,
+      onGround: true,
+      dashing: false,
+      verticalVelocity: 0,
+      attackProgress: 0.55,
+      skillAnimationProgress: combatState === 'casting' ? 0.45 : 1,
+      skillAnimationType: combatState === 'casting' ? 'beam' as const : undefined,
+    });
+
+    players.applyPresence(snapshot({ x: 500, z: 0, animation: animation('idle') }));
     expect(players.lodFor('char-b')).toBe('full');
+    expect(countMeshes(remote())).toBeGreaterThan(3);
+    for (const combatState of states) {
+      players.applyPresence(snapshot({ x: 500, z: 0, animation: animation(combatState) }));
+      let before = 0;
+      remote().traverse((node) => { before += node.quaternion.angleTo(new THREE.Quaternion()) + node.position.length(); });
+      players.update(0.1);
+      let after = 0;
+      remote().traverse((node) => { after += node.quaternion.angleTo(new THREE.Quaternion()) + node.position.length(); });
+      expect(Math.abs(after - before)).toBeGreaterThan(0.001);
+    }
 
-    players.applyPresence(snapshot({ x: 40, z: 0 }));
-    players.update(0.016);
-    expect(players.lodFor('char-b')).toBe('low');
-    expect(scene.getObjectByName('remote-player-low:pirate-v1')).toBeTruthy();
+    // Far remotes remain full detail while preserving a visible jump transform.
+    players.applyPresence(snapshot({
+      x: 500,
+      y: 0,
+      z: 0,
+      animation: animation('idle'),
+    }));
+    players.applyPresence(snapshot({
+      x: 500,
+      y: 2,
+      z: 0,
+      animation: {
+        ...animation('idle'),
+        onGround: false,
+        verticalVelocity: 7,
+      },
+    }));
+    players.update(0.1);
+    expect(remote().position.y).toBeGreaterThan(0);
 
-    players.applyPresence(snapshot({ x: 90, z: 0 }));
-    players.update(0.016);
-    expect(players.lodFor('char-b')).toBe('hidden');
-    const remoteRoot = scene.children.find((child) => child instanceof THREE.Group);
-    expect(remoteRoot?.visible).toBe(false);
+    // No maxFull budget may downgrade a second visible on-foot remote.
+    for (let index = 0; index < 12; index += 1) {
+      const playerId = `budget-${index}`;
+      players.applyPresence(snapshot({ playerId, x: 500 + index, z: 20 }));
+      expect(players.lodFor(playerId)).toBe('full');
+    }
+  });
+
+  it('predicts bounded 4Hz movement while rejecting a teleport-sized sample', () => {
+    let now = 0;
+    const scene = new THREE.Scene();
+    const focus = new THREE.Vector3();
+    const players = new RemotePlayers(scene, 'starter-island', () => now, {
+      focus: () => focus,
+      tier: 'high',
+    });
+    players.applyPresence(snapshot({ x: 100, y: 3, z: 100 }));
+    const remote = () => scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+
+    let maxFrameStep = 0;
+    let previousPosition = remote().position.clone();
+    for (let sample = 1; sample <= 4; sample += 1) {
+      for (let frame = 0; frame < 15; frame += 1) {
+        now += 1000 / 60;
+        players.update(1 / 60);
+        maxFrameStep = Math.max(maxFrameStep, remote().position.distanceTo(previousPosition));
+        previousPosition = remote().position.clone();
+      }
+      // Each network sample arrives after exactly 250ms (4Hz).
+      players.applyPresence(snapshot({ x: 100 + sample, y: 3, z: 100 }));
+    }
+    for (let frame = 0; frame < 15; frame += 1) {
+      now += 1000 / 60;
+      players.update(1 / 60);
+      maxFrameStep = Math.max(maxFrameStep, remote().position.distanceTo(previousPosition));
+      previousPosition = remote().position.clone();
+    }
+    // Without bounded extrapolation the 4Hz target leaves the ghost below this.
+    expect(remote().position.x).toBeGreaterThan(104.0);
+    expect(remote().position.x).toBeLessThan(106);
+    expect(maxFrameStep).toBeLessThan(1.01);
+    // Render prediction must never replace the authoritative target used by combat.
+    expect(players.latestPositionOf('char-b')?.toArray()).toEqual([104, 3, 100]);
+
+    // A stationary sample clears velocity; idle remotes do not drift.
+    now += 250;
+    players.applyPresence(snapshot({ x: 104, y: 3, z: 100 }));
+    const stoppedAt = remote().position.clone();
+    for (let frame = 0; frame < 15; frame += 1) {
+      now += 1000 / 60;
+      players.update(1 / 60);
+    }
+    expect(remote().position.x).toBeLessThan(stoppedAt.x + 0.1);
+    expect(remote().position.y).toBeLessThan(3.1);
+
+    now += 250;
+    players.applyPresence(snapshot({ x: 200, y: 3, z: 100 }));
+    const beforeTeleportFrame = remote().position.clone();
+    now += 1000 / 60;
+    players.update(1 / 60);
+    expect(remote().position.distanceTo(beforeTeleportFrame)).toBeLessThan(1.01);
+
+    // Reconnect/re-spawn remains a fresh, targetable remote after the guard.
+    players.remove('char-b');
+    players.applyPresence(snapshot({ x: 104, z: 100, animation: {
+      combatState: 'dead', category: 'style', onGround: true, dashing: false, verticalVelocity: 0,
+    } }));
+    players.markDefeated('char-b');
+    players.markRespawn('char-b');
+    expect(players.count).toBe(1);
+    expect(players.targetsInCone(new THREE.Vector3(104, 0, 98), 0, 1, 5, Math.PI / 2)).toContain('char-b');
   });
 
   it('finds only players inside the forward attack cone and in range (S15)', () => {

@@ -19,6 +19,11 @@ import type { GraphicsTier } from '../engine/GraphicsQuality';
 
 const LERP_PER_SECOND = 9; // ความเร็วไถลเข้าหาเป้า (สูง = ตามติดขึ้น)
 const STALE_MS = 20_000; // ไม่ได้ยิน presence เกินนี้ = ถือว่าหลุด เอาออก
+const MAX_EXTRAPOLATION_SECONDS = 0.25; // Server world snapshot cadence = 4Hz
+const MAX_REMOTE_SPEED = 24; // presentation-only safety bound (world units/sec)
+const MAX_TELEPORT_SAMPLE_DISTANCE = 12; // larger samples reset velocity, never extrapolate
+const MAX_RENDER_SPEED = 60; // presentation-only correction bound (world units/sec)
+const RENDER_PROGRESS_FALLBACK_SECONDS = 0.6;
 
 type RemoteLod = 'full' | 'low' | 'hidden';
 interface RemoteRenderOptions {
@@ -49,6 +54,10 @@ interface RemotePlayer {
   actionSessionId: string | null;
   actionHighestSequence: number;
   activeActionIdentity: string | null;
+  /** Render-only progress for sparse 4Hz samples; never feeds targeting/combat. */
+  renderActionIdentity: string | null;
+  renderAttackProgress: number;
+  renderSkillProgress: number;
   retiredActionSessions: Set<string>;
   lod: RemoteLod;
   snapshot: RealtimePresenceSnapshot;
@@ -59,6 +68,7 @@ interface RemotePlayer {
   hitDirection: THREE.Vector3;
   hitDistance: number;
   hitUntil: number;
+  targetVelocity: THREE.Vector3;
 }
 
 function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
@@ -133,6 +143,9 @@ function applyRemoteAnimation(
   if (!action) {
     player.activeActionIdentity = null;
     player.animation = animation;
+    player.renderActionIdentity = null;
+    player.renderAttackProgress = 0;
+    player.renderSkillProgress = 0;
     return;
   }
 
@@ -150,6 +163,9 @@ function applyRemoteAnimation(
     player.actionHighestSequence = action.sequence;
     player.activeActionIdentity = action.identity;
     player.animation = animation;
+    player.renderActionIdentity = action.identity;
+    player.renderAttackProgress = animation.attackProgress ?? 0;
+    player.renderSkillProgress = animation.skillAnimationProgress ?? 0;
     return;
   }
 
@@ -157,12 +173,45 @@ function applyRemoteAnimation(
     player.actionHighestSequence = action.sequence;
     player.activeActionIdentity = action.identity;
     player.animation = animation;
+    player.renderActionIdentity = action.identity;
+    player.renderAttackProgress = animation.attackProgress ?? 0;
+    player.renderSkillProgress = animation.skillAnimationProgress ?? 0;
     return;
   }
   if (action.sequence === player.actionHighestSequence
     && action.identity === player.activeActionIdentity) {
     player.animation = animation;
+    player.renderActionIdentity = action.identity;
+    player.renderAttackProgress = Math.max(player.renderAttackProgress, animation.attackProgress ?? 0);
+    player.renderSkillProgress = Math.max(player.renderSkillProgress, animation.skillAnimationProgress ?? 0);
   }
+}
+
+function animationForRender(
+  player: RemotePlayer,
+  dt: number,
+): RemoteAnimationWithActionIdentity {
+  const animation = player.animation as RemoteAnimationWithActionIdentity;
+  const action = actionIdentityOf(animation);
+  if (!action || player.renderActionIdentity !== action.identity) return animation;
+  // actionDurationMs is the bounded relay/latch window, not a physical combat
+  // duration. Use a presentation fallback only when wire progress stalls;
+  // monotonic wire progress remains the lower bound and identity never replays.
+  const durationSeconds = RENDER_PROGRESS_FALLBACK_SECONDS;
+  const step = Math.max(0, dt) / durationSeconds;
+  const nextAttackProgress = Math.min(1, player.renderAttackProgress + step);
+  const nextSkillProgress = Math.min(1, player.renderSkillProgress + step);
+  player.renderAttackProgress = Math.max(player.renderAttackProgress, nextAttackProgress);
+  player.renderSkillProgress = Math.max(player.renderSkillProgress, nextSkillProgress);
+  return {
+    ...animation,
+    ...(animation.attackProgress !== undefined
+      ? { attackProgress: player.renderAttackProgress }
+      : {}),
+    ...(animation.skillAnimationProgress !== undefined
+      ? { skillAnimationProgress: player.renderSkillProgress }
+      : {}),
+  };
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -205,22 +254,6 @@ function makePlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Grou
 }
 
 /** Three-mesh silhouette for mid-distance players; same Pirate V1 palette, no rig cost. */
-function makeLowPlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: null } {
-  const group = new THREE.Group();
-  group.name = `remote-player-low:${snapshot.appearance?.avatarId ?? 'pirate-v1'}`;
-  const cloth = new THREE.MeshStandardMaterial({ color: 0x17364b, roughness: 0.84 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xb97950, roughness: 0.6 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0x7d2632, roughness: 0.86 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.85, 3, 7), cloth);
-  body.position.y = 1.08;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), skin);
-  head.position.y = 1.95;
-  const bandana = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.26, 0.12, 8), accent);
-  bandana.position.y = 2.12;
-  group.add(body, head, bandana);
-  return { group, animator: null };
-}
-
 /** S14: เรือ proxy แบบเบา (ตัวเรือ + ใบเรือ) ขนาด/สีตามรุ่น — ไม่ใช้ BoatModel เต็ม */
 function makeBoatProxy(boatId: string | undefined): THREE.Group {
   const group = new THREE.Group();
@@ -254,7 +287,7 @@ function avatarKindOf(snapshot: RealtimePresenceSnapshot): AvatarKind {
 function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { group: THREE.Group; animator: PlayerActionAnimator | null } {
   const avatar = snapshot.onBoat
     ? { group: makeBoatProxy(snapshot.boatId), animator: null }
-    : lod === 'full' ? makePlayerBody(snapshot) : makeLowPlayerBody(snapshot);
+    : makePlayerBody(snapshot);
   const { group } = avatar;
   if (lod !== 'hidden') group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
   return avatar;
@@ -322,6 +355,7 @@ export class RemotePlayers implements Updatable {
     }
     this.acceptedPresence += 1;
     this.lastPresence = { playerId: snapshot.playerId, islandId: snapshot.islandId, accepted: true };
+    const receivedAt = this.now();
     const kind = avatarKindOf(snapshot);
     let player = this.players.get(snapshot.playerId);
     if (!player) {
@@ -340,12 +374,15 @@ export class RemotePlayers implements Updatable {
         onBoat: snapshot.onBoat,
         name: snapshot.name,
         avatarKind: kind,
-        lastSeenAt: this.now(),
+        lastSeenAt: receivedAt,
         defeated: false,
         animator: avatar.animator,
         locomotion: snapshot.locomotion ?? 'idle',
         animation,
         ...initializeActionDedupe(animation as RemoteAnimationWithActionIdentity),
+        renderActionIdentity: actionIdentityOf(animation as RemoteAnimationWithActionIdentity)?.identity ?? null,
+        renderAttackProgress: animation.attackProgress ?? 0,
+        renderSkillProgress: animation.skillAnimationProgress ?? 0,
         lod,
         snapshot,
         hitOffset: new THREE.Vector3(),
@@ -353,6 +390,7 @@ export class RemotePlayers implements Updatable {
         hitDirection: new THREE.Vector3(),
         hitDistance: 0,
         hitUntil: 0,
+        targetVelocity: new THREE.Vector3(),
       });
       return;
     }
@@ -375,7 +413,28 @@ export class RemotePlayers implements Updatable {
     // Presence frames already in flight can describe the pre-hit position. Keep
     // the recoil visible until a later frame has actually moved in the impulse
     // direction; otherwise the ghost only twitches and immediately snaps back.
-    if (player.hitDistance > 0 && this.now() < player.hitUntil) {
+    const sampleSeconds = Math.max(
+      0.05,
+      Math.min(1, (receivedAt - player.lastSeenAt) / 1000),
+    );
+    const displacement = new THREE.Vector3(
+      snapshot.x - player.target.x,
+      snapshot.y - player.target.y,
+      snapshot.z - player.target.z,
+    );
+    if (displacement.length() > MAX_TELEPORT_SAMPLE_DISTANCE) {
+      player.targetVelocity.set(0, 0, 0);
+    } else if (displacement.lengthSq() > 1e-6) {
+      const rawVelocity = displacement.multiplyScalar(1 / sampleSeconds);
+      // Extrapolate horizontal travel only. Vertical presence remains an
+      // interpolated target so jump/fall frames cannot over-predict Y.
+      rawVelocity.y = 0;
+      if (rawVelocity.length() > MAX_REMOTE_SPEED) rawVelocity.setLength(MAX_REMOTE_SPEED);
+      player.targetVelocity.lerp(rawVelocity, 0.75);
+    } else {
+      player.targetVelocity.set(0, 0, 0);
+    }
+    if (player.hitDistance > 0 && receivedAt < player.hitUntil) {
       const progress = (snapshot.x - player.hitOrigin.x) * player.hitDirection.x
         + (snapshot.z - player.hitOrigin.z) * player.hitDirection.z;
       if (progress >= player.hitDistance * 0.45) {
@@ -430,10 +489,10 @@ export class RemotePlayers implements Updatable {
     };
   }
 
-  private limits(): { full: number; visible: number; boat: number; maxFull: number } {
-    if (this.renderOptions.tier === 'low') return { full: 24, visible: 65, boat: 120, maxFull: 2 };
-    if (this.renderOptions.tier === 'medium') return { full: 38, visible: 90, boat: 170, maxFull: 4 };
-    return { full: 55, visible: 130, boat: 230, maxFull: 8 };
+  private limits(): { boat: number } {
+    if (this.renderOptions.tier === 'low') return { boat: 120 };
+    if (this.renderOptions.tier === 'medium') return { boat: 170 };
+    return { boat: 230 };
   }
 
   private distanceSq(player: Pick<RemotePlayer, 'target'> | RealtimePresenceSnapshot): number {
@@ -452,15 +511,12 @@ export class RemotePlayers implements Updatable {
     const limits = this.limits();
     const distance = Math.sqrt(this.distanceSq(snapshot));
     if (snapshot.onBoat) return distance <= limits.boat ? 'low' : 'hidden';
-    if (distance <= limits.full) return 'full';
-    return distance <= limits.visible ? 'low' : 'hidden';
+    return 'full';
   }
 
   private setLod(player: RemotePlayer, lod: RemoteLod): void {
     if (lod === player.lod) {
-      // Defeated is a presentation lifecycle state, not a visibility state:
-      // keep the full/low avatar rendered long enough for the dead pose. Only
-      // the distance LOD is allowed to hide the group.
+      // Defeated is a presentation lifecycle state, not a visibility state.
       player.group.visible = lod !== 'hidden';
       return;
     }
@@ -509,30 +565,36 @@ export class RemotePlayers implements Updatable {
 
   update(dt: number): void {
     const factor = 1 - Math.exp(-LERP_PER_SECOND * dt); // frame-rate independent lerp
-    const cutoff = this.now() - STALE_MS;
+    const now = this.now();
+    const cutoff = now - STALE_MS;
     const limits = this.limits();
-    const fullCandidates = [...this.players.entries()]
-      .filter(([, player]) => {
-        const threshold = player.lod === 'full' ? limits.full * 1.15 : limits.full;
-        return !player.onBoat && Math.sqrt(this.distanceSq(player)) <= threshold;
-      })
-      .sort((a, b) => this.distanceSq(a[1]) - this.distanceSq(b[1]))
-      .slice(0, limits.maxFull)
-      .map(([playerId]) => playerId);
-    const fullIds = new Set(fullCandidates);
     for (const [playerId, player] of [...this.players]) {
       if (player.lastSeenAt < cutoff) {
         this.remove(playerId);
         continue;
       }
       const distance = Math.sqrt(this.distanceSq(player));
-      const visibleLimit = player.lod === 'hidden' ? limits.visible * 0.9 : limits.visible * 1.1;
       const boatLimit = player.lod === 'hidden' ? limits.boat * 0.9 : limits.boat * 1.1;
       const desiredLod: RemoteLod = player.onBoat
         ? distance <= boatLimit ? 'low' : 'hidden'
-        : fullIds.has(playerId) ? 'full' : distance <= visibleLimit ? 'low' : 'hidden';
+        : 'full';
       this.setLod(player, desiredLod);
-      player.group.position.lerp(player.target, factor);
+      const extrapolationSeconds = Math.max(
+        0,
+        Math.min(MAX_EXTRAPOLATION_SECONDS, (now - player.lastSeenAt) / 1000),
+      );
+      const renderTarget = player.target.clone().addScaledVector(
+        player.targetVelocity,
+        extrapolationSeconds,
+      );
+      const currentPosition = player.group.position.clone();
+      const nextPosition = currentPosition.clone().lerp(renderTarget, factor);
+      const step = nextPosition.sub(currentPosition);
+      const maxStep = MAX_RENDER_SPEED * Math.max(0, dt);
+      if (step.length() > maxStep && maxStep > 0) {
+        step.setLength(maxStep);
+      }
+      player.group.position.copy(currentPosition).add(step);
       player.hitOffset.multiplyScalar(Math.exp(-2 * Math.min(dt, 0.05)));
       if (player.hitOffset.lengthSq() < 1e-5) player.hitOffset.set(0, 0, 0);
       player.group.position.add(player.hitOffset);
@@ -541,7 +603,7 @@ export class RemotePlayers implements Updatable {
       let delta = player.targetHeading - current;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       player.group.rotation.y = current + delta * factor;
-      const animation = player.animation as RemoteAnimationWithActionIdentity;
+      const animation = animationForRender(player, dt);
       if (player.lod === 'full') player.animator?.update(dt, {
         ...animation,
         locomotion: player.locomotion,
@@ -617,6 +679,9 @@ export class RemotePlayers implements Updatable {
     player.defeated = true;
     player.activeActionIdentity = null;
     player.animation = deadAnimation(player.animation);
+    player.renderActionIdentity = null;
+    player.renderAttackProgress = 0;
+    player.renderSkillProgress = 0;
     // Defeated players are excluded from target selection, but remain visible
     // long enough for the actual combat-defeat transition to render dead.
     player.group.visible = player.lod !== 'hidden';
@@ -631,6 +696,10 @@ export class RemotePlayers implements Updatable {
       category: player.animation.category,
     };
     player.activeActionIdentity = null;
+    player.renderActionIdentity = null;
+    player.renderAttackProgress = 0;
+    player.renderSkillProgress = 0;
+    player.targetVelocity.set(0, 0, 0);
     player.group.visible = player.lod !== 'hidden';
     player.lastSeenAt = this.now();
   }
