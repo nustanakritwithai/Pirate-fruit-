@@ -45,6 +45,11 @@ interface RemotePlayer {
   animator: PlayerActionAnimator | null;
   locomotion: 'idle' | 'walk' | 'run' | 'swim';
   animation: NonNullable<RealtimePresenceSnapshot['animation']>;
+  /** Current sender runtime and high-water sequence for short-action dedupe. */
+  actionSessionId: string | null;
+  actionHighestSequence: number;
+  activeActionIdentity: string | null;
+  retiredActionSessions: Set<string>;
   lod: RemoteLod;
   snapshot: RealtimePresenceSnapshot;
   /** Presentation-only recoil layered over interpolated Server presence. */
@@ -58,6 +63,106 @@ interface RemotePlayer {
 
 function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
   return { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 };
+}
+
+function deadAnimation(
+  previous: NonNullable<RealtimePresenceSnapshot['animation']>,
+): NonNullable<RealtimePresenceSnapshot['animation']> {
+  const {
+    actionSessionId: _actionSessionId,
+    actionSequence: _actionSequence,
+    actionDurationMs: _actionDurationMs,
+    ...base
+  } = previous as RemoteAnimationWithActionIdentity;
+  return {
+    ...base,
+    combatState: 'dead',
+    onGround: true,
+    dashing: false,
+    verticalVelocity: 0,
+  };
+}
+
+type RemoteAnimationWithActionIdentity = NonNullable<RealtimePresenceSnapshot['animation']> & {
+  actionSessionId?: string;
+  actionSequence?: number;
+  actionDurationMs?: number;
+};
+
+const ACTION_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+const MAX_ACTION_SEQUENCE = 2_147_483_647;
+const MAX_RETIRED_ACTION_SESSIONS = 8;
+
+function actionIdentityOf(animation: RemoteAnimationWithActionIdentity): {
+  sessionId: string;
+  sequence: number;
+  identity: string;
+} | null {
+  if (typeof animation.actionSessionId !== 'string'
+    || !ACTION_SESSION_PATTERN.test(animation.actionSessionId)
+    || !Number.isInteger(animation.actionSequence)
+    || animation.actionSequence! < 1
+    || animation.actionSequence! > MAX_ACTION_SEQUENCE) return null;
+  return {
+    sessionId: animation.actionSessionId,
+    sequence: animation.actionSequence!,
+    identity: `${animation.actionSessionId}:${animation.actionSequence}`,
+  };
+}
+
+function initializeActionDedupe(animation: RemoteAnimationWithActionIdentity): Pick<RemotePlayer,
+  'actionSessionId' | 'actionHighestSequence' | 'activeActionIdentity' | 'retiredActionSessions'> {
+  const action = actionIdentityOf(animation);
+  return {
+    actionSessionId: action?.sessionId ?? null,
+    actionHighestSequence: action?.sequence ?? 0,
+    activeActionIdentity: action?.identity ?? null,
+    retiredActionSessions: new Set<string>(),
+  };
+}
+
+/**
+ * Accept an unseen action, or another sample of the currently active action.
+ * A replay after idle/newer action is ignored so it cannot restart animation.
+ */
+function applyRemoteAnimation(
+  player: RemotePlayer,
+  animation: RemoteAnimationWithActionIdentity,
+): void {
+  const action = actionIdentityOf(animation);
+  if (!action) {
+    player.activeActionIdentity = null;
+    player.animation = animation;
+    return;
+  }
+
+  if (player.retiredActionSessions.has(action.sessionId)) return;
+  if (player.actionSessionId !== action.sessionId) {
+    if (player.actionSessionId) {
+      player.retiredActionSessions.add(player.actionSessionId);
+      while (player.retiredActionSessions.size > MAX_RETIRED_ACTION_SESSIONS) {
+        const oldest = player.retiredActionSessions.values().next().value as string | undefined;
+        if (!oldest) break;
+        player.retiredActionSessions.delete(oldest);
+      }
+    }
+    player.actionSessionId = action.sessionId;
+    player.actionHighestSequence = action.sequence;
+    player.activeActionIdentity = action.identity;
+    player.animation = animation;
+    return;
+  }
+
+  if (action.sequence > player.actionHighestSequence) {
+    player.actionHighestSequence = action.sequence;
+    player.activeActionIdentity = action.identity;
+    player.animation = animation;
+    return;
+  }
+  if (action.sequence === player.actionHighestSequence
+    && action.identity === player.activeActionIdentity) {
+    player.animation = animation;
+  }
 }
 
 function makeNameSprite(name: string): THREE.Sprite {
@@ -226,6 +331,7 @@ export class RemotePlayers implements Updatable {
       group.position.set(snapshot.x, snapshot.y, snapshot.z);
       group.rotation.y = snapshot.heading;
       this.scene.add(group);
+      const animation = snapshot.animation ?? defaultAnimation();
       this.players.set(snapshot.playerId, {
         group,
         target: new THREE.Vector3(snapshot.x, snapshot.y, snapshot.z),
@@ -238,7 +344,8 @@ export class RemotePlayers implements Updatable {
         defeated: false,
         animator: avatar.animator,
         locomotion: snapshot.locomotion ?? 'idle',
-        animation: snapshot.animation ?? defaultAnimation(),
+        animation,
+        ...initializeActionDedupe(animation as RemoteAnimationWithActionIdentity),
         lod,
         snapshot,
         hitOffset: new THREE.Vector3(),
@@ -283,7 +390,17 @@ export class RemotePlayers implements Updatable {
     player.targetHeading = snapshot.heading;
     player.onBoat = snapshot.onBoat;
     player.locomotion = snapshot.locomotion ?? 'idle';
-    player.animation = snapshot.animation ?? player.animation;
+    // A missing/null wire animation means current idle, not "keep the last
+    // action". Transient reliability is handled by the bounded publisher latch.
+    // A combat-defeat event is authoritative for the presentation lifecycle.
+    // Keep the dead pose visible until the matching respawn event; delayed
+    // attack/presence frames must not resurrect or restart the old action.
+    if (!player.defeated) {
+      applyRemoteAnimation(
+        player,
+        (snapshot.animation ?? defaultAnimation()) as RemoteAnimationWithActionIdentity,
+      );
+    }
     player.snapshot = snapshot;
     player.lastSeenAt = this.now();
   }
@@ -341,7 +458,10 @@ export class RemotePlayers implements Updatable {
 
   private setLod(player: RemotePlayer, lod: RemoteLod): void {
     if (lod === player.lod) {
-      player.group.visible = !player.defeated && lod !== 'hidden';
+      // Defeated is a presentation lifecycle state, not a visibility state:
+      // keep the full/low avatar rendered long enough for the dead pose. Only
+      // the distance LOD is allowed to hide the group.
+      player.group.visible = lod !== 'hidden';
       return;
     }
     const position = player.group.position.clone();
@@ -350,7 +470,7 @@ export class RemotePlayers implements Updatable {
     const avatar = buildAvatar(player.snapshot, lod);
     avatar.group.position.copy(position);
     avatar.group.rotation.y = rotationY;
-    avatar.group.visible = !player.defeated && lod !== 'hidden';
+    avatar.group.visible = lod !== 'hidden';
     this.scene.add(avatar.group);
     player.group = avatar.group;
     player.animator = avatar.animator;
@@ -421,9 +541,12 @@ export class RemotePlayers implements Updatable {
       let delta = player.targetHeading - current;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       player.group.rotation.y = current + delta * factor;
+      const animation = player.animation as RemoteAnimationWithActionIdentity;
       if (player.lod === 'full') player.animator?.update(dt, {
-        ...player.animation,
+        ...animation,
         locomotion: player.locomotion,
+        actionSessionId: animation.actionSessionId,
+        actionSequence: animation.actionSequence,
       });
     }
   }
@@ -492,13 +615,22 @@ export class RemotePlayers implements Updatable {
     const player = this.players.get(playerId);
     if (!player) return;
     player.defeated = true;
-    player.group.visible = false;
+    player.activeActionIdentity = null;
+    player.animation = deadAnimation(player.animation);
+    // Defeated players are excluded from target selection, but remain visible
+    // long enough for the actual combat-defeat transition to render dead.
+    player.group.visible = player.lod !== 'hidden';
   }
 
   markRespawn(playerId: string): void {
     const player = this.players.get(playerId);
     if (!player) return;
     player.defeated = false;
+    player.animation = {
+      ...defaultAnimation(),
+      category: player.animation.category,
+    };
+    player.activeActionIdentity = null;
     player.group.visible = player.lod !== 'hidden';
     player.lastSeenAt = this.now();
   }

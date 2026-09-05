@@ -131,6 +131,63 @@ describe('S13 RemotePlayers', () => {
     expect(chest.quaternion.equals(jumpChest)).toBe(false);
   });
 
+  it('clears a completed remote action when the next snapshot has no animation', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot({ animation: {
+      combatState: 'attack4', category: 'style', onGround: true,
+      dashing: false, verticalVelocity: 0, attackProgress: 0.5,
+    } }));
+    const arm = scene.getObjectByName('player-rig:right-arm')!;
+    players.update(0.05);
+    const attacking = arm.quaternion.clone();
+
+    players.applyPresence(snapshot({ animation: undefined }));
+    players.update(0.05);
+    expect(arm.quaternion.equals(attacking)).toBe(false);
+  });
+
+  it('does not replay a completed session/sequence but accepts the next sequence', () => {
+    const replayScene = new THREE.Scene();
+    const controlScene = new THREE.Scene();
+    const replayPlayers = new RemotePlayers(replayScene, 'starter-island', () => 1_000);
+    const controlPlayers = new RemotePlayers(controlScene, 'starter-island', () => 1_000);
+    const action = (sequence: number) => ({
+      combatState: 'attack1' as const,
+      category: 'style' as const,
+      onGround: true,
+      dashing: false,
+      verticalVelocity: 0,
+      attackProgress: 0.5,
+      actionSessionId: 'peer_12345',
+      actionSequence: sequence,
+    });
+
+    replayPlayers.applyPresence(snapshot({ animation: action(1) }));
+    controlPlayers.applyPresence(snapshot({ animation: action(1) }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+    replayPlayers.applyPresence(snapshot({ animation: undefined }));
+    controlPlayers.applyPresence(snapshot({ animation: undefined }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+
+    // The old event arrives again after both renderers have returned to idle.
+    replayPlayers.applyPresence(snapshot({ animation: action(1) }));
+    controlPlayers.applyPresence(snapshot({ animation: undefined }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+    const replayArm = replayScene.getObjectByName('player-rig:right-arm')!;
+    const controlArm = controlScene.getObjectByName('player-rig:right-arm')!;
+    expect(replayArm.quaternion.angleTo(controlArm.quaternion)).toBeLessThan(1e-12);
+
+    // A strictly newer sequence from the same runtime is a new action.
+    replayPlayers.applyPresence(snapshot({ animation: action(2) }));
+    replayPlayers.update(0.1);
+    controlPlayers.update(0.1);
+    expect(replayArm.quaternion.angleTo(controlArm.quaternion)).toBeGreaterThan(0.1);
+  });
+
   it('shows a visible presentation recoil for an authoritative combat hit', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
@@ -252,6 +309,50 @@ describe('S13 RemotePlayers', () => {
     expect(players.targetsInCone(new THREE.Vector3(0, 0, 0), 0, 1, 20, Math.PI)).not.toContain('foe');
     players.markRespawn('foe');
     expect(players.targetsInCone(new THREE.Vector3(0, 0, 0), 0, 1, 20, Math.PI)).toContain('foe');
+  });
+
+  it('keeps the remote dead pose visible through combat-defeat and ignores delayed actions until respawn', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    const firstAttack = {
+      combatState: 'attack4', category: 'sword', onGround: true, dashing: false,
+      verticalVelocity: 0, attackProgress: 0.5,
+      actionSessionId: 'peer_12345', actionSequence: 4,
+    } as const;
+    players.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1, animation: firstAttack }));
+    players.markDefeated('foe');
+    const remote = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+    expect(remote.visible).toBe(true);
+    players.update(0.1);
+    expect(players.lodFor('foe')).toBe('full');
+    expect(remote.visible).toBe(true);
+    expect(scene.getObjectByName('player-rig:root')?.visible).toBe(true);
+
+    // Control avatar advances through the same dead transition without the
+    // delayed attack frame, so the comparison covers animator time progression.
+    const controlScene = new THREE.Scene();
+    const control = new RemotePlayers(controlScene, 'starter-island', () => 1_000);
+    control.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1, animation: firstAttack }));
+    control.markDefeated('foe');
+    control.update(0.1);
+
+    // A delayed pre-defeat frame must not replace the authoritative dead pose.
+    const delayedAttack = {
+      combatState: 'attack4', category: 'sword', onGround: true, dashing: false,
+      verticalVelocity: 0, attackProgress: 0.9,
+      actionSessionId: 'peer_12345', actionSequence: 4,
+    } as const;
+    players.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1, animation: delayedAttack }));
+    players.update(0.1);
+    control.update(0.1);
+    const root = scene.getObjectByName('player-rig:root')!;
+    const controlRoot = controlScene.getObjectByName('player-rig:root')!;
+    expect(root.quaternion.angleTo(controlRoot.quaternion)).toBeLessThan(1e-12);
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).not.toContain('foe');
+
+    players.markRespawn('foe');
+    players.update(0.1);
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).toContain('foe');
   });
 
 });

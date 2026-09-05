@@ -29,6 +29,9 @@ export interface PlayerActionSnapshot {
   skillAnimationVariant?: number;
   skillAnimationUltimate?: boolean;
   skillAnimationCategory?: LoadoutCategory;
+  /** Presentation event identity. A new value restarts one remote transient. */
+  actionSessionId?: string;
+  actionSequence?: number;
 }
 
 interface BindPose {
@@ -102,7 +105,10 @@ export class PlayerActionAnimator {
 
   update(dt: number, snapshot: PlayerActionSnapshot): void {
     this.elapsed += dt;
-    const key = `${snapshot.combatState}:${snapshot.category}`;
+    const actionIdentity = snapshot.actionSessionId && Number.isInteger(snapshot.actionSequence)
+      ? `${snapshot.actionSessionId}:${snapshot.actionSequence}`
+      : '';
+    const key = `${snapshot.combatState}:${snapshot.category}:${actionIdentity}`;
     if (key !== this.stateKey) {
       this.stateKey = key;
       this.actionTime = 0;
