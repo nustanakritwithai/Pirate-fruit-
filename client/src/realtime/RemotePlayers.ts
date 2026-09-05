@@ -65,9 +65,28 @@ function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> 
   return { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 };
 }
 
+function deadAnimation(
+  previous: NonNullable<RealtimePresenceSnapshot['animation']>,
+): NonNullable<RealtimePresenceSnapshot['animation']> {
+  const {
+    actionSessionId: _actionSessionId,
+    actionSequence: _actionSequence,
+    actionDurationMs: _actionDurationMs,
+    ...base
+  } = previous as RemoteAnimationWithActionIdentity;
+  return {
+    ...base,
+    combatState: 'dead',
+    onGround: true,
+    dashing: false,
+    verticalVelocity: 0,
+  };
+}
+
 type RemoteAnimationWithActionIdentity = NonNullable<RealtimePresenceSnapshot['animation']> & {
   actionSessionId?: string;
   actionSequence?: number;
+  actionDurationMs?: number;
 };
 
 const ACTION_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
@@ -373,10 +392,15 @@ export class RemotePlayers implements Updatable {
     player.locomotion = snapshot.locomotion ?? 'idle';
     // A missing/null wire animation means current idle, not "keep the last
     // action". Transient reliability is handled by the bounded publisher latch.
-    applyRemoteAnimation(
-      player,
-      (snapshot.animation ?? defaultAnimation()) as RemoteAnimationWithActionIdentity,
-    );
+    // A combat-defeat event is authoritative for the presentation lifecycle.
+    // Keep the dead pose visible until the matching respawn event; delayed
+    // attack/presence frames must not resurrect or restart the old action.
+    if (!player.defeated) {
+      applyRemoteAnimation(
+        player,
+        (snapshot.animation ?? defaultAnimation()) as RemoteAnimationWithActionIdentity,
+      );
+    }
     player.snapshot = snapshot;
     player.lastSeenAt = this.now();
   }
@@ -588,13 +612,22 @@ export class RemotePlayers implements Updatable {
     const player = this.players.get(playerId);
     if (!player) return;
     player.defeated = true;
-    player.group.visible = false;
+    player.activeActionIdentity = null;
+    player.animation = deadAnimation(player.animation);
+    // Defeated players are excluded from target selection, but remain visible
+    // long enough for the actual combat-defeat transition to render dead.
+    player.group.visible = player.lod !== 'hidden';
   }
 
   markRespawn(playerId: string): void {
     const player = this.players.get(playerId);
     if (!player) return;
     player.defeated = false;
+    player.animation = {
+      ...defaultAnimation(),
+      category: player.animation.category,
+    };
+    player.activeActionIdentity = null;
     player.group.visible = player.lod !== 'hidden';
     player.lastSeenAt = this.now();
   }

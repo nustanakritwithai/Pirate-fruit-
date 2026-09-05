@@ -16,8 +16,12 @@ const MAX_VERTICAL_VELOCITY = 100;
 const MAX_ACTION_SEQUENCE = 2_147_483_647;
 const MIN_ACTION_DURATION_MS = 80;
 const MAX_ACTION_DURATION_MS = 5_000;
-const DEFAULT_ACTION_DURATION_MS = 750;
-const MIN_TRANSIENT_LATCH_MS = 750;
+// PlayerCombat's current visual timeline is castTime + followThrough. The
+// generated skill catalog tops out at 0.3s castTime and 0.6s follow-through,
+// so keep one bounded second for the final idle hand-off without replaying an
+// action or inventing a new identity mid-cast.
+const DEFAULT_ACTION_DURATION_MS = 1_000;
+const MIN_TRANSIENT_LATCH_MS = 1_000;
 const ACTION_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 const COMBAT_STATES = new Set<RealtimePlayerAnimation['combatState']>([
   'idle', 'attack1', 'attack2', 'attack3', 'attack4', 'casting',
@@ -203,6 +207,19 @@ function isTransientAnimation(animation: Pick<PiratePresenceAnimation, 'combatSt
 }
 
 function transientKey(animation: PiratePresenceAnimation): string | null {
+  const skillProgress = animation.skillAnimationProgress;
+  const skillTimelineActive = typeof animation.skillAnimationType === 'string'
+    && skillProgress !== undefined
+    && skillProgress < 1;
+  if (skillTimelineActive) {
+    return [
+      'skill',
+      animation.category,
+      animation.skillAnimationType ?? '',
+      animation.skillAnimationVariant ?? '',
+      animation.skillAnimationUltimate === true ? 'ultimate' : '',
+    ].join(':');
+  }
   if (!isTransientAnimation(animation)) return null;
   if (animation.combatState !== 'idle') {
     return [

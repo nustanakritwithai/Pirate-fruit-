@@ -311,4 +311,37 @@ describe('S13 RemotePlayers', () => {
     expect(players.targetsInCone(new THREE.Vector3(0, 0, 0), 0, 1, 20, Math.PI)).toContain('foe');
   });
 
+  it('keeps the remote dead pose visible through combat-defeat and ignores delayed actions until respawn', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    const firstAttack = {
+      combatState: 'attack4', category: 'sword', onGround: true, dashing: false,
+      verticalVelocity: 0, attackProgress: 0.5,
+      actionSessionId: 'peer_12345', actionSequence: 4,
+    } as const;
+    players.applyPresence(snapshot({ playerId: 'foe', x: 1, z: 1, animation: firstAttack }));
+    players.markDefeated('foe');
+    const remote = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+    expect(remote.visible).toBe(true);
+    players.update(0.1);
+    const root = scene.getObjectByName('player-rig:root')!;
+    const deadPose = root.quaternion.clone();
+
+    // A delayed pre-defeat frame must not replace the authoritative dead pose.
+    const delayedAttack = {
+      combatState: 'attack4', category: 'sword', onGround: true, dashing: false,
+      verticalVelocity: 0, attackProgress: 0.9,
+      actionSessionId: 'peer_12345', actionSequence: 4,
+    } as const;
+    players.applyPresence(snapshot({ playerId: 'foe', animation: delayedAttack }));
+    players.update(0.1);
+    expect(root.quaternion.angleTo(deadPose)).toBeLessThan(1e-12);
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).not.toContain('foe');
+
+    players.markRespawn('foe');
+    players.update(0.1);
+    expect(root.quaternion.angleTo(deadPose)).toBeGreaterThan(0.1);
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).toContain('foe');
+  });
+
 });

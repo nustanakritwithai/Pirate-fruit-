@@ -261,11 +261,11 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(host.sent[1].message).toMatchObject({
       animation: {
         combatState: 'attack2', category: 'sword', attackProgress: 0.45,
-        actionSessionId: 'runtime_1234', actionSequence: 1, actionDurationMs: 750,
+        actionSessionId: 'runtime_1234', actionSequence: 1, actionDurationMs: 1_000,
       },
     });
 
-    now = 1_761;
+    now = 2_011;
     bridge.update();
     expect(host.sent.at(-1)?.message).toMatchObject({
       animation: { combatState: 'idle', category: 'sword' },
@@ -292,7 +292,7 @@ describe('Pocket Monster parent presence bridge', () => {
           animation: {
             combatState: 'attack1', category: 'style', onGround: true, dashing: false,
             verticalVelocity: 0, actionSessionId: 'peer_12345', actionSequence: sequence,
-            actionDurationMs: 750,
+            actionDurationMs: 1_000,
           },
         }] },
       },
@@ -313,5 +313,55 @@ describe('Pocket Monster parent presence bridge', () => {
     players.update(0.1);
     const restartedFrame = arm.quaternion.clone();
     expect(restartedFrame.angleTo(firstFrame)).toBeLessThan(restartedFrame.angleTo(duplicateFrame));
+  });
+
+  it('keeps a long skill timeline through the casting-to-idle handoff', () => {
+    let now = 1_000;
+    let visual: PlayerActionSnapshot = {
+      combatState: 'casting', category: 'fruit', locomotion: 'idle',
+      onGround: true, dashing: false, verticalVelocity: 0,
+      skillAnimationProgress: 0.2, skillAnimationReleaseProgress: 0.1,
+      skillAnimationType: 'beam', skillAnimationVariant: 3, skillAnimationUltimate: true,
+    };
+    const host = createHost();
+    const bridge = new PocketMonsterParentPresence({
+      targetOrigin: 'https://pocket.example',
+      host: host.host,
+      remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
+      getPosition: () => ({ x: 1, y: 2, z: 3 }),
+      getHeading: () => 0,
+      getIslandId: () => 'starter-island',
+      heightAt: () => 0,
+      getActionSnapshot: () => visual,
+      actionSessionId: 'runtime_1234',
+      now: () => now,
+    });
+
+    bridge.start();
+    const firstMessage = host.sent[0].message as { animation: Record<string, unknown> };
+    expect(firstMessage.animation).toMatchObject({
+      combatState: 'casting', skillAnimationProgress: 0.2,
+      actionSequence: 1, actionDurationMs: 1_000,
+    });
+
+    now = 1_850;
+    visual = {
+      ...visual, combatState: 'idle', skillAnimationProgress: 0.94,
+      skillAnimationReleaseProgress: 0.86,
+    };
+    bridge.update();
+    const handoffMessage = host.sent.at(-1)?.message as { animation: Record<string, unknown> };
+    expect(handoffMessage.animation).toMatchObject({
+      combatState: 'idle', skillAnimationProgress: 0.94,
+      skillAnimationReleaseProgress: 0.86,
+      actionSessionId: 'runtime_1234', actionSequence: 1, actionDurationMs: 1_000,
+    });
+
+    now = 2_010;
+    visual = { ...visual, skillAnimationProgress: 1, skillAnimationReleaseProgress: 1 };
+    bridge.update();
+    const completedMessage = host.sent.at(-1)?.message as { animation: Record<string, unknown> };
+    expect(completedMessage.animation).toMatchObject({ combatState: 'idle' });
+    expect(completedMessage.animation).not.toHaveProperty('actionSessionId');
   });
 });
