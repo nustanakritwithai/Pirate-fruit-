@@ -221,15 +221,15 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(spawnHitSpark).toHaveBeenCalledTimes(3);
   });
 
-  it('publishes and consumes presentation-only actors with sequence, visual, despawn and zone guards', () => {
+  it('publishes and consumes presentation-only monster actors with sequence, despawn and zone guards', () => {
     const sourceScene = new THREE.Scene();
     const source = new SharedMonsterClient(sourceScene, 'starter-island', () => 0, () => 1_000);
     source.applySnapshot('starter-island', [snapshot({ x: 3, z: 4, state: 'chase' })]);
     const actors = source.getActors();
     expect(actors).toHaveLength(1);
     expect(actors[0]).toMatchObject({
-      actorId: 'monster:starter-crab-1', kind: 'monster', type: 'crab', zone: 'starter-island',
-      lifecycle: 'active', locomotion: 'run', animation: { state: 'chase' },
+      actorId: 'monster:starter-crab-1', kind: 'monster', monsterType: 'crab', zone: 'starter-island',
+      lifecycle: 'active', locomotion: 'run', animation: { combatState: 'chase' },
     });
     expect(actors[0]).not.toHaveProperty('hp');
     expect(actors[0]).not.toHaveProperty('damage');
@@ -237,11 +237,7 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     const oversized = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000);
     oversized.applyActors('starter-island', [{
       ...actors[0]!,
-      visual: {
-        schemaVersion: 1, sessionId: 'oversized', stateSequence: 1,
-        events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })),
-        projectiles: [],
-      },
+      presentation: { events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })), projectiles: [] },
     }]);
     expect(oversized.count).toBe(0);
 
@@ -249,11 +245,7 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     const remote = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
     remote.applyActors('starter-island', [{
       ...actors[0],
-      visual: {
-        schemaVersion: 1, sessionId: 'actor-session', stateSequence: 1,
-        events: [{ sequence: 1, kind: 'hit-spark', ageMs: 0, position: { x: 3, y: 0.65, z: 4 }, color: 0xfff1a8 }],
-        projectiles: [],
-      },
+      presentation: { events: [{ sequence: 1, kind: 'hit-spark', ageMs: 0, position: { x: 3, y: 0.65, z: 4 }, color: 0xfff1a8 }], projectiles: [] },
     }]);
     expect(remote.count).toBe(1);
     expect(remoteHits).toHaveBeenCalledTimes(1);
@@ -266,38 +258,61 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(remote.count).toBe(0);
   });
 
-  it('consumes summon actors as visual-only envelopes and retires stale generations', () => {
+  it('retires stale monster generations and accepts a fresh generation', () => {
     const spawnHitSpark = vi.fn();
     const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
     const actor = {
-      actorId: 'summon:7', kind: 'summon' as const, type: 'light-moveset-v2-z', zone: 'starter-island',
+      actorId: 'monster:7', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
       generation: 1, spawnSequence: 7, stateSequence: 1, lifecycle: 'active' as const,
-      pose: { x: 2, y: 1, z: 3, heading: 0 }, locomotion: 'idle' as const, animation: { state: 'attack' as const },
-      visual: { schemaVersion: 1 as const, sessionId: 'summon-1', stateSequence: 1, projectiles: [], events: [{ sequence: 1, kind: 'hit-spark' as const, ageMs: 0, position: { x: 2, y: 1, z: 3 }, color: 0x74c8ff }] },
+      pose: { x: 2, y: 1, z: 3, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'attack', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { projectiles: [], events: [{ sequence: 1, kind: 'hit-spark' as const, ageMs: 0, position: { x: 2, y: 1, z: 3 }, color: 0x74c8ff }] },
     };
     client.applyActors('starter-island', [actor]);
-    expect(client.count).toBe(0);
+    expect(client.count).toBe(1);
     expect(spawnHitSpark).toHaveBeenCalledTimes(1);
 
     client.applyActors('starter-island', [{ ...actor, lifecycle: 'despawn', stateSequence: 2 }]);
     client.applyActors('starter-island', [actor]);
     expect(spawnHitSpark).toHaveBeenCalledTimes(1);
-    client.applyActors('starter-island', [{ ...actor, generation: 2, stateSequence: 1, visual: { ...actor.visual, sessionId: 'summon-2', stateSequence: 1 } }]);
+    client.applyActors('starter-island', [{ ...actor, generation: 2, stateSequence: 1, presentation: { ...actor.presentation! } }]);
     expect(spawnHitSpark).toHaveBeenCalledTimes(2);
   });
 
   it('publishes provider actors through the gameplay adapter without authority fields', () => {
     const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island');
     client.setActorProvider((zone, generation) => [{
-      actorId: 'summon:provider-1', kind: 'summon', type: 'light-moveset-v2-z', zone, generation,
-      spawnSequence: 1, stateSequence: 1, lifecycle: 'active', pose: { x: 0, y: 1, z: 0, heading: 0 },
-      locomotion: 'idle', animation: { state: 'attack' },
+      actorId: 'monster:provider-1', kind: 'monster', monsterType: 'crab', zone, generation,
+      spawnSequence: 1, stateSequence: 1, lifecycle: 'active', pose: { x: 0, y: 1, z: 0, dir: 0 },
+      locomotion: 'idle', animation: { combatState: 'attack', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [], projectiles: [] },
     }]);
     const actors = client.getActors();
     expect(actors).toHaveLength(1);
-    expect(actors[0]).toMatchObject({ actorId: 'summon:provider-1', kind: 'summon', generation: 1 });
+    expect(actors[0]).toMatchObject({ actorId: 'monster:provider-1', kind: 'monster', monsterType: 'crab', generation: 1 });
     expect(actors[0]).not.toHaveProperty('hp');
     expect(actors[0]).not.toHaveProperty('damage');
+  });
+
+  it('cleans actor state across reconnect and island changes without replaying the old generation', () => {
+    const hits = vi.fn();
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: hits });
+    const actor = {
+      actorId: 'monster:reconnect-1', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 1, spawnSequence: 1, stateSequence: 1, lifecycle: 'active' as const,
+      pose: { x: 1, y: 0, z: 1, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [{ sequence: 1, kind: 'hit-spark' as const, ageMs: 0, position: { x: 1, y: 0, z: 1 } }], projectiles: [] },
+    };
+    client.applyActors('starter-island', [actor]);
+    expect(client.count).toBe(1);
+    client.resetSession();
+    client.applyActors('starter-island', [{ ...actor, generation: 2, stateSequence: 1 }]);
+    expect(client.count).toBe(1);
+    expect(hits).toHaveBeenCalledTimes(2);
+    expect(client.setIsland('mist-jungle')).toBe(true);
+    client.applyActors('starter-island', [actor]);
+    expect(client.count).toBe(0);
   });
 
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {

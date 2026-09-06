@@ -11,6 +11,7 @@ import type { CombatRewardSource } from '../combat/CombatData';
 import { isWorldSafeZone } from '@pirate-fruit/shared';
 import { inferIslandId } from '../island/IslandRegistry';
 import type { IslandId } from '../island/IslandTypes';
+import type { SharedMonsterActor } from './SharedMonsterClient';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
@@ -111,6 +112,9 @@ export class MonsterManager {
   private readonly bosses = new Set<Monster>();
   /** มอนแบบ one-shot (ลูกเรือ Boarding) — ตายแล้วถูกถอดออก ไม่เกิดใหม่ */
   private readonly transient = new Set<Monster>();
+  private readonly presentationActorIds = new Map<Monster, { actorId: string; spawnSequence: number }>();
+  private presentationSpawnSequence = 0;
+  private presentationStateSequence = 0;
   private readonly bossBar = new BossBar();
   private readonly rand = mulberry32(20260712);
   private readonly tmp = new THREE.Vector2();
@@ -249,6 +253,10 @@ export class MonsterManager {
       if (!type) continue;
       const monster = this.spawnMonster(type, entry.x, entry.z, 9999);
       this.transient.add(monster);
+      const spawnSequence = this.presentationSpawnSequence < Number.MAX_SAFE_INTEGER
+        ? ++this.presentationSpawnSequence
+        : Number.MAX_SAFE_INTEGER;
+      this.presentationActorIds.set(monster, { actorId: `monster:local-${spawnSequence}`, spawnSequence });
       crew.push(monster);
     }
     return crew;
@@ -258,12 +266,38 @@ export class MonsterManager {
   despawnCrew(crew: Monster[]): void {
     for (const monster of crew) {
       this.transient.delete(monster);
+      this.presentationActorIds.delete(monster);
       this.bosses.delete(monster);
       const index = this.monsters.indexOf(monster);
       if (index >= 0) this.monsters.splice(index, 1);
       this.scene.remove(monster.group);
       monster.dispose();
     }
+  }
+
+  /** Presentation-only owner actor source for transient summoned/controlled monsters. */
+  getPresentationActors(zone: string, generation: number): SharedMonsterActor[] {
+    const stateSequence = this.presentationStateSequence < Number.MAX_SAFE_INTEGER
+      ? ++this.presentationStateSequence
+      : Number.MAX_SAFE_INTEGER;
+    return [...this.transient].slice(0, 128).flatMap((monster) => {
+      const identity = this.presentationActorIds.get(monster);
+      if (!identity) return [];
+      return [{
+        actorId: identity.actorId,
+        kind: 'monster' as const,
+        monsterType: monster.type.id,
+        zone,
+        generation,
+        spawnSequence: identity.spawnSequence,
+        stateSequence,
+        lifecycle: monster.state === 'dead' ? 'despawn' as const : 'active' as const,
+        pose: { x: monster.group.position.x, y: monster.group.position.y, z: monster.group.position.z, dir: monster.group.rotation.y },
+        locomotion: monster.state === 'return' ? 'walk' : 'idle',
+        animation: { combatState: monster.state, category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+        presentation: { events: [], projectiles: [] },
+      }];
+    });
   }
 
   /** สุ่มจุดพื้นดินรอบ ๆ center ที่ heightAt สูงพอ (ไม่จมน้ำ) */

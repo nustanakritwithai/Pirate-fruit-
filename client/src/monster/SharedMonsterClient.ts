@@ -17,7 +17,8 @@ import {
   type WorldMonsterSnapshot,
   type WorldMonsterDelta,
   type WorldMonsterState,
-  type RealtimePlayerVisual,
+  type RealtimeVisualEvent,
+  type RealtimeProjectileState,
 } from '@pirate-fruit/shared';
 
 const LERP_PER_SECOND = 8;
@@ -51,18 +52,18 @@ export type SharedMonsterActorLocomotion = 'idle' | 'walk' | 'run';
 /** Presentation-only actor envelope. Authority fields (HP, damage, target) never enter it. */
 export interface SharedMonsterActor {
   actorId: string;
-  kind: 'monster' | 'summon';
-  owner?: string;
-  type: string;
+  kind: 'monster';
+  ownerId?: string;
+  monsterType: string;
   zone: string;
   generation: number;
   spawnSequence: number;
   stateSequence: number;
   lifecycle: SharedMonsterActorLifecycle;
-  pose: { x: number; y: number; z: number; heading: number };
+  pose: { x: number; y: number; z: number; dir: number };
   locomotion: SharedMonsterActorLocomotion;
-  animation: { state: WorldMonsterState; action?: string };
-  visual?: RealtimePlayerVisual;
+  animation: { combatState: string; category: string; onGround: boolean; dashing: boolean; verticalVelocity: number; attackProgress?: number };
+  presentation?: { events: RealtimeVisualEvent[]; projectiles: RealtimeProjectileState[] };
 }
 
 export type SharedMonsterActorProvider = (zone: string, generation: number) => readonly SharedMonsterActor[];
@@ -189,7 +190,7 @@ export class SharedMonsterClient implements Updatable {
       return {
         actorId,
         kind: 'monster' as const,
-        type: monster.monsterId,
+        monsterType: monster.monsterId,
         zone: this.currentIslandId,
         generation: this.generation,
         spawnSequence: this.actorSpawnSequences.get(actorId) ?? 1,
@@ -199,14 +200,14 @@ export class SharedMonsterClient implements Updatable {
           x: monster.group.position.x,
           y: monster.group.position.y,
           z: monster.group.position.z,
-          heading: monster.group.rotation.y,
+          dir: monster.group.rotation.y,
         },
         locomotion: monster.state === 'chase' || monster.state === 'aggro'
           ? 'run' as const
           : monster.state === 'patrol' || monster.state === 'return'
             ? 'walk' as const
             : 'idle' as const,
-        animation: { state: monster.state },
+        animation: { combatState: monster.state, category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
       };
     });
     const provided = this.actorProvider?.(this.currentIslandId, this.generation) ?? [];
@@ -223,21 +224,19 @@ export class SharedMonsterClient implements Updatable {
     const seen = new Set<string>();
     for (const actor of actors) {
       if (!actor || actor.zone !== this.currentIslandId) continue;
-      const isMonster = actor.kind === 'monster';
-      const isSummon = actor.kind === 'summon';
-      const spawnId = isMonster && actor.actorId.startsWith('monster:') ? actor.actorId.slice(8) : '';
-      if ((!isMonster && !isSummon) || (isMonster && (!spawnId || !MONSTER_TYPES[actor.type]))) continue;
+      const spawnId = actor.actorId.startsWith('monster:') ? actor.actorId.slice(8) : '';
+      if (!spawnId || !MONSTER_TYPES[actor.monsterType]) continue;
       if (!Number.isFinite(actor.pose.x) || !Number.isFinite(actor.pose.y)
-        || !Number.isFinite(actor.pose.z) || !Number.isFinite(actor.pose.heading)) continue;
-      if (actor.visual && (!Array.isArray(actor.visual.events)
-        || !Array.isArray(actor.visual.projectiles)
-        || actor.visual.events.length > SHARED_MONSTER_ACTOR_EVENT_LIMIT
-        || actor.visual.projectiles.length > SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT)) continue;
+        || !Number.isFinite(actor.pose.z) || !Number.isFinite(actor.pose.dir)) continue;
+      if (actor.presentation && (!Array.isArray(actor.presentation.events)
+        || !Array.isArray(actor.presentation.projectiles)
+        || actor.presentation.events.length > SHARED_MONSTER_ACTOR_EVENT_LIMIT
+        || actor.presentation.projectiles.length > SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT)) continue;
       if (!Number.isInteger(actor.generation) || actor.generation < 1
         || !Number.isInteger(actor.spawnSequence) || actor.spawnSequence < 1
         || !Number.isInteger(actor.stateSequence) || actor.stateSequence < 0) continue;
       if (actor.lifecycle === 'despawn') {
-        if (isMonster) this.remove(spawnId);
+        this.remove(spawnId);
         this.retiredActorGenerations.set(actor.actorId, actor.generation);
         continue;
       }
@@ -255,27 +254,23 @@ export class SharedMonsterClient implements Updatable {
       this.actorStateSequences.set(actor.actorId, actor.stateSequence);
       this.actorSpawnSequences.set(actor.actorId, actor.spawnSequence);
       seen.add(actor.actorId);
-      if (isSummon) {
-        this.replayActorVisual(actor);
-        continue;
-      }
       const monster = this.monsters.get(spawnId);
       if (!monster) {
         this.upsert({
           spawnId,
-          monsterId: actor.type,
+          monsterId: actor.monsterType,
           islandId: this.currentIslandId,
           x: actor.pose.x,
           z: actor.pose.z,
-          heading: actor.pose.heading,
-          hp: MONSTER_TYPES[actor.type].maxHp,
-          maxHp: MONSTER_TYPES[actor.type].maxHp,
-          state: actor.animation.state,
+          heading: actor.pose.dir,
+          hp: MONSTER_TYPES[actor.monsterType].maxHp,
+          maxHp: MONSTER_TYPES[actor.monsterType].maxHp,
+          state: actorWorldState(actor.animation.combatState),
         });
       } else {
         monster.target.set(actor.pose.x, actor.pose.y, actor.pose.z);
-        monster.targetHeading = actor.pose.heading;
-        monster.state = actor.animation.state;
+        monster.targetHeading = actor.pose.dir;
+        monster.state = actorWorldState(actor.animation.combatState);
         monster.visual.applyAuthoritativeState(monster.hp, monster.maxHp, renderState(monster.state));
       }
       this.replayActorVisual(actor);
@@ -286,7 +281,7 @@ export class SharedMonsterClient implements Updatable {
   }
 
   private replayActorVisual(actor: SharedMonsterActor): void {
-    const visual = actor.visual;
+    const visual = actor.presentation;
     if (!visual) return;
     for (const event of visual.events.slice(0, SHARED_MONSTER_ACTOR_EVENT_LIMIT)) {
       if (event.ageMs > 3_000 || !event.position) continue;
@@ -595,4 +590,13 @@ export class SharedMonsterClient implements Updatable {
     this.pendingSnapshots.clear();
     this.resetSession();
   }
+}
+
+function actorWorldState(combatState: string): WorldMonsterState {
+  if (combatState === 'dead') return 'dead';
+  if (combatState === 'attack' || /^attack[1-4]$/.test(combatState) || combatState === 'casting') return 'attack';
+  if (combatState === 'chase' || combatState === 'aggro' || combatState === 'run') return 'chase';
+  if (combatState === 'return' || combatState === 'patrol' || combatState === 'walk') return 'return';
+  if (combatState === 'stunned') return 'stunned';
+  return 'idle';
 }

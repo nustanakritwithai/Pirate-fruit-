@@ -581,7 +581,6 @@ async function main(): Promise<void> {
     },
     onResync: () => {
       sharedMonsters?.resetSession();
-      playerCombat?.resetPresentationActors();
       resyncAuthoritativeState();
     },
     onAnnouncement: (message, level) => {
@@ -823,7 +822,6 @@ async function main(): Promise<void> {
       const sharedIslandChanged = sharedMonsters?.setIsland(islandManager.activeIsland) ?? false;
       if (!realtime.connected) return;
       if (sharedIslandChanged) {
-        playerCombat?.resetPresentationActors();
         realtime.requestResync();
       }
       const position = controller.position;
@@ -1096,7 +1094,7 @@ async function main(): Promise<void> {
     navalCombat,
     () => camera.yaw,
   );
-  sharedMonsters?.setActorProvider((zone, generation) => playerCombat?.getPresentationActors(zone, generation) ?? []);
+  sharedMonsters?.setActorProvider((zone, generation) => monsterManager.getPresentationActors(zone, generation));
   controller.setDevilFruitUser(playerCombat.hasDevilFruit);
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',
