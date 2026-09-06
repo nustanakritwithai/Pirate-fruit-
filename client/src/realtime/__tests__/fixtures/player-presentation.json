@@ -1,0 +1,1712 @@
+{
+  "schema": "player-presentation-fixtures/1",
+  "eventCases": [
+    {
+      "name": "valid-slash",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      }
+    },
+    {
+      "name": "valid-blade-trail",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "blade-trail",
+        "bladeBase": {
+          "x": 100.5,
+          "y": 8,
+          "z": -80
+        },
+        "bladeTip": {
+          "x": 100.9,
+          "y": 9.2,
+          "z": -79.5
+        },
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": -0.7,
+        "comboIndex": 3,
+        "color": 10476799,
+        "finisher": true
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "blade-trail",
+        "bladeBase": {
+          "x": 100.5,
+          "y": 8,
+          "z": -80
+        },
+        "bladeTip": {
+          "x": 100.9,
+          "y": 9.2,
+          "z": -79.5
+        },
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": -0.7,
+        "comboIndex": 3,
+        "color": 10476799,
+        "finisher": true
+      }
+    },
+    {
+      "name": "valid-gun-shot",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "gun-shot",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "endpoint": {
+          "x": 110,
+          "y": 8,
+          "z": -60
+        },
+        "color": 16766071,
+        "impacted": true,
+        "power": 1.5
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "gun-shot",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "endpoint": {
+          "x": 110,
+          "y": 8,
+          "z": -60
+        },
+        "color": 16766071,
+        "impacted": true,
+        "power": 1.5
+      }
+    },
+    {
+      "name": "valid-energy-launch",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "energy-launch",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "color": 7661823,
+        "scale": 1.25
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "energy-launch",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "color": 7661823,
+        "scale": 1.25
+      }
+    },
+    {
+      "name": "valid-shockwave",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "shockwave",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "radius": 12,
+        "color": 12577023,
+        "assetId": "earth-bending"
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "shockwave",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "radius": 12,
+        "color": 12577023,
+        "assetId": "earth-bending"
+      }
+    },
+    {
+      "name": "valid-beam",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "beam",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "length": 40,
+        "color": 12577023
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "beam",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "length": 40,
+        "color": 12577023
+      }
+    },
+    {
+      "name": "valid-hit-spark",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "hit-spark",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "color": 16773544
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "hit-spark",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "color": 16773544
+      }
+    },
+    {
+      "name": "valid-energy-impact",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "energy-impact",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "color": 7661823,
+        "scale": 2
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "energy-impact",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "color": 7661823,
+        "scale": 2
+      }
+    },
+    {
+      "name": "valid-projectile-start",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "projectile-start",
+        "projectile": {
+          "id": "projectile_7",
+          "position": {
+            "x": 100.25,
+            "y": 7.5,
+            "z": -80.75
+          },
+          "direction": {
+            "x": 0,
+            "y": 0,
+            "z": 1
+          },
+          "velocity": {
+            "x": 0,
+            "y": 0,
+            "z": 24
+          },
+          "color": 7661823,
+          "scale": 1.25,
+          "elapsed": 0.4,
+          "lifeFraction": 0.8,
+          "remainingMs": 1600,
+          "itemId": "test-fruit",
+          "skillId": "test-projectile"
+        }
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "projectile-start",
+        "projectile": {
+          "id": "projectile_7",
+          "position": {
+            "x": 100.25,
+            "y": 7.5,
+            "z": -80.75
+          },
+          "direction": {
+            "x": 0,
+            "y": 0,
+            "z": 1
+          },
+          "velocity": {
+            "x": 0,
+            "y": 0,
+            "z": 24
+          },
+          "color": 7661823,
+          "scale": 1.25,
+          "elapsed": 0.4,
+          "lifeFraction": 0.8,
+          "remainingMs": 1600,
+          "itemId": "test-fruit",
+          "skillId": "test-projectile"
+        }
+      }
+    },
+    {
+      "name": "valid-projectile-end",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "projectile-end",
+        "projectileId": "projectile_7",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "burstScale": 0.8
+      },
+      "expected": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "projectile-end",
+        "projectileId": "projectile_7",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "burstScale": 0.8
+      }
+    },
+    {
+      "name": "reject-unknown-primitive",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "execute-script",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-missing-sequence",
+      "input": {
+        "sequence": null,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-zero-sequence",
+      "input": {
+        "sequence": 0,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-fraction-sequence",
+      "input": {
+        "sequence": 1.5,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-unsafe-sequence",
+      "input": {
+        "sequence": 9007199254740992,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-string-coordinate",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": "100",
+          "y": 0,
+          "z": 0
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-missing-coordinate",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100,
+          "z": 0
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-null-coordinate",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": null,
+          "y": 0,
+          "z": 0
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-string-color",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": "#ffffff",
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-fraction-color",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 1.5,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-expired-event",
+      "input": {
+        "sequence": 12,
+        "ageMs": 3001,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-negative-age",
+      "input": {
+        "sequence": 12,
+        "ageMs": -1,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "fireball"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-unknown-asset",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "slash",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": 0.7,
+        "color": 10476799,
+        "scale": 1.3,
+        "assetId": "https://example.invalid/remote.glb"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-finisher-string",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "blade-trail",
+        "bladeBase": {
+          "x": 100.5,
+          "y": 8,
+          "z": -80
+        },
+        "bladeTip": {
+          "x": 100.9,
+          "y": 9.2,
+          "z": -79.5
+        },
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "heading": -0.7,
+        "comboIndex": 3,
+        "color": 10476799,
+        "finisher": "true"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-impacted-string",
+      "input": {
+        "sequence": 12,
+        "ageMs": 50,
+        "itemId": "test-sword",
+        "skillId": "test-action",
+        "kind": "gun-shot",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "endpoint": {
+          "x": 110,
+          "y": 8,
+          "z": -60
+        },
+        "color": 16766071,
+        "impacted": "true",
+        "power": 1.5
+      },
+      "expected": null
+    }
+  ],
+  "presentationCases": [
+    {
+      "name": "valid-equipped",
+      "input": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "sword",
+          "itemId": "test-sword"
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "sword",
+          "itemId": "test-sword"
+        }
+      }
+    },
+    {
+      "name": "valid-clear-equipment",
+      "input": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [],
+        "activeItem": null
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [],
+        "activeItem": null
+      }
+    },
+    {
+      "name": "reject-unknown-schema",
+      "input": {
+        "schemaVersion": 2,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "sword",
+          "itemId": "test-sword"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-unknown-avatar",
+      "input": {
+        "schemaVersion": 1,
+        "avatarId": "remote-url",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "sword",
+          "itemId": "test-sword"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-unknown-appearance",
+      "input": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "unknown",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "sword",
+          "itemId": "test-sword"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-unknown-category",
+      "input": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "admin",
+          "itemId": "test-sword"
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-active-item-url",
+      "input": {
+        "schemaVersion": 1,
+        "avatarId": "pirate-v1",
+        "appearanceId": "player-orange",
+        "clothingIds": [],
+        "equipmentIds": [
+          "test-sword"
+        ],
+        "activeItem": {
+          "category": "sword",
+          "itemId": "https://example.invalid/model"
+        }
+      },
+      "expected": null
+    }
+  ],
+  "projectileCases": [
+    {
+      "name": "valid-projectile",
+      "input": {
+        "id": "projectile_7",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": 24
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "elapsed": 0.4,
+        "lifeFraction": 0.8,
+        "remainingMs": 1600,
+        "itemId": "test-fruit",
+        "skillId": "test-projectile"
+      },
+      "expected": {
+        "id": "projectile_7",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": 24
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "elapsed": 0.4,
+        "lifeFraction": 0.8,
+        "remainingMs": 1600,
+        "itemId": "test-fruit",
+        "skillId": "test-projectile"
+      }
+    },
+    {
+      "name": "reject-zero-direction",
+      "input": {
+        "id": "projectile_7",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": 24
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "elapsed": 0.4,
+        "lifeFraction": 0.8,
+        "remainingMs": 1600,
+        "itemId": "test-fruit",
+        "skillId": "test-projectile"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-string-life",
+      "input": {
+        "id": "projectile_7",
+        "position": {
+          "x": 100.25,
+          "y": 7.5,
+          "z": -80.75
+        },
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": 24
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "elapsed": 0.4,
+        "lifeFraction": "0.8",
+        "remainingMs": 1600,
+        "itemId": "test-fruit",
+        "skillId": "test-projectile"
+      },
+      "expected": null
+    },
+    {
+      "name": "reject-missing-position",
+      "input": {
+        "id": "projectile_7",
+        "position": null,
+        "direction": {
+          "x": 0,
+          "y": 0,
+          "z": 1
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0,
+          "z": 24
+        },
+        "color": 7661823,
+        "scale": 1.25,
+        "elapsed": 0.4,
+        "lifeFraction": 0.8,
+        "remainingMs": 1600,
+        "itemId": "test-fruit",
+        "skillId": "test-projectile"
+      },
+      "expected": null
+    }
+  ],
+  "visualCases": [
+    {
+      "name": "valid-ten-events-and-active-projectile",
+      "input": {
+        "schemaVersion": 1,
+        "sessionId": "visual_session_001",
+        "stateSequence": 5,
+        "events": [
+          {
+            "sequence": 1,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "slash",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "heading": 0.7,
+            "color": 10476799,
+            "scale": 1.3,
+            "assetId": "fireball"
+          },
+          {
+            "sequence": 2,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "blade-trail",
+            "bladeBase": {
+              "x": 100.5,
+              "y": 8,
+              "z": -80
+            },
+            "bladeTip": {
+              "x": 100.9,
+              "y": 9.2,
+              "z": -79.5
+            },
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "heading": -0.7,
+            "comboIndex": 3,
+            "color": 10476799,
+            "finisher": true
+          },
+          {
+            "sequence": 3,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "gun-shot",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "endpoint": {
+              "x": 110,
+              "y": 8,
+              "z": -60
+            },
+            "color": 16766071,
+            "impacted": true,
+            "power": 1.5
+          },
+          {
+            "sequence": 4,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "energy-launch",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "color": 7661823,
+            "scale": 1.25
+          },
+          {
+            "sequence": 5,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "shockwave",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "radius": 12,
+            "color": 12577023,
+            "assetId": "earth-bending"
+          },
+          {
+            "sequence": 6,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "beam",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "length": 40,
+            "color": 12577023
+          },
+          {
+            "sequence": 7,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "hit-spark",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 16773544
+          },
+          {
+            "sequence": 8,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "energy-impact",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 7661823,
+            "scale": 2
+          },
+          {
+            "sequence": 9,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "projectile-start",
+            "projectile": {
+              "id": "projectile_7",
+              "position": {
+                "x": 100.25,
+                "y": 7.5,
+                "z": -80.75
+              },
+              "direction": {
+                "x": 0,
+                "y": 0,
+                "z": 1
+              },
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 24
+              },
+              "color": 7661823,
+              "scale": 1.25,
+              "elapsed": 0.4,
+              "lifeFraction": 0.8,
+              "remainingMs": 1600,
+              "itemId": "test-fruit",
+              "skillId": "test-projectile"
+            }
+          },
+          {
+            "sequence": 10,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "projectile-end",
+            "projectileId": "projectile_7",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 7661823,
+            "scale": 1.25,
+            "burstScale": 0.8
+          }
+        ],
+        "projectiles": [
+          {
+            "id": "projectile_7",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 24
+            },
+            "color": 7661823,
+            "scale": 1.25,
+            "elapsed": 0.4,
+            "lifeFraction": 0.8,
+            "remainingMs": 1600,
+            "itemId": "test-fruit",
+            "skillId": "test-projectile"
+          }
+        ],
+        "shield": {
+          "active": true,
+          "opacity": 0.22
+        }
+      }
+    },
+    {
+      "name": "valid-empty-clears-active",
+      "input": {
+        "schemaVersion": 1,
+        "sessionId": "visual_session_001",
+        "stateSequence": 6,
+        "events": [],
+        "projectiles": [],
+        "shield": {
+          "active": true,
+          "opacity": 0.22
+        }
+      }
+    },
+    {
+      "name": "reject-short-session",
+      "input": {
+        "schemaVersion": 1,
+        "sessionId": "bad",
+        "stateSequence": 5,
+        "events": [
+          {
+            "sequence": 1,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "slash",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "heading": 0.7,
+            "color": 10476799,
+            "scale": 1.3,
+            "assetId": "fireball"
+          },
+          {
+            "sequence": 2,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "blade-trail",
+            "bladeBase": {
+              "x": 100.5,
+              "y": 8,
+              "z": -80
+            },
+            "bladeTip": {
+              "x": 100.9,
+              "y": 9.2,
+              "z": -79.5
+            },
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "heading": -0.7,
+            "comboIndex": 3,
+            "color": 10476799,
+            "finisher": true
+          },
+          {
+            "sequence": 3,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "gun-shot",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "endpoint": {
+              "x": 110,
+              "y": 8,
+              "z": -60
+            },
+            "color": 16766071,
+            "impacted": true,
+            "power": 1.5
+          },
+          {
+            "sequence": 4,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "energy-launch",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "color": 7661823,
+            "scale": 1.25
+          },
+          {
+            "sequence": 5,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "shockwave",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "radius": 12,
+            "color": 12577023,
+            "assetId": "earth-bending"
+          },
+          {
+            "sequence": 6,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "beam",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "length": 40,
+            "color": 12577023
+          },
+          {
+            "sequence": 7,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "hit-spark",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 16773544
+          },
+          {
+            "sequence": 8,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "energy-impact",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 7661823,
+            "scale": 2
+          },
+          {
+            "sequence": 9,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "projectile-start",
+            "projectile": {
+              "id": "projectile_7",
+              "position": {
+                "x": 100.25,
+                "y": 7.5,
+                "z": -80.75
+              },
+              "direction": {
+                "x": 0,
+                "y": 0,
+                "z": 1
+              },
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 24
+              },
+              "color": 7661823,
+              "scale": 1.25,
+              "elapsed": 0.4,
+              "lifeFraction": 0.8,
+              "remainingMs": 1600,
+              "itemId": "test-fruit",
+              "skillId": "test-projectile"
+            }
+          },
+          {
+            "sequence": 10,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "projectile-end",
+            "projectileId": "projectile_7",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 7661823,
+            "scale": 1.25,
+            "burstScale": 0.8
+          }
+        ],
+        "projectiles": [
+          {
+            "id": "projectile_7",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 24
+            },
+            "color": 7661823,
+            "scale": 1.25,
+            "elapsed": 0.4,
+            "lifeFraction": 0.8,
+            "remainingMs": 1600,
+            "itemId": "test-fruit",
+            "skillId": "test-projectile"
+          }
+        ],
+        "shield": {
+          "active": true,
+          "opacity": 0.22
+        }
+      },
+      "reject": true
+    },
+    {
+      "name": "reject-statement-in-session",
+      "input": {
+        "schemaVersion": 1,
+        "sessionId": "bad session;command",
+        "stateSequence": 5,
+        "events": [
+          {
+            "sequence": 1,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "slash",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "heading": 0.7,
+            "color": 10476799,
+            "scale": 1.3,
+            "assetId": "fireball"
+          },
+          {
+            "sequence": 2,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "blade-trail",
+            "bladeBase": {
+              "x": 100.5,
+              "y": 8,
+              "z": -80
+            },
+            "bladeTip": {
+              "x": 100.9,
+              "y": 9.2,
+              "z": -79.5
+            },
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "heading": -0.7,
+            "comboIndex": 3,
+            "color": 10476799,
+            "finisher": true
+          },
+          {
+            "sequence": 3,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "gun-shot",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "endpoint": {
+              "x": 110,
+              "y": 8,
+              "z": -60
+            },
+            "color": 16766071,
+            "impacted": true,
+            "power": 1.5
+          },
+          {
+            "sequence": 4,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "energy-launch",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "color": 7661823,
+            "scale": 1.25
+          },
+          {
+            "sequence": 5,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "shockwave",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "radius": 12,
+            "color": 12577023,
+            "assetId": "earth-bending"
+          },
+          {
+            "sequence": 6,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "beam",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "length": 40,
+            "color": 12577023
+          },
+          {
+            "sequence": 7,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "hit-spark",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 16773544
+          },
+          {
+            "sequence": 8,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "energy-impact",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 7661823,
+            "scale": 2
+          },
+          {
+            "sequence": 9,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "projectile-start",
+            "projectile": {
+              "id": "projectile_7",
+              "position": {
+                "x": 100.25,
+                "y": 7.5,
+                "z": -80.75
+              },
+              "direction": {
+                "x": 0,
+                "y": 0,
+                "z": 1
+              },
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 24
+              },
+              "color": 7661823,
+              "scale": 1.25,
+              "elapsed": 0.4,
+              "lifeFraction": 0.8,
+              "remainingMs": 1600,
+              "itemId": "test-fruit",
+              "skillId": "test-projectile"
+            }
+          },
+          {
+            "sequence": 10,
+            "ageMs": 50,
+            "itemId": "test-sword",
+            "skillId": "test-action",
+            "kind": "projectile-end",
+            "projectileId": "projectile_7",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "color": 7661823,
+            "scale": 1.25,
+            "burstScale": 0.8
+          }
+        ],
+        "projectiles": [
+          {
+            "id": "projectile_7",
+            "position": {
+              "x": 100.25,
+              "y": 7.5,
+              "z": -80.75
+            },
+            "direction": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            },
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 24
+            },
+            "color": 7661823,
+            "scale": 1.25,
+            "elapsed": 0.4,
+            "lifeFraction": 0.8,
+            "remainingMs": 1600,
+            "itemId": "test-fruit",
+            "skillId": "test-projectile"
+          }
+        ],
+        "shield": {
+          "active": true,
+          "opacity": 0.22
+        }
+      },
+      "reject": true
+    }
+  ]
+}

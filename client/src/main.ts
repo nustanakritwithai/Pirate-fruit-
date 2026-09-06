@@ -56,6 +56,7 @@ import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
+import { ScopedVisualEffects } from './realtime/ScopedVisualEffects';
 import {
   PocketMonsterParentPresence,
   createBrowserParentPresenceHost,
@@ -264,6 +265,7 @@ async function main(): Promise<void> {
   );
   const islandManager = new IslandManager(controller, spawnManager, world.islandDetailRoots);
   const effects = new Effects(game.scene);
+  const scopedCombatEffects = new ScopedVisualEffects(effects);
   let playerCombat: PlayerCombat | null = null;
   const questManager = new QuestManager(progression, () =>
     playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
@@ -460,6 +462,20 @@ async function main(): Promise<void> {
       getIslandId: () => islandManager.activeIsland,
       heightAt: (x, z) => world.collision.heightAt(x, z),
       getActionSnapshot: () => player.sampleActionSnapshot(),
+      getPresentation: () => {
+        const item = playerCombat?.activeItem;
+        return {
+          schemaVersion: 1,
+          avatarId: 'pirate-v1',
+          appearanceId: 'player-orange',
+          clothingIds: [],
+          equipmentIds: Array.from(new Set(playerCombat?.masteryItems.map((entry) => entry.itemId).filter((id): id is string => Boolean(id)) ?? [])),
+          activeItem: item ? { category: item.category, itemId: item.itemId } : null,
+        };
+      },
+      getVisual: () => scopedCombatEffects.current(),
+      acknowledgeVisual: (count) => { if (!realtime) scopedCombatEffects.acknowledgeEvents(count); },
+      onIslandChange: () => scopedCombatEffects.resetSession(),
     })
     : null;
   pocketMonsterPresence?.start();
@@ -803,7 +819,21 @@ async function main(): Promise<void> {
       const combatState = playerCombat?.state ?? 'idle';
       const sendAnimation = presenceTick % 2 === 0 || combatState !== 'idle'
         || controller.moveState.dashing || !controller.moveState.onGround;
-      realtime.sendMove({
+      const activeItem = playerCombat?.activeItem;
+      scopedCombatEffects.setShield({
+        active: combatState === 'blocking',
+        opacity: combatState === 'blocking' ? 0.1 + 0.18 * (playerCombat?.guardFraction ?? 1) : 0,
+      });
+      const presentation = {
+        schemaVersion: 1 as const,
+        avatarId: 'pirate-v1' as const,
+        appearanceId: 'player-orange' as const,
+        clothingIds: [] as string[],
+        equipmentIds: Array.from(new Set(playerCombat?.masteryItems.map((item) => item.itemId).filter((id): id is string => Boolean(id)) ?? [])),
+        activeItem: activeItem ? { category: activeItem.category, itemId: activeItem.itemId } : null,
+      };
+      const visual = scopedCombatEffects.current();
+      const sent = realtime.sendMove({
         islandId: islandManager.activeIsland,
         x: position.x,
         y: position.y,
@@ -811,6 +841,8 @@ async function main(): Promise<void> {
         heading: controller.heading,
         onBoat,
         boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
+        presentation,
+        visual,
         locomotion,
         animation: sendAnimation ? {
           combatState,
@@ -829,6 +861,7 @@ async function main(): Promise<void> {
           skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
         } : undefined,
       });
+      if (sent) scopedCombatEffects.acknowledgeEvents(visual.events.length);
     }, 100);
   }
   game.add({
@@ -1035,7 +1068,7 @@ async function main(): Promise<void> {
     input,
     controller,
     monsterManager,
-    effects,
+    scopedCombatEffects,
     touchControls,
     itemInventory.loadout,
     () => itemInventory.save(),

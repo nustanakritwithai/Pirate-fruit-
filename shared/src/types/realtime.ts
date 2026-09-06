@@ -10,6 +10,67 @@
 import type { WorldMonsterAttack, WorldMonsterDelta, WorldMonsterSnapshot } from '../world/monsters.js';
 import type { BoatWorldSnapshot, RealtimeBoatIntent } from '../world/boats.js';
 
+export type RealtimePresentationCategory = 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
+export interface RealtimePlayerPresentation {
+  schemaVersion: 1;
+  avatarId: 'pirate-v1';
+  appearanceId: 'player-orange';
+  clothingIds: string[];
+  equipmentIds: string[];
+  activeItem: { category: RealtimePresentationCategory; itemId: string } | null;
+}
+
+export type RealtimeVisualKind =
+  | 'slash' | 'blade-trail' | 'gun-shot' | 'energy-launch' | 'shockwave'
+  | 'beam' | 'hit-spark' | 'energy-impact' | 'projectile-start' | 'projectile-end';
+export interface RealtimeVisualVec3 { x: number; y: number; z: number; }
+export interface RealtimeProjectileState {
+  id: string;
+  position: RealtimeVisualVec3;
+  direction: RealtimeVisualVec3;
+  velocity: RealtimeVisualVec3;
+  color: number;
+  scale: number;
+  elapsed: number;
+  lifeFraction: number;
+  remainingMs: number;
+  itemId?: string;
+  skillId?: string;
+}
+export interface RealtimeVisualEvent {
+  sequence: number;
+  kind: RealtimeVisualKind;
+  ageMs: number;
+  itemId?: string;
+  skillId?: string;
+  position?: RealtimeVisualVec3;
+  endpoint?: RealtimeVisualVec3;
+  direction?: RealtimeVisualVec3;
+  bladeBase?: RealtimeVisualVec3;
+  bladeTip?: RealtimeVisualVec3;
+  color?: number;
+  scale?: number;
+  radius?: number;
+  length?: number;
+  power?: number;
+  heading?: number;
+  comboIndex?: number;
+  finisher?: boolean;
+  impacted?: boolean;
+  assetId?: string;
+  burstScale?: number;
+  projectile?: RealtimeProjectileState;
+  projectileId?: string;
+}
+export interface RealtimePlayerVisual {
+  schemaVersion: 1;
+  sessionId: string;
+  stateSequence: number;
+  events: RealtimeVisualEvent[];
+  projectiles: RealtimeProjectileState[];
+  shield?: { active: boolean; opacity: number };
+}
+
 export const REALTIME_PROTOCOL_VERSION = 1;
 
 /** Server ส่ง heartbeat interval ให้ตอน welcome — Client ping ตามรอบนี้ */
@@ -67,6 +128,8 @@ export interface RealtimePresence {
   boatId?: string;
   /** Presentation-only appearance contract. Never participates in gameplay authority. */
   appearance?: RealtimeCharacterAppearance;
+  presentation?: RealtimePlayerPresentation;
+  visual?: RealtimePlayerVisual;
   /** Presentation-only locomotion; never used for movement/combat authority. */
   locomotion?: 'idle' | 'walk' | 'run' | 'swim';
   /** Complete visual animation snapshot. It is never trusted for gameplay. */
@@ -348,6 +411,8 @@ export interface RealtimeMove {
   /** Presentation-only animation hint. */
   locomotion?: 'idle' | 'walk' | 'run' | 'swim';
   animation?: RealtimePlayerAnimation;
+  presentation?: RealtimePlayerPresentation;
+  visual?: RealtimePlayerVisual;
 }
 
 /** S15 — Client รายงาน "เจตนาโจมตี" ผู้เล่นอีกคน (PvP) — Server ตัดสินผลเอง */
