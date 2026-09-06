@@ -18,7 +18,11 @@ import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
 import { attachmentSocketsFromPirateRig } from '../art/CharacterRig';
 import { EquipmentVisuals } from '../art/EquipmentVisuals';
 import { createPlayerShieldVisual } from '../art/PlayerShieldVisual';
-import { Effects, type EnergyProjectileVisual } from '../effects/Effects';
+import {
+  Effects,
+  type BladeTrailPresentationDiagnostic,
+  type EnergyProjectileVisual,
+} from '../effects/Effects';
 import { PlayerActionAnimator } from '../animation/PlayerActionAnimator';
 import type { GraphicsTier } from '../engine/GraphicsQuality';
 
@@ -366,6 +370,11 @@ export class RemotePlayers implements Updatable {
       lod,
       lastPresence: this.lastPresence ? { ...this.lastPresence } : null,
     };
+  }
+
+  /** Narrow, credential-free Browser acceptance seam for Pocket presentation. */
+  presentationDiagnostics(): { bladeTrails: BladeTrailPresentationDiagnostic[] } {
+    return { bladeTrails: this.effects.bladeTrailDiagnostics() };
   }
 
   /** ผู้เล่นเราย้ายเกาะ → ล้างผีทั้งหมด (Server จะ seed ชุดใหม่ของเกาะใหม่เอง) */

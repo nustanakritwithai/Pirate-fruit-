@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { Effects } from '../../effects/Effects';
+import {
+  BLADE_TRAIL_FINISHER_LIFETIME_SECONDS,
+  BLADE_TRAIL_LIFETIME_SECONDS,
+  Effects,
+} from '../../effects/Effects';
 import { EquipmentVisuals } from '../../art/EquipmentVisuals';
 import { createPiratePlayerVisual } from '../../art/PiratePlayerVisual';
 import { attachmentSocketsFromPirateRig } from '../../art/CharacterRig';
@@ -14,7 +18,31 @@ import { sanitizeVisual } from '../PresentationProtocol';
 import { RemotePlayers } from '../RemotePlayers';
 import type { RealtimePresenceSnapshot } from '../RealtimeClient';
 
-function gameplaySwordAttack() {
+const QA_OUTPUT_DIR_ENV = 'PIRATE_PRESENCE_QA_OUTPUT_DIR';
+
+function exportQaFrame(fileName: string, visual: NonNullable<RealtimePresenceSnapshot['visual']>): void {
+  const configured = process.env[QA_OUTPUT_DIR_ENV]?.trim();
+  if (!configured) return;
+  if (!isAbsolute(configured)) {
+    throw new Error(`${QA_OUTPUT_DIR_ENV} must be an absolute declared output directory`);
+  }
+  const outputDirectory = resolve(configured);
+  const outputPath = resolve(outputDirectory, fileName);
+  const childPath = relative(outputDirectory, outputPath);
+  if (!childPath || childPath.startsWith('..') || isAbsolute(childPath)) {
+    throw new Error('sword QA fixture path escaped its declared output directory');
+  }
+  mkdirSync(outputDirectory, { recursive: true });
+  const deterministic = {
+    ...visual,
+    sessionId: 'qa_sword_session',
+    stateSequence: 1,
+    events: visual.events.map((event, index) => ({ ...event, sequence: index + 1, ageMs: 0 })),
+  };
+  writeFileSync(outputPath, `${JSON.stringify(deterministic, null, 2)}\n`, 'utf8');
+}
+
+function gameplaySwordAttack(targetComboIndex: 0 | 3) {
   const scene = new THREE.Scene();
   const playerRoot = new THREE.Group();
   const playerVisual = createPiratePlayerVisual();
@@ -43,17 +71,30 @@ function gameplaySwordAttack() {
   loadout.equipSword('training-sword');
   const combat = new PlayerCombat(scene, input, controller as never, monsters as never, scoped, null, loadout);
   combat.bindVisualAnchors(equipment);
-  combat.update(0); // consumes the real M1 input and starts the windup
-  input.consumeAttack.mockReturnValue(false);
-  combat.update(0.2); // crosses training-sword's 0.14s hit windup
-  return { scene, scoped, combat };
+  for (let comboIndex = 0; comboIndex <= targetComboIndex; comboIndex += 1) {
+    input.consumeAttack.mockReturnValueOnce(true);
+    combat.update(0); // consumes the real M1 input and starts this combo swing
+    input.consumeAttack.mockReturnValue(false);
+    combat.update(1); // crosses windup+recovery without expiring the combo window
+    if (comboIndex < targetComboIndex) {
+      scoped.acknowledgeEvents(scoped.pendingEventCount());
+    }
+  }
+  return { scene, scoped };
 }
 
 describe('normal sword attack presentation path', () => {
-  it('captures the actual PlayerCombat blade trail and publishes it through ParentPresence', () => {
-    const { scoped } = gameplaySwordAttack();
+  it.each([
+    { comboIndex: 0 as const, finisher: false },
+    { comboIndex: 3 as const, finisher: true },
+  ])('renders a visible remote blade trail for gameplay combo $comboIndex', ({ comboIndex, finisher }) => {
+    const { scene: sourceScene, scoped } = gameplaySwordAttack(comboIndex);
     const visual = scoped.current();
     expect(visual.events.filter((event) => event.kind === 'blade-trail')).toHaveLength(1);
+    const sourceEvent = visual.events.find((event) => event.kind === 'blade-trail')!;
+    expect(sourceEvent).toMatchObject({ comboIndex, finisher });
+    const sourceSword = sourceScene.getObjectByName('equipment:sword')!;
+    expect(sourceSword.visible).toBe(true);
 
     const sent: unknown[] = [];
     const host = {
@@ -70,9 +111,6 @@ describe('normal sword attack presentation path', () => {
     bridge.start();
     const message = sent.find((entry) => (entry as { type?: string }).type === PIRATE_LOCAL_PRESENCE_MESSAGE) as { visual?: { events?: unknown[] } };
     expect(message.visual?.events?.filter((event) => (event as { kind?: string }).kind === 'blade-trail')).toHaveLength(1);
-    const qaDir = resolve(process.cwd(), '../../..', '.qa-presence-smooth-20260906');
-    mkdirSync(qaDir, { recursive: true });
-    writeFileSync(resolve(qaDir, 'sword-gameplay-frame.json'), `${JSON.stringify(message.visual, null, 2)}\n`, 'utf8');
 
     const remoteScene = new THREE.Scene();
     const remote = new RemotePlayers(remoteScene, 'pirate-fruit', () => 1_000, { tier: 'high', focus: () => new THREE.Vector3(2, 0, 3) });
@@ -81,10 +119,81 @@ describe('normal sword attack presentation path', () => {
     const snapshot: RealtimePresenceSnapshot = {
       playerId: 'remote-sword', name: 'QA', islandId: 'pirate-fruit', x: 2, y: 0, z: 3, heading: 0, onBoat: false,
       visual: wireVisual!,
+      presentation: {
+        schemaVersion: 1, avatarId: 'pirate-v1', appearanceId: 'player-orange',
+        clothingIds: [], equipmentIds: ['training-sword'],
+        activeItem: { category: 'sword', itemId: 'training-sword' },
+      },
     };
     remote.applyPresence(snapshot);
-    expect(remoteScene.getObjectByName('effect:blade-trail')).toBeTruthy();
+    const diagnostics = remote.presentationDiagnostics().bladeTrails;
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      comboIndex,
+      finisher,
+      lifetimeMs: (finisher
+        ? BLADE_TRAIL_FINISHER_LIFETIME_SECONDS
+        : BLADE_TRAIL_LIFETIME_SECONDS) * 1_000,
+      visible: true,
+      overlayDepthTestDisabled: true,
+    });
+    expect(new THREE.Vector3(
+      diagnostics[0].bladeBase!.x,
+      diagnostics[0].bladeBase!.y,
+      diagnostics[0].bladeBase!.z,
+    ).distanceTo(new THREE.Vector3(
+      sourceEvent.bladeBase!.x,
+      sourceEvent.bladeBase!.y,
+      sourceEvent.bladeBase!.z,
+    ))).toBeLessThan(0.02);
+    expect(new THREE.Vector3(
+      diagnostics[0].bladeTip!.x,
+      diagnostics[0].bladeTip!.y,
+      diagnostics[0].bladeTip!.z,
+    ).distanceTo(new THREE.Vector3(
+      sourceEvent.bladeTip!.x,
+      sourceEvent.bladeTip!.y,
+      sourceEvent.bladeTip!.z,
+    ))).toBeLessThan(0.02);
+    remote.update(1 / 60);
+    expect(remoteScene.getObjectByName('remote-player:pirate-v1')?.getObjectByName('equipment:sword')?.visible).toBe(true);
+    expect(sourceSword.visible).toBe(true);
+
+    // The same session/sequence must not replay the one-shot.
+    remote.applyPresence(snapshot);
+    expect(remote.presentationDiagnostics().bladeTrails).toHaveLength(1);
+
+    exportQaFrame(`sword-gameplay-${finisher ? 'finisher3' : 'combo0'}.json`, wireVisual!);
+
+    // Explicit player removal owns and cleans the transient effect.
+    remote.remove(snapshot.playerId);
+    expect(remote.presentationDiagnostics().bladeTrails).toHaveLength(0);
+
+    // A fresh receiver must also expire the effect at the product lifetime.
+    const expiryScene = new THREE.Scene();
+    const expiryRemote = new RemotePlayers(expiryScene, 'pirate-fruit', () => 1_000);
+    expiryRemote.applyPresence(snapshot);
+    expiryRemote.update((finisher
+      ? BLADE_TRAIL_FINISHER_LIFETIME_SECONDS
+      : BLADE_TRAIL_LIFETIME_SECONDS) + 0.01);
+    expect(expiryRemote.presentationDiagnostics().bladeTrails).toHaveLength(0);
+    expiryRemote.dispose();
+
     remote.dispose();
     bridge.dispose();
+  });
+
+  it('cleans a visible blade trail when the receiver changes zone', () => {
+    const { scoped } = gameplaySwordAttack(0);
+    const remote = new RemotePlayers(new THREE.Scene(), 'pirate-fruit', () => 1_000);
+    remote.applyPresence({
+      playerId: 'remote-sword', name: 'QA', islandId: 'pirate-fruit',
+      x: 2, y: 0, z: 3, heading: 0, onBoat: false,
+      visual: sanitizeVisual(scoped.current())!,
+    });
+    expect(remote.presentationDiagnostics().bladeTrails).toHaveLength(1);
+    remote.setIsland('another-zone');
+    expect(remote.presentationDiagnostics().bladeTrails).toHaveLength(0);
+    remote.dispose();
   });
 });

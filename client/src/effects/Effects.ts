@@ -21,6 +21,16 @@ interface DamageNumber {
   maxLife: number;
 }
 
+export interface BladeTrailPresentationDiagnostic {
+  comboIndex: number;
+  finisher: boolean;
+  lifetimeMs: number;
+  visible: boolean;
+  overlayDepthTestDisabled: boolean;
+  bladeBase: { x: number; y: number; z: number } | null;
+  bladeTip: { x: number; y: number; z: number } | null;
+}
+
 /** visual handle ของลูกพลัง — PlayerCombat ขยับตำแหน่ง แต่ Effects เป็นเจ้าของ animation/material */
 export interface EnergyProjectileVisual {
   readonly root: THREE.Group;
@@ -38,6 +48,8 @@ export interface EnergyProjectileVisual {
 }
 
 export const SLASH_ARC_LENGTH = Math.PI * 0.85;
+export const BLADE_TRAIL_LIFETIME_SECONDS = 0.22;
+export const BLADE_TRAIL_FINISHER_LIFETIME_SECONDS = 0.3;
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -189,25 +201,43 @@ export class Effects {
     edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
 
     const glow = additiveMaterial(color, finisher ? 0.78 : 0.64);
+    // The ribbon is presentation-only and lasts for less than a third of a
+    // second. Render it as an overlay so the remote body/terrain cannot hide
+    // the whole strike before the observing player gets one painted frame.
+    glow.depthTest = false;
     const edgeColor = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.68);
     const edge = new THREE.LineBasicMaterial({
       color: edgeColor,
       transparent: true,
       opacity: 1,
       blending: THREE.AdditiveBlending,
+      depthTest: false,
       depthWrite: false,
       toneMapped: false,
     });
     const ribbon = new THREE.Mesh(ribbonGeometry, glow);
     const cuttingEdge = new THREE.Line(edgeGeometry, edge);
+    ribbon.name = 'effect:blade-trail:ribbon';
+    cuttingEdge.name = 'effect:blade-trail:edge';
+    ribbon.frustumCulled = false;
+    cuttingEdge.frustumCulled = false;
+    ribbon.renderOrder = 18;
+    cuttingEdge.renderOrder = 18;
     const root = new THREE.Group();
     root.name = 'effect:blade-trail';
     root.add(ribbon, cuttingEdge);
+    root.visible = true;
     root.renderOrder = 18;
+    root.userData.presentationKind = 'blade-trail';
+    root.userData.comboIndex = comboIndex;
+    root.userData.finisher = finisher;
     this.scene.add(root);
 
     const forward = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading));
-    this.track(root, finisher ? 0.3 : 0.22, [glow, edge], [ribbonGeometry, edgeGeometry], (_progress, remaining, dt) => {
+    const lifetime = finisher
+      ? BLADE_TRAIL_FINISHER_LIFETIME_SECONDS
+      : BLADE_TRAIL_LIFETIME_SECONDS;
+    this.track(root, lifetime, [glow, edge], [ribbonGeometry, edgeGeometry], (_progress, remaining, dt) => {
       glow.opacity = remaining * (finisher ? 0.78 : 0.64);
       edge.opacity = remaining * remaining;
       root.position.addScaledVector(forward, dt * (finisher ? 1.2 : 0.55));
@@ -387,6 +417,54 @@ export class Effects {
 
   clearOwner(owner: object): void {
     for (const effect of [...this.active]) if (effect.owner === owner) this.removeEffect(effect);
+  }
+
+  /** Credential-free read-only seam used by the two-account Pocket Browser acceptance. */
+  bladeTrailDiagnostics(): BladeTrailPresentationDiagnostic[] {
+    return this.active
+      .filter((effect) => effect.root.userData.presentationKind === 'blade-trail')
+      .map((effect) => {
+        const ribbon = effect.root.getObjectByName('effect:blade-trail:ribbon') as THREE.Mesh<THREE.BufferGeometry> | undefined;
+        const edge = effect.root.getObjectByName('effect:blade-trail:edge') as THREE.Line<THREE.BufferGeometry> | undefined;
+        const positions = ribbon?.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        let bladeBase: THREE.Vector3 | null = null;
+        let bladeTip: THREE.Vector3 | null = null;
+        if (ribbon && positions && positions.count >= 2) {
+          ribbon.updateWorldMatrix(true, false);
+          bladeBase = new THREE.Vector3()
+            .fromBufferAttribute(positions, positions.count - 2)
+            .applyMatrix4(ribbon.matrixWorld);
+          bladeTip = new THREE.Vector3()
+            .fromBufferAttribute(positions, positions.count - 1)
+            .applyMatrix4(ribbon.matrixWorld);
+        }
+        const hierarchyVisible = (object: THREE.Object3D | undefined): boolean => {
+          let current = object;
+          while (current) {
+            if (!current.visible) return false;
+            current = current.parent ?? undefined;
+          }
+          return Boolean(object);
+        };
+        const materials = [ribbon?.material, edge?.material]
+          .flatMap((material) => Array.isArray(material) ? material : material ? [material] : []);
+        const materialVisible = materials.length === 2 && materials.every((material) => {
+          const opacity = 'opacity' in material && typeof material.opacity === 'number'
+            ? material.opacity
+            : 1;
+          return material.visible && opacity > 0;
+        });
+        return {
+          comboIndex: Number(effect.root.userData.comboIndex ?? 0),
+          finisher: effect.root.userData.finisher === true,
+          lifetimeMs: Math.round(effect.maxLife * 1_000),
+          visible: hierarchyVisible(ribbon) && hierarchyVisible(edge) && materialVisible,
+          overlayDepthTestDisabled: materials.length === 2
+            && materials.every((material) => material.depthTest === false),
+          bladeBase: bladeBase ? { x: bladeBase.x, y: bladeBase.y, z: bladeBase.z } : null,
+          bladeTip: bladeTip ? { x: bladeTip.x, y: bladeTip.y, z: bladeTip.z } : null,
+        };
+      });
   }
 
   dispose(): void {
