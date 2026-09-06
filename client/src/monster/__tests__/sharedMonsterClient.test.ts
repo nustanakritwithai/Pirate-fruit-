@@ -196,6 +196,141 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     });
   });
 
+  it('replays an authoritative shared-monster hit once for owner and remote observers, then resets on zone change', () => {
+    const scene = new THREE.Scene();
+    const spawnHitSpark = vi.fn();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
+    client.applySnapshot('starter-island', [snapshot({ x: 0, z: 0 })]);
+    const delta = {
+      spawnId: 'starter-crab-1', x: 0, z: 0, heading: 0, hp: 44, state: 'stunned' as const,
+      damage: 26, hitReaction: { directionX: 0, directionZ: 1, strength: 0.82 },
+    };
+
+    client.applyDelta('starter-island', [delta]);
+    client.applyDelta('starter-island', [delta]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+    expect(spawnHitSpark.mock.calls[0]?.[0]).toMatchObject({ x: 0, y: 0.65, z: 0 });
+
+    expect(client.setIsland('mist-jungle')).toBe(true);
+    client.applySnapshot('mist-jungle', [snapshot({ spawnId: 'jungle-bandit-1', monsterId: 'jungle-bandit', islandId: 'mist-jungle', x: 0, z: 0, hp: 214, maxHp: 240 })]);
+    client.applyDelta('mist-jungle', [{ ...delta, spawnId: 'jungle-bandit-1', hp: 188, damage: 26 }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(2);
+
+    client.resetSession();
+    client.applyDelta('mist-jungle', [{ ...delta, spawnId: 'jungle-bandit-1', hp: 162, damage: 26 }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(3);
+  });
+
+  it('publishes and consumes presentation-only monster actors with sequence, despawn and zone guards', () => {
+    const sourceScene = new THREE.Scene();
+    const source = new SharedMonsterClient(sourceScene, 'starter-island', () => 0, () => 1_000);
+    source.applySnapshot('starter-island', [snapshot({ x: 3, z: 4, state: 'chase' })]);
+    const actors = source.getActors();
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({
+      actorId: 'monster:starter-crab-1', kind: 'monster', monsterType: 'crab', zone: 'starter-island',
+      lifecycle: 'active', locomotion: 'run', animation: { combatState: 'idle' },
+    });
+    expect(actors[0]).not.toHaveProperty('hp');
+    expect(actors[0]).not.toHaveProperty('damage');
+
+    const oversized = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000);
+    oversized.applyActors('starter-island', [{
+      ...actors[0]!,
+      presentation: {
+        events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })),
+        projectiles: [],
+      },
+    }]);
+    expect(oversized.count).toBe(0);
+
+    const tooManyProjectiles = {
+      ...actors[0]!,
+      presentation: {
+        events: [],
+        projectiles: Array.from({ length: 33 }, (_, index) => ({
+          id: `p-${index}`, position: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: 1 },
+          velocity: { x: 0, y: 0, z: 1 }, color: 0xffffff, scale: 1, elapsed: 0, lifeFraction: 1, remainingMs: 1000,
+        })),
+      },
+    };
+    oversized.applyActors('starter-island', [tooManyProjectiles]);
+    expect(oversized.count).toBe(0);
+
+    const remoteHits = vi.fn();
+    const remote = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
+    remote.applyActors('starter-island', [{
+      ...actors[0],
+      presentation: { events: [{ sequence: 1, kind: 'hit-spark', ageMs: 0, position: { x: 3, y: 0.65, z: 4 }, color: 0xfff1a8 }], projectiles: [] },
+    }]);
+    expect(remote.count).toBe(1);
+    expect(remoteHits).toHaveBeenCalledTimes(1);
+    remote.applyActors('starter-island', [{ ...actors[0], stateSequence: actors[0].stateSequence }]);
+    expect(remoteHits).toHaveBeenCalledTimes(1);
+
+    remote.applyActors('starter-island', [{ ...actors[0], lifecycle: 'despawn', stateSequence: actors[0].stateSequence + 1 }]);
+    expect(remote.count).toBe(0);
+    remote.applyActors('other-island', actors);
+    expect(remote.count).toBe(0);
+  });
+
+  it('retires stale monster generations and accepts a fresh generation', () => {
+    const spawnHitSpark = vi.fn();
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
+    const actor = {
+      actorId: 'monster:7', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 1, spawnSequence: 7, stateSequence: 1, lifecycle: 'active' as const,
+      pose: { x: 2, y: 1, z: 3, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'attack', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { projectiles: [], events: [{ sequence: 1, kind: 'hit-spark' as const, ageMs: 0, position: { x: 2, y: 1, z: 3 }, color: 0x74c8ff }] },
+    };
+    client.applyActors('starter-island', [actor]);
+    expect(client.count).toBe(1);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+
+    client.applyActors('starter-island', [{ ...actor, lifecycle: 'despawn', stateSequence: 2 }]);
+    client.applyActors('starter-island', [actor]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+    client.applyActors('starter-island', [{ ...actor, generation: 2, stateSequence: 1, presentation: { ...actor.presentation! } }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishes provider actors through the gameplay adapter without authority fields', () => {
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island');
+    client.setActorProvider((zone, generation) => [{
+      actorId: 'monster:provider-1', kind: 'monster', monsterType: 'crab', zone, generation,
+      spawnSequence: 1, stateSequence: 1, lifecycle: 'active', pose: { x: 0, y: 1, z: 0, dir: 0 },
+      locomotion: 'idle', animation: { combatState: 'attack', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [], projectiles: [] },
+    }]);
+    const actors = client.getActors();
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({ actorId: 'monster:provider-1', kind: 'monster', monsterType: 'crab', generation: 1 });
+    expect(actors[0]).not.toHaveProperty('hp');
+    expect(actors[0]).not.toHaveProperty('damage');
+  });
+
+  it('cleans actor state across reconnect and island changes without replaying the old generation', () => {
+    const hits = vi.fn();
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: hits });
+    const actor = {
+      actorId: 'monster:reconnect-1', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 1, spawnSequence: 1, stateSequence: 1, lifecycle: 'active' as const,
+      pose: { x: 1, y: 0, z: 1, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [{ sequence: 1, kind: 'hit-spark' as const, ageMs: 0, position: { x: 1, y: 0, z: 1 } }], projectiles: [] },
+    };
+    client.applyActors('starter-island', [actor]);
+    expect(client.count).toBe(1);
+    client.resetSession();
+    client.applyActors('starter-island', [{ ...actor, generation: 2, stateSequence: 1 }]);
+    expect(client.count).toBe(1);
+    expect(hits).toHaveBeenCalledTimes(2);
+    expect(client.setIsland('mist-jungle')).toBe(true);
+    client.applyActors('starter-island', [actor]);
+    expect(client.count).toBe(0);
+  });
+
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {
     const scene = new THREE.Scene();
     const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);

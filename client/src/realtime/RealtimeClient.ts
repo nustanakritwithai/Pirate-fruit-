@@ -46,6 +46,8 @@ export interface RealtimePresenceSnapshot {
   /** S14: รุ่นเรือที่ขับอยู่ (undefined = เดินเท้า) */
   boatId?: string;
   appearance?: import('@pirate-fruit/shared').RealtimeCharacterAppearance;
+  presentation?: import('@pirate-fruit/shared').RealtimePlayerPresentation;
+  visual?: import('@pirate-fruit/shared').RealtimePlayerVisual;
   locomotion?: 'idle' | 'walk' | 'run' | 'swim';
   animation?: import('@pirate-fruit/shared').RealtimePlayerAnimation;
 }
@@ -236,6 +238,8 @@ export class RealtimeClient {
         onBoat: message.onBoat,
         boatId: message.boatId,
         appearance: message.appearance,
+        presentation: message.presentation,
+        visual: message.visual,
         locomotion: message.locomotion,
         animation: message.animation,
       });
@@ -297,9 +301,12 @@ export class RealtimeClient {
     boatId?: string;
     locomotion?: 'idle' | 'walk' | 'run' | 'swim';
     animation?: import('@pirate-fruit/shared').RealtimePlayerAnimation;
-  }): void {
-    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return;
+    presentation?: import('@pirate-fruit/shared').RealtimePlayerPresentation;
+    visual?: import('@pirate-fruit/shared').RealtimePlayerVisual;
+  }): boolean {
+    if (this.socket?.readyState !== OPEN || !this.sawWelcome) return false;
     this.socket.send(JSON.stringify({ type: 'move', ...position }));
+    return true;
   }
 
   /** Ask the Server to reseed the current authoritative island/world state. */

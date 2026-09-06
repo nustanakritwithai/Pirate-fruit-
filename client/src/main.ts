@@ -56,7 +56,14 @@ import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
-import { SharedMonsterClient, resolveSharedMonsterPlayerDamage } from './monster/SharedMonsterClient';
+import { ScopedVisualEffects } from './realtime/ScopedVisualEffects';
+import { shouldAcknowledgeDirectVisual, visualForDirectRealtime } from './realtime/VisualTransport';
+import {
+  PocketMonsterParentPresence,
+  createBrowserParentPresenceHost,
+  resolvePocketMonsterParentOrigin,
+} from './realtime/PocketMonsterParentPresence';
+import { SharedMonsterClient, resolveSharedMonsterPlayerDamage, type SharedMonsterActor } from './monster/SharedMonsterClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -184,6 +191,11 @@ async function main(): Promise<void> {
 
   const portalTargetOrigin = new URLSearchParams(window.location.search).get('parentOrigin')
     || window.location.origin;
+  const pocketMonsterParentOrigin = resolvePocketMonsterParentOrigin(
+    window.location.search,
+    window.location.origin,
+    window.parent !== window,
+  );
   const pocketMonsterPortal = new WorldPortal(
     game.scene,
     controller,
@@ -254,6 +266,7 @@ async function main(): Promise<void> {
   );
   const islandManager = new IslandManager(controller, spawnManager, world.islandDetailRoots);
   const effects = new Effects(game.scene);
+  const scopedCombatEffects = new ScopedVisualEffects(effects);
   let playerCombat: PlayerCombat | null = null;
   const questManager = new QuestManager(progression, () =>
     playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
@@ -433,13 +446,48 @@ async function main(): Promise<void> {
   const multiplayerEnabled = import.meta.env.VITE_ENABLE_MULTIPLAYER === 'true'
     || import.meta.env.VITE_ENABLE_MULTIPLAYER === '1';
   const runtimeFeatures = await fetchRuntimeFeatures(resolveRemoteApiUrl());
-  const remotePlayers = multiplayerEnabled
+  const remotePlayers = (multiplayerEnabled || pocketMonsterParentOrigin !== null)
     ? new RemotePlayers(game.scene, islandManager.activeIsland, () => Date.now(), {
       focus: () => controller.position,
       tier: graphics.tier,
     })
     : null;
   if (remotePlayers) game.add(remotePlayers);
+  // Read-only and credential-free: the parent Browser acceptance can inspect
+  // whether a relayed transient effect is actually drawable inside this iframe.
+  Object.defineProperty(window, '__pocketRemotePresentation', {
+    configurable: true,
+    value: Object.freeze({
+      snapshot: () => remotePlayers?.presentationDiagnostics() ?? { bladeTrails: [] },
+    }),
+  });
+  const pocketMonsterPresence = pocketMonsterParentOrigin && remotePlayers
+    ? new PocketMonsterParentPresence({
+      targetOrigin: pocketMonsterParentOrigin,
+      host: createBrowserParentPresenceHost(),
+      remotePlayers,
+      getPosition: () => controller.position,
+      getHeading: () => controller.heading,
+      getIslandId: () => islandManager.activeIsland,
+      heightAt: (x, z) => world.collision.heightAt(x, z),
+      getActionSnapshot: () => player.sampleActionSnapshot(),
+      getPresentation: () => {
+        const item = playerCombat?.activeItem;
+        return {
+          schemaVersion: 1,
+          avatarId: 'pirate-v1',
+          appearanceId: 'player-orange',
+          clothingIds: [],
+          equipmentIds: Array.from(new Set(playerCombat?.masteryItems.map((entry) => entry.itemId).filter((id): id is string => Boolean(id)) ?? [])),
+          activeItem: item ? { category: item.category, itemId: item.itemId } : null,
+        };
+      },
+      getVisual: () => scopedCombatEffects.current(),
+      acknowledgeVisual: (count) => { scopedCombatEffects.acknowledgeEvents(count); },
+      onIslandChange: () => scopedCombatEffects.resetSession(),
+    })
+    : null;
+  pocketMonsterPresence?.start();
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
@@ -464,6 +512,8 @@ async function main(): Promise<void> {
         game.scene,
         islandManager.activeIsland,
         (x, z) => world.collision.heightAt(x, z),
+        undefined,
+        effects,
       )
     : null;
   if (sharedMonsters) {
@@ -529,7 +579,10 @@ async function main(): Promise<void> {
       tradeManager.living.setServerReadOnly(true);
       refreshEconomyViews();
     },
-    onResync: resyncAuthoritativeState,
+    onResync: () => {
+      sharedMonsters?.resetSession();
+      resyncAuthoritativeState();
+    },
     onAnnouncement: (message, level) => {
       economyHud.notifyStatus(message, level === 'warning');
       audio.play(level === 'warning' ? 'ui.reject' : 'ui.notification');
@@ -768,7 +821,9 @@ async function main(): Promise<void> {
       remotePlayers?.setIsland(islandManager.activeIsland);
       const sharedIslandChanged = sharedMonsters?.setIsland(islandManager.activeIsland) ?? false;
       if (!realtime.connected) return;
-      if (sharedIslandChanged) realtime.requestResync();
+      if (sharedIslandChanged) {
+        realtime.requestResync();
+      }
       const position = controller.position;
       const onBoat = boatManager.riderState !== 'off';
       const locomotion = controller.moveState.swimming
@@ -780,7 +835,21 @@ async function main(): Promise<void> {
       const combatState = playerCombat?.state ?? 'idle';
       const sendAnimation = presenceTick % 2 === 0 || combatState !== 'idle'
         || controller.moveState.dashing || !controller.moveState.onGround;
-      realtime.sendMove({
+      const activeItem = playerCombat?.activeItem;
+      scopedCombatEffects.setShield({
+        active: combatState === 'blocking',
+        opacity: combatState === 'blocking' ? 0.1 + 0.18 * (playerCombat?.guardFraction ?? 1) : 0,
+      });
+      const presentation = {
+        schemaVersion: 1 as const,
+        avatarId: 'pirate-v1' as const,
+        appearanceId: 'player-orange' as const,
+        clothingIds: [] as string[],
+        equipmentIds: Array.from(new Set(playerCombat?.masteryItems.map((item) => item.itemId).filter((id): id is string => Boolean(id)) ?? [])),
+        activeItem: activeItem ? { category: activeItem.category, itemId: activeItem.itemId } : null,
+      };
+      const visual = scopedCombatEffects.current();
+      const sent = realtime.sendMove({
         islandId: islandManager.activeIsland,
         x: position.x,
         y: position.y,
@@ -788,6 +857,8 @@ async function main(): Promise<void> {
         heading: controller.heading,
         onBoat,
         boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
+        presentation,
+        visual: visualForDirectRealtime(Boolean(pocketMonsterPresence), visual),
         locomotion,
         animation: sendAnimation ? {
           combatState,
@@ -806,6 +877,9 @@ async function main(): Promise<void> {
           skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
         } : undefined,
       });
+      if (shouldAcknowledgeDirectVisual(Boolean(pocketMonsterPresence), sent)) {
+        scopedCombatEffects.acknowledgeEvents(visual.events.length);
+      }
     }, 100);
   }
   game.add({
@@ -1012,7 +1086,7 @@ async function main(): Promise<void> {
     input,
     controller,
     monsterManager,
-    effects,
+    scopedCombatEffects,
     touchControls,
     itemInventory.loadout,
     () => itemInventory.save(),
@@ -1020,6 +1094,7 @@ async function main(): Promise<void> {
     navalCombat,
     () => camera.yaw,
   );
+  sharedMonsters?.setActorProvider((zone, generation) => monsterManager.getPresentationActors(zone, generation));
   controller.setDevilFruitUser(playerCombat.hasDevilFruit);
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',
@@ -1120,6 +1195,7 @@ async function main(): Promise<void> {
   (window as unknown as { __boat?: BoatManager }).__boat = boatManager;
   (window as unknown as { __naval?: NavalCombat }).__naval = navalCombat;
   (window as unknown as { __monsters?: MonsterManager }).__monsters = monsterManager;
+  (window as unknown as { __sharedMonsterActors?: () => SharedMonsterActor[] }).__sharedMonsterActors = () => sharedMonsters?.getActors() ?? [];
   const equipmentVisuals = new EquipmentVisuals(
     player.group,
     () => playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
@@ -1243,6 +1319,7 @@ async function main(): Promise<void> {
   game.add(player);
   game.add(camera);
   game.add(playerCombat);
+  if (pocketMonsterPresence) game.add(pocketMonsterPresence);
   game.add(hotkeyManager);
   game.add(equipmentVisuals);
   game.add(effects);
@@ -1272,6 +1349,7 @@ async function main(): Promise<void> {
   // Local mirrors are updated first, so a browser that cannot finish network I/O still
   // retains the latest recoverable save.
   window.addEventListener('pagehide', () => {
+    pocketMonsterPresence?.dispose();
     saveSystem.save();
     progression.save();
     itemInventory.save();

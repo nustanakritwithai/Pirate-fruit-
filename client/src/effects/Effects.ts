@@ -6,6 +6,7 @@ import {
 } from '../art/SpellFxAssetLibrary';
 
 interface ActiveEffect {
+  owner?: object;
   root: THREE.Object3D;
   life: number;
   maxLife: number;
@@ -18,6 +19,16 @@ interface DamageNumber {
   sprite: THREE.Sprite;
   life: number;
   maxLife: number;
+}
+
+export interface BladeTrailPresentationDiagnostic {
+  comboIndex: number;
+  finisher: boolean;
+  lifetimeMs: number;
+  visible: boolean;
+  overlayDepthTestDisabled: boolean;
+  bladeBase: { x: number; y: number; z: number } | null;
+  bladeTip: { x: number; y: number; z: number } | null;
 }
 
 /** visual handle ของลูกพลัง — PlayerCombat ขยับตำแหน่ง แต่ Effects เป็นเจ้าของ animation/material */
@@ -37,6 +48,8 @@ export interface EnergyProjectileVisual {
 }
 
 export const SLASH_ARC_LENGTH = Math.PI * 0.85;
+export const BLADE_TRAIL_LIFETIME_SECONDS = 0.22;
+export const BLADE_TRAIL_FINISHER_LIFETIME_SECONDS = 0.3;
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -83,6 +96,7 @@ export function getForwardArcRotation(
 
 /** เอฟเฟกต์การต่อสู้แบบ procedural และงบต่ำสำหรับมือถือ */
 export class Effects {
+  private currentOwner: object | undefined;
   private readonly active: ActiveEffect[] = [];
   private readonly numbers: DamageNumber[] = [];
   private readonly slashGeo = new THREE.RingGeometry(0.5, 1.5, 24, 1, 0, SLASH_ARC_LENGTH);
@@ -187,25 +201,43 @@ export class Effects {
     edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
 
     const glow = additiveMaterial(color, finisher ? 0.78 : 0.64);
+    // The ribbon is presentation-only and lasts for less than a third of a
+    // second. Render it as an overlay so the remote body/terrain cannot hide
+    // the whole strike before the observing player gets one painted frame.
+    glow.depthTest = false;
     const edgeColor = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.68);
     const edge = new THREE.LineBasicMaterial({
       color: edgeColor,
       transparent: true,
       opacity: 1,
       blending: THREE.AdditiveBlending,
+      depthTest: false,
       depthWrite: false,
       toneMapped: false,
     });
     const ribbon = new THREE.Mesh(ribbonGeometry, glow);
     const cuttingEdge = new THREE.Line(edgeGeometry, edge);
+    ribbon.name = 'effect:blade-trail:ribbon';
+    cuttingEdge.name = 'effect:blade-trail:edge';
+    ribbon.frustumCulled = false;
+    cuttingEdge.frustumCulled = false;
+    ribbon.renderOrder = 18;
+    cuttingEdge.renderOrder = 18;
     const root = new THREE.Group();
     root.name = 'effect:blade-trail';
     root.add(ribbon, cuttingEdge);
+    root.visible = true;
     root.renderOrder = 18;
+    root.userData.presentationKind = 'blade-trail';
+    root.userData.comboIndex = comboIndex;
+    root.userData.finisher = finisher;
     this.scene.add(root);
 
     const forward = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading));
-    this.track(root, finisher ? 0.3 : 0.22, [glow, edge], [ribbonGeometry, edgeGeometry], (_progress, remaining, dt) => {
+    const lifetime = finisher
+      ? BLADE_TRAIL_FINISHER_LIFETIME_SECONDS
+      : BLADE_TRAIL_LIFETIME_SECONDS;
+    this.track(root, lifetime, [glow, edge], [ribbonGeometry, edgeGeometry], (_progress, remaining, dt) => {
       glow.opacity = remaining * (finisher ? 0.78 : 0.64);
       edge.opacity = remaining * remaining;
       root.position.addScaledVector(forward, dt * (finisher ? 1.2 : 0.55));
@@ -272,6 +304,7 @@ export class Effects {
     direction: THREE.Vector3,
     color = 0x74e8ff,
     scale = 1,
+    _lifetimeMs = 6_000,
   ): EnergyProjectileVisual {
     const normalizedDirection = direction.clone().normalize();
     const coreMaterial = additiveMaterial(new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.48), 0.98);
@@ -318,7 +351,7 @@ export class Effects {
   }
 
   /** อัปเดต animation ของลูกพลังหลัง PlayerCombat ขยับตำแหน่งแล้ว */
-  updateEnergyProjectile(visual: EnergyProjectileVisual, dt: number, lifeFraction: number): void {
+  updateEnergyProjectile(visual: EnergyProjectileVisual, dt: number, lifeFraction: number, _metadata?: { elapsed?: number; remainingMs?: number; direction?: THREE.Vector3 }): void {
     visual.elapsed += dt;
     visual.trailTimer += dt;
     visual.core.rotation.x += dt * 7.2;
@@ -357,10 +390,91 @@ export class Effects {
 
   /** ลบ visual/material ของลูกพลังและสร้าง burst สุดท้าย */
   destroyEnergyProjectile(visual: EnergyProjectileVisual, burstScale = 0.8): void {
+    this.removeEnergyProjectile(visual);
+    this.spawnEnergyImpact(visual.root.position, visual.color, visual.scale * burstScale);
+  }
+
+  /** ออกจากโลกหรือข้อมูลหมดอายุไม่ใช่การชน จึงล้างโดยไม่มี burst */
+  removeEnergyProjectile(visual: EnergyProjectileVisual): void {
     this.scene.remove(visual.root);
     for (const material of visual.materials) material.dispose();
     visual.assetMaterials?.forEach((material) => material.dispose());
-    this.spawnEnergyImpact(visual.root.position, visual.color, visual.scale * burstScale);
+  }
+
+  /** ใช้ phase เดียวกับ local โดยไม่สร้าง trail ย้อนหลังเมื่อเพิ่งเห็นลูกพลัง */
+  seekEnergyProjectile(visual: EnergyProjectileVisual, elapsed: number, lifeFraction: number): void {
+    const delta = elapsed - visual.elapsed;
+    visual.trailTimer = (elapsed % 0.065) - delta;
+    this.updateEnergyProjectile(visual, delta, lifeFraction);
+  }
+
+  /** เก็บเจ้าของของเอฟเฟกต์เพื่อให้ leave/zone change ล้างได้ตรงคน */
+  replayForOwner(owner: object, emit: () => void): void {
+    const previousOwner = this.currentOwner;
+    this.currentOwner = owner;
+    try { emit(); } finally { this.currentOwner = previousOwner; }
+  }
+
+  clearOwner(owner: object): void {
+    for (const effect of [...this.active]) if (effect.owner === owner) this.removeEffect(effect);
+  }
+
+  /** Credential-free read-only seam used by the two-account Pocket Browser acceptance. */
+  bladeTrailDiagnostics(): BladeTrailPresentationDiagnostic[] {
+    return this.active
+      .filter((effect) => effect.root.userData.presentationKind === 'blade-trail')
+      .map((effect) => {
+        const ribbon = effect.root.getObjectByName('effect:blade-trail:ribbon') as THREE.Mesh<THREE.BufferGeometry> | undefined;
+        const edge = effect.root.getObjectByName('effect:blade-trail:edge') as THREE.Line<THREE.BufferGeometry> | undefined;
+        const positions = ribbon?.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        let bladeBase: THREE.Vector3 | null = null;
+        let bladeTip: THREE.Vector3 | null = null;
+        if (ribbon && positions && positions.count >= 2) {
+          ribbon.updateWorldMatrix(true, false);
+          bladeBase = new THREE.Vector3()
+            .fromBufferAttribute(positions, positions.count - 2)
+            .applyMatrix4(ribbon.matrixWorld);
+          bladeTip = new THREE.Vector3()
+            .fromBufferAttribute(positions, positions.count - 1)
+            .applyMatrix4(ribbon.matrixWorld);
+        }
+        const hierarchyVisible = (object: THREE.Object3D | undefined): boolean => {
+          let current = object;
+          while (current) {
+            if (!current.visible) return false;
+            current = current.parent ?? undefined;
+          }
+          return Boolean(object);
+        };
+        const materials = [ribbon?.material, edge?.material]
+          .flatMap((material) => Array.isArray(material) ? material : material ? [material] : []);
+        const materialVisible = materials.length === 2 && materials.every((material) => {
+          const opacity = 'opacity' in material && typeof material.opacity === 'number'
+            ? material.opacity
+            : 1;
+          return material.visible && opacity > 0;
+        });
+        return {
+          comboIndex: Number(effect.root.userData.comboIndex ?? 0),
+          finisher: effect.root.userData.finisher === true,
+          lifetimeMs: Math.round(effect.maxLife * 1_000),
+          visible: hierarchyVisible(ribbon) && hierarchyVisible(edge) && materialVisible,
+          overlayDepthTestDisabled: materials.length === 2
+            && materials.every((material) => material.depthTest === false),
+          bladeBase: bladeBase ? { x: bladeBase.x, y: bladeBase.y, z: bladeBase.z } : null,
+          bladeTip: bladeTip ? { x: bladeTip.x, y: bladeTip.y, z: bladeTip.z } : null,
+        };
+      });
+  }
+
+  dispose(): void {
+    for (const effect of [...this.active]) this.removeEffect(effect);
+    for (const number of this.numbers.splice(0)) {
+      this.scene.remove(number.sprite);
+      number.sprite.material.map?.dispose();
+      number.sprite.material.dispose();
+    }
+    for (const value of Object.values(this)) if (value instanceof THREE.BufferGeometry) value.dispose();
   }
 
   /** วงพลังที่หด/ดีดออกจากมือในเฟรมปล่อยสกิล */
@@ -521,16 +635,7 @@ export class Effects {
   update(dt: number): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const effect = this.active[i];
-      effect.life -= dt;
-      const remaining = THREE.MathUtils.clamp(effect.life / effect.maxLife, 0, 1);
-      const progress = 1 - remaining;
-      effect.animate(progress, remaining, dt);
-      if (effect.life <= 0) {
-        this.scene.remove(effect.root);
-        for (const material of effect.materials) material.dispose();
-        for (const geometry of effect.geometries) geometry.dispose();
-        this.active.splice(i, 1);
-      }
+      this.advanceEffect(effect, dt, i);
     }
 
     for (let i = this.numbers.length - 1; i >= 0; i--) {
@@ -548,6 +653,21 @@ export class Effects {
     }
   }
 
+  private advanceEffect(effect: ActiveEffect, dt: number, index: number): void {
+    effect.life -= dt;
+    const remaining = THREE.MathUtils.clamp(effect.life / effect.maxLife, 0, 1);
+    effect.animate(1 - remaining, remaining, dt);
+    if (effect.life <= 0) this.removeEffect(effect, index);
+  }
+
+  private removeEffect(effect: ActiveEffect, knownIndex?: number): void {
+    this.scene.remove(effect.root);
+    for (const material of effect.materials) material.dispose();
+    for (const geometry of effect.geometries) geometry.dispose();
+    const index = knownIndex ?? this.active.indexOf(effect);
+    if (index >= 0) this.active.splice(index, 1);
+  }
+
   private track(
     root: THREE.Object3D,
     maxLife: number,
@@ -555,7 +675,7 @@ export class Effects {
     geometries: THREE.BufferGeometry[],
     animate: ActiveEffect['animate'],
   ): void {
-    this.active.push({ root, life: maxLife, maxLife, materials, geometries, animate });
+    this.active.push({ root, life: maxLife, maxLife, materials, geometries, animate, owner: this.currentOwner });
   }
 
   private spawnMuzzleFlash(
