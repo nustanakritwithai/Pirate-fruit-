@@ -8,6 +8,10 @@
 
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
+import {
+  classifyBrowserMovementSample,
+  redactDiagnosticText,
+} from './browser-smoke-diagnostics.mjs';
 
 const GAME_URL = process.env.SMOKE_GAME_URL ?? 'http://127.0.0.1:4173';
 const API_URL = process.env.SMOKE_API_URL ?? 'http://127.0.0.1:10000';
@@ -78,6 +82,16 @@ const browser = await chromium.launch({
   executablePath: process.env.SMOKE_CHROMIUM || undefined,
 });
 const page = await browser.newPage({ viewport: { width: 900, height: 480 } });
+const browserLifecycle = {
+  browserDisconnected: false,
+  pageClosed: false,
+  pageCrashed: false,
+  webSocketsClosed: 0,
+  webSocketErrors: [],
+};
+browser.on('disconnected', () => { browserLifecycle.browserDisconnected = true; });
+page.on('close', () => { browserLifecycle.pageClosed = true; });
+page.on('crash', () => { browserLifecycle.pageCrashed = true; });
 // จับ frame ภายใน browser process โดยตรง: Playwright page.on('websocket') อาจส่ง event
 // ผ่าน CDP ไม่ทันเมื่อ world delta ไหลต่อเนื่อง ทำให้ smoke false-negative ทั้งที่เกมรับแล้ว
 await page.addInitScript(() => {
@@ -130,6 +144,11 @@ const wsEvents = {
 };
 page.on('websocket', (socket) => {
   wsEvents.opened += 1;
+  socket.on('close', () => { browserLifecycle.webSocketsClosed += 1; });
+  socket.on('socketerror', (error) => {
+    browserLifecycle.webSocketErrors.push(redactDiagnosticText(error));
+    if (browserLifecycle.webSocketErrors.length > 5) browserLifecycle.webSocketErrors.shift();
+  });
   socket.on('framereceived', (frame) => {
     try {
       const message = JSON.parse(String(frame.payload));
@@ -148,7 +167,7 @@ page.on('websocket', (socket) => {
     } catch { /* ไม่ใช่ JSON — ข้าม */ }
   });
 });
-page.on('pageerror', (error) => pageErrors.push(String(error).slice(0, 200)));
+page.on('pageerror', (error) => pageErrors.push(redactDiagnosticText(error)));
 page.on('response', (response) => {
   if (response.url().startsWith(API_URL)) {
     apiCalls.push(`${response.request().method()} ${new URL(response.url()).pathname} -> ${response.status()}`);
@@ -505,7 +524,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       }
     } catch { /* ไม่ใช่ JSON */ }
   });
-  peer.on('error', (err) => { peerDiag.error = String(err).slice(0, 200); });
+  peer.on('error', (err) => { peerDiag.error = redactDiagnosticText(err); });
   peer.on('unexpected-response', (_req, res) => { peerDiag.error = `unexpected-response ${res.statusCode}`; });
   peer.on('close', (code) => { peerDiag.closed = code; });
 
@@ -551,7 +570,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
       if (out.sent) pumpDiag.sent += 1;
       browserPresence = out.presence;
     }
-  }).catch((err) => { pumpDiag.error = String(err).slice(0, 200); });
+  }).catch((err) => { pumpDiag.error = redactDiagnosticText(err); });
   // Make the peer's first authoritative move deterministic. A first move seeds
   // both directions, but only when the browser already has same-island presence.
   await peerOpen;
@@ -586,46 +605,108 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   // Move the smoke actors through the same bounded movement path a legitimate
   // client can take. The old smoke teleported directly to combat coordinates,
   // which is now correctly clamped by movement authority.
-  const walkBrowserTo = async (targetX, targetZ) => {
-    let current = await page.evaluate(() => {
-      const controller = window.__combat?.controller;
-      return controller
-        ? { x: controller.position.x, y: controller.position.y, z: controller.position.z }
-        : null;
-    });
-    if (!current) fail('browser movement fixture could not resolve the controller');
+  const walkBrowserTo = async (targetX, targetZ, phase) => {
+    let current = null;
+    let reconnectSamples = 0;
+    let lastAvailability = null;
     const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline && Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
-      const result = await page.evaluate(({ x, z }) => {
-        const rt = window.__realtime;
-        const controller = window.__combat?.controller;
-        if (!rt?.connected || !controller) return null;
-        const dx = x - controller.position.x;
-        const dz = z - controller.position.z;
-        const distance = Math.hypot(dx, dz);
-        if (distance <= 0.1) {
-          return { x: controller.position.x, y: controller.position.y, z: controller.position.z };
-        }
-        const step = Math.min(6, distance);
-        const nextX = controller.position.x + dx / distance * step;
-        const nextZ = controller.position.z + dz / distance * step;
-        controller.teleport(nextX, controller.position.y, nextZ);
-        rt.sendMove({
-          islandId: 'starter-island',
-          x: nextX,
-          y: controller.position.y,
-          z: nextZ,
-          heading: controller.heading,
-          onBoat: false,
+    while (Date.now() < deadline) {
+      let sample;
+      try {
+        sample = await page.evaluate(({ x, z }) => {
+          const rt = window.__realtime;
+          const controller = window.__combat?.controller;
+          const base = {
+            controllerPresent: Boolean(controller),
+            realtimePresent: Boolean(rt),
+            realtimeConnected: Boolean(rt?.connected),
+            documentVisibility: document.visibilityState,
+            position: controller
+              ? { x: controller.position.x, y: controller.position.y, z: controller.position.z }
+              : null,
+          };
+          if (!rt?.connected || !controller) return base;
+          const dx = x - controller.position.x;
+          const dz = z - controller.position.z;
+          const distance = Math.hypot(dx, dz);
+          if (distance <= 0.1) {
+            return { ...base, sendAccepted: true };
+          }
+          const step = Math.min(6, distance);
+          const nextX = controller.position.x + dx / distance * step;
+          const nextZ = controller.position.z + dz / distance * step;
+          const sendAccepted = rt.sendMove({
+            islandId: 'starter-island',
+            x: nextX,
+            y: controller.position.y,
+            z: nextZ,
+            heading: controller.heading,
+            onBoat: false,
+          });
+          if (!sendAccepted) return { ...base, sendAccepted: false };
+          controller.teleport(nextX, controller.position.y, nextZ);
+          return {
+            ...base,
+            sendAccepted: true,
+            position: { x: nextX, y: controller.position.y, z: nextZ },
+          };
+        }, { x: targetX, z: targetZ });
+      } catch (error) {
+        fail('browser page became unavailable while walking an authority fixture', {
+          phase,
+          target: { x: targetX, z: targetZ },
+          current,
+          error: redactDiagnosticText(error),
+          lifecycle: {
+            ...browserLifecycle,
+            browserConnected: browser.isConnected(),
+            pageClosed: page.isClosed(),
+          },
+          pageErrors: pageErrors.slice(-5),
         });
-        return { x: nextX, y: controller.position.y, z: nextZ };
-      }, { x: targetX, z: targetZ });
-      if (!result) fail('browser disconnected while walking the PvP smoke fixture', { current });
-      current = result;
+      }
+      lastAvailability = classifyBrowserMovementSample(sample);
+      if (lastAvailability.state === 'terminal') {
+        fail('browser movement fixture lost required gameplay state', {
+          phase,
+          reason: lastAvailability.reason,
+          target: { x: targetX, z: targetZ },
+          sample,
+          lifecycle: {
+            ...browserLifecycle,
+            browserConnected: browser.isConnected(),
+            pageClosed: page.isClosed(),
+          },
+          pageErrors: pageErrors.slice(-5),
+        });
+      }
+      if (lastAvailability.state === 'retry') {
+        reconnectSamples += 1;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        continue;
+      }
+      current = sample.position;
+      if (Math.hypot(targetX - current.x, targetZ - current.z) <= 0.1) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    if (Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
-      fail('browser movement fixture did not reach its target', { current, targetX, targetZ });
+    if (!current || Math.hypot(targetX - current.x, targetZ - current.z) > 0.1) {
+      fail('browser movement fixture did not reach its target', {
+        phase,
+        current,
+        target: { x: targetX, z: targetZ },
+        reconnectSamples,
+        lastAvailability,
+        lifecycle: {
+          ...browserLifecycle,
+          browserConnected: browser.isConnected(),
+          pageClosed: page.isClosed(),
+        },
+        websocket: {
+          opened: wsEvents.opened,
+          framesTail: wsEvents.frames.slice(-8),
+        },
+        pageErrors: pageErrors.slice(-5),
+      });
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   };
@@ -664,7 +745,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     // Repeat these authoritative positions because the live gameplay loop may publish
     // the headless avatar's visual spawn position between smoke attempts.
     await Promise.all([
-      walkBrowserTo(30, 8),
+      walkBrowserTo(30, 8, 'pvp'),
       walkPeerTo(31, 8),
     ]);
     peerY = 0;
@@ -710,7 +791,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
   };
   if (process.env.SMOKE_EXPECT_WORLD_MONSTERS === 'true') {
     const spawnId = 'starter-crab-1';
-    await walkBrowserTo(22, -4);
+    await walkBrowserTo(22, -4, 'shared-world-monster');
     const peerSawDamage = () => peerDiag.worldDeltas.some((d) => d.spawnId === spawnId && d.hp < 70);
     const peerSawDead = () => peerDiag.worldDead.includes(spawnId);
     const deadline = Date.now() + 20_000;
@@ -761,7 +842,7 @@ if (process.env.SMOKE_EXPECT_MULTIPLAYER === 'true') {
     boatDiag.starterBoatAcquired = await page.evaluate(
       () => window.__boat?.selectedBoatId === 'training-dinghy',
     );
-    await walkBrowserTo(4.2, -43);
+    await walkBrowserTo(4.2, -43, 'boat-world');
     boatDiag.intentId = await page.evaluate(() => {
       const rt = window.__realtime;
       rt?.sendMove({
