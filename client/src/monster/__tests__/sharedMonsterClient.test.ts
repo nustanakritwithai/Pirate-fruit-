@@ -196,6 +196,76 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     });
   });
 
+  it('replays an authoritative shared-monster hit once for owner and remote observers, then resets on zone change', () => {
+    const scene = new THREE.Scene();
+    const spawnHitSpark = vi.fn();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
+    client.applySnapshot('starter-island', [snapshot({ x: 0, z: 0 })]);
+    const delta = {
+      spawnId: 'starter-crab-1', x: 0, z: 0, heading: 0, hp: 44, state: 'stunned' as const,
+      damage: 26, hitReaction: { directionX: 0, directionZ: 1, strength: 0.82 },
+    };
+
+    client.applyDelta('starter-island', [delta]);
+    client.applyDelta('starter-island', [delta]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+    expect(spawnHitSpark.mock.calls[0]?.[0]).toMatchObject({ x: 0, y: 0.65, z: 0 });
+
+    expect(client.setIsland('mist-jungle')).toBe(true);
+    client.applySnapshot('mist-jungle', [snapshot({ spawnId: 'jungle-bandit-1', monsterId: 'jungle-bandit', islandId: 'mist-jungle', x: 0, z: 0, hp: 214, maxHp: 240 })]);
+    client.applyDelta('mist-jungle', [{ ...delta, spawnId: 'jungle-bandit-1', hp: 188, damage: 26 }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(2);
+
+    client.resetSession();
+    client.applyDelta('mist-jungle', [{ ...delta, spawnId: 'jungle-bandit-1', hp: 162, damage: 26 }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(3);
+  });
+
+  it('publishes and consumes presentation-only actors with sequence, visual, despawn and zone guards', () => {
+    const sourceScene = new THREE.Scene();
+    const source = new SharedMonsterClient(sourceScene, 'starter-island', () => 0, () => 1_000);
+    source.applySnapshot('starter-island', [snapshot({ x: 3, z: 4, state: 'chase' })]);
+    const actors = source.getActors();
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({
+      actorId: 'monster:starter-crab-1', kind: 'monster', type: 'crab', zone: 'starter-island',
+      lifecycle: 'active', locomotion: 'run', animation: { state: 'chase' },
+    });
+    expect(actors[0]).not.toHaveProperty('hp');
+    expect(actors[0]).not.toHaveProperty('damage');
+
+    const oversized = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000);
+    oversized.applyActors('starter-island', [{
+      ...actors[0]!,
+      visual: {
+        schemaVersion: 1, sessionId: 'oversized', stateSequence: 1,
+        events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })),
+        projectiles: [],
+      },
+    }]);
+    expect(oversized.count).toBe(0);
+
+    const remoteHits = vi.fn();
+    const remote = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
+    remote.applyActors('starter-island', [{
+      ...actors[0],
+      visual: {
+        schemaVersion: 1, sessionId: 'actor-session', stateSequence: 1,
+        events: [{ sequence: 1, kind: 'hit-spark', ageMs: 0, position: { x: 3, y: 0.65, z: 4 }, color: 0xfff1a8 }],
+        projectiles: [],
+      },
+    }]);
+    expect(remote.count).toBe(1);
+    expect(remoteHits).toHaveBeenCalledTimes(1);
+    remote.applyActors('starter-island', [{ ...actors[0], stateSequence: actors[0].stateSequence }]);
+    expect(remoteHits).toHaveBeenCalledTimes(1);
+
+    remote.applyActors('starter-island', [{ ...actors[0], lifecycle: 'despawn', stateSequence: actors[0].stateSequence + 1 }]);
+    expect(remote.count).toBe(0);
+    remote.applyActors('other-island', actors);
+    expect(remote.count).toBe(0);
+  });
+
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {
     const scene = new THREE.Scene();
     const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);

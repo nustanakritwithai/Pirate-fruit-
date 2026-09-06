@@ -10,12 +10,14 @@ import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
 import { MONSTER_TYPES } from './MonsterData';
 import { Monster, type MonsterState } from './Monster';
+import type { Effects } from '../effects/Effects';
 import {
   isWorldSafeZone,
   type WorldMonsterAttack,
   type WorldMonsterSnapshot,
   type WorldMonsterDelta,
   type WorldMonsterState,
+  type RealtimePlayerVisual,
 } from '@pirate-fruit/shared';
 
 const LERP_PER_SECOND = 8;
@@ -34,12 +36,38 @@ interface SharedMonster {
   maxHp: number;
   state: WorldMonsterState;
   monsterId: string;
+  spawnSequence: number;
+  stateSequence: number;
 }
 
 interface PendingMonsterAttack {
   attack: WorldMonsterAttack;
   hitAt: number;
 }
+
+export type SharedMonsterActorLifecycle = 'spawn' | 'active' | 'despawn';
+export type SharedMonsterActorLocomotion = 'idle' | 'walk' | 'run';
+
+/** Presentation-only actor envelope. Authority fields (HP, damage, target) never enter it. */
+export interface SharedMonsterActor {
+  actorId: string;
+  kind: 'monster' | 'summon';
+  owner?: string;
+  type: string;
+  zone: string;
+  generation: number;
+  spawnSequence: number;
+  stateSequence: number;
+  lifecycle: SharedMonsterActorLifecycle;
+  pose: { x: number; y: number; z: number; heading: number };
+  locomotion: SharedMonsterActorLocomotion;
+  animation: { state: WorldMonsterState; action?: string };
+  visual?: RealtimePlayerVisual;
+}
+
+export const SHARED_MONSTER_ACTOR_LIMIT = 128;
+export const SHARED_MONSTER_ACTOR_EVENT_LIMIT = 32;
+export const SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT = 64;
 
 function renderState(state: WorldMonsterState): MonsterState {
   if (state === 'dead') return 'dead';
@@ -91,6 +119,13 @@ export class SharedMonsterClient implements Updatable {
   private readonly pendingSnapshots = new Map<string, readonly WorldMonsterSnapshot[]>();
   private readonly pendingAttacks: PendingMonsterAttack[] = [];
   private readonly seenAttackIds = new Set<string>();
+  /** Authoritative hit deltas are replay-safe presentation events. */
+  private readonly seenHitDeltas = new Set<string>();
+  private readonly actorStateSequences = new Map<string, number>();
+  private readonly actorSpawnSequences = new Map<string, number>();
+  private readonly actorGenerations = new Map<string, number>();
+  private generation = 1;
+  private stateSequence = 0;
   private currentIslandId: string;
 
   constructor(
@@ -98,6 +133,7 @@ export class SharedMonsterClient implements Updatable {
     islandId: string,
     private readonly heightAt: (x: number, z: number) => number = () => 0,
     private readonly now: () => number = () => Date.now(),
+    private readonly effects?: Pick<Effects, 'spawnHitSpark'>,
   ) {
     this.currentIslandId = islandId;
   }
@@ -121,11 +157,123 @@ export class SharedMonsterClient implements Updatable {
     this.currentIslandId = islandId;
     this.pendingAttacks.length = 0;
     this.seenAttackIds.clear();
+    this.seenHitDeltas.clear();
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
     const pending = this.pendingSnapshots.get(islandId);
     this.pendingSnapshots.delete(islandId);
     if (pending) this.applySnapshot(islandId, pending);
     return true;
+  }
+
+  /** Reconnect/session boundary: discard one-shot bookkeeping before resync. */
+  resetSession(): void {
+    this.pendingAttacks.length = 0;
+    this.seenAttackIds.clear();
+    this.seenHitDeltas.clear();
+    this.actorStateSequences.clear();
+    this.actorSpawnSequences.clear();
+    this.actorGenerations.clear();
+    this.generation += 1;
+    this.stateSequence = 0;
+  }
+
+  /** Immutable local actor envelope for the owner-presentation publisher. */
+  getActors(): SharedMonsterActor[] {
+    return [...this.monsters.entries()].slice(0, SHARED_MONSTER_ACTOR_LIMIT).map(([spawnId, monster]) => {
+      const actorId = `monster:${spawnId}`;
+      return {
+        actorId,
+        kind: 'monster' as const,
+        type: monster.monsterId,
+        zone: this.currentIslandId,
+        generation: this.generation,
+        spawnSequence: this.actorSpawnSequences.get(actorId) ?? 1,
+        stateSequence: this.actorStateSequences.get(actorId) ?? 0,
+        lifecycle: monster.state === 'dead' ? 'despawn' as const : 'active' as const,
+        pose: {
+          x: monster.group.position.x,
+          y: monster.group.position.y,
+          z: monster.group.position.z,
+          heading: monster.group.rotation.y,
+        },
+        locomotion: monster.state === 'chase' || monster.state === 'aggro'
+          ? 'run' as const
+          : monster.state === 'patrol' || monster.state === 'return'
+            ? 'walk' as const
+            : 'idle' as const,
+        animation: { state: monster.state },
+      };
+    });
+  }
+
+  /** Consume presentation-only actor snapshots; HP/damage/target fields are rejected by type. */
+  applyActors(zone: string, actors: readonly SharedMonsterActor[]): void {
+    if (zone !== this.currentIslandId || actors.length > SHARED_MONSTER_ACTOR_LIMIT) return;
+    const seen = new Set<string>();
+    for (const actor of actors) {
+      if (!actor || actor.kind !== 'monster' || actor.zone !== this.currentIslandId) continue;
+      const spawnId = actor.actorId.startsWith('monster:') ? actor.actorId.slice(8) : '';
+      if (!spawnId || !MONSTER_TYPES[actor.type]) continue;
+      seen.add(spawnId);
+      if (!Number.isFinite(actor.pose.x) || !Number.isFinite(actor.pose.y)
+        || !Number.isFinite(actor.pose.z) || !Number.isFinite(actor.pose.heading)) continue;
+      if (actor.visual && (!Array.isArray(actor.visual.events)
+        || !Array.isArray(actor.visual.projectiles)
+        || actor.visual.events.length > SHARED_MONSTER_ACTOR_EVENT_LIMIT
+        || actor.visual.projectiles.length > SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT)) continue;
+      if (!Number.isInteger(actor.generation) || actor.generation < 1
+        || !Number.isInteger(actor.spawnSequence) || actor.spawnSequence < 1
+        || !Number.isInteger(actor.stateSequence) || actor.stateSequence < 0) continue;
+      if (actor.lifecycle === 'despawn') {
+        this.remove(actor.actorId.replace(/^monster:/, ''));
+        continue;
+      }
+      const priorGeneration = this.actorGenerations.get(actor.actorId) ?? -1;
+      const priorSpawn = this.actorSpawnSequences.get(actor.actorId) ?? -1;
+      const prior = actor.generation > priorGeneration || actor.spawnSequence > priorSpawn
+        ? -1
+        : this.actorStateSequences.get(actor.actorId) ?? -1;
+      if (actor.generation < priorGeneration
+        || (actor.generation === priorGeneration && actor.spawnSequence < priorSpawn)
+        || actor.stateSequence <= prior) continue;
+      this.actorGenerations.set(actor.actorId, actor.generation);
+      this.actorStateSequences.set(actor.actorId, actor.stateSequence);
+      this.actorSpawnSequences.set(actor.actorId, actor.spawnSequence);
+      seen.add(spawnId);
+      const monster = this.monsters.get(spawnId);
+      if (!monster) {
+        this.upsert({
+          spawnId,
+          monsterId: actor.type,
+          islandId: this.currentIslandId,
+          x: actor.pose.x,
+          z: actor.pose.z,
+          heading: actor.pose.heading,
+          hp: MONSTER_TYPES[actor.type].maxHp,
+          maxHp: MONSTER_TYPES[actor.type].maxHp,
+          state: actor.animation.state,
+        });
+      } else {
+        monster.target.set(actor.pose.x, actor.pose.y, actor.pose.z);
+        monster.targetHeading = actor.pose.heading;
+        monster.state = actor.animation.state;
+        monster.visual.applyAuthoritativeState(monster.hp, monster.maxHp, renderState(monster.state));
+      }
+      this.replayActorVisual(actor);
+    }
+    for (const [spawnId] of this.monsters) {
+      if (!seen.has(spawnId) && actors.length > 0) this.remove(spawnId);
+    }
+  }
+
+  private replayActorVisual(actor: SharedMonsterActor): void {
+    const visual = actor.visual;
+    if (!visual) return;
+    for (const event of visual.events.slice(0, SHARED_MONSTER_ACTOR_EVENT_LIMIT)) {
+      if (event.ageMs > 3_000 || !event.position) continue;
+      if (event.kind === 'hit-spark') this.effects?.spawnHitSpark(new THREE.Vector3(event.position.x, event.position.y, event.position.z), event.color);
+      if (event.kind === 'energy-impact') this.effects?.spawnHitSpark(new THREE.Vector3(event.position.x, event.position.y, event.position.z), event.color);
+    }
   }
 
   /** full snapshot — แทนที่ทั้งเกาะ (join/resync) */
@@ -179,6 +327,19 @@ export class SharedMonsterClient implements Updatable {
       monster.hp = update.hp;
       monster.state = update.state;
       monster.visual.applyAuthoritativeState(update.hp, monster.maxHp, renderState(update.state));
+      if (update.damage !== undefined && update.damage > 0) {
+        const hitKey = `${update.spawnId}:${update.hp}:${update.damage}`;
+        if (!this.seenHitDeltas.has(hitKey)) {
+          this.seenHitDeltas.add(hitKey);
+          if (this.seenHitDeltas.size > 1024) {
+            const oldest = this.seenHitDeltas.values().next().value;
+            if (typeof oldest === 'string') this.seenHitDeltas.delete(oldest);
+          }
+          const impact = monster.group.position.clone();
+          impact.y += monster.monsterId === 'crab' ? 0.65 : 1.05 * (MONSTER_TYPES[monster.monsterId]?.scale ?? 1);
+          this.effects?.spawnHitSpark(impact);
+        }
+      }
       if (update.hitReaction) {
         monster.visual.playHitReaction();
         monster.visual.playHitReactionDirection(
@@ -267,7 +428,12 @@ export class SharedMonsterClient implements Updatable {
         maxHp: snapshot.maxHp,
         state: snapshot.state,
         monsterId: snapshot.monsterId,
+        spawnSequence: 1,
+        stateSequence: ++this.stateSequence,
       };
+      const actorId = `monster:${snapshot.spawnId}`;
+      this.actorSpawnSequences.set(actorId, monster.spawnSequence);
+      this.actorStateSequences.set(actorId, monster.stateSequence);
       this.monsters.set(snapshot.spawnId, monster);
       return;
     }
@@ -280,6 +446,8 @@ export class SharedMonsterClient implements Updatable {
     monster.maxHp = snapshot.maxHp;
     monster.state = snapshot.state;
     monster.visual.applyAuthoritativeState(snapshot.hp, snapshot.maxHp, renderState(snapshot.state));
+    monster.stateSequence = ++this.stateSequence;
+    this.actorStateSequences.set(`monster:${snapshot.spawnId}`, monster.stateSequence);
   }
 
   private remove(spawnId: string): void {
@@ -288,6 +456,9 @@ export class SharedMonsterClient implements Updatable {
     this.scene.remove(monster.group);
     monster.visual.dispose();
     this.monsters.delete(spawnId);
+    this.actorStateSequences.delete(`monster:${spawnId}`);
+    this.actorSpawnSequences.delete(`monster:${spawnId}`);
+    this.actorGenerations.delete(`monster:${spawnId}`);
     this.cancelPendingAttacksForSpawn(spawnId);
   }
 
@@ -403,5 +574,6 @@ export class SharedMonsterClient implements Updatable {
   dispose(): void {
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
     this.pendingSnapshots.clear();
+    this.resetSession();
   }
 }

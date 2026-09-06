@@ -63,7 +63,7 @@ import {
   createBrowserParentPresenceHost,
   resolvePocketMonsterParentOrigin,
 } from './realtime/PocketMonsterParentPresence';
-import { SharedMonsterClient, resolveSharedMonsterPlayerDamage } from './monster/SharedMonsterClient';
+import { SharedMonsterClient, resolveSharedMonsterPlayerDamage, type SharedMonsterActor } from './monster/SharedMonsterClient';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -512,6 +512,8 @@ async function main(): Promise<void> {
         game.scene,
         islandManager.activeIsland,
         (x, z) => world.collision.heightAt(x, z),
+        undefined,
+        effects,
       )
     : null;
   if (sharedMonsters) {
@@ -577,7 +579,10 @@ async function main(): Promise<void> {
       tradeManager.living.setServerReadOnly(true);
       refreshEconomyViews();
     },
-    onResync: resyncAuthoritativeState,
+    onResync: () => {
+      sharedMonsters?.resetSession();
+      resyncAuthoritativeState();
+    },
     onAnnouncement: (message, level) => {
       economyHud.notifyStatus(message, level === 'warning');
       audio.play(level === 'warning' ? 'ui.reject' : 'ui.notification');
@@ -1187,6 +1192,7 @@ async function main(): Promise<void> {
   (window as unknown as { __boat?: BoatManager }).__boat = boatManager;
   (window as unknown as { __naval?: NavalCombat }).__naval = navalCombat;
   (window as unknown as { __monsters?: MonsterManager }).__monsters = monsterManager;
+  (window as unknown as { __sharedMonsterActors?: () => SharedMonsterActor[] }).__sharedMonsterActors = () => sharedMonsters?.getActors() ?? [];
   const equipmentVisuals = new EquipmentVisuals(
     player.group,
     () => playerCombat?.activeItem ?? { itemId: 'basic-brawl', category: 'style', name: 'หมัด' },
