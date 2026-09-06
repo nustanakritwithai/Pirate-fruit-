@@ -196,6 +196,31 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     });
   });
 
+  it('replays an authoritative shared-monster hit once for owner and remote observers, then resets on zone change', () => {
+    const scene = new THREE.Scene();
+    const spawnHitSpark = vi.fn();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
+    client.applySnapshot('starter-island', [snapshot({ x: 0, z: 0 })]);
+    const delta = {
+      spawnId: 'starter-crab-1', x: 0, z: 0, heading: 0, hp: 44, state: 'stunned' as const,
+      damage: 26, hitReaction: { directionX: 0, directionZ: 1, strength: 0.82 },
+    };
+
+    client.applyDelta('starter-island', [delta]);
+    client.applyDelta('starter-island', [delta]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+    expect(spawnHitSpark.mock.calls[0]?.[0]).toMatchObject({ x: 0, y: 0.65, z: 0 });
+
+    expect(client.setIsland('mist-jungle')).toBe(true);
+    client.applySnapshot('mist-jungle', [snapshot({ spawnId: 'jungle-bandit-1', monsterId: 'jungle-bandit', islandId: 'mist-jungle', x: 0, z: 0, hp: 214, maxHp: 240 })]);
+    client.applyDelta('mist-jungle', [{ ...delta, spawnId: 'jungle-bandit-1', hp: 188, damage: 26 }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(2);
+
+    client.resetSession();
+    client.applyDelta('mist-jungle', [{ ...delta, spawnId: 'jungle-bandit-1', hp: 162, damage: 26 }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(3);
+  });
+
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {
     const scene = new THREE.Scene();
     const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);
