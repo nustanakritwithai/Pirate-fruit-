@@ -16,6 +16,7 @@ import { ScopedVisualEffects } from '../ScopedVisualEffects';
 import { PocketMonsterParentPresence, PIRATE_LOCAL_PRESENCE_MESSAGE } from '../PocketMonsterParentPresence';
 import { sanitizeVisual } from '../PresentationProtocol';
 import { RemotePlayers } from '../RemotePlayers';
+import { shouldAcknowledgeDirectVisual, visualForDirectRealtime } from '../VisualTransport';
 import type { RealtimePresenceSnapshot } from '../RealtimeClient';
 
 const QA_OUTPUT_DIR_ENV = 'PIRATE_PRESENCE_QA_OUTPUT_DIR';
@@ -84,6 +85,15 @@ function gameplaySwordAttack(targetComboIndex: 0 | 1 | 2 | 3, bindAnchors = true
 }
 
 describe('normal sword attack presentation path', () => {
+  it('reserves one-shot visual ownership for the parent transport in the iframe', () => {
+    const { scoped } = gameplaySwordAttack(0);
+    const visual = scoped.current();
+    expect(visualForDirectRealtime(true, visual)).toBeUndefined();
+    expect(shouldAcknowledgeDirectVisual(true, true)).toBe(false);
+    expect(visualForDirectRealtime(false, visual)).toEqual(visual);
+    expect(shouldAcknowledgeDirectVisual(false, true)).toBe(true);
+  });
+
   it.each([
     { comboIndex: 0 as const, finisher: false },
     { comboIndex: 1 as const, finisher: false },
