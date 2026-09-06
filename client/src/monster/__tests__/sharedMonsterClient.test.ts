@@ -221,6 +221,40 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(spawnHitSpark).toHaveBeenCalledTimes(3);
   });
 
+  it('publishes and consumes presentation-only actors with sequence, visual, despawn and zone guards', () => {
+    const sourceScene = new THREE.Scene();
+    const source = new SharedMonsterClient(sourceScene, 'starter-island', () => 0, () => 1_000);
+    source.applySnapshot('starter-island', [snapshot({ x: 3, z: 4, state: 'chase' })]);
+    const actors = source.getActors();
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({
+      actorId: 'monster:starter-crab-1', kind: 'monster', type: 'crab', zone: 'starter-island',
+      lifecycle: 'active', locomotion: 'run', animation: { state: 'chase' },
+    });
+    expect(actors[0]).not.toHaveProperty('hp');
+    expect(actors[0]).not.toHaveProperty('damage');
+
+    const remoteHits = vi.fn();
+    const remote = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
+    remote.applyActors('starter-island', [{
+      ...actors[0],
+      visual: {
+        schemaVersion: 1, sessionId: 'actor-session', stateSequence: 1,
+        events: [{ sequence: 1, kind: 'hit-spark', ageMs: 0, position: { x: 3, y: 0.65, z: 4 }, color: 0xfff1a8 }],
+        projectiles: [],
+      },
+    }]);
+    expect(remote.count).toBe(1);
+    expect(remoteHits).toHaveBeenCalledTimes(1);
+    remote.applyActors('starter-island', [{ ...actors[0], stateSequence: actors[0].stateSequence }]);
+    expect(remoteHits).toHaveBeenCalledTimes(1);
+
+    remote.applyActors('starter-island', [{ ...actors[0], lifecycle: 'despawn', stateSequence: actors[0].stateSequence + 1 }]);
+    expect(remote.count).toBe(0);
+    remote.applyActors('other-island', actors);
+    expect(remote.count).toBe(0);
+  });
+
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {
     const scene = new THREE.Scene();
     const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);
