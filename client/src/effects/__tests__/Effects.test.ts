@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { Effects, getForwardArcRotation, SLASH_ARC_LENGTH } from '../Effects';
+import {
+  BLADE_TRAIL_LIFETIME_SECONDS,
+  Effects,
+  getForwardArcRotation,
+  SLASH_ARC_LENGTH,
+} from '../Effects';
 
 describe('forward attack arc orientation', () => {
   it.each([0, Math.PI / 2, Math.PI, -Math.PI / 2, 0.73])(
@@ -45,11 +50,25 @@ describe('animated combat effects', () => {
 
     const root = scene.getObjectByName('effect:blade-trail')!;
     const ribbon = root.children[0] as THREE.Mesh<THREE.BufferGeometry>;
+    const edge = root.children[1] as THREE.Line<THREE.BufferGeometry>;
     const positions = ribbon.geometry.getAttribute('position') as THREE.BufferAttribute;
     const lastBase = new THREE.Vector3().fromBufferAttribute(positions, positions.count - 2);
     const lastTip = new THREE.Vector3().fromBufferAttribute(positions, positions.count - 1);
     expect(lastBase.distanceTo(base)).toBeLessThan(0.0001);
     expect(lastTip.distanceTo(tip)).toBeLessThan(0.0001);
+    expect(root.visible).toBe(true);
+    expect(ribbon.name).toBe('effect:blade-trail:ribbon');
+    expect(edge.name).toBe('effect:blade-trail:edge');
+    expect(ribbon.frustumCulled).toBe(false);
+    expect(edge.frustumCulled).toBe(false);
+    expect((ribbon.material as THREE.Material).depthTest).toBe(false);
+    expect((edge.material as THREE.Material).depthTest).toBe(false);
+
+    effects.update(BLADE_TRAIL_LIFETIME_SECONDS / 2);
+    expect(scene.getObjectByName('effect:blade-trail')).toBeTruthy();
+    expect((ribbon.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
+    effects.update(BLADE_TRAIL_LIFETIME_SECONDS / 2 + 0.01);
+    expect(scene.getObjectByName('effect:blade-trail')).toBeUndefined();
   });
 
   it('animates muzzle flash, tracer, bullet and impact then cleans all of them up', () => {

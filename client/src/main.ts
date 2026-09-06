@@ -452,6 +452,14 @@ async function main(): Promise<void> {
     })
     : null;
   if (remotePlayers) game.add(remotePlayers);
+  // Read-only and credential-free: the parent Browser acceptance can inspect
+  // whether a relayed transient effect is actually drawable inside this iframe.
+  Object.defineProperty(window, '__pocketRemotePresentation', {
+    configurable: true,
+    value: Object.freeze({
+      snapshot: () => remotePlayers?.presentationDiagnostics() ?? { bladeTrails: [] },
+    }),
+  });
   const pocketMonsterPresence = pocketMonsterParentOrigin && remotePlayers
     ? new PocketMonsterParentPresence({
       targetOrigin: pocketMonsterParentOrigin,
