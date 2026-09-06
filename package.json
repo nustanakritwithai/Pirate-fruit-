@@ -29,6 +29,7 @@
     "test": "npm run test:shared && npm run test:client && npm run test:server",
     "test:client": "npm test --workspace=pirate-fruit-client",
     "test:database": "npm run test --workspace=pirate-fruit-server -- src/persistence/postgres.integration.test.ts",
+    "test:browser-smoke-diagnostics": "node --test scripts/browser-smoke-diagnostics.test.mjs",
     "test:server": "npm run test --workspace=pirate-fruit-server",
     "test:shared": "npm run build --workspace=@pirate-fruit/shared && npm run typecheck --workspace=@pirate-fruit/shared",
     "test:extended": "npm run test:extended --workspace=pirate-fruit-client",

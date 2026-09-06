@@ -123,4 +123,5 @@ jobs:
           curl -sf http://127.0.0.1:4173/ > /dev/null
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser-smoke-diagnostics
       - run: node scripts/browser-smoke.mjs
