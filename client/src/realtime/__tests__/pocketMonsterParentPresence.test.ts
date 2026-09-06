@@ -364,4 +364,52 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(completedMessage.animation).toMatchObject({ combatState: 'idle' });
     expect(completedMessage.animation).not.toHaveProperty('actionSessionId');
   });
+
+  it('accepts valid nested presentation and rejects malformed projectile vectors', () => {
+    const base = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [{ id: 'p', x: 0, z: 0, presentation: { schemaVersion: 1, avatarId: 'pirate-v1', appearanceId: 'player-orange', clothingIds: [], equipmentIds: [], activeItem: null }, visual: { schemaVersion: 1, sessionId: 'session_1234', stateSequence: 1, events: [{ sequence: 1, ageMs: 10, kind: 'projectile-start', projectile: { id: 'p1', position: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: 1 }, velocity: { x: 0, y: 0, z: 24 }, color: 1, scale: 1, elapsed: 0, lifeFraction: 1, remainingMs: 6000 } }], projectiles: [] } }] } };
+    expect(parsePiratePresenceSnapshotMessage(base)?.players[0].presentation?.activeItem).toBeNull();
+    const malformed = structuredClone(base) as any;
+    malformed.payload.players[0].visual.events[0].projectile.velocity.x = 'bad';
+    expect(parsePiratePresenceSnapshotMessage(malformed)?.players[0].visual).toBeUndefined();
+  });
+
+  it('publishes 70 queued events over multiple successful parent publishes', () => {
+    let now = 1000;
+    const host = createHost();
+    const visual = { schemaVersion: 1 as const, sessionId: 'session_1234', stateSequence: 1, events: Array.from({ length: 70 }, (_, i) => ({ sequence: i + 1, ageMs: 0, kind: 'hit-spark' as const, position: { x: 0, y: 0, z: 0 }, color: 1 })), projectiles: [] };
+    const bridge = new PocketMonsterParentPresence({ targetOrigin: 'https://pocket.example', host: host.host, remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() }, getPosition: () => ({ x: 0, y: 0, z: 0 }), getHeading: () => 0, getIslandId: () => 'island', heightAt: () => 0, getVisual: () => visual, now: () => now });
+    bridge.start(); now += 100; bridge.update(); now += 100; bridge.update();
+    const sent = host.sent.map((entry) => (entry.message as any).visual?.events?.length ?? 0);
+    expect(sent.reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(70);
+  });
+
+  it('clears parent presence on zone change and rejects expired nested events', () => {
+    const expired = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [{ id: 'p', x: 0, z: 0, visual: { schemaVersion: 1, sessionId: 'session_1234', stateSequence: 1, events: [{ sequence: 1, ageMs: 3001, kind: 'hit-spark', position: { x: 0, y: 0, z: 0 }, color: 1 }], projectiles: [] } }] } };
+    expect(parsePiratePresenceSnapshotMessage(expired)?.players[0].visual).toBeUndefined();
+    const host = createHost(); const setIsland = vi.fn(); let island = 'a';
+    const bridge = new PocketMonsterParentPresence({ targetOrigin: 'https://pocket.example', host: host.host, remotePlayers: { setIsland, applyPresence: vi.fn(), remove: vi.fn() }, getPosition: () => ({ x: 0, y: 0, z: 0 }), getHeading: () => 0, getIslandId: () => island, heightAt: () => 0 });
+    bridge.start(); island = 'b'; bridge.update(); expect(setIsland).toHaveBeenCalledWith('b');
+  });
+
+  it('invokes the island-change callback once per actual island transition', () => {
+    let island = 'a';
+    const onIslandChange = vi.fn();
+    const bridge = new PocketMonsterParentPresence({ targetOrigin: 'https://pocket.example', host: createHost().host, remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() }, getPosition: () => ({ x: 0, y: 0, z: 0 }), getHeading: () => 0, getIslandId: () => island, heightAt: () => 0, onIslandChange });
+    bridge.start();
+    bridge.update();
+    expect(onIslandChange).toHaveBeenCalledTimes(1);
+    island = 'b';
+    bridge.update();
+    expect(onIslandChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not acknowledge visual events when parent post fails', () => {
+    let calls = 0;
+    const ack = vi.fn();
+    const host: ParentPresenceHost = { addMessageListener: vi.fn(), removeMessageListener: vi.fn(), isParentSource: () => true, postToParent: () => { calls++; throw new Error('closed'); } };
+    const bridge = new PocketMonsterParentPresence({ targetOrigin: 'https://pocket.example', host, remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() }, getPosition: () => ({ x: 0, y: 0, z: 0 }), getHeading: () => 0, getIslandId: () => 'island', heightAt: () => 0, acknowledgeVisual: ack, getVisual: () => ({ schemaVersion: 1, sessionId: 'session_1234', stateSequence: calls + 1, events: [{ sequence: 1, ageMs: 0, kind: 'hit-spark', position: { x: 0, y: 0, z: 0 }, color: 1 }], projectiles: [] }) });
+    bridge.start();
+    expect(calls).toBe(1);
+    expect(ack).not.toHaveBeenCalled();
+  });
 });

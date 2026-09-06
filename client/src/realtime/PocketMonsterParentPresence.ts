@@ -1,7 +1,8 @@
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import type { RemotePlayers } from './RemotePlayers';
 import type { PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
-import type { RealtimePlayerAnimation } from '@pirate-fruit/shared';
+import type { RealtimePlayerAnimation, RealtimePlayerPresentation, RealtimePlayerVisual } from '@pirate-fruit/shared';
+import { sanitizePresentation, sanitizeVisual } from './PresentationProtocol';
 
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
 export const PIRATE_LOCAL_PRESENCE_MESSAGE = 'pocketmonster:pirate-presence-v1';
@@ -55,6 +56,8 @@ export interface PiratePresencePlayer {
   dir: number;
   locomotion?: NonNullable<RealtimePresenceSnapshot['locomotion']>;
   animation?: PiratePresenceAnimation;
+  presentation?: RealtimePlayerPresentation;
+  visual?: RealtimePlayerVisual;
 }
 
 export interface PiratePresenceSnapshot {
@@ -93,10 +96,14 @@ export interface PocketMonsterParentPresenceOptions {
   heightAt(x: number, z: number): number;
   /** Same presentation snapshot used by the local player animator. */
   getActionSnapshot?(): PlayerActionSnapshot | null;
+  getPresentation?(): RealtimePlayerPresentation | undefined;
+  getVisual?(): RealtimePlayerVisual | undefined;
+  acknowledgeVisual?(eventCount: number): void;
   /** Deterministic override for tests; production generates one id per runtime. */
   actionSessionId?: string;
   now?: () => number;
   publishIntervalMs?: number;
+  onIslandChange?(): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -285,6 +292,8 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
     const y = optionalClampedNumber(candidate.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE);
     const locomotion = sanitizeLocomotion(candidate.locomotion);
     const animation = sanitizeAnimation(candidate.animation);
+    const presentation = sanitizePresentation(candidate.presentation) ?? undefined;
+    const visual = sanitizeVisual(candidate.visual) ?? undefined;
     players.push({
       id,
       name: typeof candidate.name === 'string'
@@ -296,6 +305,8 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
       dir: finiteNumber(candidate.dir) ? candidate.dir : 0,
       ...(locomotion ? { locomotion } : {}),
       ...(animation ? { animation } : {}),
+      ...(presentation ? { presentation } : {}),
+      ...(visual ? { visual } : {}),
     });
   }
   return { zone: POCKET_MONSTER_PIRATE_ZONE, players };
@@ -331,6 +342,8 @@ interface SampledLocalPresence {
   dir: number;
   locomotion?: NonNullable<RealtimePresenceSnapshot['locomotion']>;
   animation?: PiratePresenceAnimation;
+  presentation?: RealtimePlayerPresentation;
+  visual?: RealtimePlayerVisual;
 }
 
 interface LatchedLocalAction {
@@ -411,6 +424,7 @@ export class PocketMonsterParentPresence {
       this.previousPositions.clear();
       this.liveTransientKey = null;
       this.latchedAction = null;
+      this.options.onIslandChange?.();
     }
     return islandId;
   }
@@ -498,6 +512,8 @@ export class PocketMonsterParentPresence {
       }
       sampled.animation = animation;
     }
+    sampled.presentation = sanitizePresentation(this.options.getPresentation?.()) ?? undefined;
+    sampled.visual = sanitizeVisual(this.options.getVisual?.()) ?? undefined;
     this.sampledPresence = sampled;
   }
 
@@ -507,7 +523,8 @@ export class PocketMonsterParentPresence {
     const presence = this.sampledPresence;
     if (!presence) return;
     this.lastPublishedAt = now;
-    this.options.host.postToParent({
+    try {
+      this.options.host.postToParent({
       type: PIRATE_LOCAL_PRESENCE_MESSAGE,
       zone: POCKET_MONSTER_PIRATE_ZONE,
       x: presence.x,
@@ -516,7 +533,13 @@ export class PocketMonsterParentPresence {
       dir: presence.dir,
       ...(presence.locomotion ? { locomotion: presence.locomotion } : {}),
       ...(presence.animation ? { animation: presence.animation } : {}),
-    }, this.options.targetOrigin);
+      ...(presence.presentation ? { presentation: presence.presentation } : {}),
+      ...(presence.visual ? { visual: presence.visual } : {}),
+      }, this.options.targetOrigin);
+      if (presence.visual) this.options.acknowledgeVisual?.(presence.visual.events.length);
+    } catch {
+      this.lastPublishedAt = Number.NEGATIVE_INFINITY;
+    }
   }
 
   private applySnapshot(snapshot: PiratePresenceSnapshot): void {
@@ -539,6 +562,8 @@ export class PocketMonsterParentPresence {
         onBoat: false,
         locomotion: player.locomotion ?? (moved > 0.15 ? 'run' : 'idle'),
         ...(player.animation ? { animation: player.animation } : {}),
+        ...(player.presentation ? { presentation: player.presentation } : {}),
+        ...(player.visual ? { visual: player.visual } : {}),
       });
     }
     for (const id of this.visibleIds) {
