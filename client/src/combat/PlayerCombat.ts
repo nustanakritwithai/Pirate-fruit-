@@ -41,6 +41,7 @@ import {
 } from './CombatState';
 import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import type { RealtimeKnockback } from '@pirate-fruit/shared';
+import type { SharedMonsterActor } from '../monster/SharedMonsterClient';
 
 /** สลอตไม้ตายในอาเรย์คูลดาวน์ 4 ช่อง */
 const ULTIMATE_SLOT = 3;
@@ -69,6 +70,9 @@ interface WaveProjectile {
 
 /** ร่าง/ป้อมที่เรียกออกมา (summon) — ลอยอยู่กับที่แล้วยิงใส่มอนใกล้สุดเป็นช่วง ๆ */
 interface ActiveSummon {
+  actorId: string;
+  spawnSequence: number;
+  skillId: string;
   visual: EnergyProjectileVisual;
   x: number;
   y: number;
@@ -237,6 +241,20 @@ export class PlayerCombat {
 
   private readonly projectiles: WaveProjectile[] = [];
   private readonly summons: ActiveSummon[] = [];
+  private summonSequence = 0;
+  private presentationStateSequence = 0;
+  private readonly endedSummons: Array<{
+    actorId: string;
+    spawnSequence: number;
+    skillId: string;
+    type: string;
+    x: number;
+    y: number;
+    z: number;
+    dirX: number;
+    dirZ: number;
+    color: number;
+  }> = [];
   /** channel/zone/dot/buff — รูปแบบสกิลใหม่ (flurry/beam/ground/DoT/buff) */
   private activeChannel: SkillChannel | null = null;
   private readonly pendingZones: PendingZone[] = [];
@@ -1130,6 +1148,9 @@ export class PlayerCombat {
       (skill.isUltimate ? 9 : 6.5) * 1000,
     );
     this.summons.push({
+      actorId: `summon:${++this.summonSequence}`,
+      spawnSequence: this.summonSequence,
+      skillId: skill.id,
       visual,
       x,
       y,
@@ -1148,6 +1169,64 @@ export class PlayerCombat {
       source,
     });
     this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), 2, skill.color, 'magic-rock');
+  }
+
+  /** Presentation-only summon envelope for the parent bridge; never includes authority fields. */
+  getPresentationActors(zone: string, generation: number): SharedMonsterActor[] {
+    const stateSequence = ++this.presentationStateSequence;
+    const active = this.summons.map((summon) => ({
+      actorId: summon.actorId,
+      kind: 'summon' as const,
+      type: summon.skillId,
+      zone,
+      generation,
+      spawnSequence: summon.spawnSequence,
+      stateSequence,
+      lifecycle: 'active' as const,
+      pose: { x: summon.visual.root.position.x, y: summon.visual.root.position.y, z: summon.visual.root.position.z, heading: Math.atan2(summon.dirX, summon.dirZ) },
+      locomotion: 'idle' as const,
+      animation: { state: 'attack' as const },
+      visual: {
+        schemaVersion: 1 as const,
+        sessionId: `summon-${generation}`,
+        stateSequence,
+        events: [],
+        projectiles: [{
+          id: summon.actorId,
+          position: { x: summon.visual.root.position.x, y: summon.visual.root.position.y, z: summon.visual.root.position.z },
+          direction: { x: summon.dirX, y: 0, z: summon.dirZ },
+          velocity: { x: summon.dirX * 24, y: 0, z: summon.dirZ * 24 },
+          color: summon.color,
+          scale: summon.visual.scale,
+          elapsed: Math.max(0, summon.lifetimeMs / 1000 - summon.life),
+          lifeFraction: Math.max(0, Math.min(1, summon.life / (summon.lifetimeMs / 1000))),
+          remainingMs: Math.max(0, Math.round(summon.life * 1000)),
+          skillId: summon.skillId,
+        }],
+      },
+    }));
+    const ended = this.endedSummons.splice(0, 32).map((summon) => ({
+      actorId: summon.actorId,
+      kind: 'summon' as const,
+      type: summon.type,
+      zone,
+      generation,
+      spawnSequence: summon.spawnSequence,
+      stateSequence,
+      lifecycle: 'despawn' as const,
+      pose: { x: summon.x, y: summon.y, z: summon.z, heading: Math.atan2(summon.dirX, summon.dirZ) },
+      locomotion: 'idle' as const,
+      animation: { state: 'dead' as const },
+    }));
+    return [...active, ...ended];
+  }
+
+  /** Reconnect/zone boundary: remove presentation-only summon handles before resync. */
+  resetPresentationActors(): void {
+    for (const summon of this.summons) this.effects.destroyEnergyProjectile(summon.visual);
+    this.summons.length = 0;
+    this.endedSummons.length = 0;
+    this.presentationStateSequence = 0;
   }
 
   /** teleport — วาร์ปไปหลังศัตรูใกล้สุดในกรวยหน้าแล้วฟัน (ไม่เจอเป้า → พุ่งสั้น) */
@@ -1281,6 +1360,7 @@ export class PlayerCombat {
         );
       }
       if (s.life <= 0) {
+        this.endedSummons.push({ actorId: s.actorId, spawnSequence: s.spawnSequence, skillId: s.skillId, type: s.skillId, x: s.visual.root.position.x, y: s.visual.root.position.y, z: s.visual.root.position.z, dirX: s.dirX, dirZ: s.dirZ, color: s.color });
         this.effects.destroyEnergyProjectile(s.visual);
         this.summons.splice(i, 1);
       }

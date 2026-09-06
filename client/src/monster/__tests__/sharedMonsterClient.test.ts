@@ -266,6 +266,40 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(remote.count).toBe(0);
   });
 
+  it('consumes summon actors as visual-only envelopes and retires stale generations', () => {
+    const spawnHitSpark = vi.fn();
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
+    const actor = {
+      actorId: 'summon:7', kind: 'summon' as const, type: 'light-moveset-v2-z', zone: 'starter-island',
+      generation: 1, spawnSequence: 7, stateSequence: 1, lifecycle: 'active' as const,
+      pose: { x: 2, y: 1, z: 3, heading: 0 }, locomotion: 'idle' as const, animation: { state: 'attack' as const },
+      visual: { schemaVersion: 1 as const, sessionId: 'summon-1', stateSequence: 1, projectiles: [], events: [{ sequence: 1, kind: 'hit-spark' as const, ageMs: 0, position: { x: 2, y: 1, z: 3 }, color: 0x74c8ff }] },
+    };
+    client.applyActors('starter-island', [actor]);
+    expect(client.count).toBe(0);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+
+    client.applyActors('starter-island', [{ ...actor, lifecycle: 'despawn', stateSequence: 2 }]);
+    client.applyActors('starter-island', [actor]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(1);
+    client.applyActors('starter-island', [{ ...actor, generation: 2, stateSequence: 1, visual: { ...actor.visual, sessionId: 'summon-2', stateSequence: 1 } }]);
+    expect(spawnHitSpark).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishes provider actors through the gameplay adapter without authority fields', () => {
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island');
+    client.setActorProvider((zone, generation) => [{
+      actorId: 'summon:provider-1', kind: 'summon', type: 'light-moveset-v2-z', zone, generation,
+      spawnSequence: 1, stateSequence: 1, lifecycle: 'active', pose: { x: 0, y: 1, z: 0, heading: 0 },
+      locomotion: 'idle', animation: { state: 'attack' },
+    }]);
+    const actors = client.getActors();
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({ actorId: 'summon:provider-1', kind: 'summon', generation: 1 });
+    expect(actors[0]).not.toHaveProperty('hp');
+    expect(actors[0]).not.toHaveProperty('damage');
+  });
+
   it('suppresses stale attack damage and attack intents while shopping in a safe zone', () => {
     const scene = new THREE.Scene();
     const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => 1_000);

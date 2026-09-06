@@ -65,6 +65,8 @@ export interface SharedMonsterActor {
   visual?: RealtimePlayerVisual;
 }
 
+export type SharedMonsterActorProvider = (zone: string, generation: number) => readonly SharedMonsterActor[];
+
 export const SHARED_MONSTER_ACTOR_LIMIT = 128;
 export const SHARED_MONSTER_ACTOR_EVENT_LIMIT = 32;
 export const SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT = 64;
@@ -124,6 +126,8 @@ export class SharedMonsterClient implements Updatable {
   private readonly actorStateSequences = new Map<string, number>();
   private readonly actorSpawnSequences = new Map<string, number>();
   private readonly actorGenerations = new Map<string, number>();
+  private readonly retiredActorGenerations = new Map<string, number>();
+  private actorProvider: SharedMonsterActorProvider | null = null;
   private generation = 1;
   private stateSequence = 0;
   private currentIslandId: string;
@@ -173,13 +177,14 @@ export class SharedMonsterClient implements Updatable {
     this.actorStateSequences.clear();
     this.actorSpawnSequences.clear();
     this.actorGenerations.clear();
+    this.retiredActorGenerations.clear();
     this.generation += 1;
     this.stateSequence = 0;
   }
 
   /** Immutable local actor envelope for the owner-presentation publisher. */
   getActors(): SharedMonsterActor[] {
-    return [...this.monsters.entries()].slice(0, SHARED_MONSTER_ACTOR_LIMIT).map(([spawnId, monster]) => {
+    const monsters = [...this.monsters.entries()].slice(0, SHARED_MONSTER_ACTOR_LIMIT).map(([spawnId, monster]) => {
       const actorId = `monster:${spawnId}`;
       return {
         actorId,
@@ -204,6 +209,12 @@ export class SharedMonsterClient implements Updatable {
         animation: { state: monster.state },
       };
     });
+    const provided = this.actorProvider?.(this.currentIslandId, this.generation) ?? [];
+    return [...monsters, ...provided].slice(0, SHARED_MONSTER_ACTOR_LIMIT);
+  }
+
+  setActorProvider(provider: SharedMonsterActorProvider | null): void {
+    this.actorProvider = provider;
   }
 
   /** Consume presentation-only actor snapshots; HP/damage/target fields are rejected by type. */
@@ -211,10 +222,11 @@ export class SharedMonsterClient implements Updatable {
     if (zone !== this.currentIslandId || actors.length > SHARED_MONSTER_ACTOR_LIMIT) return;
     const seen = new Set<string>();
     for (const actor of actors) {
-      if (!actor || actor.kind !== 'monster' || actor.zone !== this.currentIslandId) continue;
-      const spawnId = actor.actorId.startsWith('monster:') ? actor.actorId.slice(8) : '';
-      if (!spawnId || !MONSTER_TYPES[actor.type]) continue;
-      seen.add(spawnId);
+      if (!actor || actor.zone !== this.currentIslandId) continue;
+      const isMonster = actor.kind === 'monster';
+      const isSummon = actor.kind === 'summon';
+      const spawnId = isMonster && actor.actorId.startsWith('monster:') ? actor.actorId.slice(8) : '';
+      if ((!isMonster && !isSummon) || (isMonster && (!spawnId || !MONSTER_TYPES[actor.type]))) continue;
       if (!Number.isFinite(actor.pose.x) || !Number.isFinite(actor.pose.y)
         || !Number.isFinite(actor.pose.z) || !Number.isFinite(actor.pose.heading)) continue;
       if (actor.visual && (!Array.isArray(actor.visual.events)
@@ -225,9 +237,12 @@ export class SharedMonsterClient implements Updatable {
         || !Number.isInteger(actor.spawnSequence) || actor.spawnSequence < 1
         || !Number.isInteger(actor.stateSequence) || actor.stateSequence < 0) continue;
       if (actor.lifecycle === 'despawn') {
-        this.remove(actor.actorId.replace(/^monster:/, ''));
+        if (isMonster) this.remove(spawnId);
+        this.retiredActorGenerations.set(actor.actorId, actor.generation);
         continue;
       }
+      const retiredGeneration = this.retiredActorGenerations.get(actor.actorId);
+      if (retiredGeneration !== undefined && actor.generation <= retiredGeneration) continue;
       const priorGeneration = this.actorGenerations.get(actor.actorId) ?? -1;
       const priorSpawn = this.actorSpawnSequences.get(actor.actorId) ?? -1;
       const prior = actor.generation > priorGeneration || actor.spawnSequence > priorSpawn
@@ -239,7 +254,11 @@ export class SharedMonsterClient implements Updatable {
       this.actorGenerations.set(actor.actorId, actor.generation);
       this.actorStateSequences.set(actor.actorId, actor.stateSequence);
       this.actorSpawnSequences.set(actor.actorId, actor.spawnSequence);
-      seen.add(spawnId);
+      seen.add(actor.actorId);
+      if (isSummon) {
+        this.replayActorVisual(actor);
+        continue;
+      }
       const monster = this.monsters.get(spawnId);
       if (!monster) {
         this.upsert({
@@ -262,7 +281,7 @@ export class SharedMonsterClient implements Updatable {
       this.replayActorVisual(actor);
     }
     for (const [spawnId] of this.monsters) {
-      if (!seen.has(spawnId) && actors.length > 0) this.remove(spawnId);
+      if (!seen.has(`monster:${spawnId}`) && actors.length > 0) this.remove(spawnId);
     }
   }
 
