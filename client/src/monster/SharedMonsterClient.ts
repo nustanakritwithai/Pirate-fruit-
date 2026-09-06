@@ -70,7 +70,7 @@ export type SharedMonsterActorProvider = (zone: string, generation: number) => r
 
 export const SHARED_MONSTER_ACTOR_LIMIT = 128;
 export const SHARED_MONSTER_ACTOR_EVENT_LIMIT = 32;
-export const SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT = 64;
+export const SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT = 32;
 
 function renderState(state: WorldMonsterState): MonsterState {
   if (state === 'dead') return 'dead';
@@ -207,7 +207,7 @@ export class SharedMonsterClient implements Updatable {
           : monster.state === 'patrol' || monster.state === 'return'
             ? 'walk' as const
             : 'idle' as const,
-        animation: { combatState: monster.state, category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+        animation: { combatState: presentationCombatState(monster.state), category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
       };
     });
     const provided = this.actorProvider?.(this.currentIslandId, this.generation) ?? [];
@@ -598,5 +598,11 @@ function actorWorldState(combatState: string): WorldMonsterState {
   if (combatState === 'chase' || combatState === 'aggro' || combatState === 'run') return 'chase';
   if (combatState === 'return' || combatState === 'patrol' || combatState === 'walk') return 'return';
   if (combatState === 'stunned') return 'stunned';
+  return 'idle';
+}
+
+function presentationCombatState(state: WorldMonsterState): 'idle' | 'attack1' | 'dead' {
+  if (state === 'dead') return 'dead';
+  if (state === 'attack') return 'attack1';
   return 'idle';
 }

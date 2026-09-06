@@ -15,6 +15,12 @@ import type { SharedMonsterActor } from './SharedMonsterClient';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
+function presentationCombatState(state: Monster['state']): 'idle' | 'attack1' | 'dead' {
+  if (state === 'dead') return 'dead';
+  if (state === 'attack') return 'attack1';
+  return 'idle';
+}
+
 function isInSafeZone(x: number, z: number): boolean {
   return isWorldSafeZone(undefined, x, z);
 }
@@ -294,7 +300,7 @@ export class MonsterManager {
         lifecycle: monster.state === 'dead' ? 'despawn' as const : 'active' as const,
         pose: { x: monster.group.position.x, y: monster.group.position.y, z: monster.group.position.z, dir: monster.group.rotation.y },
         locomotion: monster.state === 'return' ? 'walk' : 'idle',
-        animation: { combatState: monster.state, category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+        animation: { combatState: presentationCombatState(monster.state), category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
         presentation: { events: [], projectiles: [] },
       }];
     });

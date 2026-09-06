@@ -229,7 +229,7 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(actors).toHaveLength(1);
     expect(actors[0]).toMatchObject({
       actorId: 'monster:starter-crab-1', kind: 'monster', monsterType: 'crab', zone: 'starter-island',
-      lifecycle: 'active', locomotion: 'run', animation: { combatState: 'chase' },
+      lifecycle: 'active', locomotion: 'run', animation: { combatState: 'idle' },
     });
     expect(actors[0]).not.toHaveProperty('hp');
     expect(actors[0]).not.toHaveProperty('damage');
@@ -237,8 +237,24 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     const oversized = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000);
     oversized.applyActors('starter-island', [{
       ...actors[0]!,
-      presentation: { events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })), projectiles: [] },
+      presentation: {
+        events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })),
+        projectiles: [],
+      },
     }]);
+    expect(oversized.count).toBe(0);
+
+    const tooManyProjectiles = {
+      ...actors[0]!,
+      presentation: {
+        events: [],
+        projectiles: Array.from({ length: 33 }, (_, index) => ({
+          id: `p-${index}`, position: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: 1 },
+          velocity: { x: 0, y: 0, z: 1 }, color: 0xffffff, scale: 1, elapsed: 0, lifeFraction: 1, remainingMs: 1000,
+        })),
+      },
+    };
+    oversized.applyActors('starter-island', [tooManyProjectiles]);
     expect(oversized.count).toBe(0);
 
     const remoteHits = vi.fn();
