@@ -57,6 +57,7 @@ import { initializeRemoteProgression, reconcileProgression } from './progression
 import { initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
 import { ScopedVisualEffects } from './realtime/ScopedVisualEffects';
+import { shouldAcknowledgeDirectVisual, visualForDirectRealtime } from './realtime/VisualTransport';
 import {
   PocketMonsterParentPresence,
   createBrowserParentPresenceHost,
@@ -482,7 +483,7 @@ async function main(): Promise<void> {
         };
       },
       getVisual: () => scopedCombatEffects.current(),
-      acknowledgeVisual: (count) => { if (!realtime) scopedCombatEffects.acknowledgeEvents(count); },
+      acknowledgeVisual: (count) => { scopedCombatEffects.acknowledgeEvents(count); },
       onIslandChange: () => scopedCombatEffects.resetSession(),
     })
     : null;
@@ -850,7 +851,7 @@ async function main(): Promise<void> {
         onBoat,
         boatId: onBoat ? boatManager.selectedBoatId ?? undefined : undefined,
         presentation,
-        visual,
+        visual: visualForDirectRealtime(Boolean(pocketMonsterPresence), visual),
         locomotion,
         animation: sendAnimation ? {
           combatState,
@@ -869,7 +870,9 @@ async function main(): Promise<void> {
           skillAnimationCategory: playerCombat?.skillAnimationCategory ?? 'style',
         } : undefined,
       });
-      if (sent) scopedCombatEffects.acknowledgeEvents(visual.events.length);
+      if (shouldAcknowledgeDirectVisual(Boolean(pocketMonsterPresence), sent)) {
+        scopedCombatEffects.acknowledgeEvents(visual.events.length);
+      }
     }, 100);
   }
   game.add({

@@ -16,6 +16,7 @@ import { ScopedVisualEffects } from '../ScopedVisualEffects';
 import { PocketMonsterParentPresence, PIRATE_LOCAL_PRESENCE_MESSAGE } from '../PocketMonsterParentPresence';
 import { sanitizeVisual } from '../PresentationProtocol';
 import { RemotePlayers } from '../RemotePlayers';
+import { shouldAcknowledgeDirectVisual, visualForDirectRealtime } from '../VisualTransport';
 import type { RealtimePresenceSnapshot } from '../RealtimeClient';
 
 const QA_OUTPUT_DIR_ENV = 'PIRATE_PRESENCE_QA_OUTPUT_DIR';
@@ -42,7 +43,7 @@ function exportQaFrame(fileName: string, visual: NonNullable<RealtimePresenceSna
   writeFileSync(outputPath, `${JSON.stringify(deterministic, null, 2)}\n`, 'utf8');
 }
 
-function gameplaySwordAttack(targetComboIndex: 0 | 3) {
+function gameplaySwordAttack(targetComboIndex: 0 | 1 | 2 | 3, bindAnchors = true) {
   const scene = new THREE.Scene();
   const playerRoot = new THREE.Group();
   const playerVisual = createPiratePlayerVisual();
@@ -70,7 +71,7 @@ function gameplaySwordAttack(targetComboIndex: 0 | 3) {
   const loadout = new SkillLoadout();
   loadout.equipSword('training-sword');
   const combat = new PlayerCombat(scene, input, controller as never, monsters as never, scoped, null, loadout);
-  combat.bindVisualAnchors(equipment);
+  if (bindAnchors) combat.bindVisualAnchors(equipment);
   for (let comboIndex = 0; comboIndex <= targetComboIndex; comboIndex += 1) {
     input.consumeAttack.mockReturnValueOnce(true);
     combat.update(0); // consumes the real M1 input and starts this combo swing
@@ -84,8 +85,19 @@ function gameplaySwordAttack(targetComboIndex: 0 | 3) {
 }
 
 describe('normal sword attack presentation path', () => {
+  it('reserves one-shot visual ownership for the parent transport in the iframe', () => {
+    const { scoped } = gameplaySwordAttack(0);
+    const visual = scoped.current();
+    expect(visualForDirectRealtime(true, visual)).toBeUndefined();
+    expect(shouldAcknowledgeDirectVisual(true, true)).toBe(false);
+    expect(visualForDirectRealtime(false, visual)).toEqual(visual);
+    expect(shouldAcknowledgeDirectVisual(false, true)).toBe(true);
+  });
+
   it.each([
     { comboIndex: 0 as const, finisher: false },
+    { comboIndex: 1 as const, finisher: false },
+    { comboIndex: 2 as const, finisher: false },
     { comboIndex: 3 as const, finisher: true },
   ])('renders a visible remote blade trail for gameplay combo $comboIndex', ({ comboIndex, finisher }) => {
     const { scene: sourceScene, scoped } = gameplaySwordAttack(comboIndex);
@@ -181,6 +193,39 @@ describe('normal sword attack presentation path', () => {
 
     remote.dispose();
     bridge.dispose();
+  });
+
+  it('uses the local sword fallback slash when gameplay has no blade anchor', () => {
+    const { scoped } = gameplaySwordAttack(0, false);
+    const visual = scoped.current();
+    expect(visual.events.filter((event) => event.kind === 'slash')).toHaveLength(1);
+    expect(visual.events.find((event) => event.kind === 'slash')).toMatchObject({
+      heading: 0,
+      color: 0x9fdcff,
+      scale: 1,
+    });
+  });
+
+  it('captures the actual blocked-hit spark for remote replay', () => {
+    const scene = new THREE.Scene();
+    const input = Object.assign(Object.create(null), {
+      block: true,
+      consumeAttack: vi.fn(() => false),
+      consumeWeaponSwitch: vi.fn(() => false),
+      consumeSkillAim: vi.fn(() => null),
+      consumeUltimateAim: vi.fn(() => null),
+      getSkillAimPreview: vi.fn(() => null),
+    });
+    const controller = {
+      position: new THREE.Vector3(2, 0, 3), heading: 0, hp: 100, hpMax: 100, mp: 100, mpMax: 100,
+      isMounted: false, inputEnabled: true, verticalSpeed: 0,
+      setMovementLock: vi.fn(), applyStun: vi.fn(), applyKnockback: vi.fn(),
+    };
+    const scoped = new ScopedVisualEffects(new Effects(scene));
+    const combat = new PlayerCombat(scene, input, controller as never, { playerAttack: vi.fn() } as never, scoped, null, new SkillLoadout());
+    combat.update(0);
+    combat.modifyIncomingDamage({ amount: 10, sourceX: 3, sourceZ: 3, unblockable: false, knockback: 0, tags: ['melee'] });
+    expect(scoped.current().events.filter((event) => event.kind === 'hit-spark')).toHaveLength(1);
   });
 
   it('cleans a visible blade trail when the receiver changes zone', () => {
