@@ -215,6 +215,12 @@ export class SharedMonsterClient implements Updatable {
       const spawnId = actor.actorId.startsWith('monster:') ? actor.actorId.slice(8) : '';
       if (!spawnId || !MONSTER_TYPES[actor.type]) continue;
       seen.add(spawnId);
+      if (!Number.isFinite(actor.pose.x) || !Number.isFinite(actor.pose.y)
+        || !Number.isFinite(actor.pose.z) || !Number.isFinite(actor.pose.heading)) continue;
+      if (actor.visual && (!Array.isArray(actor.visual.events)
+        || !Array.isArray(actor.visual.projectiles)
+        || actor.visual.events.length > SHARED_MONSTER_ACTOR_EVENT_LIMIT
+        || actor.visual.projectiles.length > SHARED_MONSTER_ACTOR_PROJECTILE_LIMIT)) continue;
       if (!Number.isInteger(actor.generation) || actor.generation < 1
         || !Number.isInteger(actor.spawnSequence) || actor.spawnSequence < 1
         || !Number.isInteger(actor.stateSequence) || actor.stateSequence < 0) continue;
