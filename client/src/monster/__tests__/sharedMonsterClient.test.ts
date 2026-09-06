@@ -234,6 +234,17 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(actors[0]).not.toHaveProperty('hp');
     expect(actors[0]).not.toHaveProperty('damage');
 
+    const oversized = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000);
+    oversized.applyActors('starter-island', [{
+      ...actors[0]!,
+      visual: {
+        schemaVersion: 1, sessionId: 'oversized', stateSequence: 1,
+        events: Array.from({ length: 33 }, (_, sequence) => ({ sequence, kind: 'hit-spark' as const, ageMs: 0, position: { x: 0, y: 0, z: 0 } })),
+        projectiles: [],
+      },
+    }]);
+    expect(oversized.count).toBe(0);
+
     const remoteHits = vi.fn();
     const remote = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
     remote.applyActors('starter-island', [{
