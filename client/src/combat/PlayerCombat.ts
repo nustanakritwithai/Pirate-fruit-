@@ -3,6 +3,8 @@ import type { Input } from '../engine/Input';
 import type { CharacterController } from '../player/CharacterController';
 import type { MonsterManager, IncomingAttack } from '../monster/MonsterManager';
 import type { Effects, EnergyProjectileVisual } from '../effects/Effects';
+import type { ScopedVisualEffects } from '../realtime/ScopedVisualEffects';
+import { createPlayerShieldVisual } from '../art/PlayerShieldVisual';
 import type { NavalCombat } from '../boat/NavalCombat';
 import type { SkillAimCommand, SkillAimPreview, TouchControls } from '../ui/TouchControls';
 import type { Monster } from '../monster/Monster';
@@ -51,6 +53,7 @@ interface WaveProjectile {
   dirX: number;
   dirZ: number;
   life: number;
+  lifetimeMs: number;
   radius: number;
   hit: Set<Monster>;
   /** กันกระสุนเวทลูกเดิมทำดาเมจเรือลำเดิมซ้ำทุกเฟรม */
@@ -74,6 +77,7 @@ interface ActiveSummon {
   dirZ: number;
   attackRange: number;
   life: number;
+  lifetimeMs: number;
   fireAcc: number;
   fireInterval: number;
   radius: number;
@@ -277,7 +281,7 @@ export class PlayerCombat {
     private input: Input,
     private controller: CharacterController,
     private monsters: MonsterManager,
-    private effects: Effects,
+    private effects: Effects | ScopedVisualEffects,
     private touch: TouchControls | null,
     private loadout: SkillLoadout,
     private onLoadoutChanged?: () => void,
@@ -287,16 +291,7 @@ export class PlayerCombat {
   ) {
     this.set = resolveActiveSet(this.loadout);
 
-    this.shield = new THREE.Mesh(
-      new THREE.SphereGeometry(1.25, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
-      new THREE.MeshBasicMaterial({
-        color: 0x8fd4ff,
-        transparent: true,
-        opacity: 0.22,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    );
+    this.shield = createPlayerShieldVisual();
     this.shield.visible = false;
     this.scene.add(this.shield);
 
@@ -1044,7 +1039,7 @@ export class PlayerCombat {
       const sz = Math.cos(angle);
       const direction = new THREE.Vector3(sx, 0, sz);
       const start = new THREE.Vector3(position.x + sx * 1.2, position.y + 1.15, position.z + sz * 1.2);
-      const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
+      const visual = this.effects.createEnergyProjectile(start, direction, color, scale, WAVE_LIFETIME * 1000);
       this.projectiles.push({
         visual,
         originX: position.x,
@@ -1053,6 +1048,7 @@ export class PlayerCombat {
         dirX: sx,
         dirZ: sz,
         life: WAVE_LIFETIME,
+        lifetimeMs: WAVE_LIFETIME * 1000,
         radius: skill.radius,
         hit: new Set(),
         hitShips: new Set(),
@@ -1089,7 +1085,7 @@ export class PlayerCombat {
       const sz = Math.cos(angle);
       const direction = new THREE.Vector3(sx, 0, sz);
       const start = new THREE.Vector3(position.x + sx * 1.2, position.y + 1.15, position.z + sz * 1.2);
-      const visual = this.effects.createEnergyProjectile(start, direction, color, scale);
+      const visual = this.effects.createEnergyProjectile(start, direction, color, scale, WAVE_LIFETIME * 1000);
       this.projectiles.push({
         visual,
         originX: position.x,
@@ -1098,6 +1094,7 @@ export class PlayerCombat {
         dirX: sx,
         dirZ: sz,
         life: WAVE_LIFETIME,
+        lifetimeMs: WAVE_LIFETIME * 1000,
         radius: skill.radius,
         hit: new Set(),
         hitShips: new Set(),
@@ -1130,6 +1127,7 @@ export class PlayerCombat {
       new THREE.Vector3(dirX, 0, dirZ),
       skill.color,
       skill.isUltimate ? 1.5 : 1.1,
+      (skill.isUltimate ? 9 : 6.5) * 1000,
     );
     this.summons.push({
       visual,
@@ -1140,6 +1138,7 @@ export class PlayerCombat {
       dirZ,
       attackRange: this.skillTargetRange(skill),
       life: skill.isUltimate ? 9 : 6.5,
+      lifetimeMs: (skill.isUltimate ? 9 : 6.5) * 1000,
       fireAcc: 0,
       fireInterval: skill.isUltimate ? 0.7 : 0.95,
       radius: skill.radius,
@@ -1246,8 +1245,8 @@ export class PlayerCombat {
       const s = this.summons[i];
       s.life -= dt;
       s.fireAcc += dt;
-      this.effects.updateEnergyProjectile(s.visual, dt, Math.max(0, Math.min(1, s.life / 6)));
       s.visual.root.position.set(s.x, s.y + Math.sin(s.life * 4) * 0.15, s.z);
+      this.effects.updateEnergyProjectile(s.visual, dt, Math.max(0, Math.min(1, s.life / 6)), { elapsed: Math.max(0, (s.lifetimeMs / 1000) - s.life), remainingMs: Math.max(0, s.life * 1000), direction: new THREE.Vector3(s.dirX, 0, s.dirZ) });
       if (s.fireAcc >= s.fireInterval) {
         s.fireAcc = 0;
         const target = this.nearestMonster(s.x, s.z, s.acquireRange);
@@ -1625,7 +1624,7 @@ export class PlayerCombat {
       }
       wave.visual.root.position.x += wave.dirX * WAVE_SPEED * dt;
       wave.visual.root.position.z += wave.dirZ * WAVE_SPEED * dt;
-      this.effects.updateEnergyProjectile(wave.visual, dt, wave.life / WAVE_LIFETIME);
+      this.effects.updateEnergyProjectile(wave.visual, dt, wave.life / WAVE_LIFETIME, { elapsed: Math.max(0, WAVE_LIFETIME - wave.life), remainingMs: Math.max(0, wave.life * 1000), direction: new THREE.Vector3(wave.dirX, 0, wave.dirZ) });
 
       // สกิลยิงออกจากดาดฟ้าโดนเรือได้เช่นเดียวกับโดนมอนสเตอร์
       this.navalCombat?.damageNearestEnemyShipFromSkill(

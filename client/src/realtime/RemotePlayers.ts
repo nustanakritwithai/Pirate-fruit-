@@ -13,7 +13,12 @@ import type { Updatable } from '../engine/Game';
 import { BOAT_DEFINITIONS } from '../boat/BoatData';
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import type { RealtimeKnockback } from '@pirate-fruit/shared';
+import type { RealtimeVisualEvent, RealtimeProjectileState } from '@pirate-fruit/shared';
 import { createPiratePlayerVisual } from '../art/PiratePlayerVisual';
+import { attachmentSocketsFromPirateRig } from '../art/CharacterRig';
+import { EquipmentVisuals } from '../art/EquipmentVisuals';
+import { createPlayerShieldVisual } from '../art/PlayerShieldVisual';
+import { Effects, type EnergyProjectileVisual } from '../effects/Effects';
 import { PlayerActionAnimator } from '../animation/PlayerActionAnimator';
 import type { GraphicsTier } from '../engine/GraphicsQuality';
 
@@ -36,6 +41,13 @@ const BOAT_BY_ID = new Map(BOAT_DEFINITIONS.map((definition) => [definition.id, 
 /** ชนิด avatar ปัจจุบัน — เปลี่ยนเมื่อผู้เล่นขึ้น/ลงเรือ (หรือเปลี่ยนรุ่นเรือ) */
 type AvatarKind = string; // 'foot' | `boat:${boatId}`
 
+interface RemoteProjectileSample {
+  state: RealtimeProjectileState;
+  receivedAt: number;
+  elapsedSinceSample: number;
+  correction: THREE.Vector3;
+}
+
 interface RemotePlayer {
   group: THREE.Group;
   target: THREE.Vector3;
@@ -48,6 +60,11 @@ interface RemotePlayer {
   /** S15: แพ้ (ถูกซ่อนจนกว่าจะเกิดใหม่) */
   defeated: boolean;
   animator: PlayerActionAnimator | null;
+  equipment: EquipmentVisuals | null;
+  projectiles: Map<string, EnergyProjectileVisual>;
+  projectileSamples: Map<string, RemoteProjectileSample>;
+  endedProjectiles: Set<string>;
+  shield: THREE.Mesh | null;
   locomotion: 'idle' | 'walk' | 'run' | 'swim';
   animation: NonNullable<RealtimePresenceSnapshot['animation']>;
   /** Current sender runtime and high-water sequence for short-action dedupe. */
@@ -69,6 +86,10 @@ interface RemotePlayer {
   hitDistance: number;
   hitUntil: number;
   targetVelocity: THREE.Vector3;
+  visualSessionId: string | null;
+  visualSequence: number;
+  visualStateSequence: number;
+  retiredVisualSessions: Set<string>;
 }
 
 function defaultAnimation(): NonNullable<RealtimePresenceSnapshot['animation']> {
@@ -247,10 +268,18 @@ function makeNameSprite(name: string): THREE.Sprite {
 }
 
 /** Current canonical on-foot visual; appearance fields are ready for future variants. */
-function makePlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: PlayerActionAnimator } {
+function makePlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: PlayerActionAnimator; equipment: EquipmentVisuals; shield: THREE.Mesh } {
   const visual = createPiratePlayerVisual();
   visual.group.name = `remote-player:${snapshot.appearance?.avatarId ?? 'pirate-v1'}`;
-  return { group: visual.group, animator: new PlayerActionAnimator(visual.rig) };
+  const active = snapshot.presentation?.activeItem;
+  const equipment = new EquipmentVisuals(
+    visual.group,
+    () => active ? { itemId: active.itemId, category: active.category, name: active.itemId } : null,
+    attachmentSocketsFromPirateRig(visual.rig),
+  );
+  const shield = createPlayerShieldVisual();
+  visual.group.add(shield);
+  return { group: visual.group, animator: new PlayerActionAnimator(visual.rig), equipment, shield };
 }
 
 /** Three-mesh silhouette for mid-distance players; same Pirate V1 palette, no rig cost. */
@@ -284,9 +313,9 @@ function avatarKindOf(snapshot: RealtimePresenceSnapshot): AvatarKind {
   return snapshot.onBoat ? `boat:${snapshot.boatId ?? 'default'}` : 'foot';
 }
 
-function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { group: THREE.Group; animator: PlayerActionAnimator | null } {
+function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { group: THREE.Group; animator: PlayerActionAnimator | null; equipment: EquipmentVisuals | null; shield: THREE.Mesh | null } {
   const avatar = snapshot.onBoat
-    ? { group: makeBoatProxy(snapshot.boatId), animator: null }
+    ? { group: makeBoatProxy(snapshot.boatId), animator: null, equipment: null, shield: null }
     : makePlayerBody(snapshot);
   const { group } = avatar;
   if (lod !== 'hidden') group.add(makeNameSprite(snapshot.name || 'นักผจญภัย'));
@@ -295,6 +324,7 @@ function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { grou
 
 export class RemotePlayers implements Updatable {
   private readonly players = new Map<string, RemotePlayer>();
+  private readonly effects: Effects;
   private currentIslandId: string;
   private receivedPresence = 0;
   private acceptedPresence = 0;
@@ -305,9 +335,10 @@ export class RemotePlayers implements Updatable {
     private readonly scene: THREE.Scene,
     islandId: string,
     private readonly now: () => number = () => Date.now(),
-    private readonly renderOptions: RemoteRenderOptions = {},
+    _renderOptions: RemoteRenderOptions = {},
   ) {
     this.currentIslandId = islandId;
+    this.effects = new Effects(scene);
   }
 
   get count(): number {
@@ -377,6 +408,11 @@ export class RemotePlayers implements Updatable {
         lastSeenAt: receivedAt,
         defeated: false,
         animator: avatar.animator,
+        equipment: avatar.equipment,
+        projectiles: new Map(),
+        projectileSamples: new Map(),
+        endedProjectiles: new Set(),
+        shield: avatar.shield,
         locomotion: snapshot.locomotion ?? 'idle',
         animation,
         ...initializeActionDedupe(animation as RemoteAnimationWithActionIdentity),
@@ -391,7 +427,13 @@ export class RemotePlayers implements Updatable {
         hitDistance: 0,
         hitUntil: 0,
         targetVelocity: new THREE.Vector3(),
+        visualSessionId: null,
+        visualSequence: 0,
+        visualStateSequence: 0,
+        retiredVisualSessions: new Set(),
       });
+      const created = this.players.get(snapshot.playerId);
+      if (created) this.applyVisual(snapshot.visual, created);
       return;
     }
     // S14: ผู้เล่นขึ้น/ลงเรือ หรือเปลี่ยนรุ่นเรือ → สร้าง avatar ใหม่ที่ตำแหน่งเดิม
@@ -408,6 +450,8 @@ export class RemotePlayers implements Updatable {
       player.group = group;
       player.avatarKind = kind;
       player.animator = avatar.animator;
+      player.equipment = avatar.equipment;
+      player.shield = avatar.shield;
       player.lod = nextLod;
     }
     // Presence frames already in flight can describe the pre-hit position. Keep
@@ -449,6 +493,10 @@ export class RemotePlayers implements Updatable {
     player.targetHeading = snapshot.heading;
     player.onBoat = snapshot.onBoat;
     player.locomotion = snapshot.locomotion ?? 'idle';
+    if (player.equipment && snapshot.presentation) {
+      const active = snapshot.presentation?.activeItem;
+      player.equipment.setActiveItem(active ? { itemId: active.itemId, category: active.category, name: active.itemId } : null);
+    }
     // A missing/null wire animation means current idle, not "keep the last
     // action". Transient reliability is handled by the bounded publisher latch.
     // A combat-defeat event is authoritative for the presentation lifecycle.
@@ -461,6 +509,7 @@ export class RemotePlayers implements Updatable {
       );
     }
     player.snapshot = snapshot;
+    this.applyVisual(snapshot.visual, player);
     player.lastSeenAt = this.now();
   }
 
@@ -489,28 +538,7 @@ export class RemotePlayers implements Updatable {
     };
   }
 
-  private limits(): { boat: number } {
-    if (this.renderOptions.tier === 'low') return { boat: 120 };
-    if (this.renderOptions.tier === 'medium') return { boat: 170 };
-    return { boat: 230 };
-  }
-
-  private distanceSq(player: Pick<RemotePlayer, 'target'> | RealtimePresenceSnapshot): number {
-    const focus = this.renderOptions.focus?.();
-    if (!focus) return 0;
-    const x = 'target' in player ? player.target.x : player.x;
-    const y = 'target' in player ? player.target.y : player.y;
-    const z = 'target' in player ? player.target.z : player.z;
-    const dx = focus.x - x;
-    const dy = focus.y - y;
-    const dz = focus.z - z;
-    return dx * dx + dy * dy + dz * dz;
-  }
-
-  private initialLod(snapshot: RealtimePresenceSnapshot): RemoteLod {
-    const limits = this.limits();
-    const distance = Math.sqrt(this.distanceSq(snapshot));
-    if (snapshot.onBoat) return distance <= limits.boat ? 'low' : 'hidden';
+  private initialLod(_snapshot: RealtimePresenceSnapshot): RemoteLod {
     return 'full';
   }
 
@@ -530,6 +558,8 @@ export class RemotePlayers implements Updatable {
     this.scene.add(avatar.group);
     player.group = avatar.group;
     player.animator = avatar.animator;
+    player.equipment = avatar.equipment;
+    player.shield = avatar.shield;
     player.lod = lod;
   }
 
@@ -548,7 +578,7 @@ export class RemotePlayers implements Updatable {
     group.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose();
-        (object.material as THREE.Material).dispose();
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
       } else if (object instanceof THREE.Sprite) {
         object.material.map?.dispose();
         object.material.dispose();
@@ -559,6 +589,10 @@ export class RemotePlayers implements Updatable {
   remove(playerId: string): void {
     const player = this.players.get(playerId);
     if (!player) return;
+    for (const projectile of player.projectiles.values()) this.effects.removeEnergyProjectile(projectile);
+    player.projectiles.clear();
+    player.projectileSamples.clear();
+    this.effects.clearOwner(player);
     this.disposeGroup(player.group);
     this.players.delete(playerId);
   }
@@ -567,18 +601,12 @@ export class RemotePlayers implements Updatable {
     const factor = 1 - Math.exp(-LERP_PER_SECOND * dt); // frame-rate independent lerp
     const now = this.now();
     const cutoff = now - STALE_MS;
-    const limits = this.limits();
     for (const [playerId, player] of [...this.players]) {
       if (player.lastSeenAt < cutoff) {
         this.remove(playerId);
         continue;
       }
-      const distance = Math.sqrt(this.distanceSq(player));
-      const boatLimit = player.lod === 'hidden' ? limits.boat * 0.9 : limits.boat * 1.1;
-      const desiredLod: RemoteLod = player.onBoat
-        ? distance <= boatLimit ? 'low' : 'hidden'
-        : 'full';
-      this.setLod(player, desiredLod);
+      this.setLod(player, 'full');
       const extrapolationSeconds = Math.max(
         0,
         Math.min(MAX_EXTRAPOLATION_SECONDS, (now - player.lastSeenAt) / 1000),
@@ -610,7 +638,32 @@ export class RemotePlayers implements Updatable {
         actionSessionId: animation.actionSessionId,
         actionSequence: animation.actionSequence,
       });
+      player.equipment?.update(dt);
+      if (player.shield) {
+        player.shield.visible = (player.shield.userData.remoteShieldActive === true) && player.lod === 'full';
+        player.shield.position.y = 0.35;
+      }
+      for (const [id, projectile] of player.projectiles) {
+        const sample = player.projectileSamples.get(id);
+        if (!sample) continue;
+        sample.elapsedSinceSample = Math.max(sample.elapsedSinceSample + Math.max(0, dt), (now - sample.receivedAt) / 1000);
+        const remainingMs = sample.state.remainingMs - sample.elapsedSinceSample * 1000;
+        if (remainingMs <= 0 || sample.elapsedSinceSample > 3) {
+          this.removeProjectile(player, id);
+          continue;
+        }
+        const prediction = Math.min(MAX_EXTRAPOLATION_SECONDS, sample.elapsedSinceSample);
+        sample.correction.multiplyScalar(Math.exp(-12 * Math.max(0, dt)));
+        projectile.root.position.set(
+          sample.state.position.x + sample.state.velocity.x * prediction,
+          sample.state.position.y + sample.state.velocity.y * prediction,
+          sample.state.position.z + sample.state.velocity.z * prediction,
+        ).add(sample.correction);
+        const fraction = sample.state.lifeFraction >= 1 ? 1 : sample.state.lifeFraction * remainingMs / Math.max(1, sample.state.remainingMs);
+        this.effects.replayForOwner(player, () => this.effects.updateEnergyProjectile(projectile, dt, fraction));
+      }
     }
+    this.effects.update(dt);
   }
 
   /** S15: ตำแหน่งปัจจุบันของผู้เล่นคนอื่น (สำหรับเด้งเลขดาเมจ) — null ถ้าไม่รู้จัก */
@@ -706,5 +759,96 @@ export class RemotePlayers implements Updatable {
 
   dispose(): void {
     for (const playerId of [...this.players.keys()]) this.remove(playerId);
+    this.effects.dispose();
+  }
+
+  private applyVisual(visual: RealtimePresenceSnapshot['visual'], player: RemotePlayer): void {
+    if (!visual || visual.schemaVersion !== 1) return;
+    if (player.retiredVisualSessions.has(visual.sessionId)) return;
+    if (player.visualSessionId !== visual.sessionId) {
+      if (player.visualSessionId) player.retiredVisualSessions.add(player.visualSessionId);
+      while (player.retiredVisualSessions.size > 64) player.retiredVisualSessions.delete(player.retiredVisualSessions.values().next().value!);
+      for (const id of player.projectiles.keys()) this.removeProjectile(player, id);
+      this.effects.clearOwner(player);
+      player.endedProjectiles.clear();
+      player.visualSessionId = visual.sessionId;
+      player.visualSequence = 0;
+      player.visualStateSequence = 0;
+    }
+    // event queue และ current state มี cadence คนละชุด จึงกันซ้ำแยกกัน
+    for (const event of visual.events) {
+      if (!Number.isSafeInteger(event.sequence) || event.sequence <= player.visualSequence) continue;
+      player.visualSequence = event.sequence;
+      if (event.kind === 'projectile-end' && event.projectileId) {
+        player.endedProjectiles.add(event.projectileId);
+        this.removeProjectile(player, event.projectileId);
+      }
+      if (event.ageMs < 0 || event.ageMs > 3000) continue;
+      // current projectiles คือชุดครบ ส่วน start/end ที่จบภายใน snapshot แสดง impact จาก end
+      // แสงปืน/รอยฟันสั้นกว่ารอบ snapshot: เล่นเหตุการณ์ใหม่ครบหนึ่งครั้ง
+      // ageMs ใช้คัดข้อมูลหมดอายุ ไม่ตัดเฟรมภาพที่ผู้ชมยังไม่เคยเห็น
+      this.effects.replayForOwner(player, () => this.replayOneShot(event));
+    }
+    while (player.endedProjectiles.size > 512) player.endedProjectiles.delete(player.endedProjectiles.values().next().value!);
+    if (visual.stateSequence <= player.visualStateSequence) return;
+    if (player.shield) {
+      const shieldMaterial = player.shield.material as THREE.MeshBasicMaterial;
+      shieldMaterial.opacity = THREE.MathUtils.clamp(visual.shield?.opacity ?? 0, 0, 1);
+      player.shield.userData.remoteShieldActive = visual.shield?.active === true;
+      player.shield.visible = player.shield.userData.remoteShieldActive && player.lod === 'full';
+    }
+    player.visualStateSequence = visual.stateSequence;
+    const active = new Set(visual.projectiles.filter(projectile => projectile.remainingMs > 0).map((projectile) => projectile.id));
+    for (const projectileId of player.endedProjectiles) active.delete(projectileId);
+    for (const projectile of visual.projectiles) {
+      if (player.endedProjectiles.has(projectile.id) || projectile.remainingMs <= 0) continue;
+      let render = player.projectiles.get(projectile.id);
+      const fresh = !render;
+      if (!render) {
+        render = this.effects.createEnergyProjectile(
+          new THREE.Vector3(projectile.position.x, projectile.position.y, projectile.position.z),
+          new THREE.Vector3(projectile.direction.x, projectile.direction.y, projectile.direction.z),
+          projectile.color,
+          projectile.scale,
+        );
+        player.projectiles.set(projectile.id, render);
+      }
+      const target = new THREE.Vector3(projectile.position.x, projectile.position.y, projectile.position.z);
+      const correction = fresh ? new THREE.Vector3() : render.root.position.clone().sub(target);
+      if (correction.length() > 12) correction.set(0, 0, 0);
+      render.direction.set(projectile.direction.x, projectile.direction.y, projectile.direction.z).normalize();
+      render.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), render.direction);
+      this.effects.seekEnergyProjectile(render, projectile.elapsed, projectile.lifeFraction);
+      player.projectileSamples.set(projectile.id, { state: { ...projectile, position: { ...projectile.position }, velocity: { ...projectile.velocity }, direction: { ...projectile.direction } }, receivedAt: this.now(), elapsedSinceSample: 0, correction });
+    }
+    for (const projectileId of player.projectiles.keys()) {
+      if (!active.has(projectileId)) {
+        this.removeProjectile(player, projectileId);
+      }
+    }
+  }
+
+  private removeProjectile(player: RemotePlayer, id: string): void {
+    const visual = player.projectiles.get(id);
+    if (visual) this.effects.removeEnergyProjectile(visual);
+    player.projectiles.delete(id);
+    player.projectileSamples.delete(id);
+  }
+
+  private replayOneShot(event: RealtimeVisualEvent): void {
+    const position = event.position;
+    if (!position) return;
+    const point = new THREE.Vector3(position.x, position.y, position.z);
+    switch (event.kind) {
+      case 'slash': this.effects.spawnSlash(point, event.heading ?? 0, event.color ?? 0x9fdcff, event.scale ?? 1, event.assetId as never); break;
+      case 'blade-trail': this.effects.spawnBladeTrail(new THREE.Vector3(event.bladeBase?.x ?? position.x, event.bladeBase?.y ?? position.y, event.bladeBase?.z ?? position.z), new THREE.Vector3(event.bladeTip?.x ?? position.x, event.bladeTip?.y ?? position.y, event.bladeTip?.z ?? position.z), point, event.heading ?? 0, event.comboIndex ?? 0, event.color ?? 0x9fdcff, event.finisher ?? false); break;
+      case 'gun-shot': if (event.endpoint) this.effects.spawnGunShot(point, new THREE.Vector3(event.endpoint.x, event.endpoint.y, event.endpoint.z), event.color ?? 0xffd477, event.impacted ?? false, event.power ?? 1); break;
+      case 'energy-launch': if (event.direction) this.effects.spawnEnergyLaunch(point, new THREE.Vector3(event.direction.x, event.direction.y, event.direction.z), event.color ?? 0x74e8ff, event.scale ?? 1); break;
+      case 'shockwave': this.effects.spawnShockwave(point, event.radius ?? 1, event.color ?? 0xbfe8ff, event.assetId as never); break;
+      case 'beam': if (event.direction) this.effects.spawnBeam(point, new THREE.Vector3(event.direction.x, event.direction.y, event.direction.z), event.length ?? 1, event.color ?? 0xbfe8ff); break;
+      case 'hit-spark': this.effects.spawnHitSpark(point, event.color ?? 0xfff1a8); break;
+      case 'energy-impact': this.effects.spawnEnergyImpact(point, event.color ?? 0x74e8ff, event.scale ?? 1); break;
+      case 'projectile-end': this.effects.spawnEnergyImpact(point, event.color ?? 0x74e8ff, (event.scale ?? 1) * (event.burstScale ?? 0.8)); break;
+    }
   }
 }

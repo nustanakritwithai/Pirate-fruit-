@@ -6,6 +6,7 @@ import {
 } from '../art/SpellFxAssetLibrary';
 
 interface ActiveEffect {
+  owner?: object;
   root: THREE.Object3D;
   life: number;
   maxLife: number;
@@ -83,6 +84,7 @@ export function getForwardArcRotation(
 
 /** เอฟเฟกต์การต่อสู้แบบ procedural และงบต่ำสำหรับมือถือ */
 export class Effects {
+  private currentOwner: object | undefined;
   private readonly active: ActiveEffect[] = [];
   private readonly numbers: DamageNumber[] = [];
   private readonly slashGeo = new THREE.RingGeometry(0.5, 1.5, 24, 1, 0, SLASH_ARC_LENGTH);
@@ -272,6 +274,7 @@ export class Effects {
     direction: THREE.Vector3,
     color = 0x74e8ff,
     scale = 1,
+    _lifetimeMs = 6_000,
   ): EnergyProjectileVisual {
     const normalizedDirection = direction.clone().normalize();
     const coreMaterial = additiveMaterial(new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.48), 0.98);
@@ -318,7 +321,7 @@ export class Effects {
   }
 
   /** อัปเดต animation ของลูกพลังหลัง PlayerCombat ขยับตำแหน่งแล้ว */
-  updateEnergyProjectile(visual: EnergyProjectileVisual, dt: number, lifeFraction: number): void {
+  updateEnergyProjectile(visual: EnergyProjectileVisual, dt: number, lifeFraction: number, _metadata?: { elapsed?: number; remainingMs?: number; direction?: THREE.Vector3 }): void {
     visual.elapsed += dt;
     visual.trailTimer += dt;
     visual.core.rotation.x += dt * 7.2;
@@ -357,10 +360,43 @@ export class Effects {
 
   /** ลบ visual/material ของลูกพลังและสร้าง burst สุดท้าย */
   destroyEnergyProjectile(visual: EnergyProjectileVisual, burstScale = 0.8): void {
+    this.removeEnergyProjectile(visual);
+    this.spawnEnergyImpact(visual.root.position, visual.color, visual.scale * burstScale);
+  }
+
+  /** ออกจากโลกหรือข้อมูลหมดอายุไม่ใช่การชน จึงล้างโดยไม่มี burst */
+  removeEnergyProjectile(visual: EnergyProjectileVisual): void {
     this.scene.remove(visual.root);
     for (const material of visual.materials) material.dispose();
     visual.assetMaterials?.forEach((material) => material.dispose());
-    this.spawnEnergyImpact(visual.root.position, visual.color, visual.scale * burstScale);
+  }
+
+  /** ใช้ phase เดียวกับ local โดยไม่สร้าง trail ย้อนหลังเมื่อเพิ่งเห็นลูกพลัง */
+  seekEnergyProjectile(visual: EnergyProjectileVisual, elapsed: number, lifeFraction: number): void {
+    const delta = elapsed - visual.elapsed;
+    visual.trailTimer = (elapsed % 0.065) - delta;
+    this.updateEnergyProjectile(visual, delta, lifeFraction);
+  }
+
+  /** เก็บเจ้าของของเอฟเฟกต์เพื่อให้ leave/zone change ล้างได้ตรงคน */
+  replayForOwner(owner: object, emit: () => void): void {
+    const previousOwner = this.currentOwner;
+    this.currentOwner = owner;
+    try { emit(); } finally { this.currentOwner = previousOwner; }
+  }
+
+  clearOwner(owner: object): void {
+    for (const effect of [...this.active]) if (effect.owner === owner) this.removeEffect(effect);
+  }
+
+  dispose(): void {
+    for (const effect of [...this.active]) this.removeEffect(effect);
+    for (const number of this.numbers.splice(0)) {
+      this.scene.remove(number.sprite);
+      number.sprite.material.map?.dispose();
+      number.sprite.material.dispose();
+    }
+    for (const value of Object.values(this)) if (value instanceof THREE.BufferGeometry) value.dispose();
   }
 
   /** วงพลังที่หด/ดีดออกจากมือในเฟรมปล่อยสกิล */
@@ -521,16 +557,7 @@ export class Effects {
   update(dt: number): void {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const effect = this.active[i];
-      effect.life -= dt;
-      const remaining = THREE.MathUtils.clamp(effect.life / effect.maxLife, 0, 1);
-      const progress = 1 - remaining;
-      effect.animate(progress, remaining, dt);
-      if (effect.life <= 0) {
-        this.scene.remove(effect.root);
-        for (const material of effect.materials) material.dispose();
-        for (const geometry of effect.geometries) geometry.dispose();
-        this.active.splice(i, 1);
-      }
+      this.advanceEffect(effect, dt, i);
     }
 
     for (let i = this.numbers.length - 1; i >= 0; i--) {
@@ -548,6 +575,21 @@ export class Effects {
     }
   }
 
+  private advanceEffect(effect: ActiveEffect, dt: number, index: number): void {
+    effect.life -= dt;
+    const remaining = THREE.MathUtils.clamp(effect.life / effect.maxLife, 0, 1);
+    effect.animate(1 - remaining, remaining, dt);
+    if (effect.life <= 0) this.removeEffect(effect, index);
+  }
+
+  private removeEffect(effect: ActiveEffect, knownIndex?: number): void {
+    this.scene.remove(effect.root);
+    for (const material of effect.materials) material.dispose();
+    for (const geometry of effect.geometries) geometry.dispose();
+    const index = knownIndex ?? this.active.indexOf(effect);
+    if (index >= 0) this.active.splice(index, 1);
+  }
+
   private track(
     root: THREE.Object3D,
     maxLife: number,
@@ -555,7 +597,7 @@ export class Effects {
     geometries: THREE.BufferGeometry[],
     animate: ActiveEffect['animate'],
   ): void {
-    this.active.push({ root, life: maxLife, maxLife, materials, geometries, animate });
+    this.active.push({ root, life: maxLife, maxLife, materials, geometries, animate, owner: this.currentOwner });
   }
 
   private spawnMuzzleFlash(

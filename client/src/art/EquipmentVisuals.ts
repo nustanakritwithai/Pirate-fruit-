@@ -71,10 +71,11 @@ export class EquipmentVisuals {
   private readonly socketOffsetEuler = new THREE.Euler();
   private elapsed = 0;
   private lastItemKey = '';
+  private activeItemOverride: ActiveLoadoutItem | null | undefined;
 
   constructor(
     private readonly playerRoot: THREE.Group,
-    private getActiveItem: () => ActiveLoadoutItem,
+    private getActiveItem: () => ActiveLoadoutItem | null,
     private readonly sockets: Readonly<CharacterAttachmentSockets> = {
       leftHand: null,
       rightHand: null,
@@ -237,9 +238,15 @@ export class EquipmentVisuals {
       }
     }
 
-    const item = this.getActiveItem();
-    const itemKey = `${item.category}:${item.itemId}`;
+    const item = this.activeItemOverride !== undefined ? this.activeItemOverride : this.getActiveItem();
+    const itemKey = item ? `${item.category}:${item.itemId}` : '';
     if (itemKey === this.lastItemKey) return;
+    this.render();
+  }
+
+  setActiveItem(item: ActiveLoadoutItem | null): void {
+    this.activeItemOverride = item;
+    this.lastItemKey = '__pending__';
     this.render();
   }
 
@@ -275,11 +282,12 @@ export class EquipmentVisuals {
   }
 
   private render(): void {
-    const item = this.getActiveItem();
-    this.lastItemKey = `${item.category}:${item.itemId}`;
+    const item = this.activeItemOverride !== undefined ? this.activeItemOverride : this.getActiveItem();
+    this.lastItemKey = item ? `${item.category}:${item.itemId}` : '';
     for (const [category, group] of Object.entries(this.groups) as [LoadoutCategory, THREE.Group][]) {
-      group.visible = category === item.category;
+      group.visible = item !== null && category === item.category;
     }
+    if (!item) return;
     if (item.category === 'fruit') this.applyFruitPalette(item.itemId);
   }
 
