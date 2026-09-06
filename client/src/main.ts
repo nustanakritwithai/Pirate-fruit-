@@ -512,6 +512,8 @@ async function main(): Promise<void> {
         game.scene,
         islandManager.activeIsland,
         (x, z) => world.collision.heightAt(x, z),
+        undefined,
+        effects,
       )
     : null;
   if (sharedMonsters) {
@@ -577,7 +579,10 @@ async function main(): Promise<void> {
       tradeManager.living.setServerReadOnly(true);
       refreshEconomyViews();
     },
-    onResync: resyncAuthoritativeState,
+    onResync: () => {
+      sharedMonsters?.resetSession();
+      resyncAuthoritativeState();
+    },
     onAnnouncement: (message, level) => {
       economyHud.notifyStatus(message, level === 'warning');
       audio.play(level === 'warning' ? 'ui.reject' : 'ui.notification');

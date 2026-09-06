@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { Updatable } from '../engine/Game';
 import { MONSTER_TYPES } from './MonsterData';
 import { Monster, type MonsterState } from './Monster';
+import type { Effects } from '../effects/Effects';
 import {
   isWorldSafeZone,
   type WorldMonsterAttack,
@@ -91,6 +92,8 @@ export class SharedMonsterClient implements Updatable {
   private readonly pendingSnapshots = new Map<string, readonly WorldMonsterSnapshot[]>();
   private readonly pendingAttacks: PendingMonsterAttack[] = [];
   private readonly seenAttackIds = new Set<string>();
+  /** Authoritative hit deltas are replay-safe presentation events. */
+  private readonly seenHitDeltas = new Set<string>();
   private currentIslandId: string;
 
   constructor(
@@ -98,6 +101,7 @@ export class SharedMonsterClient implements Updatable {
     islandId: string,
     private readonly heightAt: (x: number, z: number) => number = () => 0,
     private readonly now: () => number = () => Date.now(),
+    private readonly effects?: Pick<Effects, 'spawnHitSpark'>,
   ) {
     this.currentIslandId = islandId;
   }
@@ -121,11 +125,19 @@ export class SharedMonsterClient implements Updatable {
     this.currentIslandId = islandId;
     this.pendingAttacks.length = 0;
     this.seenAttackIds.clear();
+    this.seenHitDeltas.clear();
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
     const pending = this.pendingSnapshots.get(islandId);
     this.pendingSnapshots.delete(islandId);
     if (pending) this.applySnapshot(islandId, pending);
     return true;
+  }
+
+  /** Reconnect/session boundary: discard one-shot bookkeeping before resync. */
+  resetSession(): void {
+    this.pendingAttacks.length = 0;
+    this.seenAttackIds.clear();
+    this.seenHitDeltas.clear();
   }
 
   /** full snapshot — แทนที่ทั้งเกาะ (join/resync) */
@@ -179,6 +191,19 @@ export class SharedMonsterClient implements Updatable {
       monster.hp = update.hp;
       monster.state = update.state;
       monster.visual.applyAuthoritativeState(update.hp, monster.maxHp, renderState(update.state));
+      if (update.damage !== undefined && update.damage > 0) {
+        const hitKey = `${update.spawnId}:${update.hp}:${update.damage}`;
+        if (!this.seenHitDeltas.has(hitKey)) {
+          this.seenHitDeltas.add(hitKey);
+          if (this.seenHitDeltas.size > 1024) {
+            const oldest = this.seenHitDeltas.values().next().value;
+            if (typeof oldest === 'string') this.seenHitDeltas.delete(oldest);
+          }
+          const impact = monster.group.position.clone();
+          impact.y += monster.monsterId === 'crab' ? 0.65 : 1.05 * (MONSTER_TYPES[monster.monsterId]?.scale ?? 1);
+          this.effects?.spawnHitSpark(impact);
+        }
+      }
       if (update.hitReaction) {
         monster.visual.playHitReaction();
         monster.visual.playHitReactionDirection(
@@ -403,5 +428,6 @@ export class SharedMonsterClient implements Updatable {
   dispose(): void {
     for (const spawnId of [...this.monsters.keys()]) this.remove(spawnId);
     this.pendingSnapshots.clear();
+    this.resetSession();
   }
 }
