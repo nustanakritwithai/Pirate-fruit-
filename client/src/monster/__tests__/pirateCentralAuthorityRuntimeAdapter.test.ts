@@ -20,9 +20,10 @@ describe('PirateCentralAuthorityRuntimeAdapter', () => {
     expect(adapter.update(capability({ generation: 4 }), 'pirate-fruit')).toBe(true);
     expect(adapter.update(capability({ generation: 3 }), 'pirate-fruit')).toBe(false);
     expect(adapter.active).toBe(true);
-    expect(adapter.update(capability({ generation: 5 }), 'starter-island')).toBe(false);
+    expect(adapter.update(capability({ generation: 5, zone: 'mist-jungle' }), 'pirate-fruit')).toBe(false);
     expect(adapter.active).toBe(false);
     adapter.update(capability({ generation: 6 }), 'pirate-fruit');
+    expect(adapter.accepts('mist-jungle')).toBe(true);
     adapter.reset();
     expect(adapter.active).toBe(false);
     expect(adapter.accepts('pirate-fruit')).toBe(false);

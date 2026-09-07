@@ -5,6 +5,8 @@ export interface PirateCentralAuthorityCapability {
   generation: number;
 }
 
+export const PIRATE_CENTRAL_TRANSPORT_ZONE = 'pirate-fruit';
+
 function valid(value: unknown): value is PirateCentralAuthorityCapability {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<PirateCentralAuthorityCapability>;
@@ -20,8 +22,8 @@ function valid(value: unknown): value is PirateCentralAuthorityCapability {
 export class PirateCentralAuthorityRuntimeAdapter {
   private capability: PirateCentralAuthorityCapability | null = null;
 
-  update(candidate: unknown, currentZone: string): boolean {
-    if (!valid(candidate) || candidate.zone !== currentZone) {
+  update(candidate: unknown, transportZone = PIRATE_CENTRAL_TRANSPORT_ZONE): boolean {
+    if (!valid(candidate) || candidate.zone !== transportZone) {
       this.capability = null;
       return false;
     }
@@ -34,7 +36,7 @@ export class PirateCentralAuthorityRuntimeAdapter {
   reset(): void { this.capability = null; }
 
   accepts(zone: string): boolean {
-    return this.capability?.zone === zone;
+    return this.capability !== null && typeof zone === 'string' && zone.length > 0;
   }
 
   get active(): boolean { return this.capability !== null; }

@@ -99,7 +99,7 @@ const zones = [...new Set([...camps.map((camp) => camp.zone), ...bosses.map((bos
 
 const manifestWithoutHash = {
   schemaVersion: 1 as const,
-  contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2',
+  contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2',
   zones,
   collision: {
     coordinateFrame: 'x-z' as const,
@@ -146,6 +146,8 @@ export interface PirateCentralSpatialManifest {
   contentRevision: string;
   contentHash: string;
   zones: readonly string[];
+  transportZone: 'pirate-fruit';
+  mapZones: readonly string[];
   mapId: 'pirate-fruit';
   collisionProfile: PirateCentralContentManifest['collision'];
   aiProfile: PirateCentralContentManifest['ai'];
@@ -157,6 +159,8 @@ const spatialWithoutHash = {
   schema: 'pirate-central-spatial/1' as const,
   contentRevision: manifestWithoutHash.contentRevision,
   zones,
+  transportZone: 'pirate-fruit' as const,
+  mapZones: zones,
   mapId: 'pirate-fruit' as const,
   collisionProfile: manifestWithoutHash.collision,
   aiProfile: manifestWithoutHash.ai,

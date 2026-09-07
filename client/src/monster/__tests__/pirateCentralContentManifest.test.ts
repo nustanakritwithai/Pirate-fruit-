@@ -18,7 +18,7 @@ import {
   isPirateCentralSpatialManifest,
 } from '../PirateCentralContentManifest';
 
-const ARTIFACT_SHA256 = '39FA9E8460EF662126534814A4A3FED4B9C4A670F0E3F707A3F643EC0733850C';
+const ARTIFACT_SHA256 = '7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0';
 
 describe('Pirate central content manifest', () => {
   it('is deterministic and maps the real catalog/spawn source without authority fields', () => {
@@ -42,10 +42,12 @@ describe('Pirate central content manifest', () => {
     const parsed: unknown = JSON.parse(PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON);
     expect(isPirateCentralSpatialManifest(parsed)).toBe(true);
     expect(Object.keys(parsed as object)).toEqual([
-      'schema', 'contentRevision', 'zones', 'mapId', 'collisionProfile', 'aiProfile', 'monsterTypes', 'spawns', 'contentHash',
+      'schema', 'contentRevision', 'zones', 'transportZone', 'mapZones', 'mapId', 'collisionProfile', 'aiProfile', 'monsterTypes', 'spawns', 'contentHash',
     ]);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.schema).toBe(PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR.schema);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.mapId).toBe(PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR.mapId);
+    expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.transportZone).toBe('pirate-fruit');
+    expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.mapZones).toEqual(PIRATE_CENTRAL_SPATIAL_MANIFEST.zones);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.spawns).toHaveLength(MONSTER_CAMPS.length + BOSS_SPAWNS.length);
     expect(JSON.stringify(PIRATE_CENTRAL_SPATIAL_MANIFEST)).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.collisionProfile.groundInput).toBe('worldHeightAt');
@@ -62,7 +64,7 @@ describe('Pirate central content manifest', () => {
     const parsed: unknown = JSON.parse(artifact);
     expect(parsed).toEqual(PIRATE_CENTRAL_SPATIAL_MANIFEST);
     expect((parsed as { schema: string }).schema).toBe('pirate-central-spatial/1');
-    expect((parsed as { contentRevision: string }).contentRevision).toBe('pirate-monster-catalog-2026-09-07-ai-v2');
+    expect((parsed as { contentRevision: string }).contentRevision).toBe('pirate-monster-catalog-2026-09-07-ai-v2-transport-v2');
     expect((parsed as { contentHash: string }).contentHash).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST.contentHash);
     const rawTypes = (parsed as { monsterTypes: unknown[] }).monsterTypes;
     expect(rawTypes).toHaveLength(PIRATE_CENTRAL_CONTENT_MANIFEST.monsterTypes.length);

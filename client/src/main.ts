@@ -506,7 +506,7 @@ async function main(): Promise<void> {
         sharedMonsters?.applyActors(zone, safeActors);
       },
       onCentralAuthority: (capability) => {
-        const active = centralAuthorityRuntime?.update(capability, islandManager.activeIsland) ?? false;
+        const active = centralAuthorityRuntime?.update(capability) ?? false;
         monsterManager?.setAmbientSpawnsSuppressed(active);
         if (!active) sharedMonsters?.resetSession();
       },
