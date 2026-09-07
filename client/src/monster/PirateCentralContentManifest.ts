@@ -134,3 +134,54 @@ export const PIRATE_MONSTER_INTENT_LIMITS = Object.freeze({
   maxSkillIdLength: 80,
 });
 
+/** Canonical wire shape consumed by the central spatial engine. */
+export interface PirateCentralSpatialManifest {
+  schema: 'pirate-central-spatial/1';
+  contentRevision: string;
+  contentHash: string;
+  zones: readonly string[];
+  mapId: 'pirate-fruit';
+  collisionProfile: PirateCentralContentManifest['collision'];
+  aiProfile: PirateCentralContentManifest['ai'];
+  spawns: readonly (PirateCentralCampRule & { kind: 'camp' } | PirateCentralBossRule & { kind: 'boss'; id: string })[];
+}
+
+const spatialWithoutHash = {
+  schema: 'pirate-central-spatial/1' as const,
+  contentRevision: manifestWithoutHash.contentRevision,
+  zones,
+  mapId: 'pirate-fruit' as const,
+  collisionProfile: manifestWithoutHash.collision,
+  aiProfile: manifestWithoutHash.ai,
+  spawns: [
+    ...camps.map((camp) => ({ kind: 'camp' as const, ...camp })),
+    ...bosses.map((boss, index) => ({ kind: 'boss' as const, id: `boss-${boss.zone}-${index + 1}`, ...boss })),
+  ],
+};
+
+export const PIRATE_CENTRAL_SPATIAL_MANIFEST: PirateCentralSpatialManifest = Object.freeze({
+  ...spatialWithoutHash,
+  contentHash: fnv1a(JSON.stringify(spatialWithoutHash)),
+});
+
+/** Canonical bytes for server ingestion; key order is stable by construction. */
+export const PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON = JSON.stringify(PIRATE_CENTRAL_SPATIAL_MANIFEST);
+
+export const PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR = Object.freeze({
+  requiredKeys: ['schema', 'contentRevision', 'contentHash', 'zones', 'mapId', 'collisionProfile', 'aiProfile', 'spawns'],
+  schema: 'pirate-central-spatial/1',
+  mapId: 'pirate-fruit',
+});
+
+export function isPirateCentralSpatialManifest(value: unknown): value is PirateCentralSpatialManifest {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<PirateCentralSpatialManifest>;
+  return candidate.schema === 'pirate-central-spatial/1'
+    && candidate.mapId === 'pirate-fruit'
+    && typeof candidate.contentRevision === 'string'
+    && typeof candidate.contentHash === 'string'
+    && Array.isArray(candidate.zones)
+    && Array.isArray(candidate.spawns)
+    && Boolean(candidate.collisionProfile)
+    && Boolean(candidate.aiProfile);
+}
