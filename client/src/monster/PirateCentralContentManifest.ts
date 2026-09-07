@@ -149,6 +149,7 @@ export interface PirateCentralSpatialManifest {
   mapId: 'pirate-fruit';
   collisionProfile: PirateCentralContentManifest['collision'];
   aiProfile: PirateCentralContentManifest['ai'];
+  monsterTypes: readonly PirateCentralMonsterType[];
   spawns: readonly (PirateCentralCampRule & { kind: 'camp' } | PirateCentralBossRule & { kind: 'boss'; id: string })[];
 }
 
@@ -159,6 +160,7 @@ const spatialWithoutHash = {
   mapId: 'pirate-fruit' as const,
   collisionProfile: manifestWithoutHash.collision,
   aiProfile: manifestWithoutHash.ai,
+  monsterTypes: stableTypes,
   spawns: [
     ...camps.map((camp) => ({ kind: 'camp' as const, ...camp })),
     ...bosses.map((boss, index) => ({ kind: 'boss' as const, id: `boss-${boss.zone}-${index + 1}`, ...boss })),

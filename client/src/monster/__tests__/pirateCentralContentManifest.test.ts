@@ -18,7 +18,7 @@ import {
   isPirateCentralSpatialManifest,
 } from '../PirateCentralContentManifest';
 
-const ARTIFACT_SHA256 = 'C57F1336779D7E039D5FBC02B92B9165F802E8C301F4D550ABD5D3C8689C0B96';
+const ARTIFACT_SHA256 = '39FA9E8460EF662126534814A4A3FED4B9C4A670F0E3F707A3F643EC0733850C';
 
 describe('Pirate central content manifest', () => {
   it('is deterministic and maps the real catalog/spawn source without authority fields', () => {
@@ -42,7 +42,7 @@ describe('Pirate central content manifest', () => {
     const parsed: unknown = JSON.parse(PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON);
     expect(isPirateCentralSpatialManifest(parsed)).toBe(true);
     expect(Object.keys(parsed as object)).toEqual([
-      'schema', 'contentRevision', 'zones', 'mapId', 'collisionProfile', 'aiProfile', 'spawns', 'contentHash',
+      'schema', 'contentRevision', 'zones', 'mapId', 'collisionProfile', 'aiProfile', 'monsterTypes', 'spawns', 'contentHash',
     ]);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.schema).toBe(PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR.schema);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.mapId).toBe(PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR.mapId);
@@ -50,6 +50,7 @@ describe('Pirate central content manifest', () => {
     expect(JSON.stringify(PIRATE_CENTRAL_SPATIAL_MANIFEST)).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.collisionProfile.groundInput).toBe('worldHeightAt');
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.aiProfile.chaseLeashMultiplier).toBe(1.6);
+    expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.monsterTypes).toEqual(PIRATE_CENTRAL_CONTENT_MANIFEST.monsterTypes);
     expect(PIRATE_CENTRAL_CONTENT_MANIFEST.monsterTypes.every((type) => type.leashDistance === Math.min(type.aggroRange * 1.15, 15)
       && type.returnHomeDistance === 2.5)).toBe(true);
   });
@@ -63,6 +64,22 @@ describe('Pirate central content manifest', () => {
     expect((parsed as { schema: string }).schema).toBe('pirate-central-spatial/1');
     expect((parsed as { contentRevision: string }).contentRevision).toBe('pirate-monster-catalog-2026-09-07-ai-v2');
     expect((parsed as { contentHash: string }).contentHash).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST.contentHash);
+    const rawTypes = (parsed as { monsterTypes: unknown[] }).monsterTypes;
+    expect(rawTypes).toHaveLength(PIRATE_CENTRAL_CONTENT_MANIFEST.monsterTypes.length);
+    expect(rawTypes).toEqual(PIRATE_CENTRAL_CONTENT_MANIFEST.monsterTypes);
+    for (const type of rawTypes as Array<Record<string, unknown>>) {
+      expect(type).toHaveProperty('id');
+      expect(type).toHaveProperty('kind');
+      expect(type).toHaveProperty('moveSpeed');
+      expect(type).toHaveProperty('aggroRange');
+      expect(type).toHaveProperty('attackRange');
+      expect(type).toHaveProperty('attackCooldown');
+      expect(type).toHaveProperty('leashDistance');
+      expect(type).toHaveProperty('returnHomeDistance');
+      expect(type).not.toHaveProperty('maxHp');
+      expect(type).not.toHaveProperty('damage');
+      expect(type).not.toHaveProperty('reward');
+    }
   });
 
   it('keeps real spatial behavior vectors byte-identical and free of combat fields', () => {
