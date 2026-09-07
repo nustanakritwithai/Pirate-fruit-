@@ -41,11 +41,13 @@ import {
 } from './CombatState';
 import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import type { RealtimeKnockback } from '@pirate-fruit/shared';
+import type { SpellFxAssetId } from '../art/SpellFxAssetLibrary';
 
 /** สลอตไม้ตายในอาเรย์คูลดาวน์ 4 ช่อง */
 const ULTIMATE_SLOT = 3;
 
 interface WaveProjectile {
+  presentationId: string;
   visual: EnergyProjectileVisual;
   originX: number;
   originZ: number;
@@ -69,6 +71,7 @@ interface WaveProjectile {
 
 /** ร่าง/ป้อมที่เรียกออกมา (summon) — ลอยอยู่กับที่แล้วยิงใส่มอนใกล้สุดเป็นช่วง ๆ */
 interface ActiveSummon {
+  presentationId: string;
   visual: EnergyProjectileVisual;
   x: number;
   y: number;
@@ -237,6 +240,7 @@ export class PlayerCombat {
 
   private readonly projectiles: WaveProjectile[] = [];
   private readonly summons: ActiveSummon[] = [];
+  private presentationProjectileSequence = 0;
   /** channel/zone/dot/buff — รูปแบบสกิลใหม่ (flurry/beam/ground/DoT/buff) */
   private activeChannel: SkillChannel | null = null;
   private readonly pendingZones: PendingZone[] = [];
@@ -552,6 +556,65 @@ export class PlayerCombat {
   // Loop หลัก
   // ------------------------------------------------------------------
 
+  private emitSlash(position: THREE.Vector3, heading: number, color: number, scale = 1, assetId?: SpellFxAssetId): void {
+    this.effects.spawnSlash(position, heading, color, scale, assetId);
+    this.monsters.recordPresentationEventAt(position.x, position.z, { kind: 'slash', position: { x: position.x, y: position.y, z: position.z }, heading, color, scale, ...(assetId ? { assetId } : {}) });
+  }
+
+  private emitBladeTrail(base: THREE.Vector3, tip: THREE.Vector3, position: THREE.Vector3, heading: number, comboIndex: number, color: number, finisher: boolean): void {
+    this.effects.spawnBladeTrail(base, tip, position, heading, comboIndex, color, finisher);
+    this.monsters.recordPresentationEventAt(position.x, position.z, { kind: 'blade-trail', position: { x: position.x, y: position.y, z: position.z }, bladeBase: { x: base.x, y: base.y, z: base.z }, bladeTip: { x: tip.x, y: tip.y, z: tip.z }, heading, comboIndex, color, finisher });
+  }
+
+  private emitEnergyLaunch(position: THREE.Vector3, direction: THREE.Vector3, color: number, scale = 1): void {
+    this.effects.spawnEnergyLaunch(position, direction, color, scale);
+    this.monsters.recordPresentationEventAt(position.x, position.z, { kind: 'energy-launch', position: { x: position.x, y: position.y, z: position.z }, direction: { x: direction.x, y: direction.y, z: direction.z }, color, scale });
+  }
+
+  private emitEnergyImpact(position: THREE.Vector3, color: number, scale: number): void {
+    this.effects.spawnEnergyImpact(position, color, scale);
+    this.monsters.recordPresentationEventAt(position.x, position.z, { kind: 'energy-impact', position: { x: position.x, y: position.y, z: position.z }, color, scale });
+  }
+
+  private emitShockwave(position: THREE.Vector3, radius: number, color: number, assetId?: SpellFxAssetId): void {
+    this.effects.spawnShockwave(position, radius, color, assetId);
+    this.monsters.recordPresentationEventAt(position.x, position.z, { kind: 'shockwave', position: { x: position.x, y: position.y, z: position.z }, radius, color, ...(assetId ? { assetId } : {}) });
+  }
+
+  private emitGunShot(origin: THREE.Vector3, endpoint: THREE.Vector3, color: number, impacted: boolean, scale: number): void {
+    this.effects.spawnGunShot(origin, endpoint, color, impacted, scale);
+    this.monsters.recordPresentationEventAt(origin.x, origin.z, { kind: 'gun-shot', position: { x: origin.x, y: origin.y, z: origin.z }, endpoint: { x: endpoint.x, y: endpoint.y, z: endpoint.z }, color, impacted, scale });
+  }
+
+  private emitBeam(origin: THREE.Vector3, direction: THREE.Vector3, length: number, color: number): void {
+    this.effects.spawnBeam(origin, direction, length, color);
+    this.monsters.recordPresentationEventAt(origin.x, origin.z, { kind: 'beam', position: { x: origin.x, y: origin.y, z: origin.z }, direction: { x: direction.x, y: direction.y, z: direction.z }, length, color });
+  }
+
+  private nextPresentationProjectileId(): string {
+    this.presentationProjectileSequence = this.presentationProjectileSequence < Number.MAX_SAFE_INTEGER
+      ? this.presentationProjectileSequence + 1
+      : Number.MAX_SAFE_INTEGER;
+    return `monster-projectile:${this.presentationProjectileSequence}`;
+  }
+
+  private recordPresentationProjectile(id: string, position: THREE.Vector3, direction: THREE.Vector3, color: number, scale: number, lifetimeMs: number, skillId: string, speed = WAVE_SPEED, elapsed = 0): void {
+    const safeLifetime = Math.max(0, Math.min(120_000, Math.round(lifetimeMs)));
+    const safeElapsed = Math.max(0, elapsed);
+    this.monsters.recordPresentationProjectileAt(position.x, position.z, {
+      id,
+      position: { x: position.x, y: position.y, z: position.z },
+      direction: { x: direction.x, y: direction.y, z: direction.z },
+      velocity: { x: direction.x * speed, y: direction.y * speed, z: direction.z * speed },
+      color,
+      scale,
+      elapsed: safeElapsed,
+      lifeFraction: safeLifetime > 0 ? Math.max(0, Math.min(1, 1 - (safeElapsed * 1_000) / safeLifetime)) : 0,
+      remainingMs: Math.max(0, Math.min(120_000, Math.round(lifetimeMs))),
+      skillId,
+    });
+  }
+
   update(dt: number): void {
     this.skillVisualElapsed = Math.min(
       this.skillVisualDuration,
@@ -778,7 +841,7 @@ export class PlayerCombat {
       if (this.set.weaponCategory === 'sword') {
         const blade = this.visualAnchors?.getSwordBladeWorldSegment();
         if (blade) {
-          this.effects.spawnBladeTrail(
+          this.emitBladeTrail(
             blade.base,
             blade.tip,
             position,
@@ -788,7 +851,7 @@ export class PlayerCombat {
             isFinisher,
           );
         } else {
-          this.effects.spawnSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
+          this.emitSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
         }
       } else if (this.set.weaponCategory === 'gun') {
         const muzzle = this.visualAnchors?.getGunMuzzleWorldRay();
@@ -797,7 +860,7 @@ export class PlayerCombat {
           ? muzzle.direction
           : forward;
         const endpoint = nearestHit ?? origin.clone().addScaledVector(muzzleDirection, m1.range);
-        this.effects.spawnGunShot(
+        this.emitGunShot(
           origin,
           endpoint,
           m1.color,
@@ -805,7 +868,7 @@ export class PlayerCombat {
           isFinisher ? 1.25 : 1,
         );
       } else {
-        this.effects.spawnSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
+        this.emitSlash(position, heading, m1.color, isFinisher ? 1.6 : 1);
       }
     }
 
@@ -997,7 +1060,7 @@ export class PlayerCombat {
         this.teleportStrike(skill, position, dirX, dirZ, scaledDamage, source);
         break;
       case 'aoe':
-        this.effects.spawnShockwave(position, skill.radius, skill.color, 'earth-bending');
+        this.emitShockwave(position, skill.radius, skill.color, 'earth-bending');
         if (scaledDamage > 0) {
           this.damageZone(
             position.x,
@@ -1039,8 +1102,11 @@ export class PlayerCombat {
       const sz = Math.cos(angle);
       const direction = new THREE.Vector3(sx, 0, sz);
       const start = new THREE.Vector3(position.x + sx * 1.2, position.y + 1.15, position.z + sz * 1.2);
+      const presentationId = this.nextPresentationProjectileId();
       const visual = this.effects.createEnergyProjectile(start, direction, color, scale, WAVE_LIFETIME * 1000);
+      this.recordPresentationProjectile(presentationId, start, direction, color, scale, WAVE_LIFETIME * 1000, skill.id);
       this.projectiles.push({
+        presentationId,
         visual,
         originX: position.x,
         originZ: position.z,
@@ -1057,7 +1123,7 @@ export class PlayerCombat {
         source,
         ...(skill.dot ? { dot: skill.dot } : {}),
       });
-      this.effects.spawnEnergyLaunch(start, direction, color, scale * 1.15);
+      this.emitEnergyLaunch(start, direction, color, scale * 1.15);
     }
   }
 
@@ -1085,8 +1151,11 @@ export class PlayerCombat {
       const sz = Math.cos(angle);
       const direction = new THREE.Vector3(sx, 0, sz);
       const start = new THREE.Vector3(position.x + sx * 1.2, position.y + 1.15, position.z + sz * 1.2);
+      const presentationId = this.nextPresentationProjectileId();
       const visual = this.effects.createEnergyProjectile(start, direction, color, scale, WAVE_LIFETIME * 1000);
+      this.recordPresentationProjectile(presentationId, start, direction, color, scale, WAVE_LIFETIME * 1000, skill.id);
       this.projectiles.push({
+        presentationId,
         visual,
         originX: position.x,
         originZ: position.z,
@@ -1105,7 +1174,7 @@ export class PlayerCombat {
         target: null,
         ...(skill.dot ? { dot: skill.dot } : {}),
       });
-      this.effects.spawnEnergyLaunch(start, direction, color, scale * 1.1);
+      this.emitEnergyLaunch(start, direction, color, scale * 1.1);
     }
   }
 
@@ -1122,6 +1191,7 @@ export class PlayerCombat {
     const x = position.x + dirX * dist;
     const z = position.z + dirZ * dist;
     const y = position.y + 1.2;
+    const presentationId = this.nextPresentationProjectileId();
     const visual = this.effects.createEnergyProjectile(
       new THREE.Vector3(x, y, z),
       new THREE.Vector3(dirX, 0, dirZ),
@@ -1129,7 +1199,9 @@ export class PlayerCombat {
       skill.isUltimate ? 1.5 : 1.1,
       (skill.isUltimate ? 9 : 6.5) * 1000,
     );
+    this.recordPresentationProjectile(presentationId, new THREE.Vector3(x, y, z), new THREE.Vector3(dirX, 0, dirZ), skill.color, skill.isUltimate ? 1.5 : 1.1, (skill.isUltimate ? 9 : 6.5) * 1000, skill.id, 0);
     this.summons.push({
+      presentationId,
       visual,
       x,
       y,
@@ -1147,7 +1219,7 @@ export class PlayerCombat {
       color: skill.color,
       source,
     });
-    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), 2, skill.color, 'magic-rock');
+    this.emitShockwave(new THREE.Vector3(x, position.y, z), 2, skill.color, 'magic-rock');
   }
 
   /** teleport — วาร์ปไปหลังศัตรูใกล้สุดในกรวยหน้าแล้วฟัน (ไม่เจอเป้า → พุ่งสั้น) */
@@ -1172,7 +1244,7 @@ export class PlayerCombat {
         Math.max(0.8, skill.radius),
         scaledDamage,
       );
-      this.effects.spawnSlash(position, Math.atan2(dirX, dirZ), skill.color, 1.3);
+      this.emitSlash(position, Math.atan2(dirX, dirZ), skill.color, 1.3);
       return;
     }
     const tp = target.group.position;
@@ -1182,7 +1254,7 @@ export class PlayerCombat {
     const behindX = tp.x + (toX / len) * 1.7;
     const behindZ = tp.z + (toZ / len) * 1.7;
     // เอฟเฟกต์จุดออก แล้ววาร์ป
-    this.effects.spawnEnergyLaunch(
+    this.emitEnergyLaunch(
       new THREE.Vector3(position.x, position.y + 1, position.z),
       new THREE.Vector3(dirX, 0, dirZ),
       skill.color,
@@ -1197,10 +1269,10 @@ export class PlayerCombat {
       scaledDamage,
     );
     if (skill.dot) this.applyDot(target, skill.dot, source);
-    this.effects.spawnSlash(this.controller.position, this.controller.heading, skill.color, skill.isUltimate ? 1.8 : 1.4);
+    this.emitSlash(this.controller.position, this.controller.heading, skill.color, skill.isUltimate ? 1.8 : 1.4);
     const impact = tp.clone();
     impact.y += 1;
-    this.effects.spawnEnergyImpact(impact, skill.color, 0.8);
+    this.emitEnergyImpact(impact, skill.color, 0.8);
   }
 
   /** มอนใกล้สุดในรัศมี (ใช้กับ homing/summon) */
@@ -1247,6 +1319,7 @@ export class PlayerCombat {
       s.fireAcc += dt;
       s.visual.root.position.set(s.x, s.y + Math.sin(s.life * 4) * 0.15, s.z);
       this.effects.updateEnergyProjectile(s.visual, dt, Math.max(0, Math.min(1, s.life / 6)), { elapsed: Math.max(0, (s.lifetimeMs / 1000) - s.life), remainingMs: Math.max(0, s.life * 1000), direction: new THREE.Vector3(s.dirX, 0, s.dirZ) });
+      this.recordPresentationProjectile(s.presentationId, s.visual.root.position, new THREE.Vector3(s.dirX, 0, s.dirZ), s.color, s.visual.scale, s.life * 1000, s.source.itemId, 0, Math.max(0, s.lifetimeMs / 1000 - s.life));
       if (s.fireAcc >= s.fireInterval) {
         s.fireAcc = 0;
         const target = this.nearestMonster(s.x, s.z, s.acquireRange);
@@ -1269,10 +1342,10 @@ export class PlayerCombat {
         });
         if (target) {
           this.monsters.applyHit(target, s.damage, s.x, s.z, 3, s.source);
-          this.effects.spawnEnergyLaunch(new THREE.Vector3(s.x, s.y, s.z), dir, s.color, 0.8);
+          this.emitEnergyLaunch(new THREE.Vector3(s.x, s.y, s.z), dir, s.color, 0.8);
           const impact = target.group.position.clone();
           impact.y += 1;
-          this.effects.spawnEnergyImpact(impact, s.color, 0.6);
+          this.emitEnergyImpact(impact, s.color, 0.6);
         }
         this.navalCombat?.damageNearestEnemyShipFromSkill(
           new THREE.Vector3(s.x, s.y, s.z),
@@ -1370,7 +1443,7 @@ export class PlayerCombat {
         Math.max(0.8, ch.skill.radius),
         ch.perTickDamage,
       );
-      this.effects.spawnSlash(position, heading, ch.color, isLast ? 1.5 : 0.9, 'fire-hands');
+      this.emitSlash(position, heading, ch.color, isLast ? 1.5 : 0.9, 'fire-hands');
     } else {
       // beam — sample หลายจุดตามแนวเส้นหน้าตัว
       const segs = 5;
@@ -1393,7 +1466,7 @@ export class PlayerCombat {
           if (ch.skill.dot) this.applyDot(m, ch.skill.dot, ch.source);
         }
       }
-      this.effects.spawnBeam(
+      this.emitBeam(
         new THREE.Vector3(position.x + ch.dirX * 1.2, position.y + 1.15, position.z + ch.dirZ * 1.2),
         new THREE.Vector3(ch.dirX, 0, ch.dirZ),
         ch.skill.range,
@@ -1413,7 +1486,7 @@ export class PlayerCombat {
   ): void {
     const x = position.x + dirX * skill.range * 0.65;
     const z = position.z + dirZ * skill.range * 0.65;
-    this.effects.spawnShockwave(new THREE.Vector3(x, position.y, z), skill.radius * 0.55, skill.color, 'earth-bending');
+    this.emitShockwave(new THREE.Vector3(x, position.y, z), skill.radius * 0.55, skill.color, 'earth-bending');
     this.pendingZones.push({
       timer: 0.32,
       x,
@@ -1433,7 +1506,7 @@ export class PlayerCombat {
       const zone = this.pendingZones[i];
       zone.timer -= dt;
       if (zone.timer > 0) continue;
-      this.effects.spawnShockwave(new THREE.Vector3(zone.x, pos.y, zone.z), zone.radius, zone.color);
+      this.emitShockwave(new THREE.Vector3(zone.x, pos.y, zone.z), zone.radius, zone.color);
       if (zone.damage > 0) {
         this.damageZone(zone.x, zone.z, zone.radius, zone.damage, zone.knockback, zone.source, zone.dot);
         this.onSharedMonsterAttack?.({
@@ -1504,7 +1577,7 @@ export class PlayerCombat {
     );
     this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
     this.skillBuffTimer = 8;
-    this.effects.spawnShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
+    this.emitShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
     this.touch?.notify(
       `✨ บัฟ! ดาเมจ x${this.skillBuffMultiplier.toFixed(2)} · ฮีล +${Math.round(appliedHeal)}`,
     );
@@ -1543,7 +1616,7 @@ export class PlayerCombat {
         if (skill.dot) this.applyDot(monster, skill.dot, source);
       }
     }
-    this.effects.spawnSlash(position, Math.atan2(dirX, dirZ), 0xffe27a, skill.isUltimate ? 1.9 : 1.5);
+    this.emitSlash(position, Math.atan2(dirX, dirZ), 0xffe27a, skill.isUltimate ? 1.9 : 1.5);
   }
 
   /** ดาเมจทุกตัวในโซน + ติด DoT ถ้ามี (แทน damageRadius เพื่อรองรับพิษ) */
@@ -1625,6 +1698,7 @@ export class PlayerCombat {
       wave.visual.root.position.x += wave.dirX * WAVE_SPEED * dt;
       wave.visual.root.position.z += wave.dirZ * WAVE_SPEED * dt;
       this.effects.updateEnergyProjectile(wave.visual, dt, wave.life / WAVE_LIFETIME, { elapsed: Math.max(0, WAVE_LIFETIME - wave.life), remainingMs: Math.max(0, wave.life * 1000), direction: new THREE.Vector3(wave.dirX, 0, wave.dirZ) });
+      this.recordPresentationProjectile(wave.presentationId, wave.visual.root.position, new THREE.Vector3(wave.dirX, 0, wave.dirZ), wave.visual.color, wave.visual.scale, wave.life * 1000, wave.source.itemId, WAVE_SPEED, Math.max(0, WAVE_LIFETIME - wave.life));
 
       // สกิลยิงออกจากดาดฟ้าโดนเรือได้เช่นเดียวกับโดนมอนสเตอร์
       this.navalCombat?.damageNearestEnemyShipFromSkill(
@@ -1652,7 +1726,7 @@ export class PlayerCombat {
         if (wave.dot) this.applyDot(monster, wave.dot, wave.source);
         const impactPosition = monster.group.position.clone();
         impactPosition.y += monster.type.kind === 'crab' ? 0.65 : 1.05 * monster.type.scale;
-        this.effects.spawnEnergyImpact(
+        this.emitEnergyImpact(
           impactPosition,
           wave.visual.color,
           wave.visual.scale * 0.7,

@@ -64,6 +64,8 @@ import {
   resolvePocketMonsterParentOrigin,
 } from './realtime/PocketMonsterParentPresence';
 import { SharedMonsterClient, resolveSharedMonsterPlayerDamage, type SharedMonsterActor } from './monster/SharedMonsterClient';
+import { PirateMonsterAuthorityAdapter } from './monster/PirateMonsterAuthorityAdapter';
+import { PirateCentralAuthorityRuntimeAdapter } from './monster/PirateCentralAuthorityRuntimeAdapter';
 import { EconomyDebugPanel } from './trade/living/EconomyDebugPanel';
 import { TradeShopUI } from './ui/TradeShopUI';
 import { TradeRouteHint } from './ui/TradeRouteHint';
@@ -453,6 +455,14 @@ async function main(): Promise<void> {
     })
     : null;
   if (remotePlayers) game.add(remotePlayers);
+  let sharedMonsters: SharedMonsterClient | null = null;
+  const pirateMonsterAuthority = pocketMonsterParentOrigin !== null
+    ? new PirateMonsterAuthorityAdapter()
+    : null;
+  const centralAuthorityRuntime = pocketMonsterParentOrigin !== null
+    ? new PirateCentralAuthorityRuntimeAdapter()
+    : null;
+  let monsterManager: MonsterManager | null = null;
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -484,7 +494,28 @@ async function main(): Promise<void> {
       },
       getVisual: () => scopedCombatEffects.current(),
       acknowledgeVisual: (count) => { scopedCombatEffects.acknowledgeEvents(count); },
-      onIslandChange: () => scopedCombatEffects.resetSession(),
+      getMonsterActors: () => centralAuthorityRuntime?.active
+        ? []
+        : sharedMonsters?.getActors() ?? monsterManager?.getPresentationActors(islandManager.activeIsland, 1) ?? [],
+      drainMonsterIntents: () => centralAuthorityRuntime?.active
+        ? pirateMonsterAuthority?.drainIntents() ?? []
+        : [],
+      onMonsterActors: (transportZone, mapZone, actors) => {
+        if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(mapZone)) return;
+        const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
+        sharedMonsters?.applyActors(mapZone, safeActors);
+      },
+      onCentralAuthority: (capability) => {
+        const active = centralAuthorityRuntime?.update(capability) ?? false;
+        monsterManager?.setAmbientSpawnsSuppressed(active);
+        if (!active) sharedMonsters?.resetSession();
+      },
+      onIslandChange: () => {
+        scopedCombatEffects.resetSession();
+        pirateMonsterAuthority?.setZone(islandManager.activeIsland);
+        centralAuthorityRuntime?.reset();
+        monsterManager?.setAmbientSpawnsSuppressed(false);
+      },
     })
     : null;
   pocketMonsterPresence?.start();
@@ -507,7 +538,7 @@ async function main(): Promise<void> {
         || import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === '1',
       runtimeFeatures,
     );
-  const sharedMonsters = sharedWorldMonstersEnabled
+  sharedMonsters = sharedWorldMonstersEnabled
     ? new SharedMonsterClient(
         game.scene,
         islandManager.activeIsland,
@@ -581,6 +612,10 @@ async function main(): Promise<void> {
     },
     onResync: () => {
       sharedMonsters?.resetSession();
+      monsterManager?.resetPresentationActors();
+      pirateMonsterAuthority?.resetSession();
+      centralAuthorityRuntime?.reset();
+      monsterManager?.setAmbientSpawnsSuppressed(false);
       resyncAuthoritativeState();
     },
     onAnnouncement: (message, level) => {
@@ -822,6 +857,8 @@ async function main(): Promise<void> {
       const sharedIslandChanged = sharedMonsters?.setIsland(islandManager.activeIsland) ?? false;
       if (!realtime.connected) return;
       if (sharedIslandChanged) {
+        monsterManager?.resetPresentationActors();
+        pirateMonsterAuthority?.setZone(islandManager.activeIsland);
         realtime.requestResync();
       }
       const position = controller.position;
@@ -997,7 +1034,7 @@ async function main(): Promise<void> {
 
   // มอนสเตอร์ + ระบบต่อสู้ (Phase 4-5) — callbacks อ้าง playerCombat แบบ late-bind
   const rewardContributions = new RewardContributionTracker<Monster>();
-  const monsterManager = new MonsterManager(
+  monsterManager = new MonsterManager(
     game.scene,
     controller,
     world.collision,
@@ -1094,7 +1131,7 @@ async function main(): Promise<void> {
     navalCombat,
     () => camera.yaw,
   );
-  sharedMonsters?.setActorProvider((zone, generation) => monsterManager.getPresentationActors(zone, generation));
+  sharedMonsters?.setActorProvider((zone, generation) => monsterManager?.getPresentationActors(zone, generation) ?? []);
   controller.setDevilFruitUser(playerCombat.hasDevilFruit);
   player.bindActionState(() => ({
     combatState: playerCombat?.state ?? 'idle',
@@ -1159,6 +1196,22 @@ async function main(): Promise<void> {
       range: requestedRange,
       area,
     }) => {
+      if (pocketMonsterPresence && pirateMonsterAuthority && centralAuthorityRuntime?.active) {
+        const safeRange = Math.min(
+          kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
+          Math.max(0.8, requestedRange),
+        );
+        pirateMonsterAuthority.queueIntent({
+          zone: islandManager.activeIsland,
+          kind,
+          category,
+          forwardX,
+          forwardZ,
+          range: safeRange,
+          ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
+        });
+        return;
+      }
       if (!sharedMonsters) return;
       const range = Math.min(
         kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,

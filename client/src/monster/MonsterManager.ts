@@ -12,6 +12,7 @@ import { isWorldSafeZone } from '@pirate-fruit/shared';
 import { inferIslandId } from '../island/IslandRegistry';
 import type { IslandId } from '../island/IslandTypes';
 import type { SharedMonsterActor } from './SharedMonsterClient';
+import type { RealtimeProjectileState, RealtimeVisualEvent } from '@pirate-fruit/shared';
 
 const GROUND_MIN = 0.25; // มอนสเตอร์เดินได้เฉพาะพื้นสูงกว่านี้ (ไม่ลงน้ำ)
 
@@ -23,6 +24,52 @@ function presentationCombatState(state: Monster['state']): 'idle' | 'attack1' | 
 
 function isInSafeZone(x: number, z: number): boolean {
   return isWorldSafeZone(undefined, x, z);
+}
+
+type MonsterPresentationEventInput = Omit<RealtimeVisualEvent, 'sequence' | 'ageMs'>;
+
+/** Bounded, presentation-only history keyed by the actor identity. */
+export class MonsterPresentationBuffer {
+  private readonly events = new Map<string, Array<{ event: RealtimeVisualEvent; recordedAt: number }>>();
+  private readonly projectiles = new Map<string, Array<{ projectile: RealtimeProjectileState; recordedAt: number }>>();
+  private sequence = 0;
+
+  recordEvent(actorId: string, event: MonsterPresentationEventInput, now = Date.now()): void {
+    if (!actorId) return;
+    const sequence = this.sequence < Number.MAX_SAFE_INTEGER ? ++this.sequence : Number.MAX_SAFE_INTEGER;
+    const list = this.events.get(actorId) ?? [];
+    list.push({ event: Object.freeze({ ...event, sequence, ageMs: 0 }), recordedAt: now });
+    while (list.length > 32) list.shift();
+    this.events.set(actorId, list);
+  }
+
+  recordProjectile(actorId: string, projectile: RealtimeProjectileState, now = Date.now()): void {
+    if (!actorId) return;
+    const list = this.projectiles.get(actorId) ?? [];
+    const copy = Object.freeze({ ...projectile, position: { ...projectile.position }, direction: { ...projectile.direction }, velocity: { ...projectile.velocity } });
+    const existing = list.findIndex((entry) => entry.projectile.id === copy.id);
+    if (existing >= 0) list.splice(existing, 1);
+    list.push({ projectile: copy, recordedAt: now });
+    while (list.length > 32) list.shift();
+    this.projectiles.set(actorId, list);
+  }
+
+  snapshot(actorId: string, now = Date.now()): { events: RealtimeVisualEvent[]; projectiles: RealtimeProjectileState[] } {
+    const events = this.events.get(actorId) ?? [];
+    const retainedEvents = events.filter((entry) => now - entry.recordedAt <= 3_000);
+    this.events.set(actorId, retainedEvents);
+    const visualEvents = retainedEvents.map((entry) => Object.freeze({ ...entry.event, ageMs: Math.max(0, Math.min(3_000, Math.round(now - entry.recordedAt))) }));
+    const projectiles = (this.projectiles.get(actorId) ?? []).flatMap((entry) => {
+      const ageSeconds = Math.max(0, now - entry.recordedAt) / 1_000;
+      const remainingMs = Math.max(0, Math.round(entry.projectile.remainingMs - ageSeconds * 1_000));
+      if (remainingMs <= 0) return [];
+      return [Object.freeze({ ...entry.projectile, elapsed: entry.projectile.elapsed + ageSeconds, remainingMs })];
+    });
+    return { events: visualEvents, projectiles };
+  }
+
+  clearActor(actorId: string): void { this.events.delete(actorId); this.projectiles.delete(actorId); }
+  reset(): void { this.events.clear(); this.projectiles.clear(); }
 }
 
 export interface AttackOptions {
@@ -119,6 +166,7 @@ export class MonsterManager {
   /** มอนแบบ one-shot (ลูกเรือ Boarding) — ตายแล้วถูกถอดออก ไม่เกิดใหม่ */
   private readonly transient = new Set<Monster>();
   private readonly presentationActorIds = new Map<Monster, { actorId: string; spawnSequence: number }>();
+  private readonly presentationBuffer = new MonsterPresentationBuffer();
   private presentationSpawnSequence = 0;
   private presentationStateSequence = 0;
   private readonly bossBar = new BossBar();
@@ -127,6 +175,7 @@ export class MonsterManager {
   private readonly ambientSpawns = new Map<IslandId, AmbientMonsterSpawn[]>();
   private readonly ambientInstances = new Map<Monster, AmbientMonsterSpawn>();
   private activeAmbientIsland: IslandId | null = null;
+  private ambientSpawnsSuppressed = false;
   private bossAudioActive = false;
 
   constructor(
@@ -141,6 +190,7 @@ export class MonsterManager {
   ) {
     const scale = countScale(graphics.tier);
 
+    this.ambientSpawnsSuppressed = suppressAmbientSpawns;
     if (!suppressAmbientSpawns) {
       for (const camp of MONSTER_CAMPS) {
         const type = MONSTER_TYPES[camp.typeId];
@@ -272,6 +322,8 @@ export class MonsterManager {
   despawnCrew(crew: Monster[]): void {
     for (const monster of crew) {
       this.transient.delete(monster);
+      const identity = this.presentationActorIds.get(monster);
+      if (identity) this.presentationBuffer.clearActor(identity.actorId);
       this.presentationActorIds.delete(monster);
       this.bosses.delete(monster);
       const index = this.monsters.indexOf(monster);
@@ -280,6 +332,58 @@ export class MonsterManager {
       monster.dispose();
     }
   }
+
+  /** Central Pirate authority owns ambient NPC pose/AI while this gate is active. */
+  setAmbientSpawnsSuppressed(suppressed: boolean): void {
+    if (this.ambientSpawnsSuppressed === suppressed) return;
+    this.ambientSpawnsSuppressed = suppressed;
+    if (suppressed) {
+      for (const [monster] of this.ambientInstances) {
+        const index = this.monsters.indexOf(monster);
+        if (index >= 0) this.monsters.splice(index, 1);
+        this.bosses.delete(monster);
+        this.scene.remove(monster.group);
+        monster.dispose();
+      }
+      this.ambientInstances.clear();
+      this.activeAmbientIsland = null;
+      this.bossBar.hide();
+    } else if (this.ambientSpawns.size > 0) {
+      this.activateAmbientIsland(inferIslandId(this.controller.position.x, this.controller.position.z));
+    }
+  }
+
+  /** Record a local visual event against the nearest presentation actor only. */
+  recordPresentationEventAt(x: number, z: number, event: MonsterPresentationEventInput): void {
+    let nearest: Monster | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const monster of this.transient) {
+      const distance = Math.hypot(monster.group.position.x - x, monster.group.position.z - z);
+      if (distance < nearestDistance) { nearest = monster; nearestDistance = distance; }
+    }
+    if (!nearest) return;
+    const identity = this.presentationActorIds.get(nearest);
+    if (identity) this.presentationBuffer.recordEvent(identity.actorId, event);
+  }
+
+  recordPresentationEvent(monster: Monster, event: MonsterPresentationEventInput): void {
+    const identity = this.presentationActorIds.get(monster);
+    if (identity) this.presentationBuffer.recordEvent(identity.actorId, event);
+  }
+
+  recordPresentationProjectileAt(x: number, z: number, projectile: RealtimeProjectileState): void {
+    let nearest: Monster | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const monster of this.transient) {
+      const distance = Math.hypot(monster.group.position.x - x, monster.group.position.z - z);
+      if (distance < nearestDistance) { nearest = monster; nearestDistance = distance; }
+    }
+    if (!nearest) return;
+    const identity = this.presentationActorIds.get(nearest);
+    if (identity) this.presentationBuffer.recordProjectile(identity.actorId, projectile);
+  }
+
+  resetPresentationActors(): void { this.presentationBuffer.reset(); }
 
   /** Presentation-only owner actor source for transient summoned/controlled monsters. */
   getPresentationActors(zone: string, generation: number): SharedMonsterActor[] {
@@ -301,7 +405,7 @@ export class MonsterManager {
         pose: { x: monster.group.position.x, y: monster.group.position.y, z: monster.group.position.z, dir: monster.group.rotation.y },
         locomotion: monster.state === 'return' ? 'walk' : 'idle',
         animation: { combatState: presentationCombatState(monster.state), category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
-        presentation: { events: [], projectiles: [] },
+        presentation: this.presentationBuffer.snapshot(identity.actorId),
       }];
     });
   }
@@ -394,6 +498,7 @@ export class MonsterManager {
     const died = monster.takeDamage(damage, srcX, srcZ);
     const actualDamage = Math.max(0, hpBefore - monster.hp);
     this.effects.spawnHitSpark(monster.group.position);
+    this.recordPresentationEvent(monster, { kind: 'hit-spark', position: { x: monster.group.position.x, y: monster.group.position.y, z: monster.group.position.z }, color: 0xfff1a8 });
     this.callbacks.onMonsterDamaged?.(monster, actualDamage);
     this.callbacks.onRewardContribution?.(monster, actualDamage, died, source);
     if (!died && knockback > 0) {
@@ -410,7 +515,7 @@ export class MonsterManager {
 
   update(dt: number): void {
     const player = this.controller.position;
-    if (this.ambientSpawns.size > 0) {
+    if (!this.ambientSpawnsSuppressed && this.ambientSpawns.size > 0) {
       this.activateAmbientIsland(inferIslandId(player.x, player.z));
     }
     const engageable =

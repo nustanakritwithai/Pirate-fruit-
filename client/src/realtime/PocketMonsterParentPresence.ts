@@ -2,6 +2,9 @@ import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import type { RemotePlayers } from './RemotePlayers';
 import type { PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
 import type { RealtimePlayerAnimation, RealtimePlayerPresentation, RealtimePlayerVisual } from '@pirate-fruit/shared';
+import type { SharedMonsterActor } from '../monster/SharedMonsterClient';
+import type { PirateMonsterIntent } from '../monster/PirateMonsterAuthorityAdapter';
+import type { PirateCentralAuthorityCapability } from '../monster/PirateCentralAuthorityRuntimeAdapter';
 import { sanitizePresentation, sanitizeVisual } from './PresentationProtocol';
 
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
@@ -63,6 +66,8 @@ export interface PiratePresencePlayer {
 export interface PiratePresenceSnapshot {
   zone: typeof POCKET_MONSTER_PIRATE_ZONE;
   players: PiratePresencePlayer[];
+  actors?: SharedMonsterActor[];
+  centralAuthority?: PirateCentralAuthorityCapability;
 }
 
 export interface ParentPresenceEvent {
@@ -104,6 +109,10 @@ export interface PocketMonsterParentPresenceOptions {
   now?: () => number;
   publishIntervalMs?: number;
   onIslandChange?(): void;
+  getMonsterActors?(): readonly SharedMonsterActor[];
+  drainMonsterIntents?(): readonly PirateMonsterIntent[];
+  onMonsterActors?(transportZone: string, mapZone: string, actors: readonly SharedMonsterActor[]): void;
+  onCentralAuthority?(capability: PirateCentralAuthorityCapability | null): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -309,7 +318,23 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
       ...(visual ? { visual } : {}),
     });
   }
-  return { zone: POCKET_MONSTER_PIRATE_ZONE, players };
+  const actors = Array.isArray(payload.actors)
+    ? payload.actors.filter((actor): actor is SharedMonsterActor => isRecord(actor) && actor.kind === 'monster')
+    : undefined;
+  const authorityGeneration = isRecord(payload.centralAuthority) ? payload.centralAuthority.generation : undefined;
+  const authority = isRecord(payload.centralAuthority)
+    && payload.centralAuthority.contract === 'pirate-central-spatial/1'
+    && payload.centralAuthority.schemaVersion === 1
+    && payload.centralAuthority.contentRevision === 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2'
+    && payload.centralAuthority.contentHash === 'fnv1a-236acf41'
+    && payload.centralAuthority.manifestSha256 === '7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0'
+    && payload.centralAuthority.vectorsSha256 === 'A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7'
+    && payload.centralAuthority.transportZone === 'pirate-fruit'
+    && Number.isSafeInteger(authorityGeneration)
+    && (authorityGeneration as number) >= 1
+    ? payload.centralAuthority as unknown as PirateCentralAuthorityCapability
+    : undefined;
+  return { zone: POCKET_MONSTER_PIRATE_ZONE, players, ...(actors ? { actors } : {}), ...(authority ? { centralAuthority: authority } : {}) };
 }
 
 export function createBrowserParentPresenceHost(): ParentPresenceHost {
@@ -535,6 +560,8 @@ export class PocketMonsterParentPresence {
       ...(presence.animation ? { animation: presence.animation } : {}),
       ...(presence.presentation ? { presentation: presence.presentation } : {}),
       ...(presence.visual ? { visual: presence.visual } : {}),
+      ...(this.options.getMonsterActors ? { actors: this.options.getMonsterActors().slice(0, 128) } : {}),
+      ...(this.options.drainMonsterIntents ? { monsterIntents: this.options.drainMonsterIntents().slice(0, 32) } : {}),
       }, this.options.targetOrigin);
       if (presence.visual) this.options.acknowledgeVisual?.(presence.visual.events.length);
     } catch {
@@ -544,6 +571,7 @@ export class PocketMonsterParentPresence {
 
   private applySnapshot(snapshot: PiratePresenceSnapshot): void {
     const islandId = this.syncIsland();
+    this.options.onCentralAuthority?.(snapshot.centralAuthority ?? null);
     const seen = new Set<string>();
     for (const player of snapshot.players) {
       seen.add(player.id);
@@ -574,5 +602,6 @@ export class PocketMonsterParentPresence {
     }
     this.visibleIds.clear();
     for (const id of seen) this.visibleIds.add(id);
+    if (snapshot.actors) this.options.onMonsterActors?.(snapshot.zone, islandId, snapshot.actors);
   }
 }
