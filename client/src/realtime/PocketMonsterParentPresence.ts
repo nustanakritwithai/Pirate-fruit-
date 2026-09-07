@@ -2,6 +2,8 @@ import type { RealtimePresenceSnapshot } from './RealtimeClient';
 import type { RemotePlayers } from './RemotePlayers';
 import type { PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
 import type { RealtimePlayerAnimation, RealtimePlayerPresentation, RealtimePlayerVisual } from '@pirate-fruit/shared';
+import type { SharedMonsterActor } from '../monster/SharedMonsterClient';
+import type { PirateMonsterIntent } from '../monster/PirateMonsterAuthorityAdapter';
 import { sanitizePresentation, sanitizeVisual } from './PresentationProtocol';
 
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
@@ -63,6 +65,7 @@ export interface PiratePresencePlayer {
 export interface PiratePresenceSnapshot {
   zone: typeof POCKET_MONSTER_PIRATE_ZONE;
   players: PiratePresencePlayer[];
+  actors?: SharedMonsterActor[];
 }
 
 export interface ParentPresenceEvent {
@@ -104,6 +107,9 @@ export interface PocketMonsterParentPresenceOptions {
   now?: () => number;
   publishIntervalMs?: number;
   onIslandChange?(): void;
+  getMonsterActors?(): readonly SharedMonsterActor[];
+  drainMonsterIntents?(): readonly PirateMonsterIntent[];
+  onMonsterActors?(zone: string, actors: readonly SharedMonsterActor[]): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -309,7 +315,10 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
       ...(visual ? { visual } : {}),
     });
   }
-  return { zone: POCKET_MONSTER_PIRATE_ZONE, players };
+  const actors = Array.isArray(payload.actors)
+    ? payload.actors.filter((actor): actor is SharedMonsterActor => isRecord(actor) && actor.kind === 'monster')
+    : undefined;
+  return { zone: POCKET_MONSTER_PIRATE_ZONE, players, ...(actors ? { actors } : {}) };
 }
 
 export function createBrowserParentPresenceHost(): ParentPresenceHost {
@@ -535,6 +544,8 @@ export class PocketMonsterParentPresence {
       ...(presence.animation ? { animation: presence.animation } : {}),
       ...(presence.presentation ? { presentation: presence.presentation } : {}),
       ...(presence.visual ? { visual: presence.visual } : {}),
+      ...(this.options.getMonsterActors ? { actors: this.options.getMonsterActors().slice(0, 128) } : {}),
+      ...(this.options.drainMonsterIntents ? { monsterIntents: this.options.drainMonsterIntents().slice(0, 32) } : {}),
       }, this.options.targetOrigin);
       if (presence.visual) this.options.acknowledgeVisual?.(presence.visual.events.length);
     } catch {
@@ -574,5 +585,6 @@ export class PocketMonsterParentPresence {
     }
     this.visibleIds.clear();
     for (const id of seen) this.visibleIds.add(id);
+    if (snapshot.actors) this.options.onMonsterActors?.(islandId, snapshot.actors);
   }
 }
