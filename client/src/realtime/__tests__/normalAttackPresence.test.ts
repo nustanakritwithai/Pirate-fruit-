@@ -66,7 +66,7 @@ function gameplaySwordAttack(targetComboIndex: 0 | 1 | 2 | 3, bindAnchors = true
     isMounted: false, inputEnabled: true, verticalSpeed: 0,
     setMovementLock: vi.fn(), applyStun: vi.fn(), applyKnockback: vi.fn(),
   };
-  const monsters = { playerAttack: vi.fn() };
+  const monsters = { playerAttack: vi.fn(), recordPresentationEventAt: vi.fn() };
   const scoped = new ScopedVisualEffects(new Effects(scene));
   const loadout = new SkillLoadout();
   loadout.equipSword('training-sword');
