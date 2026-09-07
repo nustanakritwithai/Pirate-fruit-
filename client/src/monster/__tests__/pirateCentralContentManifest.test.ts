@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { worldHeightAt } from '../../island/IslandRegistry';
+import { worldSafeZoneAt } from '@pirate-fruit/shared';
 import { BOSS_SPAWNS, MONSTER_CAMPS } from '../MonsterData';
 import {
   PIRATE_CENTRAL_CONTENT_MANIFEST,
@@ -10,6 +12,8 @@ import {
   PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR,
   PIRATE_CENTRAL_SPATIAL_VECTORS,
   PIRATE_CENTRAL_SPATIAL_VECTORS_JSON,
+  PIRATE_CENTRAL_SPATIAL_EVALUATOR,
+  PIRATE_CENTRAL_SPATIAL_EVALUATOR_JSON,
   PIRATE_MONSTER_INTENT_LIMITS,
   isPirateCentralSpatialManifest,
 } from '../PirateCentralContentManifest';
@@ -66,5 +70,24 @@ describe('Pirate central content manifest', () => {
     expect(PIRATE_CENTRAL_SPATIAL_VECTORS.ground.spawnSampling.attempts).toBe(24);
     expect(PIRATE_CENTRAL_SPATIAL_VECTORS.behavior.leash.distance).toBe('min(type.aggroRange*1.15,15)');
     expect(vectors).not.toMatch(/maxHp|damage|target/);
+  });
+
+  it('matches every valid golden corpus point against the source evaluators', () => {
+    const artifact = readFileSync(resolve(__dirname, '../pirate-central-spatial.evaluator.json'), 'utf8');
+    expect(artifact).toBe(PIRATE_CENTRAL_SPATIAL_EVALUATOR_JSON);
+    expect(createHash('sha256').update(artifact).digest('hex').toUpperCase()).toBe('68614DCDC12DF90A06740A853D850B02F7EA91010D6E32F61CC9BD09BF3B8E30');
+    expect(PIRATE_CENTRAL_SPATIAL_EVALUATOR.goldenCorpus.length).toBeGreaterThan(80);
+    for (const vector of PIRATE_CENTRAL_SPATIAL_EVALUATOR.goldenCorpus) {
+      const { x, z } = vector.input as { x?: number | string; z?: number | string };
+      if (typeof x !== 'number' || typeof z !== 'number') {
+        expect('valid' in vector.output && vector.output.valid).toBe(false);
+        continue;
+      }
+      if (!('height' in vector.output)) continue;
+      expect(worldHeightAt(x, z)).toBe(vector.output.height);
+      expect(worldSafeZoneAt(undefined, x, z)?.id ?? null).toBe(vector.output.safeZoneId);
+    }
+    expect(PIRATE_CENTRAL_SPATIAL_EVALUATOR.regions).toHaveLength(6);
+    expect(PIRATE_CENTRAL_SPATIAL_EVALUATOR.safeZones).toHaveLength(12);
   });
 });
