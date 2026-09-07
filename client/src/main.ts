@@ -1190,7 +1190,6 @@ async function main(): Promise<void> {
           forwardX,
           forwardZ,
           range: safeRange,
-          ...(skillId ? { skillId } : {}),
           ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
         });
         return;
