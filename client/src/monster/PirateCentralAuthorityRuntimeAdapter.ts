@@ -1,19 +1,26 @@
 export interface PirateCentralAuthorityCapability {
-  schema: 'pirate-central-authority/1';
-  identity: 'pirate-central-spatial';
-  zone: string;
+  contract: 'pirate-central-spatial/1';
+  schemaVersion: 1;
+  contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2';
+  contentHash: 'fnv1a-236acf41';
+  transportZone: 'pirate-fruit';
   generation: number;
 }
 
 export const PIRATE_CENTRAL_TRANSPORT_ZONE = 'pirate-fruit';
+export const PIRATE_CENTRAL_CONTRACT = 'pirate-central-spatial/1';
+export const PIRATE_CENTRAL_SCHEMA_VERSION = 1;
+export const PIRATE_CENTRAL_CONTENT_REVISION = 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2';
+export const PIRATE_CENTRAL_CONTENT_HASH = 'fnv1a-236acf41';
 
 function valid(value: unknown): value is PirateCentralAuthorityCapability {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<PirateCentralAuthorityCapability>;
-  return candidate.schema === 'pirate-central-authority/1'
-    && candidate.identity === 'pirate-central-spatial'
-    && typeof candidate.zone === 'string'
-    && candidate.zone.length > 0 && candidate.zone.length <= 40
+  return candidate.contract === PIRATE_CENTRAL_CONTRACT
+    && candidate.schemaVersion === PIRATE_CENTRAL_SCHEMA_VERSION
+    && candidate.contentRevision === PIRATE_CENTRAL_CONTENT_REVISION
+    && candidate.contentHash === PIRATE_CENTRAL_CONTENT_HASH
+    && candidate.transportZone === PIRATE_CENTRAL_TRANSPORT_ZONE
     && typeof candidate.generation === 'number'
     && Number.isSafeInteger(candidate.generation) && candidate.generation >= 1;
 }
@@ -23,7 +30,7 @@ export class PirateCentralAuthorityRuntimeAdapter {
   private capability: PirateCentralAuthorityCapability | null = null;
 
   update(candidate: unknown, transportZone = PIRATE_CENTRAL_TRANSPORT_ZONE): boolean {
-    if (!valid(candidate) || candidate.zone !== transportZone) {
+    if (!valid(candidate) || candidate.transportZone !== transportZone) {
       this.capability = null;
       return false;
     }

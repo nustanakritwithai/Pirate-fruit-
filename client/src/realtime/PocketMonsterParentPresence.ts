@@ -323,9 +323,11 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
     : undefined;
   const authorityGeneration = isRecord(payload.centralAuthority) ? payload.centralAuthority.generation : undefined;
   const authority = isRecord(payload.centralAuthority)
-    && payload.centralAuthority.schema === 'pirate-central-authority/1'
-    && payload.centralAuthority.identity === 'pirate-central-spatial'
-    && typeof payload.centralAuthority.zone === 'string'
+    && payload.centralAuthority.contract === 'pirate-central-spatial/1'
+    && payload.centralAuthority.schemaVersion === 1
+    && payload.centralAuthority.contentRevision === 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2'
+    && payload.centralAuthority.contentHash === 'fnv1a-236acf41'
+    && payload.centralAuthority.transportZone === 'pirate-fruit'
     && Number.isSafeInteger(authorityGeneration)
     && (authorityGeneration as number) >= 1
     ? payload.centralAuthority as unknown as PirateCentralAuthorityCapability

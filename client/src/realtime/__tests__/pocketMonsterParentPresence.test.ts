@@ -373,6 +373,18 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(parsePiratePresenceSnapshotMessage(malformed)?.players[0].visual).toBeUndefined();
   });
 
+  it('forwards only the exact central capability contract and fails closed for legacy shape', () => {
+    const capability = {
+      contract: 'pirate-central-spatial/1', schemaVersion: 1,
+      contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2',
+      contentHash: 'fnv1a-236acf41', transportZone: 'pirate-fruit', generation: 7,
+    };
+    const message = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [], centralAuthority: capability } };
+    expect(parsePiratePresenceSnapshotMessage(message)?.centralAuthority).toEqual(capability);
+    const legacy = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [], centralAuthority: { schema: 'pirate-central-authority/1', identity: 'pirate-central-spatial', zone: 'pirate-fruit', generation: 7 } } };
+    expect(parsePiratePresenceSnapshotMessage(legacy)?.centralAuthority).toBeUndefined();
+  });
+
   it('publishes 70 queued events over multiple successful parent publishes', () => {
     let now = 1000;
     const host = createHost();
