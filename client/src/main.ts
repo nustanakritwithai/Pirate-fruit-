@@ -581,6 +581,7 @@ async function main(): Promise<void> {
     },
     onResync: () => {
       sharedMonsters?.resetSession();
+      monsterManager.resetPresentationActors();
       resyncAuthoritativeState();
     },
     onAnnouncement: (message, level) => {
@@ -822,6 +823,7 @@ async function main(): Promise<void> {
       const sharedIslandChanged = sharedMonsters?.setIsland(islandManager.activeIsland) ?? false;
       if (!realtime.connected) return;
       if (sharedIslandChanged) {
+        monsterManager.resetPresentationActors();
         realtime.requestResync();
       }
       const position = controller.position;
