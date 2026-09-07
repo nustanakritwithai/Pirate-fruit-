@@ -12,6 +12,8 @@ export interface PirateCentralMonsterType {
   aggroRange: number;
   attackRange: number;
   attackCooldown: number;
+  leashDistance: number;
+  returnHomeDistance: number;
   heavyAttack?: {
     everyNth: number;
     multiplier: number;
@@ -72,6 +74,8 @@ const stableTypes = Object.values(MONSTER_TYPES).map((type) => ({
   aggroRange: type.aggroRange,
   attackRange: type.attackRange,
   attackCooldown: type.attackCooldown,
+  leashDistance: Math.min(type.aggroRange * 1.15, 15),
+  returnHomeDistance: 2.5,
   ...(type.heavyAttack ? { heavyAttack: { ...type.heavyAttack, tags: [...type.heavyAttack.tags] } } : {}),
 }));
 
@@ -95,7 +99,7 @@ const zones = [...new Set([...camps.map((camp) => camp.zone), ...bosses.map((bos
 
 const manifestWithoutHash = {
   schemaVersion: 1 as const,
-  contentRevision: 'pirate-monster-catalog-2026-09-07',
+  contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2',
   zones,
   collision: {
     coordinateFrame: 'x-z' as const,

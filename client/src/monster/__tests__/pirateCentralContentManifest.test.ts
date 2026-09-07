@@ -18,7 +18,7 @@ import {
   isPirateCentralSpatialManifest,
 } from '../PirateCentralContentManifest';
 
-const ARTIFACT_SHA256 = '048B457B70C86527C17DE05EBC63780EF748F1DA6E7D2AE2019E8E0597D39CFC';
+const ARTIFACT_SHA256 = 'C57F1336779D7E039D5FBC02B92B9165F802E8C301F4D550ABD5D3C8689C0B96';
 
 describe('Pirate central content manifest', () => {
   it('is deterministic and maps the real catalog/spawn source without authority fields', () => {
@@ -50,6 +50,8 @@ describe('Pirate central content manifest', () => {
     expect(JSON.stringify(PIRATE_CENTRAL_SPATIAL_MANIFEST)).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON);
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.collisionProfile.groundInput).toBe('worldHeightAt');
     expect(PIRATE_CENTRAL_SPATIAL_MANIFEST.aiProfile.chaseLeashMultiplier).toBe(1.6);
+    expect(PIRATE_CENTRAL_CONTENT_MANIFEST.monsterTypes.every((type) => type.leashDistance === Math.min(type.aggroRange * 1.15, 15)
+      && type.returnHomeDistance === 2.5)).toBe(true);
   });
 
   it('keeps the committed artifact byte-identical to the source export', () => {
@@ -59,7 +61,7 @@ describe('Pirate central content manifest', () => {
     const parsed: unknown = JSON.parse(artifact);
     expect(parsed).toEqual(PIRATE_CENTRAL_SPATIAL_MANIFEST);
     expect((parsed as { schema: string }).schema).toBe('pirate-central-spatial/1');
-    expect((parsed as { contentRevision: string }).contentRevision).toBe('pirate-monster-catalog-2026-09-07');
+    expect((parsed as { contentRevision: string }).contentRevision).toBe('pirate-monster-catalog-2026-09-07-ai-v2');
     expect((parsed as { contentHash: string }).contentHash).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST.contentHash);
   });
 
