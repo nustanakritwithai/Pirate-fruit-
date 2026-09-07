@@ -175,6 +175,7 @@ export class MonsterManager {
   private readonly ambientSpawns = new Map<IslandId, AmbientMonsterSpawn[]>();
   private readonly ambientInstances = new Map<Monster, AmbientMonsterSpawn>();
   private activeAmbientIsland: IslandId | null = null;
+  private ambientSpawnsSuppressed = false;
   private bossAudioActive = false;
 
   constructor(
@@ -189,6 +190,7 @@ export class MonsterManager {
   ) {
     const scale = countScale(graphics.tier);
 
+    this.ambientSpawnsSuppressed = suppressAmbientSpawns;
     if (!suppressAmbientSpawns) {
       for (const camp of MONSTER_CAMPS) {
         const type = MONSTER_TYPES[camp.typeId];
@@ -328,6 +330,26 @@ export class MonsterManager {
       if (index >= 0) this.monsters.splice(index, 1);
       this.scene.remove(monster.group);
       monster.dispose();
+    }
+  }
+
+  /** Central Pirate authority owns ambient NPC pose/AI while this gate is active. */
+  setAmbientSpawnsSuppressed(suppressed: boolean): void {
+    if (this.ambientSpawnsSuppressed === suppressed) return;
+    this.ambientSpawnsSuppressed = suppressed;
+    if (suppressed) {
+      for (const [monster] of this.ambientInstances) {
+        const index = this.monsters.indexOf(monster);
+        if (index >= 0) this.monsters.splice(index, 1);
+        this.bosses.delete(monster);
+        this.scene.remove(monster.group);
+        monster.dispose();
+      }
+      this.ambientInstances.clear();
+      this.activeAmbientIsland = null;
+      this.bossBar.hide();
+    } else if (this.ambientSpawns.size > 0) {
+      this.activateAmbientIsland(inferIslandId(this.controller.position.x, this.controller.position.z));
     }
   }
 
@@ -493,7 +515,7 @@ export class MonsterManager {
 
   update(dt: number): void {
     const player = this.controller.position;
-    if (this.ambientSpawns.size > 0) {
+    if (!this.ambientSpawnsSuppressed && this.ambientSpawns.size > 0) {
       this.activateAmbientIsland(inferIslandId(player.x, player.z));
     }
     const engageable =
