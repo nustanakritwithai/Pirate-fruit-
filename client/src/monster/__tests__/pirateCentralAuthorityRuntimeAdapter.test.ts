@@ -15,6 +15,7 @@ describe('PirateCentralAuthorityRuntimeAdapter', () => {
     const adapter = new PirateCentralAuthorityRuntimeAdapter();
     expect(adapter.update(capability(), 'pirate-fruit')).toBe(true);
     expect(adapter.active).toBe(true);
+    expect(adapter.sessionKey).toBe('pirate-fruit:1:7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0:A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7');
     expect(adapter.accepts('pirate-fruit')).toBe(true);
     expect(adapter.update(capability({ contentHash: 'fnv1a-bad' }), 'pirate-fruit')).toBe(false);
     expect(adapter.active).toBe(false);
@@ -37,6 +38,7 @@ describe('PirateCentralAuthorityRuntimeAdapter', () => {
     }
     adapter.reset();
     expect(adapter.active).toBe(false);
+    expect(adapter.sessionKey).toBeNull();
     expect(adapter.accepts('pirate-fruit')).toBe(false);
     expect(adapter.update(capability({ generation: 7 }), 'pirate-fruit')).toBe(true);
   });

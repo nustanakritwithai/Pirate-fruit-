@@ -258,12 +258,14 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(oversized.count).toBe(0);
 
     const remoteHits = vi.fn();
-    const remote = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
+    const remoteScene = new THREE.Scene();
+    const remote = new SharedMonsterClient(remoteScene, 'starter-island', () => 0, () => 1_000, { spawnHitSpark: remoteHits });
     remote.applyActors('starter-island', [{
       ...actors[0],
       presentation: { events: [{ sequence: 1, kind: 'hit-spark', ageMs: 0, position: { x: 3, y: 0.65, z: 4 }, color: 0xfff1a8 }], projectiles: [] },
-    }]);
+    }], 'pirate-fruit:1:manifest:vectors');
     expect(remote.count).toBe(1);
+    expect(remoteScene.children[0]?.name).toContain('central-monster:pirate-fruit:1:manifest:vectors:monster:starter-crab-1');
     expect(remoteHits).toHaveBeenCalledTimes(1);
     remote.applyActors('starter-island', [{ ...actors[0], stateSequence: actors[0].stateSequence }]);
     expect(remoteHits).toHaveBeenCalledTimes(1);
@@ -271,6 +273,8 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     remote.applyActors('starter-island', [{ ...actors[0], lifecycle: 'despawn', stateSequence: actors[0].stateSequence + 1 }]);
     expect(remote.count).toBe(0);
     remote.applyActors('other-island', actors);
+    expect(remote.count).toBe(0);
+    remote.resetSession(true);
     expect(remote.count).toBe(0);
   });
 

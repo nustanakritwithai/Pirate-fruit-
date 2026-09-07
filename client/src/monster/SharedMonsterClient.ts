@@ -171,7 +171,12 @@ export class SharedMonsterClient implements Updatable {
   }
 
   /** Reconnect/session boundary: discard one-shot bookkeeping before resync. */
-  resetSession(): void {
+  resetSession(clearCentralActors = false): void {
+    if (clearCentralActors) {
+      for (const [spawnId, monster] of this.monsters) {
+        if (monster.group.name.startsWith('central-monster:')) this.remove(spawnId);
+      }
+    }
     this.pendingAttacks.length = 0;
     this.seenAttackIds.clear();
     this.seenHitDeltas.clear();
@@ -219,7 +224,7 @@ export class SharedMonsterClient implements Updatable {
   }
 
   /** Consume presentation-only actor snapshots; HP/damage/target fields are rejected by type. */
-  applyActors(zone: string, actors: readonly SharedMonsterActor[]): void {
+  applyActors(zone: string, actors: readonly SharedMonsterActor[], identityNamespace = `map:${zone}`): void {
     if (zone !== this.currentIslandId || actors.length > SHARED_MONSTER_ACTOR_LIMIT) return;
     const seen = new Set<string>();
     for (const actor of actors) {
@@ -267,7 +272,10 @@ export class SharedMonsterClient implements Updatable {
           maxHp: MONSTER_TYPES[actor.monsterType].maxHp,
           state: actorWorldState(actor.animation.combatState),
         });
+        const created = this.monsters.get(spawnId);
+        if (created) created.group.name = `central-monster:${identityNamespace}:${actor.actorId}`;
       } else {
+        monster.group.name = `central-monster:${identityNamespace}:${actor.actorId}`;
         monster.target.set(actor.pose.x, actor.pose.y, actor.pose.z);
         monster.targetHeading = actor.pose.dir;
         monster.state = actorWorldState(actor.animation.combatState);
