@@ -185,3 +185,43 @@ export function isPirateCentralSpatialManifest(value: unknown): value is PirateC
     && Boolean(candidate.collisionProfile)
     && Boolean(candidate.aiProfile);
 }
+
+/** Deterministic spatial vectors copied from MonsterManager/World rules. */
+export const PIRATE_CENTRAL_SPATIAL_VECTORS = Object.freeze({
+  schema: 'pirate-central-spatial-vectors/1',
+  sourceRevision: 'MonsterManager@3042e49',
+  ground: {
+    function: 'worldHeightAt',
+    walkMinimum: 0.25,
+    spawnAcceptance: 0.6,
+    spawnSampling: { attempts: 24, radialDistribution: 'sqrt(random)*radius', fallback: 'center' },
+    samples: [
+      { input: { x: 0, z: 8 }, output: { height: 3.74177670429845, walkable: true } },
+      { input: { x: 30, z: 0 }, output: { height: 1.2400789102892396, walkable: true } },
+      { input: { x: 0, z: -31 }, output: { height: 0.0013107631936714048, walkable: false } },
+    ],
+  },
+  safeZone: {
+    predicate: 'isWorldSafeZone(undefined,x,z)',
+    samples: [
+      { input: { x: 0, z: 8 }, output: { safe: true, zoneId: 'starter-village' } },
+      { input: { x: 30, z: 0 }, output: { safe: false, zoneId: null } },
+      { input: { x: 360, z: -65 }, output: { safe: true, zoneId: 'sunscar-caravan-city' } },
+      { input: { x: 360, z: -40 }, output: { safe: false, zoneId: null } },
+    ],
+  },
+  behavior: {
+    fixedTickHz: 60,
+    aggro: { engageWhenDistanceLessThan: 'type.aggroRange', requiresNotReturningHome: true },
+    leash: { distance: 'min(type.aggroRange*1.15,15)', returnHomeUntilDistanceLessThan: 2.5 },
+    wander: { resetWhenTimerAtMost: 0, timer: '1.5+random*2.5', homeRadius: 3, speedMultiplier: 0.4 },
+    return: { speedMultiplier: 0.5 },
+    movement: { rejectWhenGroundBelow: 0.25, rejectSafeZoneEntry: true },
+  },
+  lifecycle: {
+    islandChange: ['clearPendingAttacks', 'clearSeenHitDeltas', 'removeActors'],
+    reconnect: ['clearOneShotBookkeeping', 'clearActorSequences', 'incrementGeneration', 'requestSnapshot'],
+  },
+});
+
+export const PIRATE_CENTRAL_SPATIAL_VECTORS_JSON = JSON.stringify(PIRATE_CENTRAL_SPATIAL_VECTORS);

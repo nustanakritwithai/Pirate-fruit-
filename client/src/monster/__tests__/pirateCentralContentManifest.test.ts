@@ -8,6 +8,8 @@ import {
   PIRATE_CENTRAL_SPATIAL_MANIFEST,
   PIRATE_CENTRAL_SPATIAL_MANIFEST_JSON,
   PIRATE_CENTRAL_SPATIAL_SCHEMA_VECTOR,
+  PIRATE_CENTRAL_SPATIAL_VECTORS,
+  PIRATE_CENTRAL_SPATIAL_VECTORS_JSON,
   PIRATE_MONSTER_INTENT_LIMITS,
   isPirateCentralSpatialManifest,
 } from '../PirateCentralContentManifest';
@@ -55,5 +57,14 @@ describe('Pirate central content manifest', () => {
     expect((parsed as { schema: string }).schema).toBe('pirate-central-spatial/1');
     expect((parsed as { contentRevision: string }).contentRevision).toBe('pirate-monster-catalog-2026-09-07');
     expect((parsed as { contentHash: string }).contentHash).toBe(PIRATE_CENTRAL_SPATIAL_MANIFEST.contentHash);
+  });
+
+  it('keeps real spatial behavior vectors byte-identical and free of combat fields', () => {
+    const vectors = readFileSync(resolve(__dirname, '../pirate-central-spatial.vectors.json'), 'utf8');
+    expect(vectors).toBe(PIRATE_CENTRAL_SPATIAL_VECTORS_JSON);
+    expect(createHash('sha256').update(vectors).digest('hex').toUpperCase()).toBe('A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7');
+    expect(PIRATE_CENTRAL_SPATIAL_VECTORS.ground.spawnSampling.attempts).toBe(24);
+    expect(PIRATE_CENTRAL_SPATIAL_VECTORS.behavior.leash.distance).toBe('min(type.aggroRange*1.15,15)');
+    expect(vectors).not.toMatch(/maxHp|damage|target/);
   });
 });
