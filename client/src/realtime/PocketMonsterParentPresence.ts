@@ -327,6 +327,8 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
     && payload.centralAuthority.schemaVersion === 1
     && payload.centralAuthority.contentRevision === 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2'
     && payload.centralAuthority.contentHash === 'fnv1a-236acf41'
+    && payload.centralAuthority.manifestSha256 === '7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0'
+    && payload.centralAuthority.vectorsSha256 === 'A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7'
     && payload.centralAuthority.transportZone === 'pirate-fruit'
     && Number.isSafeInteger(authorityGeneration)
     && (authorityGeneration as number) >= 1

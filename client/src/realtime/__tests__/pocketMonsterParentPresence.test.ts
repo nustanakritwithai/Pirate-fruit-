@@ -379,12 +379,23 @@ describe('Pocket Monster parent presence bridge', () => {
     const capability = {
       contract: 'pirate-central-spatial/1', schemaVersion: 1,
       contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2',
-      contentHash: 'fnv1a-236acf41', transportZone: 'pirate-fruit', generation: 7,
+      contentHash: 'fnv1a-236acf41',
+      manifestSha256: '7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0',
+      vectorsSha256: 'A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7',
+      transportZone: 'pirate-fruit', generation: 7,
     };
     const message = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [], centralAuthority: capability } };
     expect(parsePiratePresenceSnapshotMessage(message)?.centralAuthority).toEqual(capability);
     const legacy = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [], centralAuthority: { schema: 'pirate-central-authority/1', identity: 'pirate-central-spatial', zone: 'pirate-fruit', generation: 7 } } };
     expect(parsePiratePresenceSnapshotMessage(legacy)?.centralAuthority).toBeUndefined();
+    for (const field of ['manifestSha256', 'vectorsSha256']) {
+      const missing = structuredClone(message) as any;
+      delete missing.payload.centralAuthority[field];
+      expect(parsePiratePresenceSnapshotMessage(missing)?.centralAuthority).toBeUndefined();
+      const mismatch = structuredClone(message) as any;
+      mismatch.payload.centralAuthority[field] = 'bad';
+      expect(parsePiratePresenceSnapshotMessage(mismatch)?.centralAuthority).toBeUndefined();
+    }
   });
 
   it('routes central transport actors into the local map-zone consumer across all Pirate map zones', () => {
@@ -422,7 +433,10 @@ describe('Pocket Monster parent presence bridge', () => {
           zone: 'pirate-fruit', players: [], centralAuthority: {
             contract: 'pirate-central-spatial/1', schemaVersion: 1,
             contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2',
-            contentHash: 'fnv1a-236acf41', transportZone: 'pirate-fruit', generation: 1,
+            contentHash: 'fnv1a-236acf41',
+            manifestSha256: '7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0',
+            vectorsSha256: 'A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7',
+            transportZone: 'pirate-fruit', generation: 1,
           }, actors: [actor],
         } }, origin: 'https://pocket.example', source: host.parentSource,
       });
