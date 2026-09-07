@@ -496,25 +496,28 @@ async function main(): Promise<void> {
       acknowledgeVisual: (count) => { scopedCombatEffects.acknowledgeEvents(count); },
       getMonsterActors: () => centralAuthorityRuntime?.active
         ? []
-        : sharedMonsters?.getActors() ?? monsterManager?.getPresentationActors(islandManager.activeIsland, 1) ?? [],
+        : sharedWorldMonstersEnabled
+          ? sharedMonsters?.getActors() ?? []
+          : monsterManager?.getPresentationActors(islandManager.activeIsland, 1) ?? [],
       drainMonsterIntents: () => centralAuthorityRuntime?.active
         ? pirateMonsterAuthority?.drainIntents() ?? []
         : [],
       onMonsterActors: (transportZone, mapZone, actors) => {
         if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(mapZone)) return;
         const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
-        sharedMonsters?.applyActors(mapZone, safeActors);
+        sharedMonsters?.applyActors(mapZone, safeActors, centralAuthorityRuntime.sessionKey ?? `map:${mapZone}`);
       },
       onCentralAuthority: (capability) => {
-        const active = centralAuthorityRuntime?.update(capability) ?? false;
+        centralAuthorityRuntime?.update(capability);
+        const active = centralAuthorityRuntime?.active ?? false;
         monsterManager?.setAmbientSpawnsSuppressed(active);
-        if (!active) sharedMonsters?.resetSession();
+        if (!active) sharedMonsters?.resetSession(true);
       },
       onIslandChange: () => {
         scopedCombatEffects.resetSession();
         pirateMonsterAuthority?.setZone(islandManager.activeIsland);
-        centralAuthorityRuntime?.reset();
-        monsterManager?.setAmbientSpawnsSuppressed(false);
+        sharedMonsters?.setIsland(islandManager.activeIsland);
+        monsterManager?.setAmbientSpawnsSuppressed(centralAuthorityRuntime?.active ?? false);
       },
     })
     : null;
@@ -538,7 +541,7 @@ async function main(): Promise<void> {
         || import.meta.env.VITE_ENABLE_SHARED_WORLD_MONSTERS === '1',
       runtimeFeatures,
     );
-  sharedMonsters = sharedWorldMonstersEnabled
+  sharedMonsters = (sharedWorldMonstersEnabled || pocketMonsterParentOrigin !== null)
     ? new SharedMonsterClient(
         game.scene,
         islandManager.activeIsland,
@@ -611,11 +614,15 @@ async function main(): Promise<void> {
       refreshEconomyViews();
     },
     onResync: () => {
-      sharedMonsters?.resetSession();
+      sharedMonsters?.resetSession(centralAuthorityRuntime?.active ?? false);
       monsterManager?.resetPresentationActors();
       pirateMonsterAuthority?.resetSession();
-      centralAuthorityRuntime?.reset();
-      monsterManager?.setAmbientSpawnsSuppressed(false);
+      if (centralAuthorityRuntime?.active) {
+        monsterManager?.setAmbientSpawnsSuppressed(true);
+      } else {
+        centralAuthorityRuntime?.reset();
+        monsterManager?.setAmbientSpawnsSuppressed(false);
+      }
       resyncAuthoritativeState();
     },
     onAnnouncement: (message, level) => {
@@ -1100,6 +1107,7 @@ async function main(): Promise<void> {
     // S16: เปิด shared world monsters → ปิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server)
     shouldSuppressLocalMonsters(sharedWorldMonstersEnabled, realtime !== null),
   );
+  monsterManager.setAmbientSpawnsSuppressed(centralAuthorityRuntime?.active ?? false);
 
   // Naval Combat (เรือ Phase 2-3) — เรือโจรสลัด AI + ปืนใหญ่ + Boarding
   const navalCombat = new NavalCombat(

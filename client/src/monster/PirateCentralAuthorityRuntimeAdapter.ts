@@ -54,4 +54,9 @@ export class PirateCentralAuthorityRuntimeAdapter {
 
   get active(): boolean { return this.capability !== null; }
   get generation(): number | null { return this.capability?.generation ?? null; }
+  get sessionKey(): string | null {
+    const capability = this.capability;
+    if (!capability) return null;
+    return [capability.transportZone, capability.generation, capability.manifestSha256, capability.vectorsSha256].join(':');
+  }
 }
