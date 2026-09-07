@@ -500,10 +500,10 @@ async function main(): Promise<void> {
       drainMonsterIntents: () => centralAuthorityRuntime?.active
         ? pirateMonsterAuthority?.drainIntents() ?? []
         : [],
-      onMonsterActors: (zone, actors) => {
-        if (zone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(zone)) return;
-        const safeActors = pirateMonsterAuthority?.sanitizeActors(zone, actors) ?? [];
-        sharedMonsters?.applyActors(zone, safeActors);
+      onMonsterActors: (transportZone, mapZone, actors) => {
+        if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(mapZone)) return;
+        const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
+        sharedMonsters?.applyActors(mapZone, safeActors);
       },
       onCentralAuthority: (capability) => {
         const active = centralAuthorityRuntime?.update(capability) ?? false;

@@ -44,6 +44,8 @@ describe('PirateMonsterAuthorityAdapter', () => {
     expect(accepted).toHaveLength(1);
     expect(accepted[0]).not.toBe(valid);
     expect(accepted[0]?.pose).toEqual(valid.pose);
+    expect(adapter.sanitizeActors('pirate-fruit', [valid], undefined, 'mist-jungle')[0]?.zone).toBe('mist-jungle');
+    expect(adapter.sanitizeActors('mist-jungle', [valid], undefined, 'mist-jungle')).toEqual([]);
     expect(adapter.sanitizeActors('pirate-fruit', [actor({ pose: { x: Number.NaN, y: 0, z: 0, dir: 0 } })])).toEqual([]);
     expect(adapter.sanitizeActors('other-zone', [valid])).toEqual([]);
     expect(adapter.sanitizeActors('pirate-fruit', [actor({ actorId: 'player:spoof', monsterType: 'crab' })])).toEqual([]);

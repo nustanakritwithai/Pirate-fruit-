@@ -6,6 +6,7 @@ const MAX_ACTORS = 128;
 const MAX_SEQUENCE = Number.MAX_SAFE_INTEGER;
 const MAX_COORDINATE = 10_000;
 const CATEGORIES = new Set<PirateMonsterIntent['category']>(['style', 'sword', 'gun', 'fruit', 'utility']);
+const CENTRAL_TRANSPORT_ZONE = 'pirate-fruit';
 
 export interface PirateMonsterIntent {
   schemaVersion: 1;
@@ -109,11 +110,11 @@ export class PirateMonsterAuthorityAdapter {
   }
 
   /** Reject forged/out-of-zone actor envelopes before SharedMonsterClient sees them. */
-  sanitizeActors(zone: string, actors: readonly SharedMonsterActor[], ownerId?: string): SharedMonsterActor[] {
-    if (!validZone(zone) || !Array.isArray(actors) || actors.length > MAX_ACTORS) return [];
+  sanitizeActors(transportZone: string, actors: readonly SharedMonsterActor[], ownerId?: string, mapZone = transportZone): SharedMonsterActor[] {
+    if (transportZone !== CENTRAL_TRANSPORT_ZONE || !validZone(mapZone) || !Array.isArray(actors) || actors.length > MAX_ACTORS) return [];
     const seen = new Set<string>();
     return actors.flatMap((actor) => {
-      if (!actor || actor.kind !== 'monster' || actor.zone !== zone || !validZone(actor.actorId)
+      if (!actor || actor.kind !== 'monster' || actor.zone !== transportZone || !validZone(actor.actorId)
         || !actor.actorId.startsWith('monster:') || !MONSTER_TYPES[actor.monsterType]
         || seen.has(actor.actorId) || (ownerId !== undefined && actor.ownerId !== ownerId)
         || !validActorLifecycle(actor.lifecycle) || !validLocomotion(actor.locomotion)
@@ -128,7 +129,7 @@ export class PirateMonsterAuthorityAdapter {
           || !Array.isArray(actor.presentation.projectiles)
           || actor.presentation.events.length > 32 || actor.presentation.projectiles.length > 32))) return [];
       seen.add(actor.actorId);
-      return [{ ...actor, pose: { ...actor.pose }, animation: { ...actor.animation }, ...(actor.presentation ? { presentation: { events: [...actor.presentation.events], projectiles: [...actor.presentation.projectiles] } } : {}) }];
+      return [{ ...actor, zone: mapZone, pose: { ...actor.pose }, animation: { ...actor.animation }, ...(actor.presentation ? { presentation: { events: [...actor.presentation.events], projectiles: [...actor.presentation.projectiles] } } : {}) }];
     });
   }
 }

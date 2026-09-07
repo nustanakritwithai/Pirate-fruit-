@@ -111,7 +111,7 @@ export interface PocketMonsterParentPresenceOptions {
   onIslandChange?(): void;
   getMonsterActors?(): readonly SharedMonsterActor[];
   drainMonsterIntents?(): readonly PirateMonsterIntent[];
-  onMonsterActors?(zone: string, actors: readonly SharedMonsterActor[]): void;
+  onMonsterActors?(transportZone: string, mapZone: string, actors: readonly SharedMonsterActor[]): void;
   onCentralAuthority?(capability: PirateCentralAuthorityCapability | null): void;
 }
 
@@ -600,6 +600,6 @@ export class PocketMonsterParentPresence {
     }
     this.visibleIds.clear();
     for (const id of seen) this.visibleIds.add(id);
-    if (snapshot.actors) this.options.onMonsterActors?.(islandId, snapshot.actors);
+    if (snapshot.actors) this.options.onMonsterActors?.(snapshot.zone, islandId, snapshot.actors);
   }
 }

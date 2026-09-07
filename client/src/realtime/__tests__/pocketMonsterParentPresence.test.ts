@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import type { PlayerActionSnapshot } from '../../animation/PlayerActionAnimator';
 import { RemotePlayers } from '../RemotePlayers';
+import { SharedMonsterClient, type SharedMonsterActor } from '../../monster/SharedMonsterClient';
+import { PirateMonsterAuthorityAdapter } from '../../monster/PirateMonsterAuthorityAdapter';
 import {
   PIRATE_LOCAL_PRESENCE_MESSAGE,
   PIRATE_PRESENCE_SNAPSHOT_MESSAGE,
@@ -383,6 +385,56 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(parsePiratePresenceSnapshotMessage(message)?.centralAuthority).toEqual(capability);
     const legacy = { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [], centralAuthority: { schema: 'pirate-central-authority/1', identity: 'pirate-central-spatial', zone: 'pirate-fruit', generation: 7 } } };
     expect(parsePiratePresenceSnapshotMessage(legacy)?.centralAuthority).toBeUndefined();
+  });
+
+  it('routes central transport actors into the local map-zone consumer across all Pirate map zones', () => {
+    const host = createHost();
+    const context = { clearRect: vi.fn(), fillText: vi.fn(), fillRect: vi.fn(), strokeRect: vi.fn(), fillStyle: '', font: '', textBaseline: '', strokeStyle: '', lineWidth: 1 };
+    vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => context }) });
+    const scene = new THREE.Scene();
+    const shared = new SharedMonsterClient(scene, 'starter-island');
+    const adapter = new PirateMonsterAuthorityAdapter();
+    let mapZone = 'starter-island';
+    const actor: SharedMonsterActor = {
+      actorId: 'monster:crab-transport', kind: 'monster', monsterType: 'crab', zone: 'pirate-fruit',
+      generation: 1, spawnSequence: 1, stateSequence: 1, lifecycle: 'active',
+      pose: { x: 1, y: 0, z: 2, dir: 0 }, locomotion: 'idle',
+      animation: { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [], projectiles: [] },
+    };
+    const bridge = new PocketMonsterParentPresence({
+      targetOrigin: 'https://pocket.example', host: host.host,
+      remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
+      getPosition: () => ({ x: 0, y: 0, z: 0 }), getHeading: () => 0,
+      getIslandId: () => mapZone, heightAt: () => 0,
+      onMonsterActors: (transportZone, localMapZone, actors) => {
+        if (transportZone !== 'pirate-fruit' || localMapZone !== mapZone) return;
+        shared.applyActors(localMapZone, adapter.sanitizeActors(transportZone, actors, undefined, localMapZone));
+      },
+    });
+    bridge.start();
+    const mapZones = ['starter-island', 'mist-jungle', 'sunscar-desert', 'azure-frost', 'tempest-sky', 'ember-volcano'];
+    for (const zone of mapZones) {
+      mapZone = zone;
+      actor.stateSequence += 1;
+      host.dispatch({
+        data: { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: {
+          zone: 'pirate-fruit', players: [], centralAuthority: {
+            contract: 'pirate-central-spatial/1', schemaVersion: 1,
+            contentRevision: 'pirate-monster-catalog-2026-09-07-ai-v2-transport-v2',
+            contentHash: 'fnv1a-236acf41', transportZone: 'pirate-fruit', generation: 1,
+          }, actors: [actor],
+        } }, origin: 'https://pocket.example', source: host.parentSource,
+      });
+      expect(shared.count).toBe(1);
+    }
+    host.dispatch({
+      data: { type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE, payload: { zone: 'pirate-fruit', players: [], actors: [{ ...actor, zone: 'mist-jungle' }] } },
+      origin: 'https://pocket.example', source: host.parentSource,
+    });
+    expect(shared.count).toBe(1);
+    bridge.dispose();
+    vi.unstubAllGlobals();
   });
 
   it('publishes 70 queued events over multiple successful parent publishes', () => {
