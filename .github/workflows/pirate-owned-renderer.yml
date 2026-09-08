@@ -18,6 +18,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      # The nested Pocket client is hosted by the parent page. It must not
+      # create its own login/session or enable unrelated remote write paths.
+      VITE_ENABLE_REMOTE_SESSION: 'false'
+      VITE_ENABLE_ECONOMY_SERVER: 'false'
+      VITE_ENABLE_TRADE_SERVER: 'false'
+      VITE_ENABLE_QUEST_SERVER: 'false'
+      VITE_ENABLE_MONSTER_SERVER: 'false'
+      VITE_ENABLE_PROGRESSION_SERVER: 'false'
+      VITE_ENABLE_CHARACTER_SELECT: 'false'
+      VITE_ENABLE_ONBOARDING: 'false'
+      VITE_ENABLE_REALTIME: 'true'
+      VITE_ENABLE_MULTIPLAYER: 'true'
+      VITE_ENABLE_SHARED_WORLD_MONSTERS: 'true'
+      VITE_ENABLE_PVP: 'false'
+      VITE_ENABLE_BOAT_WORLD: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,9 +42,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts
-      - run: npx tsc -p client/tsconfig.owned-monster.json
       - run: npm run build:shared
-      - run: npm run build:client
+      - name: Typecheck nested client
+        working-directory: client
+        run: npx tsc --noEmit
+      - name: Build nested deployment artifact
+        working-directory: client
+        run: npx vite build --base=./
+      - name: Verify procedural asset budget
+        working-directory: client
+        run: node scripts/verify-procedural-budget.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: pirate-client-dist
