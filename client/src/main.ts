@@ -551,7 +551,7 @@ async function main(): Promise<void> {
         if (!self) return;
         const wasDead = playerAuthorityLifeState === 'dead';
         playerAuthorityLifeState = self.lifeState;
-        controller.setStats(self.hp.max, controller.energyMax, controller.mpMax, 'clamp');
+        controller.applyProgressionCaps(self.hp.max, controller.energyMax, controller.mpMax, 'clamp');
         controller.hp = Math.max(0, Math.min(self.hp.max, self.hp.current));
         if (self.lifeState === 'dead' && !wasDead) {
           selfPvpDefeated = true;
