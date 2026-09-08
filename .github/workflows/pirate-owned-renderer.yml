@@ -1,0 +1,36 @@
+name: Pirate owned monster renderer
+
+on:
+  pull_request:
+    paths:
+      - 'client/src/monster/PocketOwnedMonsterRenderer.ts'
+      - 'client/src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts'
+      - 'client/tsconfig.owned-monster.json'
+      - 'asset-presentation/**'
+      - 'assets/catalog/monster-*.json'
+      - 'client/src/main.ts'
+      - '.github/workflows/pirate-owned-renderer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts
+      - run: npx tsc -p client/tsconfig.owned-monster.json
+      - run: npm run build:shared
+      - run: npm run build:client
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pirate-client-dist
+          path: client/dist
+          if-no-files-found: error
