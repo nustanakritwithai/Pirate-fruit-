@@ -20,7 +20,7 @@ jobs:
         env:
           POSTGRES_DB: pirate_fruit_test
           POSTGRES_USER: pirate_fruit
-          POSTGRES_PASSWORD: pirate_fruit_test
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -29,9 +29,16 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_TEST_URL: postgresql://pirate_fruit:pirate_fruit_test@127.0.0.1:5432/pirate_fruit_test
+      DATABASE_TEST_URL: postgresql://pirate_fruit@127.0.0.1:5432/pirate_fruit_test
+      POCKETMONSTER_CLIENT_ROOT: ${{ github.workspace }}/.qa/pocketmonster-client
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Checkout pinned Client parent bridge
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: nustanakritwithai/PocketMonster
+          ref: 767f025b3eff33bb23ac77640fbd0d322da36399
+          path: .qa/pocketmonster-client
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
@@ -53,7 +60,7 @@ jobs:
         env:
           POSTGRES_DB: pirate_fruit_smoke
           POSTGRES_USER: pirate_fruit
-          POSTGRES_PASSWORD: pirate_fruit_smoke
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -62,8 +69,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://pirate_fruit:pirate_fruit_smoke@127.0.0.1:5432/pirate_fruit_smoke
-      SESSION_SECRET: browser-smoke-secret-0123456789abcdef
+      DATABASE_URL: postgresql://pirate_fruit@127.0.0.1:5432/pirate_fruit_smoke
       CLIENT_ORIGIN: http://127.0.0.1:4173
       ENABLE_REMOTE_SESSION: 'true'
       ENABLE_REMOTE_SAVE: 'true'
@@ -112,6 +118,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run db:migrate
+      - name: Generate ephemeral browser smoke secret
+        shell: bash
+        run: |
+          secret="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+          echo "SESSION_SECRET=$secret" >> "$GITHUB_ENV"
       - name: Start server and client preview
         run: |
           node server/dist/index.js &
