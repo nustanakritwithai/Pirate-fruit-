@@ -505,7 +505,7 @@ async function main(): Promise<void> {
       onMonsterActors: (transportZone, mapZone, actors) => {
         if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(mapZone)) return;
         const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
-        sharedMonsters?.applyActors(mapZone, safeActors, centralAuthorityRuntime.sessionKey ?? `map:${mapZone}`);
+        sharedMonsters?.applyActors(mapZone, safeActors, centralAuthorityRuntime.sessionKey ?? `map:${mapZone}`, getSelfCharacterId() ?? undefined);
       },
       onCentralAuthority: (capability) => {
         centralAuthorityRuntime?.update(capability);
@@ -548,6 +548,9 @@ async function main(): Promise<void> {
         (x, z) => world.collision.heightAt(x, z),
         undefined,
         effects,
+        (targetId) => targetId === getSelfCharacterId()
+          ? controller.position.clone()
+          : remotePlayers?.positionOf(targetId)?.clone(),
       )
     : null;
   if (sharedMonsters) {
@@ -1209,15 +1212,27 @@ async function main(): Promise<void> {
           kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
           Math.max(0.8, requestedRange),
         );
-        pirateMonsterAuthority.queueIntent({
-          zone: islandManager.activeIsland,
-          kind,
-          category,
-          forwardX,
-          forwardZ,
-          range: safeRange,
-          ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
-        });
+        const targetIds = area
+          ? sharedMonsters?.targetsInRadius(origin, Math.min(safeRange, Math.max(0.5, area))) ?? []
+          : sharedMonsters?.targetsInCone(origin, forwardX, forwardZ, safeRange, CONE_HALF_ANGLE) ?? [];
+        const targets = targetIds.length > 0 ? targetIds : [undefined];
+        for (const targetId of targets) {
+          const identity = targetId ? sharedMonsters?.getActorIdentity(targetId) : undefined;
+          pirateMonsterAuthority.queueIntent({
+            zone: islandManager.activeIsland,
+            kind,
+            category,
+            forwardX,
+            forwardZ,
+            range: safeRange,
+            ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
+            ...(identity ? {
+              targetActorId: identity.actorId,
+              expectedGeneration: identity.generation,
+              expectedStateSequence: identity.stateSequence,
+            } : {}),
+          });
+        }
         return;
       }
       if (!sharedMonsters) return;
@@ -1455,3 +1470,4 @@ main().catch((err) => {
     </div>`,
   );
 });
+

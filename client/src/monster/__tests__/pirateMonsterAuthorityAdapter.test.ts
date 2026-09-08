@@ -51,4 +51,19 @@ describe('PirateMonsterAuthorityAdapter', () => {
     expect(adapter.sanitizeActors('pirate-fruit', [actor({ actorId: 'player:spoof', monsterType: 'crab' })])).toEqual([]);
     expect(adapter.sanitizeActors('pirate-fruit', [actor({ presentation: { events: Array.from({ length: 33 }, () => ({})), projectiles: [] } })])).toEqual([]);
   });
+
+  it('accepts only the explicit authority extension and preserves nested HP/result revisions', () => {
+    const adapter = new PirateMonsterAuthorityAdapter();
+    const valid = actor({
+      authority: { authorityVersion: 'monster-authority/1', serverTimeUtc: '2026-09-08T07:00:00.000Z', generation: 1,
+        hp: { current: 42, max: 70, revision: 3 }, actionSequence: 8, resultRevision: 5, hit: true, damage: 7, death: false },
+    });
+    expect(adapter.sanitizeActors('pirate-fruit', [valid])[0]).toMatchObject({
+      authority: { authorityVersion: 'monster-authority/1', hp: { current: 42, max: 70, revision: 3 }, resultRevision: 5 },
+    });
+    expect(adapter.sanitizeActors('pirate-fruit', [actor({ authority: { authorityVersion: 'monster-authority/1', serverTimeUtc: '2026-09-08T07:00:00.000Z', generation: 1, hp: { current: 42.5, max: 70, revision: 3 }, actionSequence: 1, resultRevision: 1, hit: false, damage: 0, death: false } })])).not.toEqual([]);
+    expect(adapter.sanitizeActors('pirate-fruit', [actor({ authorityVersion: 'legacy' })])).toEqual([]);
+    expect(adapter.sanitizeActors('pirate-fruit', [actor({ authorityVersion: 'monster-authority/1', resultRevision: 1.5 })])).toEqual([]);
+  });
 });
+

@@ -1,0 +1,41 @@
+{
+  "authorityVersion": "monster-authority/1",
+  "serverTimeUtc": "2026-09-08T00:00:01Z",
+  "generation": 7,
+  "stateSequence": 42,
+  "cases": [
+    {
+      "name": "monster-to-player",
+      "actorId": "monster:ember-slime:starter-harbor:1",
+      "monsterId": "monster:ember-slime:starter-harbor:1",
+      "hp": { "current": 41, "max": 41, "revision": 0 },
+      "resultRevision": 1,
+      "attack": {
+        "attackId": "monster:ember-slime:starter-harbor:1:7:1",
+        "spawnId": "monster:ember-slime:starter-harbor:1",
+        "monsterId": "monster:ember-slime:starter-harbor:1",
+        "islandId": "pirate-fruit",
+        "targetId": "player:accepted-session",
+        "action": "melee",
+        "damage": 1,
+        "hitDelayMs": 180
+      }
+    },
+    {
+      "name": "player-to-monster",
+      "actorId": "monster:ember-slime:starter-harbor:1",
+      "monsterId": "monster:ember-slime:starter-harbor:1",
+      "hp": { "current": 40, "max": 41, "revision": 1 },
+      "resultRevision": 1,
+      "attack": null
+    }
+  ],
+  "rules": {
+    "actorIdIsMonsterId": true,
+    "clientPoseIsNonAuthoritative": true,
+    "duplicateResultDoesNotApplyTwice": true,
+    "staleGenerationRejected": true,
+    "simulationProposalMustBeCommittedByOwner": true
+  }
+}
+

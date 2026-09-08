@@ -43,3 +43,4 @@ describe('PirateCentralAuthorityRuntimeAdapter', () => {
     expect(adapter.update(capability({ generation: 7 }), 'pirate-fruit')).toBe(true);
   });
 });
+
