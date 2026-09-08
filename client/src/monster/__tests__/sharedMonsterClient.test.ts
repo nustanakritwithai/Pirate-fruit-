@@ -278,6 +278,68 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(remote.count).toBe(0);
   });
 
+  it('derives bounded actor velocity and advances central motion between snapshots', () => {
+    let now = 1_000;
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0, () => now);
+    const actor = {
+      actorId: 'monster:moving-1', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 1, spawnSequence: 1, stateSequence: 1, lifecycle: 'active' as const,
+      pose: { x: 0, y: 0, z: 0, dir: 0 }, locomotion: 'run' as const,
+      animation: { combatState: 'chase', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [], projectiles: [] },
+    };
+    client.applyActors('starter-island', [actor]);
+    now += 200;
+    client.applyActors('starter-island', [{ ...actor, stateSequence: 2, pose: { ...actor.pose, x: 2 } }]);
+    now += 100;
+    client.update(1 / 60);
+    const rendered = scene.children[0] as THREE.Group;
+    expect(rendered.position.x).toBeGreaterThan(0.3);
+    expect(rendered.position.x).toBeLessThan(2.8);
+  });
+
+  it('applies generation-scoped authoritative HP/result even when pose state is unchanged', () => {
+    const hit = vi.fn();
+    const damageNumber = vi.fn();
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark: hit, spawnDamageNumber: damageNumber });
+    const actor = {
+      actorId: 'monster:authority-1', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 4, spawnSequence: 2, stateSequence: 9, lifecycle: 'active' as const,
+      pose: { x: 1, y: 0, z: 1, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'attack1', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      authority: { authorityVersion: 'monster-authority/1' as const, serverTimeUtc: '2026-09-08T07:00:00.000Z', generation: 4,
+        hp: { current: 100, max: 120, revision: 1 }, actionSequence: 1, resultRevision: 0, hit: false, damage: 0, death: false },
+      presentation: { events: [], projectiles: [] },
+    };
+    client.applyActors('starter-island', [actor]);
+    const state = (client as any).monsters.get('authority-1');
+    expect(state.hp).toBe(100);
+    client.applyActors('starter-island', [{ ...actor, authority: { ...actor.authority, hp: { current: 80, max: 120, revision: 2 }, hit: true, damage: 20, resultRevision: 1 } }]);
+    expect(state.hp).toBe(80);
+    expect(hit).toHaveBeenCalledTimes(1);
+    expect(damageNumber).toHaveBeenCalledWith(expect.any(THREE.Vector3), 20);
+    client.applyActors('starter-island', [{ ...actor, authority: { ...actor.authority, hp: { current: 40, max: 120, revision: 1 }, hit: true, damage: 60, resultRevision: 1 } }]);
+    expect(state.hp).toBe(80);
+    expect(hit).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects malformed authority extension and does not invent HP for legacy actors', () => {
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island');
+    const actor = {
+      actorId: 'monster:authority-2', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 1, spawnSequence: 1, stateSequence: 1, lifecycle: 'active' as const,
+      pose: { x: 0, y: 0, z: 0, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'idle', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      presentation: { events: [], projectiles: [] },
+    };
+    client.applyActors('starter-island', [{ ...actor, authority: { authorityVersion: 'monster-authority/1', serverTimeUtc: 'bad', generation: actor.generation, actionSequence: 1, resultRevision: 0, hit: false, damage: 0, death: false, hp: { current: 10, max: 20, revision: 1 } } }]);
+    expect(client.count).toBe(0);
+    client.applyActors('starter-island', [actor]);
+    const state = (client as any).monsters.get('authority-2');
+    expect(state.hp).toBe(70);
+  });
+
   it('retires stale monster generations and accepts a fresh generation', () => {
     const spawnHitSpark = vi.fn();
     const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island', () => 0, () => 1_000, { spawnHitSpark });
@@ -395,3 +457,4 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(client.collectPlayerDamage(new THREE.Vector3(20, 0, 8))).toBe(0);
   });
 });
+

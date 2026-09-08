@@ -1,0 +1,447 @@
+{
+  "name": "monster-animals",
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "monster.plainpup.normalooze.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.02,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "normalooze",
+      "type": "Normal",
+      "form": "plainpup",
+      "color": 14274232
+    },
+    {
+      "id": "monster.flameling.flameling.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.04,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "flameling",
+      "type": "Fire",
+      "form": "flameling",
+      "color": 16739125
+    },
+    {
+      "id": "monster.aquapuff.aquapuff.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.04,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "aquapuff",
+      "type": "Water",
+      "form": "aquapuff",
+      "color": 5023999
+    },
+    {
+      "id": "monster.voltkit.voltkit.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.04,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "voltkit",
+      "type": "Electric",
+      "form": "voltkit",
+      "color": 16767053
+    },
+    {
+      "id": "monster.mossbun.mossbun.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "mossbun",
+      "type": "Grass",
+      "form": "mossbun",
+      "color": 6669414
+    },
+    {
+      "id": "monster.frostowl.frostowl.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "bird"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "frostowl",
+      "type": "Ice",
+      "form": "frostowl",
+      "color": 12119551
+    },
+    {
+      "id": "monster.punchcub.punchcub.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.04,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "punchcub",
+      "type": "Fighting",
+      "form": "punchcub",
+      "color": 13392464
+    },
+    {
+      "id": "monster.toxitoad.toxitoad.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "toxitoad",
+      "type": "Poison",
+      "form": "toxitoad",
+      "color": 11031989
+    },
+    {
+      "id": "monster.sandmole.sandmole.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "sandmole",
+      "type": "Ground",
+      "form": "sandmole",
+      "color": 14203763
+    },
+    {
+      "id": "monster.galebird.galebird.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "bird"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "galebird",
+      "type": "Flying",
+      "form": "galebird",
+      "color": 10980346
+    },
+    {
+      "id": "monster.mindcoon.mindcoon.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "mindcoon",
+      "type": "Psychic",
+      "form": "mindcoon",
+      "color": 16020150
+    },
+    {
+      "id": "monster.buglet.buglet.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "buglet",
+      "type": "Bug",
+      "form": "buglet",
+      "color": 11978803
+    },
+    {
+      "id": "monster.rockhorn.rockhorn.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.05,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "rockhorn",
+      "type": "Rock",
+      "form": "rockhorn",
+      "color": 12098373
+    },
+    {
+      "id": "monster.ghostpurr.ghostpurr.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "serpent"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "ghostpurr",
+      "type": "Ghost",
+      "form": "ghostpurr",
+      "color": 9140947
+    },
+    {
+      "id": "monster.emberdrake.emberdrake.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.06,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "emberdrake",
+      "type": "Dragon",
+      "form": "emberdrake",
+      "color": 14963254
+    },
+    {
+      "id": "monster.voidhorn.voidhorn.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.06,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "voidhorn",
+      "type": "Dark",
+      "form": "voidhorn",
+      "color": 10182117
+    },
+    {
+      "id": "monster.ironbug.ironbug.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.04,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "ironbug",
+      "type": "Steel",
+      "form": "ironbug",
+      "color": 9347245
+    },
+    {
+      "id": "monster.fairimp.fairimp.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.03,
+        "silhouette": "quadruped"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "fairimp",
+      "type": "Fairy",
+      "form": "fairimp",
+      "color": 16361684
+    },
+    {
+      "id": "monster.flame_wolf.flameling.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.22,
+        "silhouette": "wolf"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "flameling",
+      "type": "Fire",
+      "form": "flame_wolf",
+      "color": 16731418
+    },
+    {
+      "id": "monster.magma_bear.flameling.bighead.v1",
+      "kind": "monster",
+      "provider": "procedural",
+      "style": "blocky-bighead-v1",
+      "surfaceStyle": "four-side-block-v1",
+      "rig": "animal-rig-v1",
+      "metrics": {
+        "scale": 1.24,
+        "silhouette": "bear"
+      },
+      "roles": {
+        "wild": {},
+        "owned": {},
+        "boss": {},
+        "elite": {}
+      },
+      "speciesId": "flameling",
+      "type": "Fire",
+      "form": "magma_bear",
+      "color": 11817737
+    }
+  ],
+  "appearances": []
+}

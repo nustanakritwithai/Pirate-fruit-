@@ -20,6 +20,10 @@ export interface PirateMonsterIntent {
   skillId?: string;
   area?: number;
   sequence: number;
+  targetActorId?: string;
+  expectedGeneration?: number;
+  expectedStateSequence?: number;
+  actionId?: string;
 }
 
 export interface PirateMonsterIntentInput {
@@ -31,6 +35,10 @@ export interface PirateMonsterIntentInput {
   range: number;
   skillId?: string;
   area?: number;
+  targetActorId?: string;
+  expectedGeneration?: number;
+  expectedStateSequence?: number;
+  actionId?: string;
 }
 
 function finite(value: unknown): value is number {
@@ -59,7 +67,30 @@ function validLocomotion(value: unknown): value is SharedMonsterActorLocomotion 
   return value === 'idle' || value === 'walk' || value === 'run';
 }
 
-/** Presentation-only adapter: no position, velocity, HP, damage, or target authority crosses this seam. */
+function validAuthority(actor: SharedMonsterActor): boolean {
+  if (actor.despawnReason !== undefined
+    && !['defeated', 'despawned', 'zone-change', 'reconnect', 'expired'].includes(actor.despawnReason)) return false;
+  const raw = actor as unknown as Record<string, unknown>;
+  const legacyKeys = ['authorityVersion', 'serverTimeUtc', 'hp', 'resultRevision', 'attackSequence', 'hit', 'damage', 'death'];
+  if (actor.authority === undefined) return !legacyKeys.some((key) => raw[key] !== undefined);
+  const a = actor.authority;
+  if (a.authorityVersion !== 'monster-authority/1' || a.generation !== actor.generation
+    || typeof a.serverTimeUtc !== 'string' || a.serverTimeUtc.length > 80 || !Number.isFinite(Date.parse(a.serverTimeUtc))) return false;
+  if (!a.hp || !Number.isFinite(a.hp.current) || !Number.isFinite(a.hp.max) || a.hp.max <= 0
+    || a.hp.current < 0 || a.hp.current > a.hp.max || !Number.isSafeInteger(a.hp.revision) || a.hp.revision < 0
+    || !Number.isSafeInteger(a.resultRevision) || a.resultRevision < 0 || !Number.isSafeInteger(a.actionSequence) || a.actionSequence < 0
+    || typeof a.hit !== 'boolean' || !Number.isFinite(a.damage) || a.damage < 0 || typeof a.death !== 'boolean') return false;
+  if (a.attack !== undefined && a.attack !== null) {
+    const attack = a.attack;
+    if (![attack.attackId, attack.spawnId, attack.monsterId, attack.islandId, attack.targetId, attack.action]
+      .every((value) => typeof value === 'string' && value.length > 0 && value.length <= 120)
+      || !Number.isFinite(attack.damage) || attack.damage < 0 || !Number.isSafeInteger(attack.hitDelayMs)
+      || attack.hitDelayMs < 0 || attack.hitDelayMs > 10_000) return false;
+  }
+  return true;
+}
+
+/** Validates visual state plus the server-owned monster authority extension. */
 export class PirateMonsterAuthorityAdapter {
   private readonly intents: PirateMonsterIntent[] = [];
   private intentSequence = 0;
@@ -84,6 +115,10 @@ export class PirateMonsterAuthorityAdapter {
       forwardZ: direction.z,
       range: input.range,
       sequence,
+      ...(input.targetActorId ? { targetActorId: input.targetActorId } : {}),
+      ...(input.expectedGeneration !== undefined && Number.isSafeInteger(input.expectedGeneration) ? { expectedGeneration: input.expectedGeneration } : {}),
+      ...(input.expectedStateSequence !== undefined && Number.isSafeInteger(input.expectedStateSequence) ? { expectedStateSequence: input.expectedStateSequence } : {}),
+      ...(input.actionId ? { actionId: input.actionId } : {}),
       ...(input.skillId ? { skillId: input.skillId } : {}),
       ...(input.area !== undefined ? { area: input.area } : {}),
     };
@@ -125,11 +160,24 @@ export class PirateMonsterAuthorityAdapter {
         || Math.abs(actor.pose.x) > MAX_COORDINATE || Math.abs(actor.pose.y) > MAX_COORDINATE || Math.abs(actor.pose.z) > MAX_COORDINATE
         || !actor.animation || typeof actor.animation.combatState !== 'string' || typeof actor.animation.category !== 'string'
         || typeof actor.animation.onGround !== 'boolean' || typeof actor.animation.dashing !== 'boolean' || !finite(actor.animation.verticalVelocity)
+        || !validAuthority(actor)
         || (actor.presentation !== undefined && (!Array.isArray(actor.presentation.events)
           || !Array.isArray(actor.presentation.projectiles)
           || actor.presentation.events.length > 32 || actor.presentation.projectiles.length > 32))) return [];
       seen.add(actor.actorId);
-      return [{ ...actor, zone: mapZone, pose: { ...actor.pose }, animation: { ...actor.animation }, ...(actor.presentation ? { presentation: { events: [...actor.presentation.events], projectiles: [...actor.presentation.projectiles] } } : {}) }];
+      return [{ ...actor, zone: mapZone, pose: { ...actor.pose }, animation: { ...actor.animation },
+        ...(actor.authority ? {
+          authority: {
+            ...actor.authority,
+            hp: { ...actor.authority.hp },
+            ...(actor.authority.attack ? { attack: { ...actor.authority.attack } } : {}),
+          },
+        } : {}),
+        ...(actor.presentation ? { presentation: {
+          events: actor.presentation.events.map((event: NonNullable<SharedMonsterActor['presentation']>['events'][number]) => ({ ...event, ...(event.position ? { position: { ...event.position } } : {}) })),
+          projectiles: actor.presentation.projectiles.map((projectile: NonNullable<SharedMonsterActor['presentation']>['projectiles'][number]) => ({ ...projectile })),
+        } } : {}) }];
     });
   }
 }
+

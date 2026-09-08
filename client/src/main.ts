@@ -1,4 +1,5 @@
 import { Game } from './engine/Game';
+import * as THREE from 'three';
 import { Input } from './engine/Input';
 import { World } from './world/World';
 import { loadWorldTextures } from './world/textures';
@@ -24,6 +25,7 @@ import { BoatManager } from './boat/BoatManager';
 import { NavalCombat } from './boat/NavalCombat';
 import { BoatWorldClient } from './boat/BoatWorldClient';
 import { MonsterManager } from './monster/MonsterManager';
+import { PocketOwnedMonsterRenderer, type OwnedMonsterActor } from './monster/PocketOwnedMonsterRenderer';
 import { PlayerCombat } from './combat/PlayerCombat';
 import { ItemInventory } from './shop/ItemInventory';
 import { initializeRemoteShop } from './shop/RemoteShopClient';
@@ -463,6 +465,8 @@ async function main(): Promise<void> {
     ? new PirateCentralAuthorityRuntimeAdapter()
     : null;
   let monsterManager: MonsterManager | null = null;
+  const ownedMonsterRenderer = new PocketOwnedMonsterRenderer(game.scene, THREE);
+  game.add(ownedMonsterRenderer);
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -504,19 +508,26 @@ async function main(): Promise<void> {
         : [],
       onMonsterActors: (transportZone, mapZone, actors) => {
         if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(mapZone)) return;
+        // Owned actors use a separate authority envelope. Never route them through
+        // the ambient `monster:` sanitizer or treat a visual hit as client damage.
+        ownedMonsterRenderer.setActors(actors as unknown as readonly OwnedMonsterActor[]);
         const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
-        sharedMonsters?.applyActors(mapZone, safeActors, centralAuthorityRuntime.sessionKey ?? `map:${mapZone}`);
+        sharedMonsters?.applyActors(mapZone, safeActors, centralAuthorityRuntime.sessionKey ?? `map:${mapZone}`, getSelfCharacterId() ?? undefined);
       },
       onCentralAuthority: (capability) => {
         centralAuthorityRuntime?.update(capability);
         const active = centralAuthorityRuntime?.active ?? false;
         monsterManager?.setAmbientSpawnsSuppressed(active);
-        if (!active) sharedMonsters?.resetSession(true);
+        if (!active) {
+          sharedMonsters?.resetSession(true);
+          ownedMonsterRenderer.reset();
+        }
       },
       onIslandChange: () => {
         scopedCombatEffects.resetSession();
         pirateMonsterAuthority?.setZone(islandManager.activeIsland);
         sharedMonsters?.setIsland(islandManager.activeIsland);
+        ownedMonsterRenderer.reset();
         monsterManager?.setAmbientSpawnsSuppressed(centralAuthorityRuntime?.active ?? false);
       },
     })
@@ -548,6 +559,9 @@ async function main(): Promise<void> {
         (x, z) => world.collision.heightAt(x, z),
         undefined,
         effects,
+        (targetId) => targetId === getSelfCharacterId()
+          ? controller.position.clone()
+          : remotePlayers?.positionOf(targetId)?.clone(),
       )
     : null;
   if (sharedMonsters) {
@@ -615,6 +629,7 @@ async function main(): Promise<void> {
     },
     onResync: () => {
       sharedMonsters?.resetSession(centralAuthorityRuntime?.active ?? false);
+      ownedMonsterRenderer.reset();
       monsterManager?.resetPresentationActors();
       pirateMonsterAuthority?.resetSession();
       if (centralAuthorityRuntime?.active) {
@@ -865,6 +880,7 @@ async function main(): Promise<void> {
       if (!realtime.connected) return;
       if (sharedIslandChanged) {
         monsterManager?.resetPresentationActors();
+        ownedMonsterRenderer.reset();
         pirateMonsterAuthority?.setZone(islandManager.activeIsland);
         realtime.requestResync();
       }
@@ -1209,15 +1225,27 @@ async function main(): Promise<void> {
           kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
           Math.max(0.8, requestedRange),
         );
-        pirateMonsterAuthority.queueIntent({
-          zone: islandManager.activeIsland,
-          kind,
-          category,
-          forwardX,
-          forwardZ,
-          range: safeRange,
-          ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
-        });
+        const targetIds = area
+          ? sharedMonsters?.targetsInRadius(origin, Math.min(safeRange, Math.max(0.5, area))) ?? []
+          : sharedMonsters?.targetsInCone(origin, forwardX, forwardZ, safeRange, CONE_HALF_ANGLE) ?? [];
+        const targets = targetIds.length > 0 ? targetIds : [undefined];
+        for (const targetId of targets) {
+          const identity = targetId ? sharedMonsters?.getActorIdentity(targetId) : undefined;
+          pirateMonsterAuthority.queueIntent({
+            zone: islandManager.activeIsland,
+            kind,
+            category,
+            forwardX,
+            forwardZ,
+            range: safeRange,
+            ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
+            ...(identity ? {
+              targetActorId: identity.actorId,
+              expectedGeneration: identity.generation,
+              expectedStateSequence: identity.stateSequence,
+            } : {}),
+          });
+        }
         return;
       }
       if (!sharedMonsters) return;
@@ -1455,3 +1483,4 @@ main().catch((err) => {
     </div>`,
   );
 });
+
