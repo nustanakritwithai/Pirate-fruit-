@@ -21,6 +21,7 @@ jobs:
     env:
       # The nested Pocket client is hosted by the parent page. It must not
       # create its own login/session or enable unrelated remote write paths.
+      VITE_USE_REMOTE_SERVER: 'false'
       VITE_ENABLE_REMOTE_SESSION: 'false'
       VITE_ENABLE_ECONOMY_SERVER: 'false'
       VITE_ENABLE_TRADE_SERVER: 'false'
