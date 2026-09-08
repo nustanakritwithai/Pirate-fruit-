@@ -60,3 +60,4 @@ export class PirateCentralAuthorityRuntimeAdapter {
     return [capability.transportZone, capability.generation, capability.manifestSha256, capability.vectorsSha256].join(':');
   }
 }
+
