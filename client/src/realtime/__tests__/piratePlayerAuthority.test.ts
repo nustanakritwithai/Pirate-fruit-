@@ -14,8 +14,8 @@ describe('Pirate player authority', () => {
 
   it('rejects malformed, stale identity fields without inventing legacy state', () => {
     expect(sanitizePiratePlayerAuthority({ ...valid, players: [{ ...valid.players[0], generation: 0 }] })).toBeNull();
-    expect(sanitizePiratePlayerAuthority({ ...valid, players: [{ ...valid.players[0], hp: { current: 101, max: 100, revision: 0 } }] })).toEqual({ ...valid, players: [] });
-    expect(sanitizePiratePlayerAuthority({ ...valid, players: [{ ...valid.players[0], playerId: 'guest-a' }, { ...valid.players[0] }] })).toEqual({ ...valid, players: [valid.players[0]] });
+    expect(sanitizePiratePlayerAuthority({ ...valid, players: [{ ...valid.players[0], hp: { current: 101, max: 100, revision: 0 } }] })).toBeNull();
+    expect(sanitizePiratePlayerAuthority({ ...valid, players: [{ ...valid.players[0], playerId: 'guest-a' }, { ...valid.players[0] }] })).toBeNull();
   });
 
   it('gates reconnect generations and same-state revisions monotonically', () => {

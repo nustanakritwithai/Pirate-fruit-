@@ -607,7 +607,7 @@ export class RemotePlayers implements Updatable {
     }
     const amount = this.pendingAuthorityDamage.get(actualId!) ?? 0;
     this.pendingAuthorityDamage.delete(actualId!);
-    if (amount > 0) this.effects.spawnPlayerDamageNumber(player.group.position, Math.round(amount));
+    if (typeof document !== 'undefined' && amount > 0) this.effects.spawnPlayerDamageNumber(player.group.position, Math.round(amount));
     if (finalHp <= 0) player.group.visible = false;
   }
 
