@@ -43,4 +43,13 @@ describe('Pirate player authority', () => {
     expect(sanitizePiratePlayerAuthority(snapshot)?.results).toEqual([result]);
     expect(sanitizePiratePlayerAuthority({ ...snapshot, results: [result, result] })).toBeNull();
   });
+
+  it('keeps authority active through roster omission and high-waters results per target generation', () => {
+    const receiver = new PiratePlayerAuthorityReceiver();
+    expect(receiver.apply(valid, 'GUEST-A')?.authoritativeModeValid).toBe(true);
+    expect(receiver.apply({ ...valid, players: [] }, 'guest-a')?.authoritativeModeValid).toBe(true);
+    const base = { attackerId: 'a', targetId: 'guest-a', generation: 1, authoritativeFinalHp: 90, serverTimeUtc: valid.serverTimeUtc };
+    expect(receiver.apply({ ...valid, players: [], results: [{ ...base, attackId: 'one', resultRevision: 5 }] }, 'guest-a')?.acceptedResults).toHaveLength(1);
+    expect(receiver.apply({ ...valid, players: [], results: [{ ...base, attackId: 'two', resultRevision: 4 }] }, 'guest-a')?.acceptedResults).toHaveLength(0);
+  });
 });

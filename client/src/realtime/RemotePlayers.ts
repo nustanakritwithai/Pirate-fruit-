@@ -360,6 +360,7 @@ export class RemotePlayers implements Updatable {
   private readonly players = new Map<string, RemotePlayer>();
   private readonly pendingAuthorityDamage = new Map<string, number>();
   private readonly pendingAuthorityHp = new Map<string, { hp: number; hpMax: number; lifeState: 'alive' | 'dead' }>();
+  private readonly pendingAuthorityResults = new Map<string, { finalHp: number; expiresAt: number }>();
   private readonly effects: Effects;
   private currentIslandId: string;
   private receivedPresence = 0;
@@ -488,6 +489,11 @@ export class RemotePlayers implements Updatable {
           this.applyAuthoritativeHp(snapshot.playerId, pending.hp, pending.hpMax, pending.lifeState);
           this.pendingAuthorityHp.delete(snapshot.playerId.toLowerCase());
         }
+        const pendingResult = this.pendingAuthorityResults.get(snapshot.playerId.toLowerCase());
+        if (pendingResult && pendingResult.expiresAt >= this.now()) {
+          this.applyAuthoritativeResult(snapshot.playerId, pendingResult.finalHp);
+        }
+        this.pendingAuthorityResults.delete(snapshot.playerId.toLowerCase());
       }
       return;
     }
@@ -595,7 +601,10 @@ export class RemotePlayers implements Updatable {
   applyAuthoritativeResult(targetId: string, finalHp: number): void {
     const actualId = [...this.players.keys()].find((id) => id.toLowerCase() === targetId.trim().toLowerCase());
     const player = actualId ? this.players.get(actualId) : undefined;
-    if (!player) return;
+    if (!player) {
+      this.pendingAuthorityResults.set(targetId.trim().toLowerCase(), { finalHp, expiresAt: this.now() + 5_000 });
+      return;
+    }
     const amount = this.pendingAuthorityDamage.get(actualId!) ?? 0;
     this.pendingAuthorityDamage.delete(actualId!);
     if (amount > 0) this.effects.spawnPlayerDamageNumber(player.group.position, Math.round(amount));

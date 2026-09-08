@@ -124,6 +124,8 @@ export function newerPiratePlayerAuthority(
 export class PiratePlayerAuthorityReceiver {
   private readonly players = new Map<string, PiratePlayerAuthorityEntry>();
   private readonly results = new Map<string, PiratePlayerAuthorityResult>();
+  private readonly resultHighWater = new Map<string, number>();
+  private authorityEstablished = false;
 
   apply(value: unknown, selfPlayerId: string): AppliedPiratePlayerAuthority | null {
     const snapshot = sanitizePiratePlayerAuthority(value);
@@ -144,13 +146,18 @@ export class PiratePlayerAuthorityReceiver {
     const acceptedResults: PiratePlayerAuthorityResult[] = [];
     for (const result of snapshot.results ?? []) {
       const key = `${result.attackerId.toLowerCase()}\u0000${result.targetId.toLowerCase()}\u0000${result.generation}\u0000${result.attackId}`;
+      const targetGeneration = `${result.targetId.toLowerCase()}\u0000${result.generation}`;
+      const highWater = this.resultHighWater.get(targetGeneration) ?? -1;
+      if (result.resultRevision <= highWater) continue;
       const previous = this.results.get(key);
       if (previous && result.resultRevision <= previous.resultRevision) continue;
       this.results.set(key, result);
+      this.resultHighWater.set(targetGeneration, result.resultRevision);
       acceptedResults.push(result);
     }
     const self = this.players.get(selfPlayerId.trim().toLowerCase());
-    return { self, acceptedPlayers, acceptedResults, authoritativeModeValid: Boolean(self) };
+    if (self) this.authorityEstablished = true;
+    return { self, acceptedPlayers, acceptedResults, authoritativeModeValid: this.authorityEstablished };
   }
 
   get(playerId: string): PiratePlayerAuthorityEntry | undefined {
