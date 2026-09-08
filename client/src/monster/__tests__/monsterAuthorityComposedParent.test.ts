@@ -43,7 +43,8 @@ describe('composed Server wire -> Parent -> Pirate receiver', () => {
   it('rejects spoofed outbound authority while preserving player pose, and resets on reconnect', () => {
     const local = bridge.sanitizePirateLocalPresence({ type: bridge.PIRATE_LOCAL_PRESENCE_MESSAGE, zone: 'pirate-fruit', x: 1, z: 2, dir: 0, actors: fixture.payload.actors });
     expect(local).toMatchObject({ x: 1, z: 2, dir: 0 });
-    expect(local).not.toHaveProperty('actors');
+    expect(local?.actors).toHaveLength(1);
+    expect(local?.actors?.[0]?.actorId).toBe('monster:east-forest');
     const parentSnapshot = protocol.sanitizeOnlineWorldSnapshot(fixture.payload, 'pirate-fruit');
     const adapter = new PirateMonsterAuthorityAdapter();
     const client = new SharedMonsterClient(new THREE.Scene(), 'pirate-fruit');
