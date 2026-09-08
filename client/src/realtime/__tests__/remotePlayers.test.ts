@@ -56,7 +56,10 @@ describe('S13 RemotePlayers', () => {
     players.applyAuthoritativeResult('char-b', 40);
     players.applyAuthoritativeHp('char-b', 0, 120, 'dead');
     const remote = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
-    expect(remote.visible).toBe(false);
+    // The existing combat lifecycle keeps the defeated pose visible while
+    // excluding the player from subsequent attack targeting.
+    expect(remote.visible).toBe(true);
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).not.toContain('char-b');
     players.applyAuthoritativeHp('char-b', 80, 120, 'alive');
     expect(remote.visible).toBe(true);
   });
