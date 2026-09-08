@@ -1,0 +1,23 @@
+{
+  "coalboardMode": "ask",
+  "rigor": "high",
+  "lenses": ["data", "truth", "feeling"],
+  "fableConsent": "never",
+  "triggerConfidence": 90,
+  "consensusThreshold": 80,
+  "maxRounds": 1,
+  "stagingDir": ".coalboard/proposed/",
+  "excludePaths": [
+    "CLAUDE.md",
+    "MEMORY.md",
+    "AGENTS.md",
+    ".claude",
+    ".agents",
+    "node_modules",
+    ".git",
+    "dist",
+    "vendor",
+    "build",
+    ".coalboard"
+  ]
+}
