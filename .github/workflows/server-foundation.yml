@@ -120,7 +120,9 @@ jobs:
       - run: npm run db:migrate
       - name: Generate ephemeral browser smoke secret
         shell: bash
-        run: echo "SESSION_SECRET=$(node -e \"process.stdout.write(require('crypto').randomBytes(32).toString('hex'))\")" >> "$GITHUB_ENV"
+        run: |
+          secret="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+          echo "SESSION_SECRET=$secret" >> "$GITHUB_ENV"
       - name: Start server and client preview
         run: |
           node server/dist/index.js &
@@ -134,4 +136,3 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser-smoke-diagnostics
       - run: node scripts/browser-smoke.mjs
-
