@@ -65,6 +65,7 @@ import {
   createBrowserParentPresenceHost,
   resolvePocketMonsterParentOrigin,
 } from './realtime/PocketMonsterParentPresence';
+import { PiratePlayerAuthorityReceiver } from './realtime/PiratePlayerAuthority';
 import { SharedMonsterClient, resolveSharedMonsterPlayerDamage, type SharedMonsterActor } from './monster/SharedMonsterClient';
 import { PirateMonsterAuthorityAdapter } from './monster/PirateMonsterAuthorityAdapter';
 import { PirateCentralAuthorityRuntimeAdapter } from './monster/PirateCentralAuthorityRuntimeAdapter';
@@ -458,6 +459,9 @@ async function main(): Promise<void> {
     : null;
   if (remotePlayers) game.add(remotePlayers);
   let sharedMonsters: SharedMonsterClient | null = null;
+  const playerAuthorityReceiver = new PiratePlayerAuthorityReceiver();
+  let playerAuthorityModeValid = false;
+  let playerAuthorityLifeState: 'alive' | 'dead' = 'alive';
   const pirateMonsterAuthority = pocketMonsterParentOrigin !== null
     ? new PirateMonsterAuthorityAdapter()
     : null;
@@ -530,6 +534,36 @@ async function main(): Promise<void> {
         ownedMonsterRenderer.reset();
         monsterManager?.setAmbientSpawnsSuppressed(centralAuthorityRuntime?.active ?? false);
       },
+      onPlayerAuthority: (snapshot) => {
+        const applied = playerAuthorityReceiver.apply(snapshot, getSelfCharacterId() ?? '');
+        if (!applied) return;
+        playerAuthorityModeValid = applied.authoritativeModeValid;
+        const selfId = (getSelfCharacterId() ?? '').trim().toLowerCase();
+        for (const entry of applied.acceptedPlayers) {
+          if (entry.playerId.trim().toLowerCase() !== selfId) {
+            remotePlayers?.applyAuthoritativeHp(entry.playerId, entry.hp.current, entry.hp.max, entry.lifeState);
+          }
+        }
+        for (const result of applied.acceptedResults) {
+          remotePlayers?.applyAuthoritativeResult(result.targetId, result.authoritativeFinalHp);
+        }
+        const self = applied.self;
+        if (!self) return;
+        const wasDead = playerAuthorityLifeState === 'dead';
+        playerAuthorityLifeState = self.lifeState;
+        controller.setStats(self.hp.max, controller.energyMax, controller.mpMax, 'clamp');
+        controller.hp = Math.max(0, Math.min(self.hp.max, self.hp.current));
+        if (self.lifeState === 'dead' && !wasDead) {
+          selfPvpDefeated = true;
+          audioBridge?.notifyDeath();
+        } else if (self.lifeState === 'alive' && wasDead) {
+          selfPvpDefeated = false;
+          spawnManager.respawn();
+          controller.hp = Math.max(0, Math.min(self.hp.max, self.hp.current));
+          playerCombat?.notifyRespawn();
+          audioBridge?.notifyRespawn();
+        }
+      },
     })
     : null;
   pocketMonsterPresence?.start();
@@ -569,6 +603,10 @@ async function main(): Promise<void> {
     // PvE: มอนสเตอร์กลางส่ง attack action แล้ว client รับเฉพาะ hit frame ครั้งเดียว
     game.add({
       update: () => {
+        if (playerAuthorityModeValid) {
+          sharedMonsters.collectPlayerHits(controller.position);
+          return;
+        }
         if (selfPvpDefeated) {
           sharedMonsters.collectPlayerHits(controller.position);
           return;
