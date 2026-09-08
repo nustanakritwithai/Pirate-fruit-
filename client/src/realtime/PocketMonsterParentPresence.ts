@@ -6,6 +6,7 @@ import type { SharedMonsterActor } from '../monster/SharedMonsterClient';
 import type { PirateMonsterIntent } from '../monster/PirateMonsterAuthorityAdapter';
 import type { PirateCentralAuthorityCapability } from '../monster/PirateCentralAuthorityRuntimeAdapter';
 import { sanitizePresentation, sanitizeVisual } from './PresentationProtocol';
+import { sanitizePiratePlayerAuthority, type PiratePlayerAuthoritySnapshot } from './PiratePlayerAuthority';
 
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
 export const PIRATE_LOCAL_PRESENCE_MESSAGE = 'pocketmonster:pirate-presence-v1';
@@ -68,6 +69,7 @@ export interface PiratePresenceSnapshot {
   players: PiratePresencePlayer[];
   actors?: SharedMonsterActor[];
   centralAuthority?: PirateCentralAuthorityCapability;
+  playerAuthority?: PiratePlayerAuthoritySnapshot;
 }
 
 export interface ParentPresenceEvent {
@@ -113,6 +115,7 @@ export interface PocketMonsterParentPresenceOptions {
   drainMonsterIntents?(): readonly PirateMonsterIntent[];
   onMonsterActors?(transportZone: string, mapZone: string, actors: readonly SharedMonsterActor[]): void;
   onCentralAuthority?(capability: PirateCentralAuthorityCapability | null): void;
+  onPlayerAuthority?(snapshot: PiratePlayerAuthoritySnapshot): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -334,7 +337,12 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
     && (authorityGeneration as number) >= 1
     ? payload.centralAuthority as unknown as PirateCentralAuthorityCapability
     : undefined;
-  return { zone: POCKET_MONSTER_PIRATE_ZONE, players, ...(actors ? { actors } : {}), ...(authority ? { centralAuthority: authority } : {}) };
+  let playerAuthority: PiratePlayerAuthoritySnapshot | undefined;
+  if (payload.playerAuthority !== undefined && payload.playerAuthority !== null) {
+    playerAuthority = sanitizePiratePlayerAuthority(payload.playerAuthority) ?? undefined;
+    if (!playerAuthority) return null;
+  }
+  return { zone: POCKET_MONSTER_PIRATE_ZONE, players, ...(actors ? { actors } : {}), ...(authority ? { centralAuthority: authority } : {}), ...(playerAuthority ? { playerAuthority } : {}) };
 }
 
 export function createBrowserParentPresenceHost(): ParentPresenceHost {
@@ -603,5 +611,6 @@ export class PocketMonsterParentPresence {
     this.visibleIds.clear();
     for (const id of seen) this.visibleIds.add(id);
     if (snapshot.actors) this.options.onMonsterActors?.(snapshot.zone, islandId, snapshot.actors);
+    if (snapshot.playerAuthority) this.options.onPlayerAuthority?.(snapshot.playerAuthority);
   }
 }
