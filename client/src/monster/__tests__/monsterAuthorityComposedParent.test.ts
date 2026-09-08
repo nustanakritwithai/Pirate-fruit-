@@ -6,8 +6,10 @@ import { pathToFileURL } from 'node:url';
 import { PirateMonsterAuthorityAdapter } from '../PirateMonsterAuthorityAdapter';
 import { SharedMonsterClient } from '../SharedMonsterClient';
 
-const root = process.env.POCKETMONSTER_CLIENT_ROOT
-  ?? 'C:/Users/Administrator/Desktop/เซิพจารย/.worktrees/client-pr538-rebase-20260908';
+const root = process.env.POCKETMONSTER_CLIENT_ROOT;
+if (!root) {
+  throw new Error('POCKETMONSTER_CLIENT_ROOT is required for the composed parent-wire test');
+}
 const protocol = await import(/* @vite-ignore */ pathToFileURL(path.join(root, 'world-presence-protocol.mjs')).href);
 const bridge = await import(/* @vite-ignore */ pathToFileURL(path.join(root, 'pirate-presence-bridge-v900.mjs')).href);
 const fixture = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/monster-authority-wire.actual.json'), 'utf8'));
@@ -52,4 +54,3 @@ describe('composed Server wire -> Parent -> Pirate receiver', () => {
     expect(adapter.setZone('other-zone')).toBeUndefined();
   });
 });
-
