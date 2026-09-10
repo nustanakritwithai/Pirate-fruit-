@@ -76,12 +76,25 @@ describe('SkillExperienceDirector authority boundary', () => {
     expect(director.impact(sessionId, 210)).toBe(false);
     expect(director.confirm(sessionId, 200)).toBe(true);
     expect(director.impact(sessionId, 235)).toBe(true);
+    expect(director.aftermath(sessionId, 300)).toBe(true);
 
     const impact = signals.find((signal) => signal.kind === 'impact');
     expect(impact?.authority).toBe('confirmed');
     expect(impact?.channels).toContain('reaction');
     expect(impact?.channels).toContain('environment');
     expect(impact?.channels).toContain('camera');
+    expect(signals.some((signal) => signal.phase === 'aftermath' && signal.authority === 'confirmed')).toBe(true);
+  });
+
+  it('does not treat a late cast confirmation as a hit confirmation', () => {
+    const signals: SkillExperienceSignal[] = [];
+    const director = new SkillExperienceDirector((signal) => signals.push(signal));
+    const sessionId = director.startPredicted(firePunchRecipe(), 0);
+
+    expect(director.confirm(sessionId, 2_000)).toBe(true);
+    expect(signals.some((signal) => signal.kind === 'impact')).toBe(false);
+    expect(signals.some((signal) => signal.phase === 'impact')).toBe(false);
+    expect(signals.some((signal) => signal.phase === 'aftermath')).toBe(false);
   });
 
   it('cancels predicted presentation cleanly after a server rejection', () => {
@@ -92,7 +105,7 @@ describe('SkillExperienceDirector authority boundary', () => {
     expect(director.reject(sessionId, 80, 'not-enough-authority')).toBe(true);
     expect(director.getSnapshot(sessionId)).toBeNull();
     expect(director.activeCount()).toBe(0);
-    expect(signals.at(-1)).toMatchObject({
+    expect(signals[signals.length - 1]).toMatchObject({
       kind: 'cancel',
       reason: 'not-enough-authority',
     });
