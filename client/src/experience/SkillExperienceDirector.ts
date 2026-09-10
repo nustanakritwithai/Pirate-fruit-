@@ -60,7 +60,7 @@ function componentTierFor(phase: SkillExperiencePhase): SkillExperienceComponent
  *
  * The director never applies damage, cooldown, CC, HP, movement authority or target truth.
  * Predicted sessions may emit immediate local feedback, while reaction/environment/strong
- * impact channels remain blocked until the caller supplies Server/PvE confirmation.
+ * impact channels remain blocked until the caller supplies an explicit confirmed hit.
  */
 export class SkillExperienceDirector {
   private sequence = 0;
@@ -93,6 +93,7 @@ export class SkillExperienceDirector {
     return id;
   }
 
+  /** Cast/session accepted. This is intentionally not a hit confirmation. */
   confirm(sessionId: string, nowMs: number): boolean {
     const session = this.sessions.get(sessionId);
     if (!session || session.snapshot.cancelled || session.snapshot.completed) return false;
@@ -123,6 +124,7 @@ export class SkillExperienceDirector {
     if (!session || session.snapshot.authority !== 'confirmed' || session.snapshot.cancelled || session.snapshot.completed) {
       return false;
     }
+    session.enteredPhases.add('impact');
     session.snapshot.phase = 'impact';
     session.snapshot.lastUpdatedAtMs = Math.max(session.snapshot.lastUpdatedAtMs, nowMs);
     this.onSignal({
@@ -139,6 +141,35 @@ export class SkillExperienceDirector {
     return true;
   }
 
+  /** Explicit post-hit hook; only confirmed impacts may leave aftermath. */
+  aftermath(sessionId: string, nowMs: number): boolean {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session
+      || session.snapshot.authority !== 'confirmed'
+      || !session.enteredPhases.has('impact')
+      || session.snapshot.cancelled
+      || session.snapshot.completed
+    ) {
+      return false;
+    }
+    session.enteredPhases.add('aftermath');
+    session.snapshot.phase = 'aftermath';
+    session.snapshot.lastUpdatedAtMs = Math.max(session.snapshot.lastUpdatedAtMs, nowMs);
+    this.onSignal({
+      sessionId,
+      skillId: session.recipe.skillId,
+      kind: 'phase-enter',
+      authority: 'confirmed',
+      phase: 'aftermath',
+      atMs: nowMs,
+      channels: CONFIRMED_CHANNELS.aftermath,
+      componentTier: 'luxury',
+      powerTier: session.recipe.powerTier,
+    });
+    return true;
+  }
+
   update(sessionId: string, nowMs: number): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.snapshot.cancelled || session.snapshot.completed) return;
@@ -148,9 +179,9 @@ export class SkillExperienceDirector {
 
     for (const window of session.recipe.phases) {
       if (window.startMs > elapsedMs || session.enteredPhases.has(window.phase)) continue;
-      if (session.snapshot.authority === 'predicted' && (window.phase === 'impact' || window.phase === 'aftermath')) {
-        continue;
-      }
+      // Acceptance/elapsed time can never manufacture a hit. Impact and aftermath
+      // are driven only by the explicit confirmed hooks above.
+      if (window.phase === 'impact' || window.phase === 'aftermath') continue;
       session.enteredPhases.add(window.phase);
       session.snapshot.phase = window.phase;
       const channels = session.snapshot.authority === 'confirmed'
