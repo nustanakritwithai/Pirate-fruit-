@@ -5,6 +5,16 @@ import {
   type CharacterSummary,
 } from '@pirate-fruit/shared';
 import { resolveRemoteApiUrl } from './RemoteSession';
+import { resolvePocketMonsterParentOrigin } from '../realtime/PocketMonsterParentPresence';
+
+/** PocketMonster already owns login. Do not ask for another pirate name in the iframe. */
+export function shouldSkipCharacterGateForPocketMonsterParent(
+  search = typeof location === 'undefined' ? '' : location.search,
+  ownOrigin = typeof location === 'undefined' ? '' : location.origin,
+  embedded = typeof window !== 'undefined' && window.parent !== window,
+): boolean {
+  return resolvePocketMonsterParentOrigin(search, ownOrigin, embedded) !== null;
+}
 
 /**
  * S18 — หน้าแรกแบบ MMORPG: login แขก (cookie) + เลือก/สร้าง/ลบตัวละคร 3 ช่อง
@@ -239,6 +249,7 @@ function isCharacterList(value: unknown): value is CharacterListResponse {
  * (Server flag ปิดแต่ client เปิด → เจอ 503 ที่ /api/characters แล้วข้าม gate เอง)
  */
 export async function runCharacterGate(): Promise<void> {
+  if (shouldSkipCharacterGateForPocketMonsterParent()) return;
   if (!flagEnabled(import.meta.env.VITE_ENABLE_CHARACTER_SELECT)) return;
   const apiUrl = resolveRemoteApiUrl();
   if (!apiUrl) return;
