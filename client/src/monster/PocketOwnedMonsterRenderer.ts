@@ -41,6 +41,14 @@ export function ownedMonsterActionKey(actor: Pick<OwnedMonsterActor, 'generation
   return `${actor.generation}:${session}:${sequence ?? actor.stateSequence}`;
 }
 
+/** Maps the canonical server combat vocabulary to the procedural handle clips. */
+export function ownedMonsterAnimationForState(state: string | undefined): 'attack' | 'skill' | 'hurt' | null {
+  if (state === 'attack' || /^attack[1-4]$/.test(state ?? '')) return 'attack';
+  if (state === 'skill' || state === 'casting') return 'skill';
+  if (state === 'hurt' || state === 'stunned' || state === 'knockback' || state === 'knockdown') return 'hurt';
+  return null;
+}
+
 export function isValidOwnedMonsterActor(actor: unknown): actor is OwnedMonsterActor {
   if (!actor || typeof actor !== 'object') return false;
   const candidate = actor as Partial<OwnedMonsterActor>;
@@ -132,9 +140,10 @@ export class PocketOwnedMonsterRenderer implements Updatable {
       const state = actor.animation?.combatState ?? 'idle';
       const actionKey = ownedMonsterActionKey(actor);
       if (actionKey !== entry.lastActionKey) {
-        if (state === 'attack') entry.handle.play('attack', { duration: 0.22 });
-        else if (state === 'skill' || state === 'casting') entry.handle.play('skill', { duration: 0.3 });
-        else if (state === 'hurt') entry.handle.play('hurt', { duration: 0.18 });
+        const animation = ownedMonsterAnimationForState(state);
+        if (animation === 'attack') entry.handle.play('attack', { duration: 0.22 });
+        else if (animation === 'skill') entry.handle.play('skill', { duration: 0.3 });
+        else if (animation === 'hurt') entry.handle.play('hurt', { duration: 0.18 });
         entry.lastActionKey = actionKey;
       }
       entry.handle.update(dt, { moving: actor.locomotion !== 'idle' });

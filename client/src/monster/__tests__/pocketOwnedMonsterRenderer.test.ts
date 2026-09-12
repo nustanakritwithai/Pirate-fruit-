@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidOwnedMonsterActor, ownedMonsterActionKey, type OwnedMonsterActor } from '../PocketOwnedMonsterRenderer';
+import { isValidOwnedMonsterActor, ownedMonsterActionKey, ownedMonsterAnimationForState, type OwnedMonsterActor } from '../PocketOwnedMonsterRenderer';
 
 const actor = (overrides: Partial<OwnedMonsterActor> = {}): OwnedMonsterActor => ({
   actorId: 'owned:player-1:slot-0', kind: 'monster', ownerId: 'player-1',
@@ -36,5 +36,12 @@ describe('PocketOwnedMonsterRenderer contract gate', () => {
     const nextAction = actor({ stateSequence: 12, actionSessionId: 'combat-1', actionSequence: 5 });
     expect(ownedMonsterActionKey(first)).toBe(ownedMonsterActionKey(sameAction));
     expect(ownedMonsterActionKey(first)).not.toBe(ownedMonsterActionKey(nextAction));
+  });
+
+  it('maps canonical server combat states to owned renderer clips', () => {
+    expect(['attack1', 'attack2', 'attack3', 'attack4'].map(ownedMonsterAnimationForState)).toEqual(['attack', 'attack', 'attack', 'attack']);
+    expect(ownedMonsterAnimationForState('casting')).toBe('skill');
+    expect(['stunned', 'knockback', 'knockdown'].map(ownedMonsterAnimationForState)).toEqual(['hurt', 'hurt', 'hurt']);
+    expect(ownedMonsterAnimationForState('idle')).toBeNull();
   });
 });
