@@ -48,6 +48,22 @@ describe('S13 RemotePlayers', () => {
     expect(scene.children.some((child) => child instanceof THREE.Group)).toBe(false);
   });
 
+  it('applies authoritative observer HP/death and result effects without local damage', () => {
+    const scene = new THREE.Scene();
+    const players = new RemotePlayers(scene, 'starter-island', () => 1_000);
+    players.applyPresence(snapshot());
+    players.applyAuthoritativeHp('char-b', 40, 120, 'alive');
+    players.applyAuthoritativeResult('char-b', 40);
+    players.applyAuthoritativeHp('char-b', 0, 120, 'dead');
+    const remote = scene.getObjectByName('remote-player:pirate-v1') as THREE.Group;
+    // The existing combat lifecycle keeps the defeated pose visible while
+    // excluding the player from subsequent attack targeting.
+    expect(remote.visible).toBe(true);
+    expect(players.targetsInCone(new THREE.Vector3(), 0, 1, 20, Math.PI)).not.toContain('char-b');
+    players.applyAuthoritativeHp('char-b', 80, 120, 'alive');
+    expect(remote.visible).toBe(true);
+  });
+
   it('ignores presence for a different island and clears ghosts when we change island', () => {
     const scene = new THREE.Scene();
     const players = new RemotePlayers(scene, 'starter-island', () => 1_000);

@@ -63,6 +63,10 @@ interface RemotePlayer {
   lastSeenAt: number;
   /** S15: แพ้ (ถูกซ่อนจนกว่าจะเกิดใหม่) */
   defeated: boolean;
+  hp: number;
+  hpMax: number;
+  hpKnown: boolean;
+  healthBar: THREE.Sprite;
   animator: PlayerActionAnimator | null;
   equipment: EquipmentVisuals | null;
   projectiles: Map<string, EnergyProjectileVisual>;
@@ -271,6 +275,32 @@ function makeNameSprite(name: string): THREE.Sprite {
   return sprite;
 }
 
+function makeHealthBar(): THREE.Sprite {
+  if (typeof document === 'undefined') return new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 24;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+  sprite.scale.set(2.4, 0.23, 1);
+  sprite.position.y = 3.05;
+  return sprite;
+}
+
+function updateHealthBar(sprite: THREE.Sprite, hp: number, hpMax: number, dead: boolean): void {
+  const ratio = Math.max(0, Math.min(1, hp / Math.max(1, hpMax)));
+  sprite.scale.x = 2.4;
+  sprite.visible = !dead;
+  const material = sprite.material as THREE.SpriteMaterial;
+  const canvas = material.map?.image as HTMLCanvasElement | undefined;
+  const ctx = canvas?.getContext?.('2d');
+  if (!ctx || !canvas) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#260b0b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = ratio > 0.35 ? '#4ade80' : '#ef4444'; ctx.fillRect(2, 2, (canvas.width - 4) * ratio, canvas.height - 4);
+  if (material.map) material.map.needsUpdate = true;
+}
+
 /** Current canonical on-foot visual; appearance fields are ready for future variants. */
 function makePlayerBody(snapshot: RealtimePresenceSnapshot): { group: THREE.Group; animator: PlayerActionAnimator; equipment: EquipmentVisuals; shield: THREE.Mesh } {
   const visual = createPiratePlayerVisual();
@@ -328,6 +358,9 @@ function buildAvatar(snapshot: RealtimePresenceSnapshot, lod: RemoteLod): { grou
 
 export class RemotePlayers implements Updatable {
   private readonly players = new Map<string, RemotePlayer>();
+  private readonly pendingAuthorityDamage = new Map<string, number>();
+  private readonly pendingAuthorityHp = new Map<string, { hp: number; hpMax: number; lifeState: 'alive' | 'dead' }>();
+  private readonly pendingAuthorityResults = new Map<string, { finalHp: number; expiresAt: number }>();
   private readonly effects: Effects;
   private currentIslandId: string;
   private receivedPresence = 0;
@@ -402,6 +435,9 @@ export class RemotePlayers implements Updatable {
       const lod = this.initialLod(snapshot);
       const avatar = buildAvatar(snapshot, lod);
       const { group } = avatar;
+      const healthBar = makeHealthBar();
+      healthBar.visible = false;
+      group.add(healthBar);
       group.position.set(snapshot.x, snapshot.y, snapshot.z);
       group.rotation.y = snapshot.heading;
       this.scene.add(group);
@@ -416,6 +452,10 @@ export class RemotePlayers implements Updatable {
         avatarKind: kind,
         lastSeenAt: receivedAt,
         defeated: false,
+        hp: 100,
+        hpMax: 100,
+        hpKnown: false,
+        healthBar,
         animator: avatar.animator,
         equipment: avatar.equipment,
         projectiles: new Map(),
@@ -442,7 +482,19 @@ export class RemotePlayers implements Updatable {
         retiredVisualSessions: new Set(),
       });
       const created = this.players.get(snapshot.playerId);
-      if (created) this.applyVisual(snapshot.visual, created);
+      if (created) {
+        this.applyVisual(snapshot.visual, created);
+        const pending = this.pendingAuthorityHp.get(snapshot.playerId.toLowerCase());
+        if (pending) {
+          this.applyAuthoritativeHp(snapshot.playerId, pending.hp, pending.hpMax, pending.lifeState);
+          this.pendingAuthorityHp.delete(snapshot.playerId.toLowerCase());
+        }
+        const pendingResult = this.pendingAuthorityResults.get(snapshot.playerId.toLowerCase());
+        if (pendingResult && pendingResult.expiresAt >= this.now()) {
+          this.applyAuthoritativeResult(snapshot.playerId, pendingResult.finalHp);
+        }
+        this.pendingAuthorityResults.delete(snapshot.playerId.toLowerCase());
+      }
       return;
     }
     // S14: ผู้เล่นขึ้น/ลงเรือ หรือเปลี่ยนรุ่นเรือ → สร้าง avatar ใหม่ที่ตำแหน่งเดิม
@@ -453,6 +505,9 @@ export class RemotePlayers implements Updatable {
       const nextLod = this.initialLod(snapshot);
       const avatar = buildAvatar(snapshot, nextLod);
       const { group } = avatar;
+      const healthBar = makeHealthBar();
+      healthBar.visible = false;
+      group.add(healthBar);
       group.position.copy(position);
       group.rotation.y = rotationY;
       this.scene.add(group);
@@ -461,6 +516,7 @@ export class RemotePlayers implements Updatable {
       player.animator = avatar.animator;
       player.equipment = avatar.equipment;
       player.shield = avatar.shield;
+      player.healthBar = healthBar;
       player.lod = nextLod;
     }
     // Presence frames already in flight can describe the pre-hit position. Keep
@@ -518,8 +574,41 @@ export class RemotePlayers implements Updatable {
       );
     }
     player.snapshot = snapshot;
+    updateHealthBar(player.healthBar, player.hp, player.hpMax, player.defeated);
     this.applyVisual(snapshot.visual, player);
     player.lastSeenAt = this.now();
+  }
+
+  /** Applies server player HP for an observer without affecting movement/combat. */
+  applyAuthoritativeHp(playerId: string, hp: number, hpMax: number, lifeState: 'alive' | 'dead'): void {
+    const actualId = [...this.players.keys()].find((id) => id.toLowerCase() === playerId.trim().toLowerCase());
+    const player = actualId ? this.players.get(actualId) : undefined;
+    if (!player) {
+      this.pendingAuthorityHp.set(playerId.trim().toLowerCase(), { hp, hpMax, lifeState });
+      return;
+    }
+    const previousHp = player.hp;
+    player.hp = Math.max(0, Math.min(hpMax, hp));
+    player.hpMax = Math.max(1, hpMax);
+    player.hpKnown = true;
+    this.pendingAuthorityDamage.set(actualId!, Math.max(0, previousHp - player.hp));
+    if (lifeState === 'dead') this.markDefeated(actualId!);
+    else this.markRespawn(actualId!);
+    updateHealthBar(player.healthBar, player.hp, player.hpMax, player.defeated);
+  }
+
+  /** Displays a confirmed result at the target; HP was already applied by snapshot. */
+  applyAuthoritativeResult(targetId: string, finalHp: number): void {
+    const actualId = [...this.players.keys()].find((id) => id.toLowerCase() === targetId.trim().toLowerCase());
+    const player = actualId ? this.players.get(actualId) : undefined;
+    if (!player) {
+      this.pendingAuthorityResults.set(targetId.trim().toLowerCase(), { finalHp, expiresAt: this.now() + 5_000 });
+      return;
+    }
+    const amount = this.pendingAuthorityDamage.get(actualId!) ?? 0;
+    this.pendingAuthorityDamage.delete(actualId!);
+    if (typeof document !== 'undefined' && amount > 0) this.effects.spawnPlayerDamageNumber(player.group.position, Math.round(amount));
+    if (finalHp <= 0) player.group.visible = false;
   }
 
   /** Apply a Server-confirmed hit impulse without mutating authoritative presence. */
@@ -598,6 +687,7 @@ export class RemotePlayers implements Updatable {
   remove(playerId: string): void {
     const player = this.players.get(playerId);
     if (!player) return;
+    this.pendingAuthorityDamage.delete(playerId);
     for (const projectile of player.projectiles.values()) this.effects.removeEnergyProjectile(projectile);
     player.projectiles.clear();
     player.projectileSamples.clear();
