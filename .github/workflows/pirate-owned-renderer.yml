@@ -42,7 +42,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts
+      - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts src/realtime/__tests__/pocketMonsterParentPresence.test.ts
       - run: npm run build:shared
       - name: Typecheck nested client
         working-directory: client
