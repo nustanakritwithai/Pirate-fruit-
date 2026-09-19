@@ -68,7 +68,9 @@ describe('PocketOwnedMonsterRenderer contract gate', () => {
     renderer.update(1 / 60);
     expect(scene.getObjectByName(pirateActor.actorId)).toBeUndefined();
 
-    renderer.dispose();
+    renderer.setActors([pirateActor]);
+    renderer.update(1 / 60);
+    renderer.reset();
     expect(scene.children).toHaveLength(0);
   });
 });
