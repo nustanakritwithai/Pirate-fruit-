@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isValidOwnedMonsterActor, ownedMonsterActionKey, ownedMonsterAnimationForState, type OwnedMonsterActor } from '../PocketOwnedMonsterRenderer';
+import * as THREE from 'three';
+import {
+  isValidOwnedMonsterActor,
+  ownedMonsterActionKey,
+  ownedMonsterAnimationForState,
+  PocketOwnedMonsterRenderer,
+  type OwnedMonsterActor,
+} from '../PocketOwnedMonsterRenderer';
 
 const actor = (overrides: Partial<OwnedMonsterActor> = {}): OwnedMonsterActor => ({
   actorId: 'owned:player-1:slot-0', kind: 'monster', ownerId: 'player-1',
@@ -43,5 +50,25 @@ describe('PocketOwnedMonsterRenderer contract gate', () => {
     expect(ownedMonsterAnimationForState('casting')).toBe('skill');
     expect(['stunned', 'knockback', 'knockdown'].map(ownedMonsterAnimationForState)).toEqual(['hurt', 'hurt', 'hurt']);
     expect(ownedMonsterAnimationForState('idle')).toBeNull();
+  });
+
+  it('mounts a canonical Pirate owned model, removes it, and disposes the scene entry', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PocketOwnedMonsterRenderer(scene, THREE);
+    const pirateActor = actor({ zone: 'pirate-fruit', actionSessionId: 'session-1', actionSequence: 1 });
+
+    renderer.setActors([pirateActor]);
+    renderer.update(1 / 60);
+    const mounted = scene.getObjectByName(pirateActor.actorId);
+    expect(mounted).toBeDefined();
+    expect(mounted?.children.length).toBeGreaterThan(0);
+    expect(mounted?.getObjectByProperty('type', 'Mesh')).toBeDefined();
+
+    renderer.setActors([]);
+    renderer.update(1 / 60);
+    expect(scene.getObjectByName(pirateActor.actorId)).toBeUndefined();
+
+    renderer.dispose();
+    expect(scene.children).toHaveLength(0);
   });
 });
