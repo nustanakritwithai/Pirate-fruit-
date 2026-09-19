@@ -7,6 +7,7 @@ import { PirateMonsterAuthorityAdapter } from '../../monster/PirateMonsterAuthor
 import {
   PIRATE_LOCAL_PRESENCE_MESSAGE,
   PIRATE_PRESENCE_SNAPSHOT_MESSAGE,
+  PIRATE_PRESENCE_STATUS_MESSAGE,
   PocketMonsterParentPresence,
   parsePiratePresenceSnapshotMessage,
   resolvePocketMonsterParentOrigin,
@@ -141,6 +142,34 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(host.sent).toHaveLength(2);
     bridge.dispose();
     expect(host.hasListener()).toBe(false);
+  });
+
+  it('signals owned-render reset only on an explicit disconnected presence status', () => {
+    const host = createHost();
+    const onPresenceReset = vi.fn();
+    const bridge = new PocketMonsterParentPresence({
+      targetOrigin: 'https://pocket.example',
+      host: host.host,
+      remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
+      getPosition: () => ({ x: 0, y: 0, z: 0 }),
+      getHeading: () => 0,
+      getIslandId: () => 'starter-island',
+      heightAt: () => 0,
+      onPresenceReset,
+    });
+    bridge.start();
+    host.dispatch({
+      data: { type: PIRATE_PRESENCE_STATUS_MESSAGE, zone: 'pirate-fruit', connected: true },
+      origin: 'https://pocket.example', source: host.parentSource,
+    });
+    expect(onPresenceReset).not.toHaveBeenCalled();
+    host.dispatch({
+      data: { type: PIRATE_PRESENCE_STATUS_MESSAGE, zone: 'pirate-fruit', connected: false },
+      origin: 'https://pocket.example', source: host.parentSource,
+    });
+    expect(onPresenceReset).toHaveBeenCalledOnce();
+    bridge.dispose();
+    expect(onPresenceReset).toHaveBeenCalledTimes(2);
   });
 
   it('preserves the complete animator snapshot and strips invalid short-action metadata as a group', () => {

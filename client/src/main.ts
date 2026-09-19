@@ -467,6 +467,7 @@ async function main(): Promise<void> {
   let monsterManager: MonsterManager | null = null;
   const ownedMonsterRenderer = new PocketOwnedMonsterRenderer(game.scene, THREE);
   game.add(ownedMonsterRenderer);
+  let centralAuthorityWasActive = false;
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -507,10 +508,12 @@ async function main(): Promise<void> {
         ? pirateMonsterAuthority?.drainIntents() ?? []
         : [],
       onMonsterActors: (transportZone, mapZone, actors) => {
-        if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland || !centralAuthorityRuntime?.accepts(mapZone)) return;
+        if (transportZone !== 'pirate-fruit' || mapZone !== islandManager.activeIsland) return;
         // Owned actors use a separate authority envelope. Never route them through
         // the ambient `monster:` sanitizer or treat a visual hit as client damage.
         ownedMonsterRenderer.setActors(actors as unknown as readonly OwnedMonsterActor[]);
+        // Central authority gates only the ambient `monster:` stream.
+        if (!centralAuthorityRuntime?.accepts(mapZone)) return;
         const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
         sharedMonsters?.applyActors(mapZone, safeActors, centralAuthorityRuntime.sessionKey ?? `map:${mapZone}`, getSelfCharacterId() ?? undefined);
       },
@@ -518,10 +521,16 @@ async function main(): Promise<void> {
         centralAuthorityRuntime?.update(capability);
         const active = centralAuthorityRuntime?.active ?? false;
         monsterManager?.setAmbientSpawnsSuppressed(active);
-        if (!active) {
+        if (!active && centralAuthorityWasActive) {
           sharedMonsters?.resetSession(true);
-          ownedMonsterRenderer.reset();
         }
+        centralAuthorityWasActive = active;
+      },
+      onPresenceReset: () => {
+        centralAuthorityRuntime?.reset();
+        centralAuthorityWasActive = false;
+        sharedMonsters?.resetSession(true);
+        ownedMonsterRenderer.reset();
       },
       onIslandChange: () => {
         scopedCombatEffects.resetSession();

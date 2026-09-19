@@ -10,6 +10,7 @@ import { sanitizePresentation, sanitizeVisual } from './PresentationProtocol';
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
 export const PIRATE_LOCAL_PRESENCE_MESSAGE = 'pocketmonster:pirate-presence-v1';
 export const PIRATE_PRESENCE_SNAPSHOT_MESSAGE = 'pocketmonster:pirate-presence-snapshot-v1';
+export const PIRATE_PRESENCE_STATUS_MESSAGE = 'pocketmonster:pirate-presence-status-v1';
 
 const MAX_REMOTE_PLAYERS = 100;
 const MAX_PLAYER_ID_LENGTH = 80;
@@ -113,6 +114,7 @@ export interface PocketMonsterParentPresenceOptions {
   drainMonsterIntents?(): readonly PirateMonsterIntent[];
   onMonsterActors?(transportZone: string, mapZone: string, actors: readonly SharedMonsterActor[]): void;
   onCentralAuthority?(capability: PirateCentralAuthorityCapability | null): void;
+  onPresenceReset?(): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -400,6 +402,13 @@ export class PocketMonsterParentPresence {
 
   private readonly onMessage = (event: ParentPresenceEvent): void => {
     if (event.origin !== this.options.targetOrigin || !this.options.host.isParentSource(event.source)) return;
+    if (isRecord(event.data)
+      && event.data.type === PIRATE_PRESENCE_STATUS_MESSAGE
+      && event.data.zone === POCKET_MONSTER_PIRATE_ZONE
+      && event.data.connected === false) {
+      this.options.onPresenceReset?.();
+      return;
+    }
     const snapshot = parsePiratePresenceSnapshotMessage(event.data);
     if (!snapshot) return;
     this.applySnapshot(snapshot);
@@ -438,6 +447,7 @@ export class PocketMonsterParentPresence {
     this.sampledPresence = null;
     this.liveTransientKey = null;
     this.latchedAction = null;
+    this.options.onPresenceReset?.();
   }
 
   private syncIsland(): string {
