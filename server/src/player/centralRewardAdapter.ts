@@ -3,10 +3,41 @@ import {
   MONSTER_KILLS_MAX_ENTRIES, STAT_POINTS_PER_LEVEL, computeEnemyReward, applyExpToProgress,
   type MonsterKillEntry, type MonsterKillsResponse,
 } from '@pirate-fruit/shared';
-import type { CanonicalPlayerState } from './playerState.js';
+import type { CanonicalMasteryEntry, CanonicalPlayerState } from './playerState.js';
 
 type RewardReceipt = { key: string; kills: string; outcome: MonsterKillsResponse };
 export type CentralCanonicalState = CanonicalPlayerState & { rewardReceipts?: RewardReceipt[] };
+
+/** สูตรเดียวกับ client MasterySystem และ persisted player-state projection */
+export function applyCanonicalMasteryExp(state: CanonicalPlayerState, amount: number): void {
+  const loadout = state.inventory.loadout;
+  const itemId = loadout.activeSet === 'fruit'
+    ? loadout.equippedFruitId
+    : loadout.equippedWeaponKind === 'sword'
+      ? loadout.equippedSwordId
+      : loadout.equippedWeaponKind === 'gun'
+        ? loadout.equippedGunId
+        : loadout.equippedFightingStyleId;
+  if (!itemId || !Number.isFinite(amount) || amount <= 0) return;
+  const category: CanonicalMasteryEntry['category'] = loadout.activeSet === 'fruit'
+    ? 'fruit'
+    : loadout.equippedWeaponKind === 'sword'
+      ? 'sword'
+      : loadout.equippedWeaponKind === 'gun'
+        ? 'gun'
+        : 'style';
+  const entry: CanonicalMasteryEntry = state.progression.mastery[itemId] ?? { itemId, category, level: 1, exp: 0 };
+  entry.exp += Math.floor(amount);
+  while (entry.level < 600) {
+    const required = Math.floor(40 + entry.level * 18 + entry.level * entry.level * 1.6);
+    if (entry.exp >= required) {
+      entry.exp -= required;
+      entry.level += 1;
+    } else break;
+  }
+  if (entry.level >= 600) entry.exp = 0;
+  state.progression.mastery[itemId] = entry;
+}
 
 /** เตรียม transaction เท่านั้น: C# ต้อง CAS commit state ก่อนตอบ reward-ack ให้โลกเดิม */
 export function prepareCanonicalReward(
@@ -40,6 +71,7 @@ export function prepareCanonicalReward(
   state.progression.exp = progress.exp;
   state.progression.statPoints += progress.levelsGained * STAT_POINTS_PER_LEVEL;
   state.progression.coins += totals.coins;
+  applyCanonicalMasteryExp(state, totals.masteryExp);
   const outcome: MonsterKillsResponse = { ok: true, schemaVersion: MONSTER_PROTOCOL_SCHEMA_VERSION,
     rewards, totals, coinsTotal: state.progression.coins, idempotentReplay: false };
   // Receipt อยู่ใน transaction เดียวกับเงิน/EXP เพื่อส่ง ack ซ้ำได้โดยไม่แจกซ้ำ
