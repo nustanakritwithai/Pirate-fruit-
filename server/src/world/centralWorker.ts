@@ -10,6 +10,7 @@ import { serializePlayerState } from '../player/playerState.js';
 import { applyCentralOperation } from '../player/centralOperationsAdapter.js';
 import { CentralPlayerHits, type PendingPlayerHit } from './centralPlayerHits.js';
 import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js';
+import { applyCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
 
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; blocking?: boolean; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
@@ -108,6 +109,11 @@ export class CentralWorldWorker {
     }
     if (request.op === 'state-operation') {
       if (!request.state || !request.characterId) throw new Error('state-and-character-required');
+      if (request.operation && typeof request.operation === 'object'
+        && (request.operation as { type?: unknown }).type === 'trade') {
+        return { id: request.id, ok: true, contract: PROTOCOL,
+          ...await applyCentralOriginalTradeOperation(request.state as any, request.operation) };
+      }
       const player = this.currentPlayers.get(request.characterId);
       const position = player ? { islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '',
         x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0 } : null;
