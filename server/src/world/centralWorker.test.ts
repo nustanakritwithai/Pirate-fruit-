@@ -9,6 +9,37 @@ const profile = {
 } as const;
 
 describe('CentralWorldWorker pure adapter', () => {
+  it('commits player and owned hits to the same enemy and waits for durable reward acknowledgement', async () => {
+    const worker = new CentralWorldWorker(() => 10_000);
+    const players = [{ characterId: 'player-1', islandId: 'starter-island', x: 22, y: 0, z: -4, profile }];
+    const initial = await worker.handle({ id: 1, op: 'step', now: 10_000, players });
+    type Snapshot = { monsters: { spawnId: string; hp: number }[] };
+    const hp = (reply: Record<string, unknown>) => (reply.snapshots as Snapshot[])[0].monsters.find(monster => monster.spawnId === 'starter-crab-1')!.hp;
+    const playerHit = await worker.handle({ id: 2, op: 'step', now: 10_100, players,
+      intents: [{ characterId: 'player-1', intentId: 'player-hit-fixture-1', spawnIds: ['starter-crab-1'], kind: 'melee' }] });
+    expect(hp(playerHit)).toBeLessThan(hp(initial));
+    const ownedHit = await worker.handle({ id: 3, op: 'owned-hit', now: 10_100,
+      ownerId: 'player-1', actorId: 'owned:fixture', targetSpawnId: 'starter-crab-1',
+      x: 22, z: -4, expectedHp: hp(playerHit), damage: 1, range: 3 });
+    expect(ownedHit).toMatchObject({ ok: true, result: { hp: hp(playerHit) - 1 } });
+    const after = await worker.handle({ id: 4, op: 'step', now: 10_200, players });
+    expect(hp(after)).toBe(hp(playerHit) - 1);
+    const kill = await worker.handle({ id: 5, op: 'owned-hit', now: 10_200,
+      ownerId: 'player-1', actorId: 'owned:fixture', targetSpawnId: 'starter-crab-1',
+      x: 22, z: -4, expectedHp: hp(after), damage: hp(after), range: 3 });
+    expect(kill).toMatchObject({ ok: true, result: { dead: true, hp: 0 } });
+    const pending = await worker.handle({ id: 6, op: 'step', now: 10_300, players });
+    const rewards = pending.pendingRewards as { key: string; characterId: string }[];
+    expect(rewards).toHaveLength(1);
+    expect(rewards[0].characterId).toBe('player-1');
+    const messages = (value: Record<string, unknown>) => (value.deliveries as { message: { type: string; seq: number } }[]).map(delivery => delivery.message);
+    expect(messages(pending).some(message => message.type === 'world-monster-dead')).toBe(false);
+    await worker.handle({ id: 7, op: 'reward-ack', now: 10_300, rewardKey: rewards[0].key,
+      outcome: { rewards: [{ monsterId: 'crab', playerExp: 1, coins: 1, masteryExp: 0 }], coinsTotal: 1 } });
+    const acknowledged = await worker.handle({ id: 8, op: 'step', now: 10_400, players });
+    expect(messages(acknowledged).some(message => message.type === 'world-monster-dead')).toBe(true);
+    expect(messages(acknowledged).every(message => message.seq > 0)).toBe(true);
+  });
   it('returns authoritative snapshots and enforces owned-hit CAS without starting a timer', async () => {
     const worker = new CentralWorldWorker(() => 1_000);
     const step = await worker.handle({

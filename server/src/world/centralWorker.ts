@@ -118,7 +118,10 @@ export class CentralWorldWorker {
       this.hub.handleClientMessage(connection, JSON.stringify({ type: 'world-monster-hit', intentId: intent.intentId, spawnIds: intent.spawnIds, kind: intent.kind ?? 'skill', category: intent.category }));
     }
     await Promise.resolve();
-    this.service.step(request.now, request.additionalTargets ?? []);
+    const additionalTargets = (request.additionalTargets ?? []).map(target => ({
+      ...target, islandId: target.islandId || this.islandForPosition(target.x, target.z) || '',
+    })).filter(target => target.islandId && Number.isFinite(target.x) && Number.isFinite(target.z));
+    this.service.step(request.now, additionalTargets);
     const islands = [...new Set((request.players ?? []).map((player) => player.islandId ?? this.islandForPosition(player.x, player.z)).filter((value): value is string => !!value))];
     const snapshots = islands.map((islandId) => {
       const message = this.service.snapshotMessageForIsland(islandId);
