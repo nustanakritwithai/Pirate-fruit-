@@ -639,7 +639,7 @@ async function main(): Promise<void> {
     // PvE: มอนสเตอร์กลางส่ง attack action แล้ว client รับเฉพาะ hit frame ครั้งเดียว
     game.add({
       update: () => {
-        if (selfPvpDefeated) {
+        if (selfPvpDefeated || pirateVitalsAuthority.active) {
           sharedMonsters.collectPlayerHits(controller.position);
           return;
         }
@@ -664,6 +664,7 @@ async function main(): Promise<void> {
           }
           if (resolution.defeated) {
             audioBridge?.notifyDeath();
+            if (pirateVitalsAuthority.active) void pirateVitalsEmitter?.respawn();
             spawnManager.respawn();
             playerCombat?.notifyRespawn();
             globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
@@ -1139,6 +1140,10 @@ async function main(): Promise<void> {
       },
       onBossAudioState: (active) => audioBridge?.setBossActive(active),
       onPlayerDefeated: () => {
+        if (pirateVitalsAuthority.active) {
+          void pirateVitalsEmitter?.respawn();
+          return;
+        }
         spawnManager.respawn();
         playerCombat?.notifyRespawn();
         hud.flashDamage();
@@ -1211,6 +1216,7 @@ async function main(): Promise<void> {
     progression,
     navalCombat,
     () => camera.yaw,
+    (skillId) => pirateVitalsEmitter?.buff(skillId) ?? Promise.resolve(false),
   );
   sharedMonsters?.setActorProvider((zone, generation) => monsterManager?.getPresentationActors(zone, generation) ?? []);
   controller.setDevilFruitUser(playerCombat.hasDevilFruit);
@@ -1417,6 +1423,7 @@ async function main(): Promise<void> {
   controller.onDrown = () => {
     audio.play('player.drowning');
     audioBridge?.notifyDeath();
+    if (pirateVitalsAuthority.active) void pirateVitalsEmitter?.respawn();
     spawnManager.respawn();
     playerCombat?.notifyRespawn();
     globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);

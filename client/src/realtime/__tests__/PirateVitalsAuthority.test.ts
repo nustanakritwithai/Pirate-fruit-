@@ -23,9 +23,9 @@ describe('Pirate vitals authority receiver', () => {
     expect(authority.revision).toBe(4);
   });
 
-  it('requires respawn revision to match the enclosing snapshot', () => {
+  it('requires respawn revision to be within the enclosing snapshot history', () => {
     const authority = new PirateVitalsAuthority();
-    expect(authority.apply(snapshot(2, { dead: true, respawn: { spawnId: 'starter-village', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, atRevision: 1 } }))).toBe(false);
+    expect(authority.apply(snapshot(2, { hp: 0, dead: true, respawn: { spawnId: 'starter-village', islandId: 'starter-island', x: 0, y: 0, z: 0, heading: 0, atRevision: 3 } }))).toBe(false);
     expect(authority.active).toBe(false);
   });
 });

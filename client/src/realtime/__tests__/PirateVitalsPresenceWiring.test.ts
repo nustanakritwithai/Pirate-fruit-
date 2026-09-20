@@ -34,8 +34,8 @@ describe('Pirate vitals presence wiring', () => {
         },
       },
     });
-    expect(parsed?.vitals?.revision).toBe(4);
-    expect(parsed?.vitals?.hp).toBe(80);
+    expect(parsed?.pirateWorld?.vitals?.revision).toBe(4);
+    expect(parsed?.pirateWorld?.vitals?.hp).toBe(80);
   });
 
   it('rejects a malformed vitals envelope instead of retaining an older state', () => {

@@ -3,6 +3,8 @@ import type { CharacterController } from '../player/CharacterController';
 import type { SpawnManager } from '../world/SpawnManager';
 import { PirateVitalsAuthority } from './PirateVitalsAuthority';
 
+const lastAppliedRespawnRevision = new WeakMap<PirateVitalsAuthority, number>();
+
 /** Applies a validated snapshot to presentation state; all local fallback writers stay disabled after claim. */
 export function applyPirateVitalsSnapshot(
   authority: PirateVitalsAuthority,
@@ -17,7 +19,9 @@ export function applyPirateVitalsSnapshot(
   combat.setServerVitalsAuthority(true);
   spawn.setServerVitalsAuthority(true);
   combat.applyServerVitals(snapshot);
-  if (snapshot.respawn && !snapshot.dead) {
+  if (snapshot.respawn && !snapshot.dead
+    && snapshot.respawn.atRevision > (lastAppliedRespawnRevision.get(authority) ?? -1)) {
+    lastAppliedRespawnRevision.set(authority, snapshot.respawn.atRevision);
     spawn.activateSpawnPoint(snapshot.respawn.spawnId);
     controller.teleport(snapshot.respawn.x, snapshot.respawn.y, snapshot.respawn.z);
     controller.heading = snapshot.respawn.heading;

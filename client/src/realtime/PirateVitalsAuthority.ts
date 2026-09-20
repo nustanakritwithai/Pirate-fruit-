@@ -26,21 +26,23 @@ function finiteBounded(value: unknown, max: unknown): value is number {
 export function isPirateVitalsSnapshot(value: unknown): value is PirateVitalsSnapshot {
   if (!value || typeof value !== 'object') return false;
   const snapshot = value as Record<string, unknown>;
-  if (snapshot.contract !== PIRATE_VITALS_CONTRACT || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
-    || !Number.isFinite(snapshot.serverTimeMs)
+  if (snapshot.contract !== PIRATE_VITALS_CONTRACT || typeof snapshot.revision !== 'number' || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
+    || typeof snapshot.serverTimeMs !== 'number' || !Number.isFinite(snapshot.serverTimeMs) || snapshot.serverTimeMs < 0
     || !finiteBounded(snapshot.hp, snapshot.maxHp) || typeof snapshot.maxHp !== 'number' || snapshot.maxHp <= 0
     || !finiteBounded(snapshot.guard, snapshot.guardMax) || typeof snapshot.guardMax !== 'number' || snapshot.guardMax < 0
     || !finiteBounded(snapshot.energy, snapshot.maxEnergy) || typeof snapshot.maxEnergy !== 'number' || snapshot.maxEnergy < 0
     || !finiteBounded(snapshot.mp, snapshot.maxMp) || typeof snapshot.maxMp !== 'number' || snapshot.maxMp < 0
-    || typeof snapshot.guardBroken !== 'boolean' || typeof snapshot.hitstunUntil !== 'number' || !Number.isFinite(snapshot.hitstunUntil)
-    || typeof snapshot.dead !== 'boolean') return false;
+    || typeof snapshot.guardBroken !== 'boolean' || typeof snapshot.hitstunUntil !== 'number'
+    || !Number.isFinite(snapshot.hitstunUntil) || snapshot.hitstunUntil < 0
+    || typeof snapshot.dead !== 'boolean' || snapshot.dead !== (snapshot.hp <= 0)) return false;
   if (snapshot.respawn !== undefined) {
     const respawn = snapshot.respawn;
     if (!respawn || typeof respawn !== 'object') return false;
     const value = respawn as Record<string, unknown>;
     if (typeof value.spawnId !== 'string' || value.spawnId.length === 0 || typeof value.islandId !== 'string'
       || value.islandId.length === 0 || !Number.isFinite(value.x) || !Number.isFinite(value.y) || !Number.isFinite(value.z)
-      || !Number.isFinite(value.heading) || !Number.isSafeInteger(value.atRevision) || value.atRevision !== snapshot.revision) return false;
+      || !Number.isFinite(value.heading) || !Number.isSafeInteger(value.atRevision)
+      || value.atRevision < 1 || value.atRevision > snapshot.revision) return false;
   }
   return true;
 }

@@ -297,6 +297,7 @@ export class PlayerCombat {
     private progression?: CombatProgressionAdapter,
     private navalCombat?: Pick<NavalCombat, 'damageNearestEnemyShipFromSkill'>,
     private getCameraYaw?: () => number,
+    private requestServerBuff?: (skillId: string) => Promise<boolean>,
   ) {
     this.set = resolveActiveSet(this.loadout);
 
@@ -448,6 +449,7 @@ export class PlayerCombat {
 
   /** เรียกจาก MonsterManager ก่อนหักเลือด — ตัดสิน Block/Guard/unblockable/ผลัก คืนดาเมจสุดท้าย */
   modifyIncomingDamage(attack: IncomingAttack): number {
+    if (this.serverVitalsAuthority) return 0;
     this.timeSinceDamaged = 0;
     this.damageReactionSerial++;
     this.damageReactionAngle = getRelativeHitAngle(
@@ -1603,6 +1605,13 @@ export class PlayerCombat {
 
   /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
+    if (this.serverVitalsAuthority && this.requestServerBuff) {
+      void this.requestServerBuff(skill.id).then((accepted) => {
+        this.touch?.notify(accepted ? '✨ Server ยืนยันบัฟแล้ว' : 'บัฟถูกปฏิเสธโดย Server');
+      }).catch(() => {
+        this.touch?.notify('บัฟส่งไป Server ไม่สำเร็จ');
+      });
+    }
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
     const appliedHeal = this.serverVitalsAuthority || this.authoritativeCombatTimer > 0 ? 0 : healHp;
     this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + appliedHeal);
