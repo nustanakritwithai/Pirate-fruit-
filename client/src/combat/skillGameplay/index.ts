@@ -4,6 +4,7 @@
 
 import { SKILL_GAMEPLAY } from './generated';
 import type { SkillGameplay } from './types';
+import { SKILL_RESOURCE_CATALOG } from '@pirate-fruit/shared';
 
 export { SKILL_GAMEPLAY };
 export type {
@@ -16,7 +17,11 @@ export type {
 } from './types';
 
 export function getSkillGameplay(id: string): SkillGameplay | undefined {
-  return SKILL_GAMEPLAY[id];
+  const gameplay = SKILL_GAMEPLAY[id];
+  const resource = SKILL_RESOURCE_CATALOG[id];
+  return gameplay && resource
+    ? { ...gameplay, cooldown: resource.cooldownMs / 1000, energy: resource.mpCost }
+    : gameplay;
 }
 
 export const ALL_SKILL_GAMEPLAY: readonly SkillGameplay[] = Object.values(SKILL_GAMEPLAY);

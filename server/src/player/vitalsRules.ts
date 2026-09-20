@@ -1,4 +1,4 @@
-import { resourceCapsForStats, SHOP_POTIONS, SPAWN_ID_BY_ISLAND, WORLD_SAFE_ZONES, type ShopPotionId } from '@pirate-fruit/shared';
+import { resourceCapsForStats, SHOP_POTIONS, SPAWN_ID_BY_ISLAND, WORLD_SAFE_ZONES, SKILL_MASTERY_REQUIRED, SKILL_RESOURCE_CATALOG, type ShopPotionId } from '@pirate-fruit/shared';
 import type { CanonicalPveState } from './pveIncomingDamageAdapter.js';
 
 export const PVE_GUARD_MAX = 100;
@@ -74,25 +74,26 @@ export function advanceCanonicalVitals(current: CanonicalPveState, context: PveV
   combat.guard = finite(combat.guard, PVE_GUARD_MAX, 0, PVE_GUARD_MAX);
   combat.guardBroken = combat.guardBroken === true;
   combat.hitstunUntil = finite(combat.hitstunUntil, 0, 0, Number.MAX_SAFE_INTEGER);
-  if (!context.blocking) {
+  const dead = state.checkpoint.hp <= 0;
+  if (!dead && !context.blocking) {
     combat.guard = Math.min(PVE_GUARD_MAX, combat.guard + PVE_GUARD_REGEN * dt);
     if (combat.guardBroken && combat.guard >= PVE_GUARD_REBLOCK_THRESHOLD) combat.guardBroken = false;
   }
   if (state.checkpoint.hp > 0 && !context.mounted && !context.combatActive
     && context.now - vitals.lastDamageAtMs > PVE_HP_REGEN_DELAY * 1_000)
     state.checkpoint.hp = Math.min(caps.maxHp, state.checkpoint.hp + PVE_HP_REGEN_RATE * dt);
-  if (context.inWater) {
+  if (!dead && !context.mounted && context.inWater) {
     state.checkpoint.energy = Math.max(0, state.checkpoint.energy
       - (context.devilFruitUser ? PVE_DEVIL_FRUIT_ENERGY_DRAIN : PVE_WATER_ENERGY_DRAIN) * dt);
     if (state.checkpoint.energy <= 0)
       state.checkpoint.hp = Math.max(0, state.checkpoint.hp
         - (context.devilFruitUser ? PVE_DEVIL_FRUIT_HP_DRAIN : PVE_WATER_HP_DRAIN) * dt);
-  } else if (context.sprinting) {
+  } else if (!dead && !context.mounted && context.sprinting) {
     state.checkpoint.energy = Math.max(0, state.checkpoint.energy - PVE_ENERGY_DRAIN * dt);
-  } else {
+  } else if (!dead && !context.mounted) {
     state.checkpoint.energy = Math.min(caps.maxEnergy, state.checkpoint.energy + PVE_ENERGY_REGEN * dt);
   }
-  state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + PVE_MP_REGEN * dt);
+  if (!dead) state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + PVE_MP_REGEN * dt);
   state.pveCombat = combat;
   state.pveVitals = vitals;
   const changed = state.checkpoint.hp !== current.checkpoint.hp
@@ -147,6 +148,7 @@ export function applyCanonicalVitalsOperation(
     state.checkpoint.hp = caps.maxHp; state.checkpoint.energy = caps.maxEnergy; state.checkpoint.mp = caps.maxMp;
     state.pveCombat = { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 };
     state.pveVitals = defaultPveVitals(context.now);
+    state.pveRespawnAtMs = context.now;
     const respawn = { spawnId: spawn.id, islandId: spawn.islandId, x: spawn.x, y: spawn.y, z: spawn.z, heading: spawn.heading, atRevision: context.revision ?? 0 };
     state.pveRespawn = respawn;
     return record(state, { type: 'respawn', changed: true, respawn });
@@ -201,25 +203,29 @@ export interface PveSkillResource { skillId: string; mpCost: number; cooldownMs:
 
 /** ค่าทรัพยากรจาก generated skill catalog เดิม; client ส่งได้เพียง skillId */
 export function resolveTrustedSkillResource(state: CanonicalPveState, skillId: string): PveSkillResource | null {
-  const fruit = state.inventory.loadout.equippedFruitId;
-  if (state.inventory.loadout.activeSet !== 'fruit' || !fruit || !skillId.startsWith(`${fruit}-`)) return null;
-  const slot = skillId.endsWith('-m1') ? 'm1' : skillId.slice(skillId.lastIndexOf('-') + 1);
-  const resource = ({ m1: [4, 1_200], z: [16, 6_000], x: [24, 9_000], c: [32, 12_000], v: [50, 20_000], f: [10, 4_000] } as const)[slot as 'm1' | 'z' | 'x' | 'c' | 'v' | 'f'];
+  const loadout = state.inventory.loadout;
+  const itemId = loadout.activeSet === 'fruit' ? loadout.equippedFruitId
+    : loadout.equippedWeaponKind === 'sword' ? loadout.equippedSwordId
+      : loadout.equippedWeaponKind === 'gun' ? loadout.equippedGunId : loadout.equippedFightingStyleId;
+  if (!itemId) return null;
+  const aliases = itemId === 'basic-brawl' ? ['basic-brawl', 'combat'] : [itemId];
+  if (!aliases.some(prefix => skillId.startsWith(`${prefix}-`))) return null;
+  const resource = SKILL_RESOURCE_CATALOG[skillId];
   if (!resource) return null;
-  return { skillId, mpCost: resource[0], cooldownMs: resource[1] };
+  const mastery = aliases.map(alias => state.progression.mastery[alias]).find(Boolean);
+  if (!mastery || mastery.level < (SKILL_MASTERY_REQUIRED[skillId] ?? 0)) return null;
+  return { skillId, mpCost: resource.mpCost, cooldownMs: resource.cooldownMs };
 }
 
 export function resolveTrustedBuffProfile(state: CanonicalPveState, skillId: string): PveBuffProfile | null {
   const fruit = state.inventory.loadout.equippedFruitId;
-  if (state.inventory.loadout.activeSet !== 'fruit' || !fruit || !skillId.startsWith(`${fruit}-`)) return null;
+  if (state.inventory.loadout.activeSet !== 'fruit' || !fruit) return null;
+  const resource = resolveTrustedSkillResource(state, skillId);
   const profile = ({
-    'phoenix-moveset-v1-x': { energyCost: 24, mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000, cooldownMs: 9_000 },
-    'gas-moveset-z': { energyCost: 16, mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000, cooldownMs: 6_000 },
+    'phoenix-moveset-v1-x': { mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000 },
+    'gas-moveset-z': { mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000 },
   } as const)[skillId as 'phoenix-moveset-v1-x' | 'gas-moveset-z'];
-  const mastery = state.progression.mastery[fruit];
-  const masteryRequired = skillId === 'phoenix-moveset-v1-x' ? 90 : skillId === 'gas-moveset-z' ? 1 : 0;
-  if (!mastery || mastery.level < masteryRequired) return null;
-  return profile ? { skillId, ...profile } : null;
+  return profile && resource ? { skillId, energyCost: resource.mpCost, cooldownMs: resource.cooldownMs, ...profile } : null;
 }
 
 function safeSpawnForIsland(islandId: string): { id: string; islandId: string; x: number; y: number; z: number; heading: number } {

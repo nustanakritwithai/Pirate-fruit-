@@ -27,6 +27,7 @@ export type CanonicalPveState = CanonicalPlayerState & {
   pveCombat?: PveCombatState;
   pveVitals?: CanonicalPveVitals;
   pveRespawn?: PveRespawnEvent;
+  pveRespawnAtMs?: number;
   vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean; respawn?: unknown } }>;
   playerHitReceipts?: PlayerHitReceipt[];
 };
@@ -53,6 +54,12 @@ export function prepareCanonicalPlayerHit(
   if (prior) {
     if (prior.identity !== identity) return { ok: false, code: 'IDEMPOTENCY_KEY_REUSED' };
     return { ok: true, replay: true, state: clone(current), outcome: prior.outcome };
+  }
+  if (typeof current.pveRespawnAtMs === 'number' && now < current.pveRespawnAtMs) {
+    const outcome = { taken: 0, guardDamage: 0, guardBroke: false, defeated: false } as const;
+    const state = clone(current);
+    state.playerHitReceipts = [...(state.playerHitReceipts ?? []), { key, identity, outcome }].slice(-256);
+    return { ok: true, replay: false, state, outcome };
   }
   const caps = resourceCapsForStats(current.progression.stats);
   const combat = current.pveCombat ?? { guard: 100, guardBroken: false, hitstunUntil: 0 };
