@@ -12,6 +12,28 @@ const profile = {
 } as const;
 
 describe('CentralWorldWorker pure adapter', () => {
+  it('routes canonical vitals tick, snapshot and idempotent potion operation', async () => {
+    const worker = new CentralWorldWorker(() => 100_000);
+    const state = defaultPlayerState();
+    state.checkpoint.hp = 40;
+    state.checkpoint.energy = 50;
+    state.inventory.consumables['potion-hp'] = 1;
+    state.pveVitals = { lastDamageAtMs: 93_000, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
+    const tick = await worker.handle({ id: 'vitals-tick', op: 'vitals-tick', now: 100_000, dtMs: 1_000,
+      state, flags: { playerVitalsReady: true, blocking: false } });
+    expect(tick).toMatchObject({ ok: true, changed: true, state: { checkpoint: { hp: 43.5, energy: 66 } } });
+    const snapshot = await worker.handle({ id: 'vitals-snapshot', op: 'vitals-snapshot', now: 100_000, state: tick.state });
+    expect(snapshot).toMatchObject({ ok: true, snapshot: { contract: 'pirate-vitals/1', hp: 43.5, maxHp: 100 } });
+    const operation = await worker.handle({ id: 'vitals-op', op: 'state-operation', now: 100_000, revision: 2,
+      state: tick.state, characterId: 'player-1', commandId: 'vitals-command-0001',
+      operation: { type: 'vitalsPotion', potionId: 'potion-hp', idempotencyKey: 'vitals:potion:1' } });
+    expect(operation).toMatchObject({ ok: true, state: { checkpoint: { hp: 100 }, inventory: { consumables: { 'potion-hp': 0 } } } });
+    const replay = await worker.handle({ id: 'vitals-replay', op: 'state-operation', now: 100_000, revision: 2,
+      state: operation.state, characterId: 'player-1', commandId: 'vitals-command-0001',
+      operation: { type: 'vitalsPotion', potionId: 'potion-hp', idempotencyKey: 'vitals:potion:1' } });
+    expect(replay).toMatchObject({ ok: true, state: { checkpoint: { hp: 100 }, inventory: { consumables: { 'potion-hp': 0 } } } });
+  });
+
   it('previews a restored trusted hit without committing it until ack and rejects client-invented keys', async () => {
     const worker = new CentralWorldWorker(() => 1000);
     const exported = await worker.handle({ id: 1, op: 'export-world', now: 1000 });

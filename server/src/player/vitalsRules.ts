@@ -26,6 +26,7 @@ export interface CanonicalPveVitals {
 
 export interface PveVitalsContext {
   now: number;
+  revision?: number;
   dtMs: number;
   blocking: boolean;
   mounted: boolean;
@@ -39,6 +40,10 @@ export interface CanonicalVitalsSnapshot {
   contract: 'pirate-vitals/1'; revision: number; serverTimeMs: number;
   hp: number; maxHp: number; guard: number; guardMax: number; guardBroken: boolean; hitstunUntil: number;
   energy: number; maxEnergy: number; mp: number; maxMp: number; dead: boolean;
+}
+
+export interface VitalsOutcome {
+  type: string; changed: boolean;
   respawn?: { spawnId: string; islandId: string; x: number; y: number; z: number; heading: number; atRevision: number };
 }
 
@@ -109,9 +114,6 @@ export function deriveCanonicalVitalsSnapshot(current: CanonicalPveState, revisi
     guardBroken: combat.guardBroken, hitstunUntil: combat.hitstunUntil,
     energy: current.checkpoint.energy, maxEnergy: caps.maxEnergy, mp: current.checkpoint.mp, maxMp: caps.maxMp,
     dead: current.checkpoint.hp <= 0,
-    ...(current.checkpoint.hp <= 0 ? { respawn: { spawnId: current.checkpoint.spawnId, islandId: current.checkpoint.islandId,
-      x: current.checkpoint.position.x, y: current.checkpoint.position.y, z: current.checkpoint.position.z,
-      heading: current.checkpoint.heading, atRevision: revision } } : {}),
   };
 }
 
@@ -119,7 +121,7 @@ export function applyCanonicalVitalsOperation(
   current: CanonicalPveState,
   operation: PveVitalsOperation,
   context: PveVitalsContext,
-): { state: CanonicalPveState; outcome: { type: string; changed: boolean } } {
+): { state: CanonicalPveState; outcome: VitalsOutcome } {
   if (!operation.idempotencyKey || operation.idempotencyKey.length > 128) throw new Error('INVALID_IDEMPOTENCY_KEY');
   const identity = JSON.stringify(operation);
   const prior = current.vitalsReceipts?.find(receipt => receipt.key === operation.idempotencyKey);
@@ -127,7 +129,7 @@ export function applyCanonicalVitalsOperation(
     if (prior.identity !== identity) throw new Error('IDEMPOTENCY_KEY_REUSED');
     return { state: clone(current), outcome: prior.outcome };
   }
-  const record = (state: CanonicalPveState, outcome: { type: string; changed: boolean }): { state: CanonicalPveState; outcome: { type: string; changed: boolean } } => {
+  const record = (state: CanonicalPveState, outcome: VitalsOutcome): { state: CanonicalPveState; outcome: VitalsOutcome } => {
     state.vitalsReceipts = [...(state.vitalsReceipts ?? []), { key: operation.idempotencyKey, identity, outcome }].slice(-256);
     return { state, outcome };
   };
@@ -138,7 +140,9 @@ export function applyCanonicalVitalsOperation(
     state.checkpoint.hp = caps.maxHp; state.checkpoint.energy = caps.maxEnergy; state.checkpoint.mp = caps.maxMp;
     state.pveCombat = { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 };
     state.pveVitals = defaultPveVitals(context.now);
-    return record(state, { type: 'respawn', changed: true });
+    return record(state, { type: 'respawn', changed: true, respawn: { spawnId: state.checkpoint.spawnId,
+      islandId: state.checkpoint.islandId, x: state.checkpoint.position.x, y: state.checkpoint.position.y,
+      z: state.checkpoint.position.z, heading: state.checkpoint.heading, atRevision: context.revision ?? 0 } });
   }
   const state = clone(current);
   const caps = resourceCapsForStats(state.progression.stats);

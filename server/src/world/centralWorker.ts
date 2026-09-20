@@ -22,7 +22,7 @@ export interface CentralRequest {
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
   flags?: { playerVitalsReady?: boolean; blocking?: boolean; mounted?: boolean; sprinting?: boolean; devilFruitUser?: boolean; combatActive?: boolean; };
-  dtMs?: number; inWater?: boolean;
+  dtMs?: number; inWater?: boolean; revision?: number;
   worldState?: MonsterWorldStateSnapshot & { pendingPlayerHits?: PendingPlayerHit[] };
   hitKey?: string;
 }
@@ -126,7 +126,7 @@ export class CentralWorldWorker {
     if (request.op === 'vitals-tick' || request.op === 'vitals-snapshot') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
       if (request.op === 'vitals-snapshot') return { id: request.id, ok: true, contract: PROTOCOL,
-        snapshot: deriveCanonicalVitalsSnapshot(request.state, Number(request.state.revision ?? 0), request.now) };
+        snapshot: deriveCanonicalVitalsSnapshot(request.state, Number(request.revision ?? request.state.revision ?? 0), request.now) };
       const advanced = advanceCanonicalVitals(request.state, this.vitalsContext(request));
       return { id: request.id, ok: true, contract: PROTOCOL, state: advanced.state, changed: advanced.changed };
     }
@@ -211,7 +211,7 @@ export class CentralWorldWorker {
   private vitalsContext(request: CentralRequest): PveVitalsContext {
     const flags = request.flags ?? {};
     const player = request.characterId ? this.currentPlayers.get(request.characterId) : undefined;
-    return { now: request.now, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
+    return { now: request.now, revision: request.revision, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
       blocking: flags.blocking === true, mounted: flags.mounted === true, sprinting: flags.sprinting === true,
       inWater: request.inWater === true, devilFruitUser: flags.devilFruitUser === true,
       combatActive: flags.combatActive === true || Boolean(player?.blocking) };

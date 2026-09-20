@@ -25,7 +25,7 @@ export interface PlayerHitReceipt {
 export type CanonicalPveState = CanonicalPlayerState & {
   pveCombat?: PveCombatState;
   pveVitals?: CanonicalPveVitals;
-  vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean } }>;
+  vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean; respawn?: unknown } }>;
   playerHitReceipts?: PlayerHitReceipt[];
 };
 
