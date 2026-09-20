@@ -228,7 +228,7 @@ export function resolveTrustedSkillResource(state: CanonicalPveState, skillId: s
   const mastery = aliases.map(alias => state.progression.mastery[alias]).find(Boolean);
   const masteryLevel = mastery?.level ?? 1;
   if (masteryLevel < (SKILL_MASTERY_REQUIRED[skillId] ?? 0)) return null;
-  if ((skillId.includes('-v2-') || skillId.includes('-transformed-')) && loadout.activeSet === 'fruit' && !loadout.fruitAwakened) return null;
+  if (skillId.includes('-v2-') && loadout.activeSet === 'fruit' && !loadout.fruitAwakened) return null;
   return { skillId, mpCost: resource.mpCost, cooldownMs: resource.cooldownMs };
 }
 
