@@ -8,16 +8,19 @@ import { normalizeInitialPlayerState, deriveCanonicalCombatProfile } from '../pl
 import { prepareCanonicalReward } from '../player/centralRewardAdapter.js';
 import { serializePlayerState } from '../player/playerState.js';
 import { applyCentralOperation } from '../player/centralOperationsAdapter.js';
+import { CentralPlayerHits, type PendingPlayerHit } from './centralPlayerHits.js';
+import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js';
 
-export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; }
+export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; blocking?: boolean; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
-  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
   characterId?: string; operation?: unknown; commandId?: string;
   ownerId?: string; actorId?: string; targetSpawnId?: string; x?: number; z?: number; expectedHp?: number; damage?: number; range?: number; additionalTargets?: PlayerView[];
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
-  worldState?: MonsterWorldStateSnapshot;
+  worldState?: MonsterWorldStateSnapshot & { pendingPlayerHits?: PendingPlayerHit[] };
+  hitKey?: string;
 }
 const PROTOCOL = 'pirate-original-world/1' as const;
 
@@ -40,6 +43,7 @@ export class CentralWorldWorker {
   private hasStepped = false;
   private readonly pendingRewards = new Map<string, { characterId: string; body: MonsterKillsRequest; resolve: (value: any) => void; reject: (error: Error) => void; }>();
   private readonly deliverySeq = new Map<string, number>();
+  private readonly playerHits = new CentralPlayerHits();
 
   constructor(now: () => number = () => Date.now()) {
     this.clockNow = now();
@@ -72,12 +76,27 @@ export class CentralWorldWorker {
 
   async handle(request: CentralRequest): Promise<Record<string, unknown>> {
     if (request.op === 'ready') return { id: request.id, ok: true, contract: PROTOCOL };
-    if (request.op === 'export-world') return { id: request.id, ok: true, contract: PROTOCOL, worldState: this.service.exportWorldState() };
+    if (request.op === 'export-world') return { id: request.id, ok: true, contract: PROTOCOL,
+      worldState: { ...this.service.exportWorldState(), pendingPlayerHits: this.playerHits.export() } };
     if (request.op === 'restore-world') {
       if (!request.worldState) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-required' };
       if (this.hasStepped) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-restore-too-late' };
       this.service.restoreWorldState(request.worldState);
+      this.playerHits.restore(request.worldState.pendingPlayerHits);
       return { id: request.id, ok: true, contract: PROTOCOL };
+    }
+    if (request.op === 'player-hit-preview' || request.op === 'player-hit-ack') {
+      const hit = request.hitKey && request.characterId ? this.playerHits.get(request.hitKey, request.characterId) : undefined;
+      if (!hit?.resolved) return { id: request.id, ok: false, contract: PROTOCOL, error: 'unknown-player-hit' };
+      if (request.op === 'player-hit-ack') {
+        // เฉพาะ IPC หลัง SQL CAS สำเร็จ; ไม่มี public client route สำหรับ ACK นี้
+        this.playerHits.acknowledge(hit.key, hit.characterId);
+        return { id: request.id, ok: true, contract: PROTOCOL };
+      }
+      if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
+      return { id: request.id, contract: PROTOCOL, ...prepareCanonicalPlayerHit(request.state, hit.key,
+        { source: 'monster-simulation', attackId: hit.attack.attackId, targetId: hit.characterId,
+          damage: hit.resolved.damage, unblockable: false }, hit.resolved.at, hit.resolved.blocking, hit.characterId) };
     }
     if (request.op === 'normalize-state') {
       if (!request.player) return { id: request.id, ok: false, contract: PROTOCOL, error: 'player-state-required' };
@@ -160,7 +179,13 @@ export class CentralWorldWorker {
       const seq = (this.deliverySeq.get(characterId) ?? 0) + 1; this.deliverySeq.set(characterId, seq);
       deliveries.push({ characterId, message: { ...message, seq } });
     }
-    return { id: request.id, ok: true, contract: PROTOCOL, snapshots, deliveries, pendingRewards: [...this.pendingRewards.entries()].map(([key, pending]) => ({ key, characterId: pending.characterId, body: pending.body })) };
+    const hitPlayers = [...this.currentPlayers.values()].map(player => ({ ...player,
+      islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '' }));
+    this.playerHits.capture(deliveries.map(delivery => delivery.message), hitPlayers, request.now);
+    this.playerHits.resolve(hitPlayers, snapshots.flatMap(snapshot => snapshot.monsters), request.now);
+    return { id: request.id, ok: true, contract: PROTOCOL, snapshots, deliveries,
+      pendingPlayerHits: this.playerHits.ready(),
+      pendingRewards: [...this.pendingRewards.entries()].map(([key, pending]) => ({ key, characterId: pending.characterId, body: pending.body })) };
   }
 
   private islandForPosition(x: number, z: number): string | null {

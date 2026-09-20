@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CentralWorldWorker } from './centralWorker.js';
 import type { MonsterWorldStateSnapshot } from './monsterWorldService.js';
+import { defaultPlayerState } from '../player/playerState.js';
+import type { PendingPlayerHit } from './centralPlayerHits.js';
 
 const profile = {
   level: 1,
@@ -10,6 +12,29 @@ const profile = {
 } as const;
 
 describe('CentralWorldWorker pure adapter', () => {
+  it('previews a restored trusted hit without committing it until ack and rejects client-invented keys', async () => {
+    const worker = new CentralWorldWorker(() => 1000);
+    const exported = await worker.handle({ id: 1, op: 'export-world', now: 1000 });
+    const hit: PendingPlayerHit = { key: 'pve:fixture:starter-crab-1:1', characterId: 'player-1', dueAt: 1180,
+      attack: { attackId: 'starter-crab-1:1', spawnId: 'starter-crab-1', monsterId: 'crab',
+        islandId: 'starter-island', targetId: 'player-1', action: 'melee', damage: 7, hitDelayMs: 180 },
+      resolved: { damage: 7, blocking: false, sourceX: 22, sourceZ: -4, at: 1180 } };
+    await worker.handle({ id: 2, op: 'restore-world', now: 1180,
+      worldState: { ...(exported.worldState as MonsterWorldStateSnapshot), pendingPlayerHits: [hit] } });
+    const state = defaultPlayerState();
+    const preview = await worker.handle({ id: 3, op: 'player-hit-preview', now: 1180,
+      hitKey: hit.key, characterId: hit.characterId, state });
+    expect(preview).toMatchObject({ ok: true, state: { checkpoint: { hp: state.checkpoint.hp - 7 } } });
+    const again = await worker.handle({ id: 4, op: 'player-hit-preview', now: 1190,
+      hitKey: hit.key, characterId: hit.characterId, state: JSON.parse(JSON.stringify(preview.state)) });
+    expect(again).toMatchObject({ ok: true, replay: true, state: { checkpoint: { hp: state.checkpoint.hp - 7 } } });
+    expect(await worker.handle({ id: 5, op: 'player-hit-preview', now: 1190,
+      hitKey: 'pve:invented', characterId: hit.characterId, state })).toMatchObject({ ok: false });
+    await worker.handle({ id: 6, op: 'player-hit-ack', now: 1190, hitKey: hit.key, characterId: hit.characterId });
+    expect(await worker.handle({ id: 7, op: 'player-hit-preview', now: 1190,
+      hitKey: hit.key, characterId: hit.characterId, state })).toMatchObject({ ok: false });
+  });
+
   it('commits player and owned hits to the same enemy and waits for durable reward acknowledgement', async () => {
     const worker = new CentralWorldWorker(() => 10_000);
     const players = [{ characterId: 'player-1', islandId: 'starter-island', x: 22, y: 0, z: -4, profile }];
