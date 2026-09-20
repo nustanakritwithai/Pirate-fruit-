@@ -229,6 +229,7 @@ export class PlayerCombat {
   private timeSinceDamaged = 99;
   private authoritativeCombatTimer = 0;
   private serverVitalsAuthority = false;
+  private serverSkillInFlight = false;
   private damageReactionSerial = 0;
   private damageReactionAngle = 0;
   /**
@@ -298,6 +299,7 @@ export class PlayerCombat {
     private navalCombat?: Pick<NavalCombat, 'damageNearestEnemyShipFromSkill'>,
     private getCameraYaw?: () => number,
     private requestServerBuff?: (skillId: string) => Promise<boolean>,
+    private requestServerSkill?: (skillId: string) => Promise<boolean>,
   ) {
     this.set = resolveActiveSet(this.loadout);
 
@@ -1004,6 +1006,27 @@ export class PlayerCombat {
       this.touch?.notify('MP ไม่พอ 🔵');
       return;
     }
+    if (this.serverVitalsAuthority) {
+      if (!this.requestServerSkill || this.serverSkillInFlight) return;
+      this.serverSkillInFlight = true;
+      void this.requestServerSkill(skill.id).then((accepted) => {
+        this.serverSkillInFlight = false;
+        if (!accepted) {
+          this.touch?.notify('Server ไม่อนุมัติสกิล');
+          return;
+        }
+        if (this.combatState === 'dead' || !canCastSkill(this.combatState) || this.pendingCast) return;
+        this.startCast(skill, slot, aim);
+      }).catch(() => {
+        this.serverSkillInFlight = false;
+        this.touch?.notify('ส่งสกิลไป Server ไม่สำเร็จ');
+      });
+      return;
+    }
+    this.startCast(skill, slot, aim);
+  }
+
+  private startCast(skill: CastableSkill, slot: number, aim?: SkillAimCommand): void {
     if (!this.serverVitalsAuthority) this.controller.mp -= skill.energyCost;
     this.skillCooldowns.set(skill.id, skill.cooldown);
     this.swing = null;

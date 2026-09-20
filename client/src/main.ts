@@ -1220,6 +1220,7 @@ async function main(): Promise<void> {
     navalCombat,
     () => camera.yaw,
     (skillId) => pirateVitalsEmitter?.buff(skillId) ?? Promise.resolve(false),
+    (skillId) => pirateVitalsEmitter?.skill(skillId) ?? Promise.resolve(false),
   );
   sharedMonsters?.setActorProvider((zone, generation) => monsterManager?.getPresentationActors(zone, generation) ?? []);
   controller.setDevilFruitUser(playerCombat.hasDevilFruit);

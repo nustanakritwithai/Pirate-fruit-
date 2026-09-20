@@ -52,6 +52,11 @@ export class PirateVitalsEmitter {
     return acceptedOutcome(reply.outcome);
   }
 
+  async skill(skillId: string): Promise<boolean> {
+    const reply = await this.executor.request({ type: 'vitalsSkill', contract: 'pirate-vitals/1', skillId, idempotencyKey: key('vitals-skill') });
+    return acceptedOutcome(reply.outcome);
+  }
+
   async respawn(): Promise<boolean> {
     const reply = await this.executor.request({ type: 'vitalsRespawn', contract: 'pirate-vitals/1', idempotencyKey: key('vitals-respawn') });
     return acceptedOutcome(reply.outcome);

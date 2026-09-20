@@ -21,4 +21,11 @@ describe('Pirate vitals emitter', () => {
     expect(executor.request).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: 'vitalsBuff', skillId: 'fruit-buff-1', idempotencyKey: expect.any(String) }));
     expect(executor.request).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: 'vitalsRespawn', idempotencyKey: expect.any(String) }));
   });
+
+  it('emits a canonical skill operation and accepts the server acknowledgement', async () => {
+    const executor = { request: vi.fn(async () => ({ revision: 2, persisted: {}, outcome: { accepted: true } })) } as any;
+    const emitter = new PirateVitalsEmitter(executor);
+    expect(await emitter.skill('fruit-buff-1')).toBe(true);
+    expect(executor.request).toHaveBeenCalledWith(expect.objectContaining({ type: 'vitalsSkill', skillId: 'fruit-buff-1', idempotencyKey: expect.any(String) }));
+  });
 });
