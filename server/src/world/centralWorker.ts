@@ -10,16 +10,19 @@ import { serializePlayerState } from '../player/playerState.js';
 import { applyCentralOperation } from '../player/centralOperationsAdapter.js';
 import { CentralPlayerHits, type PendingPlayerHit } from './centralPlayerHits.js';
 import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js';
+import { advanceCanonicalVitals, deriveCanonicalVitalsSnapshot, type PveVitalsContext } from '../player/vitalsRules.js';
 import { applyCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
 
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; blocking?: boolean; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
-  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'vitals-tick' | 'vitals-snapshot' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
   characterId?: string; operation?: unknown; commandId?: string;
   ownerId?: string; actorId?: string; targetSpawnId?: string; x?: number; z?: number; expectedHp?: number; damage?: number; range?: number; additionalTargets?: PlayerView[];
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
+  flags?: { playerVitalsReady?: boolean; blocking?: boolean; mounted?: boolean; sprinting?: boolean; devilFruitUser?: boolean; combatActive?: boolean; };
+  dtMs?: number; inWater?: boolean;
   worldState?: MonsterWorldStateSnapshot & { pendingPlayerHits?: PendingPlayerHit[] };
   hitKey?: string;
 }
@@ -112,13 +115,20 @@ export class CentralWorldWorker {
       if (request.operation && typeof request.operation === 'object'
         && (request.operation as { type?: unknown }).type === 'trade') {
         return { id: request.id, ok: true, contract: PROTOCOL,
-          ...await applyCentralOriginalTradeOperation(request.state as any, request.operation) };
+          ...await applyCentralOriginalTradeOperation(request.state as any, request.operation, request.commandId) };
       }
       const player = this.currentPlayers.get(request.characterId);
       const position = player ? { islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '',
         x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0 } : null;
       return { id: request.id, ok: true, contract: PROTOCOL,
-        ...applyCentralOperation(request.state, request.operation, request.commandId, position) };
+        ...applyCentralOperation(request.state, request.operation, request.commandId, position, this.vitalsContext(request)) };
+    }
+    if (request.op === 'vitals-tick' || request.op === 'vitals-snapshot') {
+      if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
+      if (request.op === 'vitals-snapshot') return { id: request.id, ok: true, contract: PROTOCOL,
+        snapshot: deriveCanonicalVitalsSnapshot(request.state, Number(request.state.revision ?? 0), request.now) };
+      const advanced = advanceCanonicalVitals(request.state, this.vitalsContext(request));
+      return { id: request.id, ok: true, contract: PROTOCOL, state: advanced.state, changed: advanced.changed };
     }
     if (request.op === 'state-profile') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
@@ -134,7 +144,7 @@ export class CentralWorldWorker {
       this.pendingRewards.delete(request.rewardKey); pending.resolve(request.outcome);
       return { id: request.id, ok: true, contract: PROTOCOL };
     }
-    if (!['step', 'owned-hit', 'reward-ack', 'normalize-state', 'serialize-state', 'state-profile', 'reward-preview'].includes(request.op)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'unsupported-operation' };
+    if (!['step', 'owned-hit', 'reward-ack', 'normalize-state', 'serialize-state', 'state-profile', 'reward-preview', 'vitals-tick', 'vitals-snapshot'].includes(request.op)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'unsupported-operation' };
     if (request.op === 'owned-hit') {
       if (!request.ownerId || !request.actorId || !request.targetSpawnId || !Number.isFinite(request.x) || !Number.isFinite(request.z) || !Number.isFinite(request.damage)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'invalid-owned-hit' };
       const islandId = this.service.islandForSpawn(request.targetSpawnId);
@@ -196,6 +206,15 @@ export class CentralWorldWorker {
 
   private islandForPosition(x: number, z: number): string | null {
     return inferIslandId(x, z);
+  }
+
+  private vitalsContext(request: CentralRequest): PveVitalsContext {
+    const flags = request.flags ?? {};
+    const player = request.characterId ? this.currentPlayers.get(request.characterId) : undefined;
+    return { now: request.now, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
+      blocking: flags.blocking === true, mounted: flags.mounted === true, sprinting: flags.sprinting === true,
+      inWater: request.inWater === true, devilFruitUser: flags.devilFruitUser === true,
+      combatActive: flags.combatActive === true || Boolean(player?.blocking) };
   }
 }
 

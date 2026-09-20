@@ -29,9 +29,24 @@ export interface CentralOriginalTradeResult {
 export async function applyCentralOriginalTradeOperation(
   current: StateWithEconomy,
   input: unknown,
+  commandId?: string,
 ): Promise<CentralOriginalTradeResult> {
   const request = parseTradeRequest(input);
   const hash = tradeRequestHash(request);
+  const operationReceipts = (current as StateWithEconomy & {
+    operationReceipts?: Array<{ key: string; hash: string; outcome: unknown }>;
+  }).operationReceipts;
+  const operationReceipt = commandId
+    ? operationReceipts?.find((receipt) => receipt.key === commandId)
+    : undefined;
+  if (operationReceipt) {
+    const state = structuredClone(current) as StateWithEconomy;
+    return {
+      state,
+      persisted: serializePlayerState(state),
+      outcome: { ...(operationReceipt.outcome as ReturnType<typeof applyCanonicalTradeOperation>['outcome']), idempotentReplay: true },
+    };
+  }
   const prior = current.tradeReceipts?.find((receipt) => receipt.key === request.idempotencyKey);
   if (prior?.hash === hash) {
     const state = structuredClone(current) as StateWithEconomy;
@@ -51,6 +66,15 @@ export async function applyCentralOriginalTradeOperation(
   }
   const state = projected.state as StateWithEconomy;
   state[ECONOMY_DOCUMENT_KEY] = engine.snapshot();
+  if (commandId) {
+    const operationState = state as StateWithEconomy & {
+      operationReceipts?: Array<{ key: string; hash: string; outcome: unknown }>;
+    };
+    operationState.operationReceipts = [
+      ...(operationState.operationReceipts ?? []).filter((receipt) => receipt.key !== commandId),
+      { key: commandId, hash: JSON.stringify(request), outcome: projected.outcome },
+    ].slice(-256);
+  }
   return { state, persisted: serializePlayerState(state), outcome: projected.outcome };
 }
 
