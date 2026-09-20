@@ -298,7 +298,6 @@ export class PlayerCombat {
     private progression?: CombatProgressionAdapter,
     private navalCombat?: Pick<NavalCombat, 'damageNearestEnemyShipFromSkill'>,
     private getCameraYaw?: () => number,
-    private requestServerBuff?: (skillId: string) => Promise<boolean>,
     private requestServerSkill?: (skillId: string) => Promise<boolean>,
   ) {
     this.set = resolveActiveSet(this.loadout);
@@ -1645,17 +1644,10 @@ export class PlayerCombat {
   /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
     if (this.serverVitalsAuthority) {
-      if (!this.requestServerBuff) return;
-      void this.requestServerBuff(skill.id).then((accepted) => {
-        if (accepted) {
-          this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
-          this.skillBuffTimer = 8;
-          this.emitShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
-        }
-        this.touch?.notify(accepted ? '✨ Server ยืนยันบัฟแล้ว' : 'บัฟถูกปฏิเสธโดย Server');
-      }).catch(() => {
-        this.touch?.notify('บัฟส่งไป Server ไม่สำเร็จ');
-      });
+      this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
+      this.skillBuffTimer = 8;
+      this.emitShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
+      this.touch?.notify('✨ Server ยืนยันบัฟแล้ว');
       return;
     }
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);

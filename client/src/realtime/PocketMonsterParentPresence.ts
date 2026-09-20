@@ -507,7 +507,9 @@ export class PocketMonsterParentPresence {
     this.sampleLocalPresence();
     this.publishLocalPresence(false);
     const vitalsInput = this.options.getVitalsInput?.();
-    if (vitalsInput && this.options.vitalsEmitter) void this.options.vitalsEmitter.sendInput(vitalsInput);
+    if (vitalsInput && this.options.vitalsEmitter) {
+      void this.options.vitalsEmitter.sendInput(vitalsInput).catch(() => undefined);
+    }
   }
 
   dispose(): void {

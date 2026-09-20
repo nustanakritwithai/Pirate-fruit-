@@ -92,7 +92,12 @@ export class HotkeyManager implements Updatable {
     const potion = getPotion(id);
     if (!potion) return;
     if (this.isServerVitalsAuthority() && potion.kind === 'hp') {
-      const accepted = this.requestServerPotion ? await this.requestServerPotion(id) : false;
+      let accepted = false;
+      try {
+        accepted = this.requestServerPotion ? await this.requestServerPotion(id) : false;
+      } catch {
+        this.touch?.notify('ส่งคำขอฟื้น HP ไม่สำเร็จ');
+      }
       this.touch?.notify(accepted ? '❤️ ใช้ยาแล้ว — รอ Server ยืนยัน HP' : 'ยาฟื้น HP ต้องยืนยันจาก Server');
       this.cooldown = accepted ? POTION_COOLDOWN : 0;
       return;

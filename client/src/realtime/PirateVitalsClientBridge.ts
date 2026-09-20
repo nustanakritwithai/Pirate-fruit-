@@ -21,8 +21,11 @@ export function applyPirateVitalsSnapshot(
   hooks: {
     onServerDefeat?: () => void;
     requestRespawn?: () => Promise<boolean>;
+    onServerDamage?: (amount: number) => void;
+    onServerGuardBreak?: () => void;
   } = {},
 ): boolean {
+  const previous = authority.snapshot;
   const accepted = authority.apply(value);
   const current = authority.snapshot;
   // A repeated dead snapshot is still useful to retry a failed respawn RPC;
@@ -33,6 +36,8 @@ export function applyPirateVitalsSnapshot(
   combat.setServerVitalsAuthority(true);
   spawn.setServerVitalsAuthority(true);
   if (accepted) combat.applyServerVitals(snapshot);
+  if (accepted && previous && previous.hp > snapshot.hp) hooks.onServerDamage?.(previous.hp - snapshot.hp);
+  if (accepted && previous && !previous.guardBroken && snapshot.guardBroken) hooks.onServerGuardBreak?.();
   const death = serverDeathState.get(authority) ?? {
     defeatPresented: false,
     respawnRequested: false,

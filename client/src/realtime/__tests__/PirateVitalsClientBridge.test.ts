@@ -76,4 +76,22 @@ describe('Pirate vitals client bridge', () => {
     expect(requestRespawn).toHaveBeenCalledTimes(2);
     clock.mockRestore();
   });
+
+  it('reports server damage and guard break without mutating HP locally', () => {
+    const authority = new PirateVitalsAuthority();
+    const controller = { setServerVitalsAuthority: vi.fn(), teleport: vi.fn(), heading: 0 } as any;
+    const combat = { setServerVitalsAuthority: vi.fn(), applyServerVitals: vi.fn() } as any;
+    const spawn = { setServerVitalsAuthority: vi.fn(), activateSpawnPoint: vi.fn() } as any;
+    const onServerDamage = vi.fn();
+    const onServerGuardBreak = vi.fn();
+    const base = {
+      contract: PIRATE_VITALS_CONTRACT, revision: 20, serverTimeMs: 100, hp: 100, maxHp: 100,
+      guard: 100, guardMax: 100, guardBroken: false, hitstunUntil: 0,
+      energy: 100, maxEnergy: 100, mp: 100, maxMp: 100, dead: false,
+    };
+    applyPirateVitalsSnapshot(authority, controller, combat, spawn, base, { onServerDamage, onServerGuardBreak });
+    applyPirateVitalsSnapshot(authority, controller, combat, spawn, { ...base, revision: 21, hp: 70, guard: 0, guardBroken: true }, { onServerDamage, onServerGuardBreak });
+    expect(onServerDamage).toHaveBeenCalledWith(30);
+    expect(onServerGuardBreak).toHaveBeenCalledTimes(1);
+  });
 });

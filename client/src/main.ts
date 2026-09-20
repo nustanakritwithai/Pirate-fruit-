@@ -575,6 +575,15 @@ async function main(): Promise<void> {
         applyPirateVitalsSnapshot(pirateVitalsAuthority, controller, playerCombat, spawnManager, snapshot, {
           onServerDefeat: () => audioBridge?.notifyDeath(`pirate-vitals-death:${snapshot.revision}`),
           requestRespawn: () => pirateVitalsEmitter?.respawn() ?? Promise.resolve(false),
+          onServerDamage: (amount) => {
+            hud.flashDamage();
+            effects.spawnPlayerDamageNumber(controller.position, Math.round(amount));
+            audio.play('combat.hit', {
+              eventId: `pirate-vitals-hit:${snapshot.revision}`,
+              position: controller.position,
+            });
+          },
+          onServerGuardBreak: () => touchControls?.notify('🛡️ โล่แตก!'),
         });
       },
       vitalsEmitter: pirateVitalsEmitter ?? undefined,
@@ -1219,7 +1228,6 @@ async function main(): Promise<void> {
     progression,
     navalCombat,
     () => camera.yaw,
-    (skillId) => pirateVitalsEmitter?.buff(skillId) ?? Promise.resolve(false),
     (skillId) => pirateVitalsEmitter?.skill(skillId) ?? Promise.resolve(false),
   );
   sharedMonsters?.setActorProvider((zone, generation) => monsterManager?.getPresentationActors(zone, generation) ?? []);
