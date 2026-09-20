@@ -221,12 +221,14 @@ export function resolveTrustedSkillResource(state: CanonicalPveState, skillId: s
     : loadout.equippedWeaponKind === 'sword' ? loadout.equippedSwordId
       : loadout.equippedWeaponKind === 'gun' ? loadout.equippedGunId : loadout.equippedFightingStyleId;
   if (!itemId) return null;
-  const aliases = itemId === 'basic-brawl' ? ['basic-brawl', 'combat'] : [itemId];
+  const aliases = itemId === 'basic-brawl' || itemId === 'combat' ? ['basic-brawl', 'combat'] : [itemId];
   if (!aliases.some(prefix => skillId.startsWith(`${prefix}-`))) return null;
   const resource = SKILL_RESOURCE_CATALOG[skillId];
   if (!resource) return null;
   const mastery = aliases.map(alias => state.progression.mastery[alias]).find(Boolean);
-  if (!mastery || mastery.level < (SKILL_MASTERY_REQUIRED[skillId] ?? 0)) return null;
+  const masteryLevel = mastery?.level ?? 1;
+  if (masteryLevel < (SKILL_MASTERY_REQUIRED[skillId] ?? 0)) return null;
+  if ((skillId.includes('-v2-') || skillId.includes('-transformed-')) && loadout.activeSet === 'fruit' && !loadout.fruitAwakened) return null;
   return { skillId, mpCost: resource.mpCost, cooldownMs: resource.cooldownMs };
 }
 
@@ -234,11 +236,12 @@ export function resolveTrustedBuffProfile(state: CanonicalPveState, skillId: str
   const fruit = state.inventory.loadout.equippedFruitId;
   if (state.inventory.loadout.activeSet !== 'fruit' || !fruit) return null;
   const resource = resolveTrustedSkillResource(state, skillId);
-  const profile = ({
-    'phoenix-moveset-v1-x': { mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000 },
-    'gas-moveset-z': { mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000 },
-  } as const)[skillId as 'phoenix-moveset-v1-x' | 'gas-moveset-z'];
-  return profile && resource ? { skillId, energyCost: resource.mpCost, cooldownMs: resource.cooldownMs, ...profile } : null;
+  const catalog = resource ? SKILL_RESOURCE_CATALOG[skillId] : undefined;
+  if (!resource || catalog?.archetype !== 'buff') return null;
+  const ultimate = catalog.slot === 'V';
+  return { skillId, energyCost: resource.mpCost, cooldownMs: resource.cooldownMs,
+    mpRestore: ultimate ? 30 : 18, healRatio: ultimate ? 0.22 : 0.12,
+    multiplier: ultimate ? 1.4 : 1.25, durationMs: 8_000 };
 }
 
 function safeSpawnForIsland(islandId: string): { id: string; islandId: string; x: number; y: number; z: number; heading: number } {
