@@ -17,7 +17,7 @@ export function getMasteryExpRequired(level: number): number {
 export function applyMasteryExp(
   entry: { itemId: string; level: number; exp: number },
   amount: number,
-  maxLevel = MASTERY_MAX_LEVEL,
+  maxLevel: number = MASTERY_MAX_LEVEL,
 ): MasteryProgressResult {
   const previousLevel = entry.level;
   if (!Number.isFinite(amount) || amount <= 0 || entry.level >= maxLevel) {

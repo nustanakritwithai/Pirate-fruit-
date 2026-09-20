@@ -31,7 +31,7 @@ describe('Pocket parent operation bridge', () => {
 
   it('discovers the parent bridge before any HTTP feature flag is consulted', async () => {
     const parent = { request: async () => ({ revision: 7, persisted: { online: true }, outcome: { ok: true } }) };
-    const executor = getPocketOperationExecutor({ POCKETMONSTER_PIRATE_OPERATIONS: parent } as Window);
+    const executor = getPocketOperationExecutor({ POCKETMONSTER_PIRATE_OPERATIONS: parent } as unknown as Window);
     expect(executor).not.toBeNull();
     await expect(executor!.request({ type: 'questState' })).resolves.toEqual({
       revision: 7, persisted: { online: true }, outcome: { ok: true },
