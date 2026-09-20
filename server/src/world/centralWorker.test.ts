@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CentralWorldWorker } from './centralWorker.js';
+import type { MonsterWorldStateSnapshot } from './monsterWorldService.js';
 
 const profile = {
   level: 1,
@@ -34,6 +35,16 @@ describe('CentralWorldWorker pure adapter', () => {
     expect(rewards[0].characterId).toBe('player-1');
     const messages = (value: Record<string, unknown>) => (value.deliveries as { message: { type: string; seq: number } }[]).map(delivery => delivery.message);
     expect(messages(pending).some(message => message.type === 'world-monster-dead')).toBe(false);
+    // จำลอง server ดับหลังศัตรูตายแต่ก่อนบันทึก/ack รางวัล ต้องคืน receipt เดิม
+    const exported = await worker.handle({ id: 61, op: 'export-world', now: 10_300 });
+    const restarted = new CentralWorldWorker(() => 10_300);
+    await restarted.handle({ id: 62, op: 'restore-world', now: 10_300,
+      worldState: exported.worldState as MonsterWorldStateSnapshot });
+    const recovered = await restarted.handle({ id: 63, op: 'step', now: 10_300, players });
+    expect(hp(recovered)).toBe(0);
+    expect(recovered.pendingRewards).toMatchObject([{ key: rewards[0].key, characterId: 'player-1' }]);
+    expect(await restarted.handle({ id: 64, op: 'restore-world', now: 10_300,
+      worldState: exported.worldState as MonsterWorldStateSnapshot })).toMatchObject({ ok: false, error: 'world-state-restore-too-late' });
     await worker.handle({ id: 7, op: 'reward-ack', now: 10_300, rewardKey: rewards[0].key,
       outcome: { rewards: [{ monsterId: 'crab', playerExp: 1, coins: 1, masteryExp: 0 }], coinsTotal: 1 } });
     const acknowledged = await worker.handle({ id: 8, op: 'step', now: 10_400, players });
