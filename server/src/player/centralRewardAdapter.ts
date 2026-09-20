@@ -1,7 +1,7 @@
 import {
   MONSTER_REWARD_TABLE, MONSTER_PROTOCOL_SCHEMA_VERSION, MONSTER_KILLS_MAX_COUNT,
   MONSTER_KILLS_MAX_ENTRIES, STAT_POINTS_PER_LEVEL, computeEnemyReward, applyExpToProgress,
-  QUESTS_BY_ID,
+  QUESTS_BY_ID, applyMasteryExp as applySharedMasteryExp,
   type MonsterKillEntry, type MonsterKillsResponse,
 } from '@pirate-fruit/shared';
 import type { CanonicalMasteryEntry, CanonicalPlayerState } from './playerState.js';
@@ -29,15 +29,7 @@ export function applyCanonicalMasteryExp(state: CanonicalPlayerState, amount: nu
         ? 'gun'
         : 'style';
   const entry: CanonicalMasteryEntry = state.progression.mastery[itemId] ?? { itemId, category, level: 1, exp: 0 };
-  entry.exp += Math.floor(amount);
-  while (entry.level < 600) {
-    const required = Math.floor(40 + entry.level * 18 + entry.level * entry.level * 1.6);
-    if (entry.exp >= required) {
-      entry.exp -= required;
-      entry.level += 1;
-    } else break;
-  }
-  if (entry.level >= 600) entry.exp = 0;
+  applySharedMasteryExp(entry, amount);
   state.progression.mastery[itemId] = entry;
 }
 
