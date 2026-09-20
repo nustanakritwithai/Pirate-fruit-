@@ -26,7 +26,7 @@ describe('central boat adapter', () => {
   });
 
   it('ปฏิเสธซื้อซ้ำ เงินไม่พอ และการอัปเกรดเกินเพดานโดยไม่กลาย state', () => {
-    const purchased = applyCanonicalBoatOperation(stateWithCoins(500), { type: 'boatPurchase', boatId: 'swift-sloop' });
+    const purchased = applyCanonicalBoatOperation(stateWithCoins(5_000), { type: 'boatPurchase', boatId: 'swift-sloop' });
     expect(() => applyCanonicalBoatOperation(purchased.state, { type: 'boatPurchase', boatId: 'swift-sloop' })).toThrow('BOAT_ALREADY_OWNED');
     expect(() => applyCanonicalBoatOperation(stateWithCoins(499), { type: 'boatPurchase', boatId: 'swift-sloop' })).toThrow('INSUFFICIENT_COINS');
     let current = purchased.state;
