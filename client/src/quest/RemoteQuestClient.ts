@@ -13,6 +13,7 @@ import {
   type QuestStateResponse,
 } from '@pirate-fruit/shared';
 import { getRemoteSession } from '../session/RemoteSession';
+import { getPocketOperationExecutor, requestPocketOperation, type PocketOperationExecutor } from '../persistence/PocketOperationExecutor';
 
 export type QuestFetch = (
   input: string | URL | Request,
@@ -42,6 +43,10 @@ function hasSchema(value: unknown): value is { ok: true; schemaVersion: number }
     && typeof value === 'object'
     && (value as { ok?: unknown }).ok === true
     && (value as { schemaVersion?: unknown }).schemaVersion === QUEST_PROTOCOL_SCHEMA_VERSION;
+}
+
+function hasQuestSchema<T extends { ok: true; schemaVersion: typeof QUEST_PROTOCOL_SCHEMA_VERSION }>(value: unknown): value is T {
+  return hasSchema(value);
 }
 
 export function newQuestClaimKey(): string {
@@ -132,11 +137,30 @@ export function createRemoteQuestExecutor(
   };
 }
 
+export function createRemoteQuestOperationExecutor(executor: PocketOperationExecutor): RemoteQuestExecutor {
+  return {
+    state: () => requestPocketOperation(executor, { type: 'questState' }, hasQuestSchema<QuestStateResponse>),
+    accept: (questId, replaceActive) => requestPocketOperation(executor,
+      { type: 'questAccept', questId, replaceActive }, hasQuestSchema<QuestAcceptResponse>),
+    abandon: async () => {
+      const outcome = await requestPocketOperation(executor, { type: 'questAbandon' },
+        (value): value is { ok: true } => !!value && typeof value === 'object' && (value as { ok?: unknown }).ok === true);
+      void outcome;
+    },
+    // Progress is a server readback operation; the client never increments local quest state.
+    progress: events => requestPocketOperation(executor, { type: 'questProgress', events }, hasQuestSchema<QuestProgressResponse>),
+    claim: (questId, idempotencyKey) => requestPocketOperation(executor,
+      { type: 'questClaim', questId, idempotencyKey }, hasQuestSchema<QuestClaimResponse>),
+  };
+}
+
 /**
  * ต่อ quest authority เมื่อ flag เปิด + session online เท่านั้น (คืน null = โหมด local เดิม)
  * ค่าเริ่มต้น production ยังปิด — เปิดโดยตั้ง VITE_ENABLE_QUEST_SERVER=true ตอน build
  */
 export function initializeRemoteQuest(): RemoteQuestExecutor | null {
+  const pocketExecutor = getPocketOperationExecutor();
+  if (pocketExecutor) return createRemoteQuestOperationExecutor(pocketExecutor);
   const flag = import.meta.env.VITE_ENABLE_QUEST_SERVER;
   if (flag !== 'true' && flag !== '1') return null;
   const session = getRemoteSession();
