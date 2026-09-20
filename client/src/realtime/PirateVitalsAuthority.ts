@@ -41,7 +41,7 @@ export function isPirateVitalsSnapshot(value: unknown): value is PirateVitalsSna
     const value = respawn as Record<string, unknown>;
     if (typeof value.spawnId !== 'string' || value.spawnId.length === 0 || typeof value.islandId !== 'string'
       || value.islandId.length === 0 || !Number.isFinite(value.x) || !Number.isFinite(value.y) || !Number.isFinite(value.z)
-      || !Number.isFinite(value.heading) || !Number.isSafeInteger(value.atRevision)
+      || !Number.isFinite(value.heading) || typeof value.atRevision !== 'number' || !Number.isSafeInteger(value.atRevision)
       || value.atRevision < 1 || value.atRevision > snapshot.revision) return false;
   }
   return true;

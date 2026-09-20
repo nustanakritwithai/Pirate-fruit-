@@ -84,3 +84,13 @@ describe('authoritative combat profile', () => {
       .toBeCloseTo(statDamageMultiplier(profile.stats, 'sword'));
   });
 });
+
+// โปรไฟล์อาจ cache แต่เวลา buff ต้องหมดตามนาฬิกา server ขณะ hit จริง
+it('expires a canonical damage buff even when the profile remains cached', async () => {
+  const pool = await poolWithProfile();
+  const profile = await new PostgresCombatProfileProvider(pool, () => 1000, 0).profile('char-a');
+  const baseline = combatDamageMultiplier(profile, 'skill', 'fruit', 1000);
+  profile.timedDamageBuff = { multiplier: 1.25, until: 9000 };
+  expect(combatDamageMultiplier(profile, 'skill', 'fruit', 8999)).toBeCloseTo(baseline * 1.25);
+  expect(combatDamageMultiplier(profile, 'skill', 'fruit', 9000)).toBeCloseTo(baseline);
+});

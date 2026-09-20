@@ -682,7 +682,7 @@ export class RealtimeHub {
       targetPos,
       kind,
       suppliedIntentId,
-      combatDamageMultiplier(attackerProfile, kind, requestedCategory),
+      combatDamageMultiplier(attackerProfile, kind, requestedCategory, this.now()),
       attackerProfile.maxHp,
       targetProfile.maxHp,
     );
@@ -966,7 +966,7 @@ export class RealtimeHub {
           presence,
           spawnIds,
           kind,
-          combatDamageMultiplier(profile, kind, requestedCategory),
+          combatDamageMultiplier(profile, kind, requestedCategory, this.now()),
         );
       }).catch((error) => {
         this.logger.warn(

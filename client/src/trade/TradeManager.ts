@@ -118,6 +118,11 @@ export class TradeManager {
     return this.transactRemote('sell', islandId, commodityId, quantity);
   }
 
+  async quoteAsync(action: 'buy' | 'sell', islandId: IslandId, commodityId: string, quantity: number) {
+    if (!this.remote?.quote) return null;
+    return this.remote.quote({ action, islandId, commodityId, quantity: Math.max(1, Math.floor(quantity)) });
+  }
+
   /**
    * ส่ง intent ให้ Server ตัดสิน แล้ว sync ผลจริงกลับ:
    * - เหรียญ: reconcile ให้เท่ากับยอด canonical ที่ Server ตอบเสมอ รวม idempotent replay

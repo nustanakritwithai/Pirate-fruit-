@@ -3,10 +3,12 @@ import type { TradeExecuteResponse } from '@pirate-fruit/shared';
 import { TradeManager, type TradeWallet } from '../TradeManager';
 import {
   createRemoteTradeExecutor,
+  createRemoteTradeOperationExecutor,
   RemoteTradeError,
   type RemoteTradeExecutor,
   type TradeFetch,
 } from '../RemoteTradeClient';
+import type { PocketOperationExecutor } from '../../persistence/PocketOperationExecutor';
 import type { GameStorage } from '../../persistence/GameStorage';
 
 class MemoryStorage implements GameStorage {
@@ -49,6 +51,23 @@ function response(overrides: Partial<TradeExecuteResponse> = {}): TradeExecuteRe
 }
 
 describe('S8 remote trade (client)', () => {
+  it('requests a read-only central quote through the parent operation bridge', async () => {
+    const request = vi.fn(async (operation: Record<string, unknown>) => ({
+      revision: 7,
+      persisted: null,
+      outcome: {
+        quote: { unitPrice: 42, tradableStock: 8, feeRate: 0.05, islandId: 'pirate-fruit', commodityId: 'fresh-fish' },
+        marketRevision: 12,
+      },
+    }));
+    const executor = createRemoteTradeOperationExecutor({ request } as PocketOperationExecutor);
+    await expect(executor.quote?.({ action: 'buy', islandId: 'pirate-fruit', commodityId: 'fresh-fish', quantity: 2 }))
+      .resolves.toMatchObject({ unitPrice: 42, marketRevision: 12 });
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'tradeQuote', schemaVersion: 1, action: 'buy', quantity: 2,
+    }));
+  });
+
   it('applies the server outcome: coin delta, canonical cargo, listener event', async () => {
     const wallet = fakeWallet(1_000);
     const executor: RemoteTradeExecutor = { execute: vi.fn(async () => response()) };

@@ -7,7 +7,7 @@ import {
   type CanonicalTradeState,
   type TrustedTradeQuote,
 } from './centralTradeAdapter.js';
-import { parseTradeRequest, tradeRequestHash } from './tradeRules.js';
+import { parseTradeRequest, parseTradeQuoteRequest, tradeRequestHash } from './tradeRules.js';
 
 export interface CentralMarketSnapshot {
   tick: number;
@@ -23,6 +23,25 @@ export interface CentralOriginalTradeResult {
   persisted: ReturnType<typeof serializePlayerState>;
   outcome: ReturnType<typeof applyCanonicalTradeOperation>['outcome'];
   nextMarket: CentralMarketSnapshot;
+}
+
+export interface CentralOriginalTradeQuoteResult {
+  quote: TrustedTradeQuote;
+  marketRevision: number;
+}
+
+export async function quoteCentralOriginalTradeOperation(
+  input: unknown,
+  market: CentralMarketSnapshot | null | undefined,
+): Promise<CentralOriginalTradeQuoteResult> {
+  if (!market || !Number.isSafeInteger(market.revision) || market.revision < 0
+    || !market.document || typeof market.document !== 'object') throw new Error('MARKET_STATE_REQUIRED');
+  const request = parseTradeQuoteRequest(input);
+  const engine = await createEconomyEngine(market.document);
+  return {
+    quote: trustedQuote(engine, request.action, request.islandId, request.commodityId, request.quantity),
+    marketRevision: market.revision,
+  };
 }
 
 /**

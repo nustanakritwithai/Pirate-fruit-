@@ -11,7 +11,7 @@ import { applyCentralOperation } from '../player/centralOperationsAdapter.js';
 import { CentralPlayerHits, type PendingPlayerHit } from './centralPlayerHits.js';
 import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js';
 import { advanceCanonicalVitals, deriveCanonicalVitalsSnapshot, type PveVitalsContext } from '../player/vitalsRules.js';
-import { applyCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
+import { applyCentralOriginalTradeOperation, quoteCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
 
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; dead?: boolean; blocking?: boolean; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
@@ -119,6 +119,11 @@ export class CentralWorldWorker {
         return { id: request.id, ok: true, contract: PROTOCOL,
           ...await applyCentralOriginalTradeOperation(request.state as any, request.operation,
             request.market, request.commandId) };
+      }
+      if (request.operation && typeof request.operation === 'object'
+        && (request.operation as { type?: unknown }).type === 'tradeQuote') {
+        return { id: request.id, ok: true, contract: PROTOCOL,
+          ...await quoteCentralOriginalTradeOperation(request.operation, request.market) };
       }
       const player = this.currentPlayers.get(request.characterId);
       const position = player ? { islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '',
