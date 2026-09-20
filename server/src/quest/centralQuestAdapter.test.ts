@@ -30,7 +30,8 @@ describe('CentralQuestAdapter', () => {
     expect(claimed.state.progression.coins).toBe(60);
     expect(claimed.state.progression.activeQuestId).toBeNull();
     expect(claimed.state.progression.completedQuestIds).toContain('starter-crabs');
-    expect(claimed.state.progression.mastery.combat?.exp).toBe(15);
+    expect(claimed.state.progression.mastery['basic-brawl']?.exp).toBe(15);
+    expect(claimed.state.progression.mastery.combat).toBeUndefined();
   });
 
   it('reports a completed active quest and includes protocol versions', () => {
