@@ -165,7 +165,7 @@ function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope
   for (const candidate of value.messages) {
     if (!isRecord(candidate)
       || typeof candidate.type !== 'string'
-      || typeof candidate.seq !== 'number' || !Number.isSafeInteger(candidate.seq) || candidate.seq < 0) return undefined;
+      || typeof candidate.seq !== 'number' || !Number.isSafeInteger(candidate.seq) || candidate.seq < 1) return undefined;
     if (candidate.type === 'world-monster-snapshot') {
       if (typeof candidate.islandId !== 'string' || !Array.isArray(candidate.monsters)) return undefined;
     } else if (candidate.type === 'world-monster-delta') {

@@ -126,6 +126,27 @@ export function dispatchWorldMonsterMessage(
   }
 }
 
+/** Deduplicate coalesced parent deliveries by the original per-message sequence. */
+export function dedupeWorldMonsterMessages(
+  messages: readonly RealtimeServerMessage[],
+  seen: Set<number>,
+  order: number[],
+  maxEntries = 512,
+): RealtimeServerMessage[] {
+  const fresh: RealtimeServerMessage[] = [];
+  for (const message of messages) {
+    if (seen.has(message.seq)) continue;
+    seen.add(message.seq);
+    order.push(message.seq);
+    fresh.push(message);
+  }
+  while (order.length > maxEntries) {
+    const expired = order.shift();
+    if (expired !== undefined) seen.delete(expired);
+  }
+  return fresh;
+}
+
 export interface RealtimeClientOptions {
   webSocketFactory?: (url: string) => RealtimeSocketLike;
   /** ฐาน backoff (มิลลิวินาที) — เทสต์ตั้งต่ำได้ */

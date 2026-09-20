@@ -56,7 +56,7 @@ import { RemoteQuestSync } from './quest/RemoteQuestSync';
 import { initializeRemoteMonster } from './monster/RemoteMonsterClient';
 import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
-import { dispatchWorldMonsterMessage, initializeRealtime } from './realtime/RealtimeClient';
+import { dedupeWorldMonsterMessages, dispatchWorldMonsterMessage, initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
 import { ScopedVisualEffects } from './realtime/ScopedVisualEffects';
 import { shouldAcknowledgeDirectVisual, visualForDirectRealtime } from './realtime/VisualTransport';
@@ -472,6 +472,8 @@ async function main(): Promise<void> {
   let parentSelfCharacterId: string | null = null;
   let pirateOriginalWorldGeneration = 0;
   let pirateOriginalWorldSequence = 0;
+  const pirateOriginalWorldMessageSeen = new Set<number>();
+  const pirateOriginalWorldMessageOrder: number[] = [];
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -544,10 +546,19 @@ async function main(): Promise<void> {
         if (envelope.generation < pirateOriginalWorldGeneration
           || (envelope.generation === pirateOriginalWorldGeneration
             && envelope.sequence <= pirateOriginalWorldSequence)) return;
+        const generationChanged = envelope.generation !== pirateOriginalWorldGeneration;
         parentSelfCharacterId = envelope.viewerId;
+        if (generationChanged) {
+          pirateOriginalWorldMessageSeen.clear();
+          pirateOriginalWorldMessageOrder.length = 0;
+        }
         pirateOriginalWorldGeneration = envelope.generation;
         pirateOriginalWorldSequence = envelope.sequence;
-        for (const message of envelope.messages) dispatchWorldMonsterMessage(message, originalWorldHandlers);
+        for (const message of dedupeWorldMonsterMessages(
+          envelope.messages,
+          pirateOriginalWorldMessageSeen,
+          pirateOriginalWorldMessageOrder,
+        )) dispatchWorldMonsterMessage(message, originalWorldHandlers);
       },
       onPresenceReset: () => {
         centralAuthorityRuntime?.reset();
@@ -555,6 +566,8 @@ async function main(): Promise<void> {
         pirateOriginalWorldReady = false;
         pirateOriginalWorldGeneration = 0;
         pirateOriginalWorldSequence = 0;
+        pirateOriginalWorldMessageSeen.clear();
+        pirateOriginalWorldMessageOrder.length = 0;
         sharedMonsters?.resetSession(true);
         ownedMonsterRenderer.reset();
       },

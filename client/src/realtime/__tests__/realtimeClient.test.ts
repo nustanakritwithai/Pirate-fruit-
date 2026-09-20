@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RealtimeClient, type RealtimePresenceSnapshot, type RealtimeSocketLike } from '../RealtimeClient';
+import { dedupeWorldMonsterMessages, RealtimeClient, type RealtimePresenceSnapshot, type RealtimeSocketLike } from '../RealtimeClient';
+import type { RealtimeServerMessage } from '@pirate-fruit/shared';
 
 class FakeSocket implements RealtimeSocketLike {
   readyState = 1;
@@ -27,6 +28,20 @@ class FakeSocket implements RealtimeSocketLike {
     });
   }
 }
+
+describe('original world message deduplication', () => {
+  it('drops repeated dead/attack messages and resets by generation-owned state', () => {
+    const seen = new Set<number>();
+    const order: number[] = [];
+    const dead = { type: 'world-monster-dead', seq: 11, spawnId: 'monster:1' } as unknown as RealtimeServerMessage;
+    const attack = { type: 'world-monster-attack', seq: 12, attack: {} } as unknown as RealtimeServerMessage;
+    expect(dedupeWorldMonsterMessages([dead, dead, attack], seen, order).map((message) => message.seq)).toEqual([11, 12]);
+    expect(dedupeWorldMonsterMessages([dead], seen, order)).toEqual([]);
+    seen.clear();
+    order.length = 0;
+    expect(dedupeWorldMonsterMessages([dead], seen, order)).toEqual([dead]);
+  });
+});
 
 function harness() {
   const sockets: FakeSocket[] = [];
