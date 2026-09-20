@@ -39,6 +39,7 @@ export interface MonsterWorldServiceOptions {
 
 export interface ExternalMonsterHit {
   characterId: string;
+  creditCharacterId?: string;
   islandId: string;
   x: number;
   z: number;
@@ -128,7 +129,7 @@ export class MonsterWorldService implements WorldMonsterBridge {
       z,
       kind,
       damageMultiplier,
-    ));
+    ), characterId);
   }
 
   islandForSpawn(spawnId: string): string | null {
@@ -151,11 +152,11 @@ export class MonsterWorldService implements WorldMonsterBridge {
       this.now(), input.spawnId, input.characterId, input.x, input.z,
       input.kind ?? 'skill', 1, input.damage,
     );
-    this.commitHit(result);
+    this.commitHit(result, input.creditCharacterId ?? input.characterId);
     return result;
   }
 
-  private commitHit(result: ReturnType<MonsterSimulation['applyHit']>): void {
+  private commitHit(result: ReturnType<MonsterSimulation['applyHit']>, rewardCharacterId?: string): void {
     if (!result) return;
     this.hub.broadcastWorldMonster(result.islandId, {
       type: 'world-monster-delta',
@@ -164,13 +165,13 @@ export class MonsterWorldService implements WorldMonsterBridge {
       updates: [result.delta],
     });
     if (result.dead) {
-      const idempotencyKey = `world-kill:${spawnId}:${this.now()}`;
+      const idempotencyKey = `world-kill:${result.spawnId}:${this.now()}`;
       if (!this.options.rewards) {
         this.hub.broadcastWorldMonster(result.islandId, {
           type: 'world-monster-dead',
           seq: 0,
-          spawnId,
-          byId: characterId,
+          spawnId: result.spawnId,
+          byId: rewardCharacterId ?? 'unknown',
         });
         return;
       }
@@ -178,9 +179,9 @@ export class MonsterWorldService implements WorldMonsterBridge {
       // A transient database outage can no longer turn a confirmed kill into a
       // permanently reward-less death while this process remains alive.
       this.pendingRewards.set(idempotencyKey, {
-        characterId,
+        characterId: rewardCharacterId ?? 'unknown',
         islandId: result.islandId,
-        spawnId,
+        spawnId: result.spawnId,
         monsterId: result.monsterId,
         idempotencyKey,
         retryAt: this.now(),

@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import { inferIslandId, type RealtimeServerMessage } from '@pirate-fruit/shared';
+import { inferIslandId, type MonsterKillsRequest, type RealtimeServerMessage } from '@pirate-fruit/shared';
 import { RealtimeHub, type RealtimeConnection, type RealtimeSocket } from '../realtime/realtimeHub.js';
 import type { AuthoritativeCombatProfile, CombatProfileProvider } from '../realtime/combatProfile.js';
 import { MonsterWorldService } from './monsterWorldService.js';
@@ -34,7 +34,8 @@ export class CentralWorldWorker {
   private readonly service: MonsterWorldService;
   private currentPlayers = new Map<string, CentralPlayer>();
   private clockNow: number;
-  private readonly pendingRewards = new Map<string, { characterId: string; body: any; resolve: (value: any) => void; reject: (error: Error) => void; }>();
+  private readonly pendingRewards = new Map<string, { characterId: string; body: MonsterKillsRequest; resolve: (value: any) => void; reject: (error: Error) => void; }>();
+  private readonly deliverySeq = new Map<string, number>();
 
   constructor(now: () => number = () => Date.now()) {
     this.clockNow = now();
@@ -46,7 +47,7 @@ export class CentralWorldWorker {
     } };
     this.hub = new RealtimeHub(undefined, clock, 200, true, false, this.profiles);
     this.service = new MonsterWorldService(this.hub, { now: clock, rewards: {
-      grantKills: (characterId, body) => new Promise((resolve, reject) => {
+      grantKills: (characterId, body: MonsterKillsRequest) => new Promise((resolve, reject) => {
         this.pendingRewards.set(body.idempotencyKey, { characterId, body, resolve, reject });
       }),
     } });
@@ -80,7 +81,7 @@ export class CentralWorldWorker {
     }
     if (request.op === 'reward-preview') {
       if (!request.state || !request.rewardKey || !request.kills) return { id: request.id, ok: false, contract: PROTOCOL, error: 'reward-input-required' };
-      return { id: request.id, ok: true, contract: PROTOCOL, ...prepareCanonicalReward(request.state, request.rewardKey, request.kills) };
+      return { id: request.id, ok: true, contract: PROTOCOL, ...prepareCanonicalReward(request.state, request.rewardKey, request.kills as any) };
     }
     if (request.op === 'reward-ack') {
       if (!request.rewardKey || !request.outcome) return { id: request.id, ok: false, contract: PROTOCOL, error: 'invalid-reward-ack' };
@@ -93,7 +94,7 @@ export class CentralWorldWorker {
       if (!request.ownerId || !request.actorId || !request.targetSpawnId || !Number.isFinite(request.x) || !Number.isFinite(request.z) || !Number.isFinite(request.damage)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'invalid-owned-hit' };
       const islandId = this.service.islandForSpawn(request.targetSpawnId);
       if (!islandId) return { id: request.id, ok: false, contract: PROTOCOL, error: 'unknown-spawn' };
-      const result = this.service.applyExternalHit({ characterId: request.ownerId, islandId, x: request.x!, z: request.z!, spawnId: request.targetSpawnId, damage: request.damage!, range: request.range, expectedHp: request.expectedHp });
+      const result = this.service.applyExternalHit({ characterId: request.actorId, creditCharacterId: request.ownerId, islandId, x: request.x!, z: request.z!, spawnId: request.targetSpawnId, damage: request.damage!, range: request.range, expectedHp: request.expectedHp });
       return { id: request.id, ok: !!result, contract: PROTOCOL, result: result ? { hp: result.hp, damage: result.damage, dead: result.dead, spawnId: result.spawnId } : null };
     }
     this.clockNow = request.now;
@@ -121,7 +122,10 @@ export class CentralWorldWorker {
     const snapshots = islands.map((islandId) => ({ islandId, monsters: this.service.snapshotMessageForIsland(islandId).monsters }));
     const deliveries: { characterId: string; message: RealtimeServerMessage }[] = [];
     const worldTypes = new Set(['world-monster-snapshot', 'world-monster-delta', 'world-monster-respawn', 'world-monster-attack', 'world-monster-dead']);
-    for (const [characterId, socket] of this.sockets) for (const message of socket.messages.splice(0)) if (worldTypes.has(message.type)) deliveries.push({ characterId, message });
+    for (const [characterId, socket] of this.sockets) for (const message of socket.messages.splice(0)) if (worldTypes.has(message.type)) {
+      const seq = (this.deliverySeq.get(characterId) ?? 0) + 1; this.deliverySeq.set(characterId, seq);
+      deliveries.push({ characterId, message: { ...message, seq } });
+    }
     return { id: request.id, ok: true, contract: PROTOCOL, snapshots, deliveries, pendingRewards: [...this.pendingRewards.entries()].map(([key, pending]) => ({ key, characterId: pending.characterId, body: pending.body })) };
   }
 
@@ -133,8 +137,9 @@ export class CentralWorldWorker {
 export async function runCentralWorker(input = process.stdin, output = process.stdout): Promise<void> {
   const worker = new CentralWorldWorker(); const lines = createInterface({ input });
   for await (const line of lines) {
-    try { output.write(`${JSON.stringify(await worker.handle(JSON.parse(line)))}\n`); }
-    catch (error) { output.write(`${JSON.stringify({ id: 'unknown', ok: false, contract: PROTOCOL, error: error instanceof Error ? error.message : 'worker-error' })}\n`); }
+    let parsed: CentralRequest | null = null;
+    try { parsed = JSON.parse(line) as CentralRequest; output.write(`${JSON.stringify(await worker.handle(parsed))}\n`); }
+    catch (error) { output.write(`${JSON.stringify({ id: parsed?.id ?? 'unknown', ok: false, contract: PROTOCOL, error: error instanceof Error ? error.message : 'worker-error' })}\n`); }
   }
 }
 
