@@ -30,6 +30,17 @@ export interface CentralOriginalTradeQuoteResult {
   marketRevision: number;
 }
 
+export async function advanceCentralOriginalMarket(
+  market: CentralMarketSnapshot | null | undefined,
+): Promise<{ nextMarket: CentralMarketSnapshot }> {
+  if (!market || !Number.isSafeInteger(market.revision) || market.revision < 0
+    || !market.document || typeof market.document !== 'object') throw new Error('MARKET_STATE_REQUIRED');
+  const engine = await loadBundledEconomyEngine(market.document);
+  if (engine.advanceCooperatively) await engine.advanceCooperatively();
+  else engine.advance();
+  return { nextMarket: { ...engine.snapshot(), revision: market.revision + 1 } };
+}
+
 export async function quoteCentralOriginalTradeOperation(
   input: unknown,
   market: CentralMarketSnapshot | null | undefined,

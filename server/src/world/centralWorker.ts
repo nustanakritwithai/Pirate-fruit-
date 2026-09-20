@@ -11,12 +11,12 @@ import { applyCentralOperation } from '../player/centralOperationsAdapter.js';
 import { CentralPlayerHits, type PendingPlayerHit } from './centralPlayerHits.js';
 import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js';
 import { advanceCanonicalVitals, deriveCanonicalVitalsSnapshot, type PveVitalsContext } from '../player/vitalsRules.js';
-import { applyCentralOriginalTradeOperation, quoteCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
+import { advanceCentralOriginalMarket, applyCentralOriginalTradeOperation, quoteCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
 
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; dead?: boolean; blocking?: boolean; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
-  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'vitals-tick' | 'vitals-snapshot' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'economy-tick' | 'vitals-tick' | 'vitals-snapshot' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
   characterId?: string; operation?: unknown; commandId?: string;
   ownerId?: string; actorId?: string; targetSpawnId?: string; x?: number; z?: number; expectedHp?: number; damage?: number; range?: number; additionalTargets?: PlayerView[];
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
@@ -130,6 +130,10 @@ export class CentralWorldWorker {
         x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0 } : null;
       return { id: request.id, ok: true, contract: PROTOCOL,
         ...applyCentralOperation(request.state, request.operation, request.commandId, position, this.vitalsContext(request, request.state)) };
+    }
+    if (request.op === 'economy-tick') {
+      return { id: request.id, ok: true, contract: PROTOCOL,
+        ...await advanceCentralOriginalMarket(request.market) };
     }
     if (request.op === 'vitals-tick' || request.op === 'vitals-snapshot') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
