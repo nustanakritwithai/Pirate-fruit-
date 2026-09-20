@@ -35,7 +35,7 @@ export class CentralWorldWorker {
   private readonly service: MonsterWorldService;
   private currentPlayers = new Map<string, CentralPlayer>();
   private clockNow: number;
-  private worldRestored = false;
+  private hasStepped = false;
   private readonly pendingRewards = new Map<string, { characterId: string; body: MonsterKillsRequest; resolve: (value: any) => void; reject: (error: Error) => void; }>();
   private readonly deliverySeq = new Map<string, number>();
 
@@ -73,7 +73,8 @@ export class CentralWorldWorker {
     if (request.op === 'export-world') return { id: request.id, ok: true, contract: PROTOCOL, worldState: this.service.exportWorldState() };
     if (request.op === 'restore-world') {
       if (!request.worldState) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-required' };
-      this.service.restoreWorldState(request.worldState); this.worldRestored = true;
+      if (this.hasStepped) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-restore-too-late' };
+      this.service.restoreWorldState(request.worldState);
       return { id: request.id, ok: true, contract: PROTOCOL };
     }
     if (request.op === 'normalize-state') {
@@ -106,7 +107,6 @@ export class CentralWorldWorker {
       const result = this.service.applyExternalHit({ characterId: request.actorId, creditCharacterId: request.ownerId, islandId, x: request.x!, z: request.z!, spawnId: request.targetSpawnId, damage: request.damage!, range: request.range, expectedHp: request.expectedHp });
       return { id: request.id, ok: !!result, contract: PROTOCOL, result: result ? { hp: result.hp, damage: result.damage, dead: result.dead, spawnId: result.spawnId } : null };
     }
-    if (!this.worldRestored) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-restore-required' };
     this.clockNow = request.now;
     this.currentPlayers = new Map((request.players ?? []).map((player) => [player.characterId, player]));
     for (const [characterId, connection] of this.connections) {
@@ -131,6 +131,7 @@ export class CentralWorldWorker {
       ...target, islandId: target.islandId || this.islandForPosition(target.x, target.z) || '',
     })).filter(target => target.islandId && Number.isFinite(target.x) && Number.isFinite(target.z));
     this.service.step(request.now, additionalTargets);
+    this.hasStepped = true;
     const islands = [...new Set((request.players ?? []).map((player) => player.islandId ?? this.islandForPosition(player.x, player.z)).filter((value): value is string => !!value))];
     const snapshots = islands.map((islandId) => {
       const message = this.service.snapshotMessageForIsland(islandId);
