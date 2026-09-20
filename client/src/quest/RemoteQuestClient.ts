@@ -138,18 +138,25 @@ export function createRemoteQuestExecutor(
 }
 
 export function createRemoteQuestOperationExecutor(executor: PocketOperationExecutor): RemoteQuestExecutor {
+  const exchange = async <T>(operation: Record<string, unknown>, verify: (value: unknown) => value is T): Promise<T> => {
+    try { return await requestPocketOperation(executor, operation, verify); }
+    catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'NETWORK';
+      throw new RemoteQuestError(code as QuestRejectCode | 'NETWORK', error instanceof Error ? error.message : 'เชื่อมต่อ Server ไม่ได้');
+    }
+  };
   return {
-    state: () => requestPocketOperation(executor, { type: 'questState' }, hasQuestSchema<QuestStateResponse>),
-    accept: (questId, replaceActive) => requestPocketOperation(executor,
+    state: () => exchange({ type: 'questState' }, hasQuestSchema<QuestStateResponse>),
+    accept: (questId, replaceActive) => exchange(
       { type: 'questAccept', questId, replaceActive }, hasQuestSchema<QuestAcceptResponse>),
     abandon: async () => {
-      const outcome = await requestPocketOperation(executor, { type: 'questAbandon' },
+      const outcome = await exchange({ type: 'questAbandon' },
         (value): value is { ok: true } => !!value && typeof value === 'object' && (value as { ok?: unknown }).ok === true);
       void outcome;
     },
     // Progress is a server readback operation; the client never increments or submits local progress.
-    progress: () => requestPocketOperation(executor, { type: 'questProgress' }, hasQuestSchema<QuestProgressResponse>),
-    claim: (questId, idempotencyKey) => requestPocketOperation(executor,
+    progress: () => exchange({ type: 'questProgress' }, hasQuestSchema<QuestProgressResponse>),
+    claim: (questId, idempotencyKey) => exchange(
       { type: 'questClaim', questId, idempotencyKey }, hasQuestSchema<QuestClaimResponse>),
   };
 }

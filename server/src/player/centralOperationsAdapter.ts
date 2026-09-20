@@ -4,6 +4,7 @@ import { QUEST_PROTOCOL_SCHEMA_VERSION } from '@pirate-fruit/shared';
 import { CentralQuestAdapter } from '../quest/centralQuestAdapter.js';
 import { applyCanonicalShopOperation } from '../shop/centralShopAdapter.js';
 import { applyCanonicalStateOperation } from './centralStateAdapter.js';
+import { applyCanonicalBoatOperation } from './centralBoatAdapter.js';
 import { serializePlayerState, type CanonicalPlayerState } from './playerState.js';
 
 type Receipt = { key: string; hash: string; outcome: unknown };
@@ -17,6 +18,8 @@ const schema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('questAccept'), questId: identifier, replaceActive: z.boolean() }).strict(),
   z.object({ type: z.literal('questClaim'), questId: identifier, idempotencyKey: key }).strict(),
   z.object({ type: z.literal('shopPurchase'), action: z.enum(['draw', 'potion']), potionId: z.enum(['potion-hp', 'potion-mp']).optional(), idempotencyKey: key }).strict(),
+  z.object({ type: z.literal('boatPurchase'), boatId: identifier, idempotencyKey: key }).strict(),
+  z.object({ type: z.literal('boatUpgrade'), boatId: identifier, kind: z.enum(['hull', 'cannon', 'sail']), idempotencyKey: key }).strict(),
 ]);
 const quests = new CentralQuestAdapter();
 
@@ -24,7 +27,7 @@ const quests = new CentralQuestAdapter();
 export function applyCentralOperation(current: OperationState, input: unknown, commandId?: string,
   position?: { islandId: string; x: number; y: number; z: number; heading: number } | null) {
   const type = (input as { type?: unknown } | null)?.type;
-  if (typeof type !== 'string' || (!type.startsWith('quest') && type !== 'shopPurchase')) {
+  if (typeof type !== 'string' || (!type.startsWith('quest') && !['shopPurchase', 'boatPurchase', 'boatUpgrade'].includes(type))) {
     return applyCanonicalStateOperation(current, input, position);
   }
   if (!commandId || !/^[A-Za-z0-9_-]{16,128}$/.test(commandId)) throw new Error('COMMAND_ID_INVALID');
@@ -37,7 +40,10 @@ export function applyCentralOperation(current: OperationState, input: unknown, c
   }
   let state: OperationState = structuredClone(current);
   let outcome: unknown;
-  if (operation.type === 'shopPurchase') {
+  if (operation.type === 'boatPurchase' || operation.type === 'boatUpgrade') {
+    const result = applyCanonicalBoatOperation(state, operation);
+    state = result.state; outcome = result.outcome;
+  } else if (operation.type === 'shopPurchase') {
     const { type: _type, ...request } = operation;
     const result = applyCanonicalShopOperation(state, request);
     state = result.state; outcome = result.outcome;

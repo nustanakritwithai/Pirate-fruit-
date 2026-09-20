@@ -8,6 +8,7 @@ import {
 } from './centralStateAdapter.js';
 import type { MonsterRewardAuthority } from './centralStateAdapter.js';
 import { defaultPlayerState, serializePlayerState } from './playerState.js';
+import { applyCanonicalBoatOperation } from './centralBoatAdapter.js';
 
 describe('central state adapter', () => {
   it('ใช้แต้มเดิมและไม่รับเงินหรือ XP จาก operation', () => {
@@ -30,7 +31,7 @@ describe('central state adapter', () => {
   });
 
   it('เปลี่ยน active boat ได้เฉพาะเรือที่มีอยู่ และไม่สร้างเรือใหม่', () => {
-    const state = defaultPlayerState();
+    const state = applyCanonicalBoatOperation(defaultPlayerState(), { type: 'boatPurchase', boatId: 'training-dinghy' }).state;
     const selected = state.boats[0]!.definitionId;
     const updated = applyCanonicalStateOperation(state, { type: 'boatSelection', selectedBoatId: selected });
     expect(updated.state.boats.filter((boat) => boat.active).map((boat) => boat.definitionId)).toEqual([selected]);

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { defaultPlayerState } from '../player/playerState.js';
+import { applyCanonicalBoatOperation } from '../player/centralBoatAdapter.js';
 import { applyCanonicalTradeOperation } from './centralTradeAdapter.js';
 
 describe('canonical trade adapter', () => {
   it('buys cargo using trusted quote and canonical coins', () => {
-    const state = defaultPlayerState();
+    const state = applyCanonicalBoatOperation(defaultPlayerState(), { type: 'boatPurchase', boatId: 'training-dinghy' }).state;
     state.progression.coins = 100;
     const result = applyCanonicalTradeOperation(state, {
       schemaVersion: 1, idempotencyKey: 'trade-state-0001', action: 'buy',
@@ -15,7 +16,7 @@ describe('canonical trade adapter', () => {
   });
 
   it('sells only held cargo and replays after JSON IPC without double mutation', () => {
-    const state = defaultPlayerState();
+    const state = applyCanonicalBoatOperation(defaultPlayerState(), { type: 'boatPurchase', boatId: 'training-dinghy' }).state;
     state.progression.coins = 10;
     state.cargo.slots = [{ commodityId: 'fresh-fish', quantity: 3 }];
     const first = applyCanonicalTradeOperation(state, {
