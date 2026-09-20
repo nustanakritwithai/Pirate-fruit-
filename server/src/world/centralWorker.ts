@@ -24,6 +24,7 @@ export interface CentralRequest {
   flags?: { playerVitalsReady?: boolean; blocking?: boolean; mounted?: boolean; sprinting?: boolean; devilFruitUser?: boolean; combatActive?: boolean; };
   dtMs?: number; inWater?: boolean; revision?: number;
   worldState?: MonsterWorldStateSnapshot & { pendingPlayerHits?: PendingPlayerHit[] };
+  market?: { tick: number; documentVersion: number; document: Record<string, unknown>; revision: number };
   hitKey?: string;
 }
 const PROTOCOL = 'pirate-original-world/1' as const;
@@ -115,7 +116,8 @@ export class CentralWorldWorker {
       if (request.operation && typeof request.operation === 'object'
         && (request.operation as { type?: unknown }).type === 'trade') {
         return { id: request.id, ok: true, contract: PROTOCOL,
-          ...await applyCentralOriginalTradeOperation(request.state as any, request.operation, request.commandId) };
+          ...await applyCentralOriginalTradeOperation(request.state as any, request.operation,
+            request.market, request.commandId) };
       }
       const player = this.currentPlayers.get(request.characterId);
       const position = player ? { islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '',

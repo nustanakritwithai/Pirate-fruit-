@@ -9,28 +9,35 @@ import {
 } from './centralTradeAdapter.js';
 import { parseTradeRequest, tradeRequestHash } from './tradeRules.js';
 
-const ECONOMY_DOCUMENT_KEY = 'centralEconomy';
+export interface CentralMarketSnapshot {
+  tick: number;
+  documentVersion: number;
+  document: Record<string, unknown>;
+  revision: number;
+}
 
-type StateWithEconomy = CanonicalTradeState & {
-  [ECONOMY_DOCUMENT_KEY]?: { tick: number; documentVersion: number; document: Record<string, unknown> };
-};
+type StateWithEconomy = CanonicalTradeState;
 
 export interface CentralOriginalTradeResult {
   state: StateWithEconomy;
   persisted: ReturnType<typeof serializePlayerState>;
   outcome: ReturnType<typeof applyCanonicalTradeOperation>['outcome'];
+  nextMarket: CentralMarketSnapshot;
 }
 
 /**
  * ใช้สูตร EconomyEngine เดิมกับ state-operation ของ original worker
- * และคืน economy snapshot ไปพร้อม canonical player state เพื่อให้ C# CAS
- * บันทึก player + market ใน save aggregate เดียวกัน
+ * รับ market snapshot กลางแยกจาก player state และคืน nextMarket แยกกลับไป
+ * เพื่อให้ C# ล็อก/อัปเดตแถวตลาดกลางพร้อม player aggregate ใน transaction เดียว
  */
 export async function applyCentralOriginalTradeOperation(
   current: StateWithEconomy,
   input: unknown,
+  market: CentralMarketSnapshot | null | undefined,
   commandId?: string,
 ): Promise<CentralOriginalTradeResult> {
+  if (!market || !Number.isSafeInteger(market.revision) || market.revision < 0
+    || !market.document || typeof market.document !== 'object') throw new Error('MARKET_STATE_REQUIRED');
   const request = parseTradeRequest(input);
   const hash = tradeRequestHash(request);
   const operationReceipts = (current as StateWithEconomy & {
@@ -45,6 +52,7 @@ export async function applyCentralOriginalTradeOperation(
       state,
       persisted: serializePlayerState(state),
       outcome: { ...(operationReceipt.outcome as ReturnType<typeof applyCanonicalTradeOperation>['outcome']), idempotentReplay: true },
+      nextMarket: structuredClone(market),
     };
   }
   const prior = current.tradeReceipts?.find((receipt) => receipt.key === request.idempotencyKey);
@@ -54,7 +62,7 @@ export async function applyCentralOriginalTradeOperation(
   }
   if (prior) throw new Error('IDEMPOTENCY_KEY_REUSED');
 
-  const engine = await createEconomyEngine(current[ECONOMY_DOCUMENT_KEY]?.document);
+  const engine = await createEconomyEngine(market.document);
   const quote = trustedQuote(engine, request.action, request.islandId, request.commodityId, request.quantity);
   const projected = applyCanonicalTradeOperation(current, request, quote,
     (boatId, slots, commodityId, quantity) => engine.cargoFits(boatId, slots, commodityId, quantity));
@@ -65,7 +73,6 @@ export async function applyCentralOriginalTradeOperation(
     engine.applySell(request.islandId, request.commodityId, request.quantity, quote.unitPrice);
   }
   const state = projected.state as StateWithEconomy;
-  state[ECONOMY_DOCUMENT_KEY] = engine.snapshot();
   if (commandId) {
     const operationState = state as StateWithEconomy & {
       operationReceipts?: Array<{ key: string; hash: string; outcome: unknown }>;
@@ -75,7 +82,13 @@ export async function applyCentralOriginalTradeOperation(
       { key: commandId, hash: JSON.stringify(request), outcome: projected.outcome },
     ].slice(-256);
   }
-  return { state, persisted: serializePlayerState(state), outcome: projected.outcome };
+  const snapshot = engine.snapshot();
+  return {
+    state,
+    persisted: serializePlayerState(state),
+    outcome: projected.outcome,
+    nextMarket: { ...snapshot, revision: market.revision + 1 },
+  };
 }
 
 function trustedQuote(
