@@ -23,7 +23,7 @@ describe('CentralWorldWorker pure adapter', () => {
       state, flags: { playerVitalsReady: true, blocking: false } });
     expect(tick).toMatchObject({ ok: true, changed: true, state: { checkpoint: { hp: 43.5, energy: 66 } } });
     const snapshot = await worker.handle({ id: 'vitals-snapshot', op: 'vitals-snapshot', now: 100_000, state: tick.state });
-    expect(snapshot).toMatchObject({ ok: true, snapshot: { contract: 'pirate-vitals/1', hp: 43.5, maxHp: 100 } });
+    expect(snapshot).toMatchObject({ ok: true, vitals: { contract: 'pirate-vitals/1', hp: 43.5, maxHp: 100 } });
     const operation = await worker.handle({ id: 'vitals-op', op: 'state-operation', now: 100_000, revision: 2,
       state: tick.state, characterId: 'player-1', commandId: 'vitals-command-0001',
       operation: { type: 'vitalsPotion', potionId: 'potion-hp', idempotencyKey: 'vitals:potion:1' } });

@@ -13,7 +13,7 @@ import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js
 import { advanceCanonicalVitals, deriveCanonicalVitalsSnapshot, type PveVitalsContext } from '../player/vitalsRules.js';
 import { applyCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
 
-export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; blocking?: boolean; }
+export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; dead?: boolean; blocking?: boolean; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
   id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'vitals-tick' | 'vitals-snapshot' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
@@ -123,13 +123,13 @@ export class CentralWorldWorker {
       const position = player ? { islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '',
         x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0 } : null;
       return { id: request.id, ok: true, contract: PROTOCOL,
-        ...applyCentralOperation(request.state, request.operation, request.commandId, position, this.vitalsContext(request)) };
+        ...applyCentralOperation(request.state, request.operation, request.commandId, position, this.vitalsContext(request, request.state)) };
     }
     if (request.op === 'vitals-tick' || request.op === 'vitals-snapshot') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
       if (request.op === 'vitals-snapshot') return { id: request.id, ok: true, contract: PROTOCOL,
-        snapshot: deriveCanonicalVitalsSnapshot(request.state, Number(request.revision ?? request.state.revision ?? 0), request.now) };
-      const advanced = advanceCanonicalVitals(request.state, this.vitalsContext(request));
+        vitals: deriveCanonicalVitalsSnapshot(request.state, Number(request.revision ?? request.state.revision ?? 0), request.now) };
+      const advanced = advanceCanonicalVitals(request.state, this.vitalsContext(request, request.state));
       return { id: request.id, ok: true, contract: PROTOCOL, state: advanced.state, changed: advanced.changed };
     }
     if (request.op === 'state-profile') {
@@ -165,6 +165,7 @@ export class CentralWorldWorker {
       const islandId = player.islandId ?? this.islandForPosition(player.x, player.z);
       if (!islandId) continue;
       const connection = this.connectionFor({ ...player, islandId });
+      this.hub.setPlayerVitals(player.characterId, player.playerVitalsReady !== false, player.dead === true);
       const previousIsland = connection.presence?.islandId;
       connection.presence = { islandId, x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0, onBoat: false };
       if (previousIsland !== islandId) this.sockets.get(player.characterId)!.messages.push(this.service.snapshotMessageForIsland(islandId));
@@ -197,7 +198,7 @@ export class CentralWorldWorker {
       const seq = (this.deliverySeq.get(characterId) ?? 0) + 1; this.deliverySeq.set(characterId, seq);
       deliveries.push({ characterId, message: { ...message, seq } });
     }
-    const hitPlayers = [...this.currentPlayers.values()].map(player => ({ ...player,
+    const hitPlayers = [...this.currentPlayers.values()].filter(player => player.playerVitalsReady !== false && player.dead !== true).map(player => ({ ...player,
       islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '' }));
     this.playerHits.capture(deliveries.map(delivery => delivery.message), hitPlayers, request.now);
     this.playerHits.resolve(hitPlayers, snapshots.flatMap(snapshot => snapshot.monsters), request.now);
@@ -210,13 +211,14 @@ export class CentralWorldWorker {
     return inferIslandId(x, z);
   }
 
-  private vitalsContext(request: CentralRequest): PveVitalsContext {
+  private vitalsContext(request: CentralRequest, state?: any): PveVitalsContext {
     const flags = request.flags ?? {};
     const player = request.characterId ? this.currentPlayers.get(request.characterId) : undefined;
     return { now: request.now, revision: request.revision, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
       blocking: flags.blocking === true, mounted: flags.mounted === true, sprinting: flags.sprinting === true,
-      inWater: request.inWater === true, devilFruitUser: flags.devilFruitUser === true,
-      combatActive: flags.combatActive === true || Boolean(player?.blocking) };
+      inWater: request.inWater === true,
+      devilFruitUser: Boolean(state?.inventory?.loadout?.equippedFruitId && state?.inventory?.loadout?.activeSet === 'fruit'),
+      combatActive: false };
   }
 }
 

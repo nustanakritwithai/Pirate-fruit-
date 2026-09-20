@@ -109,6 +109,8 @@ export interface RealtimeConnection {
   movementReady: boolean;
   /** Latest desired move received during asynchronous anchor hydration. */
   pendingMove: PresencePosition | null;
+  playerVitalsReady: boolean;
+  playerDead: boolean;
 }
 
 export interface RealtimeHubLogger {
@@ -307,6 +309,8 @@ export class RealtimeHub {
       monsterActionsInWindow: 0,
       movementReady: !this.movementAnchors || this.movement.connect(characterId),
       pendingMove: null,
+      playerVitalsReady: true,
+      playerDead: false,
     };
     this.connections.add(connection);
     if (this.pvpEnabled) this.combat.ensure(characterId);
@@ -338,6 +342,13 @@ export class RealtimeHub {
     }
     if (!this.hasCharacter(connection.characterId)) this.boatWorld?.removePlayer(connection.characterId);
     for (const other of this.connections) other.visiblePeerIds.delete(connection.characterId);
+  }
+
+  setPlayerVitals(characterId: string, ready: boolean, dead: boolean): void {
+    for (const connection of this.connections) if (connection.characterId === characterId) {
+      connection.playerVitalsReady = ready;
+      connection.playerDead = dead;
+    }
   }
 
   private hasCharacter(characterId: string): boolean {
@@ -580,6 +591,9 @@ export class RealtimeHub {
     const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
     const attackerPos = connection.presence;
     const targetPos = this.presenceOfCharacter(targetId);
+    if (!connection.playerVitalsReady || connection.playerDead) return reject('target-unavailable');
+    const targetConnection = [...this.connections].find(candidate => candidate.characterId === targetId);
+    if (targetConnection && (!targetConnection.playerVitalsReady || targetConnection.playerDead)) return reject('target-unavailable');
     // ต้องอยู่เกาะเดียวกัน (range check เป็นเรขาคณิตล้วน — กันพิกัดชนกันข้ามเกาะ)
     if (!attackerPos) return reject('presence-required');
     if (!targetPos) return reject('target-unavailable');
@@ -885,7 +899,7 @@ export class RealtimeHub {
   worldPlayerViews(): PlayerView[] {
     const views: PlayerView[] = [];
     for (const connection of this.connections) {
-      if (!connection.presence) continue;
+      if (!connection.presence || !connection.playerVitalsReady || connection.playerDead) continue;
       views.push({
         characterId: connection.characterId,
         islandId: connection.presence.islandId,
@@ -903,6 +917,7 @@ export class RealtimeHub {
 
   private handleWorldMonsterHit(connection: RealtimeConnection, message: Record<string, unknown>): void {
     if (!this.worldMonsters) return; // ปิด flag = เพิกเฉย
+    if (!connection.playerVitalsReady || connection.playerDead) return;
     const intentId = message.intentId;
     const rawSpawnIds = message.spawnIds;
     if (

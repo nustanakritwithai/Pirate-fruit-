@@ -15,6 +15,7 @@ export interface PveCombatState {
   guardBroken: boolean;
   hitstunUntil: number;
 }
+export interface PveRespawnEvent { spawnId: string; islandId: string; x: number; y: number; z: number; heading: number; atRevision: number; }
 
 export interface PlayerHitReceipt {
   key: string;
@@ -25,6 +26,7 @@ export interface PlayerHitReceipt {
 export type CanonicalPveState = CanonicalPlayerState & {
   pveCombat?: PveCombatState;
   pveVitals?: CanonicalPveVitals;
+  pveRespawn?: PveRespawnEvent;
   vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean; respawn?: unknown } }>;
   playerHitReceipts?: PlayerHitReceipt[];
 };

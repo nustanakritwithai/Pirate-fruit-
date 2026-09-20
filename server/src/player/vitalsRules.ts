@@ -1,4 +1,4 @@
-import { resourceCapsForStats, SHOP_POTIONS, type ShopPotionId } from '@pirate-fruit/shared';
+import { resourceCapsForStats, SHOP_POTIONS, SPAWN_ID_BY_ISLAND, WORLD_SAFE_ZONES, type ShopPotionId } from '@pirate-fruit/shared';
 import type { CanonicalPveState } from './pveIncomingDamageAdapter.js';
 
 export const PVE_GUARD_MAX = 100;
@@ -40,6 +40,7 @@ export interface CanonicalVitalsSnapshot {
   contract: 'pirate-vitals/1'; revision: number; serverTimeMs: number;
   hp: number; maxHp: number; guard: number; guardMax: number; guardBroken: boolean; hitstunUntil: number;
   energy: number; maxEnergy: number; mp: number; maxMp: number; dead: boolean;
+  respawn?: NonNullable<CanonicalPveState['pveRespawn']>;
 }
 
 export interface VitalsOutcome {
@@ -114,6 +115,7 @@ export function deriveCanonicalVitalsSnapshot(current: CanonicalPveState, revisi
     guardBroken: combat.guardBroken, hitstunUntil: combat.hitstunUntil,
     energy: current.checkpoint.energy, maxEnergy: caps.maxEnergy, mp: current.checkpoint.mp, maxMp: caps.maxMp,
     dead: current.checkpoint.hp <= 0,
+    ...(current.pveRespawn ? { respawn: current.pveRespawn } : {}),
   };
 }
 
@@ -137,12 +139,15 @@ export function applyCanonicalVitalsOperation(
     if (current.checkpoint.hp > 0) throw new Error('PLAYER_NOT_DEFEATED');
     const state = clone(current);
     const caps = resourceCapsForStats(state.progression.stats);
+    const spawn = safeSpawnForIsland(state.checkpoint.islandId);
+    state.checkpoint.spawnId = spawn.id; state.checkpoint.islandId = spawn.islandId as typeof state.checkpoint.islandId;
+    state.checkpoint.position = { x: spawn.x, y: spawn.y, z: spawn.z }; state.checkpoint.heading = spawn.heading;
     state.checkpoint.hp = caps.maxHp; state.checkpoint.energy = caps.maxEnergy; state.checkpoint.mp = caps.maxMp;
     state.pveCombat = { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 };
     state.pveVitals = defaultPveVitals(context.now);
-    return record(state, { type: 'respawn', changed: true, respawn: { spawnId: state.checkpoint.spawnId,
-      islandId: state.checkpoint.islandId, x: state.checkpoint.position.x, y: state.checkpoint.position.y,
-      z: state.checkpoint.position.z, heading: state.checkpoint.heading, atRevision: context.revision ?? 0 } });
+    const respawn = { spawnId: spawn.id, islandId: spawn.islandId, x: spawn.x, y: spawn.y, z: spawn.z, heading: spawn.heading, atRevision: context.revision ?? 0 };
+    state.pveRespawn = respawn;
+    return record(state, { type: 'respawn', changed: true, respawn });
   }
   const state = clone(current);
   const caps = resourceCapsForStats(state.progression.stats);
@@ -184,7 +189,17 @@ export function resolveTrustedBuffProfile(state: CanonicalPveState, skillId: str
     'phoenix-moveset-v1-x': { energyCost: 24, mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000, cooldownMs: 9_000 },
     'gas-moveset-z': { energyCost: 16, mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000, cooldownMs: 6_000 },
   } as const)[skillId as 'phoenix-moveset-v1-x' | 'gas-moveset-z'];
+  const mastery = state.progression.mastery[fruit];
+  const masteryRequired = skillId === 'phoenix-moveset-v1-x' ? 90 : skillId === 'gas-moveset-z' ? 1 : 0;
+  if (!mastery || mastery.level < masteryRequired) return null;
   return profile ? { skillId, ...profile } : null;
+}
+
+function safeSpawnForIsland(islandId: string): { id: string; islandId: string; x: number; y: number; z: number; heading: number } {
+  const id = (SPAWN_ID_BY_ISLAND as Record<string, string>)[islandId] ?? SPAWN_ID_BY_ISLAND['starter-island'];
+  const zone = WORLD_SAFE_ZONES.find(candidate => candidate.id === id && candidate.kind === 'spawn')
+    ?? WORLD_SAFE_ZONES.find(candidate => candidate.id === SPAWN_ID_BY_ISLAND['starter-island'])!;
+  return { id: zone.id, islandId: zone.islandId, x: zone.x, y: 0, z: zone.z, heading: 0 };
 }
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
