@@ -469,6 +469,7 @@ async function main(): Promise<void> {
   game.add(ownedMonsterRenderer);
   let centralAuthorityWasActive = false;
   let pirateOriginalWorldReady = false;
+  let parentSelfCharacterId: string | null = null;
   let pirateOriginalWorldGeneration = 0;
   let pirateOriginalWorldSequence = 0;
   // Read-only and credential-free: the parent Browser acceptance can inspect
@@ -534,6 +535,7 @@ async function main(): Promise<void> {
       },
       onOriginalWorldReady: (ready) => {
         pirateOriginalWorldReady = ready;
+        if (!ready) parentSelfCharacterId = null;
         monsterManager?.setAmbientSpawnsSuppressed(
           (centralAuthorityRuntime?.active ?? false) && pirateOriginalWorldReady,
         );
@@ -542,6 +544,7 @@ async function main(): Promise<void> {
         if (envelope.generation < pirateOriginalWorldGeneration
           || (envelope.generation === pirateOriginalWorldGeneration
             && envelope.sequence <= pirateOriginalWorldSequence)) return;
+        parentSelfCharacterId = envelope.viewerId;
         pirateOriginalWorldGeneration = envelope.generation;
         pirateOriginalWorldSequence = envelope.sequence;
         for (const message of envelope.messages) dispatchWorldMonsterMessage(message, originalWorldHandlers);
@@ -640,7 +643,7 @@ async function main(): Promise<void> {
   const boatWorldEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_BOAT_WORLD === 'true'
       || import.meta.env.VITE_ENABLE_BOAT_WORLD === '1');
-  const getSelfCharacterId = () => getRemoteSession().session?.characterId ?? null;
+  const getSelfCharacterId = () => getRemoteSession().session?.characterId ?? parentSelfCharacterId;
   const sharedMonsterRewardSources = new Map<string, {
     itemId: string;
     category: 'style' | 'sword' | 'gun' | 'fruit' | 'utility';

@@ -157,9 +157,10 @@ describe('Pocket Monster parent presence bridge', () => {
       payload: {
         zone: 'pirate-fruit',
         players: [],
-        pirateWorld: {
-          contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
-          generation: 2,
+      pirateWorld: {
+        contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+        viewerId: 'character-1',
+        generation: 2,
           sequence: 7,
           messages: [message],
         },
@@ -167,6 +168,7 @@ describe('Pocket Monster parent presence bridge', () => {
     });
     expect(parsed?.pirateWorld).toEqual({
       contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+      viewerId: 'character-1',
       generation: 2,
       sequence: 7,
       messages: [message],
@@ -179,6 +181,7 @@ describe('Pocket Monster parent presence bridge', () => {
         players: [],
         pirateWorld: {
           contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+          viewerId: 'character-1',
           generation: 2,
           sequence: 8,
           messages: Array.from({ length: 513 }, () => message),
@@ -190,7 +193,7 @@ describe('Pocket Monster parent presence bridge', () => {
       payload: {
         zone: 'pirate-fruit',
         players: [],
-        pirateWorld: { contract: PIRATE_ORIGINAL_WORLD_CONTRACT, generation: 0, sequence: 1, messages: [] },
+        pirateWorld: { contract: PIRATE_ORIGINAL_WORLD_CONTRACT, viewerId: 'character-1', generation: 0, sequence: 1, messages: [] },
       },
     })?.pirateWorld).toBeUndefined();
   });

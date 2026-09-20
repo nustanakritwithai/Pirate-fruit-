@@ -77,6 +77,7 @@ export interface PiratePresenceSnapshot {
 
 export interface PirateOriginalWorldEnvelope {
   contract: typeof PIRATE_ORIGINAL_WORLD_CONTRACT;
+  viewerId: string;
   generation: number;
   sequence: number;
   messages: RealtimeServerMessage[];
@@ -156,6 +157,7 @@ function optionalInteger(value: unknown, min: number, max: number): number | und
 function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope | undefined {
   if (!isRecord(value)
     || value.contract !== PIRATE_ORIGINAL_WORLD_CONTRACT
+    || typeof value.viewerId !== 'string' || value.viewerId.length < 1 || value.viewerId.length > 80
     || typeof value.generation !== 'number' || !Number.isSafeInteger(value.generation) || value.generation < 1
     || typeof value.sequence !== 'number' || !Number.isSafeInteger(value.sequence) || value.sequence < 1
     || !Array.isArray(value.messages) || value.messages.length > MAX_ORIGINAL_WORLD_MESSAGES) return undefined;
@@ -179,6 +181,7 @@ function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope
   }
   return {
     contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+    viewerId: value.viewerId,
     generation: value.generation,
     sequence: value.sequence,
     messages,
