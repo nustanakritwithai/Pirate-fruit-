@@ -117,7 +117,7 @@ export async function applyCentralOriginalTradeOperation(
     };
     operationState.operationReceipts = [
       ...(operationState.operationReceipts ?? []).filter((receipt) => receipt.key !== commandId),
-      { key: commandId, hash: JSON.stringify(request), outcome: projected.outcome },
+      { key: commandId, hash, outcome: projected.outcome },
     ].slice(-256);
   }
   const snapshot = engine.snapshot();
