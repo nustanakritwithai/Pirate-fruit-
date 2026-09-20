@@ -6,11 +6,12 @@ import { MonsterWorldService } from './monsterWorldService.js';
 import type { PlayerView } from './monsterSimulation.js';
 import { normalizeInitialPlayerState, deriveCanonicalCombatProfile } from '../player/centralStateAdapter.js';
 import { prepareCanonicalReward } from '../player/centralRewardAdapter.js';
+import { serializePlayerState } from '../player/playerState.js';
 
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
-  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'state-profile' | 'reward-preview'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
   ownerId?: string; actorId?: string; targetSpawnId?: string; x?: number; z?: number; expectedHp?: number; damage?: number; range?: number; additionalTargets?: PlayerView[];
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
@@ -69,6 +70,10 @@ export class CentralWorldWorker {
       if (!request.player) return { id: request.id, ok: false, contract: PROTOCOL, error: 'player-state-required' };
       return { id: request.id, ok: true, contract: PROTOCOL, ...normalizeInitialPlayerState(request.player as any, request.cargo as any) };
     }
+    if (request.op === 'serialize-state') {
+      if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
+      return { id: request.id, ok: true, contract: PROTOCOL, persisted: serializePlayerState(request.state) };
+    }
     if (request.op === 'state-profile') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
       return { id: request.id, ok: true, contract: PROTOCOL, profile: deriveCanonicalCombatProfile(request.state) };
@@ -83,7 +88,7 @@ export class CentralWorldWorker {
       this.pendingRewards.delete(request.rewardKey); pending.resolve(request.outcome);
       return { id: request.id, ok: true, contract: PROTOCOL };
     }
-    if (!['step', 'owned-hit', 'reward-ack', 'normalize-state', 'state-profile', 'reward-preview'].includes(request.op)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'unsupported-operation' };
+    if (!['step', 'owned-hit', 'reward-ack', 'normalize-state', 'serialize-state', 'state-profile', 'reward-preview'].includes(request.op)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'unsupported-operation' };
     if (request.op === 'owned-hit') {
       if (!request.ownerId || !request.actorId || !request.targetSpawnId || !Number.isFinite(request.x) || !Number.isFinite(request.z) || !Number.isFinite(request.damage)) return { id: request.id, ok: false, contract: PROTOCOL, error: 'invalid-owned-hit' };
       const islandId = this.service.islandForSpawn(request.targetSpawnId);
