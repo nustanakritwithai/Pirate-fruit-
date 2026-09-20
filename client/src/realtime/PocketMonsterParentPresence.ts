@@ -75,7 +75,6 @@ export interface PiratePresenceSnapshot {
   actors?: SharedMonsterActor[];
   centralAuthority?: PirateCentralAuthorityCapability;
   pirateWorld?: PirateOriginalWorldEnvelope;
-  vitals?: PirateVitalsSnapshot;
 }
 
 export interface PirateOriginalWorldEnvelope {
@@ -85,6 +84,7 @@ export interface PirateOriginalWorldEnvelope {
   sequence: number;
   messages: RealtimeServerMessage[];
   hasInitialSnapshot: boolean;
+  vitals?: PirateVitalsSnapshot;
 }
 
 export interface ParentPresenceEvent {
@@ -185,6 +185,10 @@ function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope
     } else return undefined;
     messages.push(candidate as unknown as RealtimeServerMessage);
   }
+  const vitals = value.vitals === undefined
+    ? undefined
+    : isPirateVitalsSnapshot(value.vitals) ? value.vitals : null;
+  if (value.vitals !== undefined && !vitals) return undefined;
   return {
     contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
     viewerId: value.viewerId,
@@ -192,6 +196,7 @@ function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope
     sequence: value.sequence,
     messages,
     hasInitialSnapshot: messages.some((message) => message.type === 'world-monster-snapshot'),
+    ...(vitals ? { vitals } : {}),
   };
 }
 
@@ -393,20 +398,15 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
     ? payload.centralAuthority as unknown as PirateCentralAuthorityCapability
     : undefined;
   const pirateWorld = parseOriginalWorldEnvelope(payload.pirateWorld);
-  const vitals = payload.vitals === undefined
-    ? undefined
-    : isPirateVitalsSnapshot(payload.vitals) ? payload.vitals : null;
   // If the field is present, reject the whole parent snapshot on contract failure;
   // never silently keep an older original-world authority stream alive.
   if (payload.pirateWorld !== undefined && !pirateWorld) return null;
-  if (payload.vitals !== undefined && !vitals) return null;
   return {
     zone: POCKET_MONSTER_PIRATE_ZONE,
     players,
     ...(actors ? { actors } : {}),
     ...(authority ? { centralAuthority: authority } : {}),
     ...(pirateWorld ? { pirateWorld } : {}),
-    ...(vitals ? { vitals } : {}),
   };
 }
 
@@ -660,7 +660,7 @@ export class PocketMonsterParentPresence {
       this.options.onOriginalWorldReady?.(snapshot.pirateWorld.hasInitialSnapshot);
       this.options.onOriginalWorldMessages?.(snapshot.pirateWorld);
     } else this.options.onOriginalWorldReady?.(false);
-    if (snapshot.vitals) this.options.onVitalsSnapshot?.(snapshot.vitals);
+    if (snapshot.pirateWorld?.vitals) this.options.onVitalsSnapshot?.(snapshot.pirateWorld.vitals);
     const seen = new Set<string>();
     for (const player of snapshot.players) {
       seen.add(player.id);
