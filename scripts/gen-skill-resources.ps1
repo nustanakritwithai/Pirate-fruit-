@@ -5,9 +5,10 @@ param(
 $rows = @()
 foreach ($line in Get-Content -LiteralPath $Gameplay) {
   $id = [regex]::Match($line, "^\s*'([^']+)': \{.*slot: '([^']+)', archetype: '([^']+)'")
+  $cast = [regex]::Match($line, 'castTime: ([0-9.]+)')
   $cost = [regex]::Match($line, 'cooldown: ([0-9.]+), energy: ([0-9]+)')
-  if ($id.Success -and $cost.Success) {
-    $rows += "  '$($id.Groups[1].Value)': { id: '$($id.Groups[1].Value)', slot: '$($id.Groups[2].Value)', archetype: '$($id.Groups[3].Value)', cooldownMs: $([double]$cost.Groups[1].Value * 1000), mpCost: $($cost.Groups[2].Value) },"
+  if ($id.Success -and $cast.Success -and $cost.Success) {
+    $rows += "  '$($id.Groups[1].Value)': { id: '$($id.Groups[1].Value)', slot: '$($id.Groups[2].Value)', archetype: '$($id.Groups[3].Value)', castTimeMs: $([double]$cast.Groups[1].Value * 1000), cooldownMs: $([double]$cost.Groups[1].Value * 1000), mpCost: $($cost.Groups[2].Value) },"
   }
 }
 if ($rows.Count -ne 431) { throw "Expected 431 generated skills, got $($rows.Count)" }
@@ -25,7 +26,7 @@ foreach ($file in @(
 if ($mastery.Count -ne 414) { throw "Expected 414 mastery records, got $($mastery.Count)" }
 $generated = @(
   '/** Generated from client skillGameplay catalog; do not hand-edit. */',
-  'export interface SkillResourceCatalogEntry { id: string; slot: string; archetype: string; cooldownMs: number; mpCost: number; }',
+  'export interface SkillResourceCatalogEntry { id: string; slot: string; archetype: string; castTimeMs: number; cooldownMs: number; mpCost: number; }',
   'export const SKILL_RESOURCE_CATALOG: Readonly<Record<string, SkillResourceCatalogEntry>> = {'
 ) + $rows + @('};', '', 'export const SKILL_MASTERY_REQUIRED: Readonly<Record<string, number>> = {')
 foreach ($id in ($mastery.Keys | Sort-Object)) { $generated += "  '$id': $($mastery[$id])," }

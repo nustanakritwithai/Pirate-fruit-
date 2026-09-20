@@ -62,6 +62,7 @@ export interface PveBuffProfile {
 export type PveVitalsOperation =
   | { type: 'potion'; potionId: ShopPotionId; idempotencyKey: string }
   | { type: 'skill'; skillId: string; idempotencyKey: string }
+  | { type: 'skillCancel'; skillId: string; skillIdempotencyKey: string; idempotencyKey: string }
   | { type: 'buff'; skillId: string; idempotencyKey: string }
   | { type: 'respawn'; idempotencyKey: string };
 
@@ -158,6 +159,19 @@ export function applyCanonicalVitalsOperation(
   const vitals = state.pveVitals ?? defaultPveVitals(context.now);
   vitals.buffCooldowns ??= {};
   vitals.skillCooldowns ??= {};
+  state.pveSkillCasts ??= [];
+  if (operation.type === 'skillCancel') {
+    const cast = state.pveSkillCasts.find(value => value.key === operation.skillIdempotencyKey && value.skillId === operation.skillId);
+    if (!cast || cast.canceled || context.now > cast.cancelUntilMs) throw new Error('SKILL_CANCEL_EXPIRED');
+    const catalog = SKILL_RESOURCE_CATALOG[operation.skillId];
+    if (catalog?.archetype === 'buff') throw new Error('SKILL_CANCEL_NOT_REFUNDABLE');
+    if (state.checkpoint.hp > 0 && !context.mounted && (state.pveCombat?.hitstunUntil ?? 0) <= context.now) {
+      throw new Error('SKILL_CANCEL_NOT_INTERRUPTED');
+    }
+    state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + cast.mpCost);
+    cast.canceled = true;
+    return record(state, { type: 'skill-cancel', changed: true });
+  }
   if (operation.type === 'potion') {
     const potion = SHOP_POTIONS[operation.potionId];
     if (vitals.potionCooldownUntil > context.now) throw new Error('POTION_COOLDOWN');
@@ -184,6 +198,7 @@ export function applyCanonicalVitalsOperation(
       vitals.buffCooldowns[buff.skillId] = context.now + buff.cooldownMs;
       vitals.buffMultiplier = buff.multiplier; vitals.buffUntil = context.now + buff.durationMs;
       state.pveVitals = vitals;
+      state.pveSkillCasts.push({ key: operation.idempotencyKey, skillId: operation.skillId, mpCost: buff.energyCost, cancelUntilMs: context.now + skill.castTimeMs, canceled: false });
       return record(state, { type: 'buff', changed: true });
     }
     if ((vitals.skillCooldowns[skill.skillId] ?? 0) > context.now) throw new Error('SKILL_COOLDOWN');
@@ -192,6 +207,7 @@ export function applyCanonicalVitalsOperation(
     state.checkpoint.mp -= skill.mpCost;
     vitals.skillCooldowns[skill.skillId] = context.now + skill.cooldownMs;
     state.pveVitals = vitals;
+    state.pveSkillCasts.push({ key: operation.idempotencyKey, skillId: operation.skillId, mpCost: skill.mpCost, cancelUntilMs: context.now + skill.castTimeMs, canceled: false });
     return record(state, { type: 'skill', changed: true });
   }
   const profile = resolveTrustedBuffProfile(state, operation.skillId);
@@ -212,7 +228,7 @@ export function defaultPveVitals(now = 0): CanonicalPveVitals {
   return { lastDamageAtMs: now, potionCooldownUntil: 0, buffCooldowns: {}, skillCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
 }
 
-export interface PveSkillResource { skillId: string; mpCost: number; cooldownMs: number; }
+export interface PveSkillResource { skillId: string; mpCost: number; cooldownMs: number; castTimeMs: number; }
 
 /** ค่าทรัพยากรจาก generated skill catalog เดิม; client ส่งได้เพียง skillId */
 export function resolveTrustedSkillResource(state: CanonicalPveState, skillId: string): PveSkillResource | null {
@@ -229,7 +245,7 @@ export function resolveTrustedSkillResource(state: CanonicalPveState, skillId: s
   const masteryLevel = mastery?.level ?? 1;
   if (masteryLevel < (SKILL_MASTERY_REQUIRED[skillId] ?? 0)) return null;
   if (skillId.includes('-v2-') && loadout.activeSet === 'fruit' && !loadout.fruitAwakened) return null;
-  return { skillId, mpCost: resource.mpCost, cooldownMs: resource.cooldownMs };
+  return { skillId, mpCost: resource.mpCost, cooldownMs: resource.cooldownMs, castTimeMs: resource.castTimeMs };
 }
 
 export function resolveTrustedBuffProfile(state: CanonicalPveState, skillId: string): PveBuffProfile | null {

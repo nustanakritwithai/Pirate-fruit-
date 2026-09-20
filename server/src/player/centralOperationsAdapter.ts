@@ -24,6 +24,7 @@ const schema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('vitalsPotion'), potionId: z.enum(['potion-hp', 'potion-mp']), idempotencyKey: key }).strict(),
   z.object({ type: z.literal('vitalsBuff'), skillId: identifier, idempotencyKey: key }).strict(),
   z.object({ type: z.literal('vitalsSkill'), skillId: identifier, idempotencyKey: key }).strict(),
+  z.object({ type: z.literal('vitalsSkillCancel'), skillId: identifier, skillIdempotencyKey: key, idempotencyKey: key }).strict(),
   z.object({ type: z.literal('vitalsRespawn'), idempotencyKey: key }).strict(),
 ]);
 const quests = new CentralQuestAdapter();
@@ -46,7 +47,7 @@ export function applyCentralOperation(current: OperationState, input: unknown, c
   }
   let state: OperationState = structuredClone(current);
   let outcome: unknown;
-  if (operation.type === 'vitalsPotion' || operation.type === 'vitalsBuff' || operation.type === 'vitalsSkill' || operation.type === 'vitalsRespawn') {
+  if (operation.type === 'vitalsPotion' || operation.type === 'vitalsBuff' || operation.type === 'vitalsSkill' || operation.type === 'vitalsSkillCancel' || operation.type === 'vitalsRespawn') {
     if (!vitalsContext) throw new Error('VITALS_CONTEXT_REQUIRED');
     const vitalsOperation = operation.type === 'vitalsPotion'
       ? { type: 'potion' as const, potionId: operation.potionId, idempotencyKey: operation.idempotencyKey }
@@ -54,7 +55,9 @@ export function applyCentralOperation(current: OperationState, input: unknown, c
         ? { type: 'buff' as const, skillId: operation.skillId, idempotencyKey: operation.idempotencyKey }
         : operation.type === 'vitalsSkill'
           ? { type: 'skill' as const, skillId: operation.skillId, idempotencyKey: operation.idempotencyKey }
-          : { type: 'respawn' as const, idempotencyKey: operation.idempotencyKey };
+          : operation.type === 'vitalsSkillCancel'
+            ? { type: 'skillCancel' as const, skillId: operation.skillId, skillIdempotencyKey: operation.skillIdempotencyKey, idempotencyKey: operation.idempotencyKey }
+            : { type: 'respawn' as const, idempotencyKey: operation.idempotencyKey };
     const result = applyCanonicalVitalsOperation(state, vitalsOperation, vitalsContext);
     state = result.state; outcome = result.outcome;
   } else if (operation.type === 'boatPurchase' || operation.type === 'boatUpgrade') {
