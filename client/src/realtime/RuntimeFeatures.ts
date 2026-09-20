@@ -59,6 +59,7 @@ export function resolveSharedMonsterMode(
 export function shouldSuppressLocalMonsters(
   sharedModeEnabled: boolean,
   realtimeAvailable: boolean,
+  originalWorldClaimed = false,
 ): boolean {
-  return sharedModeEnabled && realtimeAvailable;
+  return originalWorldClaimed || (sharedModeEnabled && realtimeAvailable);
 }

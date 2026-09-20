@@ -46,4 +46,9 @@ describe('runtime feature handshake', () => {
     expect(shouldSuppressLocalMonsters(true, true)).toBe(true);
     expect(shouldSuppressLocalMonsters(false, true)).toBe(false);
   });
+  it('ไม่กลับไปเปิดศัตรู local เมื่อ original world เคยรับสิทธิ์แล้วแต่กำลัง reconnect', () => {
+    expect(shouldSuppressLocalMonsters(false, false, true)).toBe(true);
+    expect(shouldSuppressLocalMonsters(true, false, true)).toBe(true);
+    expect(shouldSuppressLocalMonsters(false, false, false)).toBe(false);
+  });
 });

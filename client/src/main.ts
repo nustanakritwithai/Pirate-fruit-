@@ -469,6 +469,8 @@ async function main(): Promise<void> {
   game.add(ownedMonsterRenderer);
   let centralAuthorityWasActive = false;
   let pirateOriginalWorldReady = false;
+  // เมื่อรับโลกจาก server แล้ว ห้ามเปิดศัตรู local ซ้อนระหว่าง reconnect
+  let pirateOriginalWorldClaimed = false;
   let parentSelfCharacterId: string | null = null;
   let pirateOriginalWorldGeneration = 0;
   let pirateOriginalWorldSequence = 0;
@@ -520,7 +522,7 @@ async function main(): Promise<void> {
         ownedMonsterRenderer.setActors(actors as unknown as readonly OwnedMonsterActor[]);
         // Once the original-world stream is ready, its HP/state is authoritative;
         // do not let the parent actor convenience payload overwrite it.
-        if (pirateOriginalWorldReady) return;
+        if (pirateOriginalWorldClaimed) return;
         // Central authority gates only the ambient `monster:` stream.
         if (!centralAuthorityRuntime?.accepts(mapZone)) return;
         const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
@@ -529,7 +531,7 @@ async function main(): Promise<void> {
       onCentralAuthority: (capability) => {
         centralAuthorityRuntime?.update(capability);
         const active = centralAuthorityRuntime?.active ?? false;
-        monsterManager?.setAmbientSpawnsSuppressed(active && pirateOriginalWorldReady);
+        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldClaimed);
         if (!active && centralAuthorityWasActive) {
           sharedMonsters?.resetSession(true);
         }
@@ -537,9 +539,10 @@ async function main(): Promise<void> {
       },
       onOriginalWorldReady: (ready) => {
         pirateOriginalWorldReady = ready;
+        if (ready) pirateOriginalWorldClaimed = true;
         if (!ready) parentSelfCharacterId = null;
         monsterManager?.setAmbientSpawnsSuppressed(
-          (centralAuthorityRuntime?.active ?? false) && pirateOriginalWorldReady,
+          pirateOriginalWorldClaimed,
         );
       },
       onOriginalWorldMessages: (envelope) => {
@@ -564,6 +567,7 @@ async function main(): Promise<void> {
         centralAuthorityRuntime?.reset();
         centralAuthorityWasActive = false;
         pirateOriginalWorldReady = false;
+        parentSelfCharacterId = null;
         pirateOriginalWorldGeneration = 0;
         pirateOriginalWorldSequence = 0;
         pirateOriginalWorldMessageSeen.clear();
@@ -577,7 +581,7 @@ async function main(): Promise<void> {
         sharedMonsters?.setIsland(islandManager.activeIsland);
         ownedMonsterRenderer.reset();
         monsterManager?.setAmbientSpawnsSuppressed(
-          (centralAuthorityRuntime?.active ?? false) && pirateOriginalWorldReady,
+          pirateOriginalWorldClaimed,
         );
       },
     })
@@ -731,10 +735,10 @@ async function main(): Promise<void> {
       monsterManager?.resetPresentationActors();
       pirateMonsterAuthority?.resetSession();
       if (centralAuthorityRuntime?.active) {
-        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldReady);
+        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldClaimed);
       } else {
         centralAuthorityRuntime?.reset();
-        monsterManager?.setAmbientSpawnsSuppressed(false);
+        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldClaimed);
       }
       resyncAuthoritativeState();
     },
@@ -1153,10 +1157,10 @@ async function main(): Promise<void> {
       },
     },
     // S16: เปิด shared world monsters → ปิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server)
-    shouldSuppressLocalMonsters(sharedWorldMonstersEnabled, realtime !== null),
+    shouldSuppressLocalMonsters(sharedWorldMonstersEnabled, realtime !== null, pirateOriginalWorldClaimed),
   );
   monsterManager.setAmbientSpawnsSuppressed(
-    (centralAuthorityRuntime?.active ?? false) && pirateOriginalWorldReady,
+    pirateOriginalWorldClaimed,
   );
 
   // Naval Combat (เรือ Phase 2-3) — เรือโจรสลัด AI + ปืนใหญ่ + Boarding
@@ -1255,6 +1259,10 @@ async function main(): Promise<void> {
       range: requestedRange,
       area,
     }) => {
+      if (pirateOriginalWorldClaimed && !pirateOriginalWorldReady) {
+        notifyPvp('กำลังรอข้อมูลการต่อสู้จากเซิร์ฟเวอร์');
+        return;
+      }
       if (pocketMonsterPresence && pirateMonsterAuthority && centralAuthorityRuntime?.active) {
         const safeRange = Math.min(
           kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
