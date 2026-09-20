@@ -1,3 +1,5 @@
+import { BOAT_PROGRESSION_DEFINITIONS } from '@pirate-fruit/shared';
+
 export type BoatUpgradeKind = 'hull' | 'cannon' | 'sail';
 
 export interface BoatUpgradeCosts {
@@ -40,7 +42,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     id: 'training-dinghy',
     name: 'เรือพายฝึกหัด',
     description: 'เรือฟรีสำหรับเรียนรู้การเดินทะเล ควบคุมง่ายและทนทาน',
-    price: 0,
+    price: BOAT_PROGRESSION_DEFINITIONS['training-dinghy'].price,
     maxSpeed: 9,
     acceleration: 4.8,
     reverseSpeed: 3.2,
@@ -56,13 +58,13 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     cannonsPerSide: 1,
     modelId: 'boat',
     deckTopLocalY: 0.88,
-    upgradeCosts: { hull: [250, 500, 900], cannon: [300, 650], sail: [220, 450] },
+    upgradeCosts: BOAT_PROGRESSION_DEFINITIONS['training-dinghy'].upgradeCosts,
   },
   {
     id: 'swift-sloop',
     name: 'เรือใบวายุ',
     description: 'เรือใบขนาดเล็กที่เร็วและเลี้ยวคล่อง แต่รับแรงกระแทกได้น้อยกว่า',
-    price: 500,
+    price: BOAT_PROGRESSION_DEFINITIONS['swift-sloop'].price,
     maxSpeed: 14,
     acceleration: 6.2,
     reverseSpeed: 3.8,
@@ -78,13 +80,13 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     cannonsPerSide: 2,
     modelId: 'sail-boat',
     deckTopLocalY: 0.92,
-    upgradeCosts: { hull: [400, 800, 1400], cannon: [450, 900, 1600], sail: [350, 700] },
+    upgradeCosts: BOAT_PROGRESSION_DEFINITIONS['swift-sloop'].upgradeCosts,
   },
   {
     id: 'merchant-brig',
     name: 'เรือพาณิชย์คาราวาน',
     description: 'เรือสองเสากลางลำสำหรับขนของและเดินทางไกล มีดาดฟ้ากว้างสำหรับลูกเรือ',
-    price: 2400,
+    price: BOAT_PROGRESSION_DEFINITIONS['merchant-brig'].price,
     maxSpeed: 11,
     acceleration: 3.8,
     reverseSpeed: 2.8,
@@ -100,13 +102,13 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     cannonsPerSide: 3,
     modelId: 'sail-ship',
     deckTopLocalY: 1.18,
-    upgradeCosts: { hull: [900, 1600, 2600], cannon: [800, 1500, 2600], sail: [700, 1300] },
+    upgradeCosts: BOAT_PROGRESSION_DEFINITIONS['merchant-brig'].upgradeCosts,
   },
   {
     id: 'war-galleon',
     name: 'เรือรบแกลเลียน',
     description: 'เรือใหญ่สำหรับการรบและ Boarding ดาดฟ้ากว้าง ปืนหนัก และทนการระเบิด',
-    price: 6500,
+    price: BOAT_PROGRESSION_DEFINITIONS['war-galleon'].price,
     maxSpeed: 9,
     acceleration: 2.8,
     reverseSpeed: 2.2,
@@ -122,13 +124,13 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     cannonsPerSide: 5,
     modelId: 'ship',
     deckTopLocalY: 1.35,
-    upgradeCosts: { hull: [1800, 3200, 5200], cannon: [1600, 3000, 4800], sail: [1200, 2400] },
+    upgradeCosts: BOAT_PROGRESSION_DEFINITIONS['war-galleon'].upgradeCosts,
   },
   {
     id: 'viking-raider',
     name: 'เรือจู่โจมไวกิ้ง',
     description: 'เรือจู่โจมเร็วสำหรับเข้าประชิดและ Boarding มีพื้นที่เดินรอบลำเรือ',
-    price: 4200,
+    price: BOAT_PROGRESSION_DEFINITIONS['viking-raider'].price,
     maxSpeed: 13,
     acceleration: 4.5,
     reverseSpeed: 3,
@@ -144,7 +146,7 @@ export const BOAT_DEFINITIONS: BoatDefinition[] = [
     cannonsPerSide: 3,
     modelId: 'viking-boat',
     deckTopLocalY: 1.08,
-    upgradeCosts: { hull: [1100, 1900, 3200], cannon: [900, 1700, 2800], sail: [750, 1400] },
+    upgradeCosts: BOAT_PROGRESSION_DEFINITIONS['viking-raider'].upgradeCosts,
   },
 ];
 

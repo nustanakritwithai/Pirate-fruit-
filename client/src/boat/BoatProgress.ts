@@ -38,6 +38,33 @@ export class BoatProgress {
     return this.data.selectedBoatId;
   }
 
+  /** อัปเดตผล canonical จาก server โดยไม่ใช้ราคา/ยอดเงินที่ client คำนวณเอง */
+  applyCanonicalPersisted(persisted: unknown): boolean {
+    if (!persisted || typeof persisted !== 'object') return false;
+    const player = (persisted as { player?: unknown }).player;
+    if (!player || typeof player !== 'object') return false;
+    try {
+      const source = player as { progression?: unknown; boats?: unknown };
+      const progression = typeof source.progression === 'string' ? JSON.parse(source.progression) as { progression?: { coins?: unknown } } : null;
+      const boats = typeof source.boats === 'string' ? JSON.parse(source.boats) as { ownedBoatIds?: unknown; selectedBoatId?: unknown; upgrades?: unknown } : null;
+      const coins = progression?.progression?.coins;
+      const ownedBoatIds = boats?.ownedBoatIds;
+      if (typeof coins !== 'number' || !Number.isSafeInteger(coins) || coins < 0
+        || !Array.isArray(ownedBoatIds) || !ownedBoatIds.every((id): id is string => typeof id === 'string' && Boolean(getBoatDefinition(id)))) return false;
+      const selected = typeof boats?.selectedBoatId === 'string' && ownedBoatIds.includes(boats.selectedBoatId)
+        ? boats.selectedBoatId : ownedBoatIds[0] ?? null;
+      const upgrades = boats?.upgrades && typeof boats.upgrades === 'object' ? boats.upgrades as BoatProgressData['upgrades'] : {};
+      if (this.wallet) {
+        const delta = coins - this.wallet.coins;
+        if (delta > 0) this.wallet.addCoins(delta, 'server:boat-sync');
+        else if (delta < 0 && !this.wallet.spendCoins(-delta, 'server:boat-sync')) return false;
+      }
+      this.data = { coins, ownedBoatIds: [...ownedBoatIds], selectedBoatId: selected, upgrades };
+      this.save();
+      return true;
+    } catch { return false; }
+  }
+
   owns(id: string): boolean {
     return this.data.ownedBoatIds.includes(id);
   }

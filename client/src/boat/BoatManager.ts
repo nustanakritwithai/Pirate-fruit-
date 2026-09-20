@@ -13,6 +13,7 @@ import type { WorldTextures } from '../world/textures';
 import { Boat } from './Boat';
 import { getBoatDefinition, MAX_SAIL_LEVEL, SAIL_GEAR_RATIO } from './BoatData';
 import { BoatProgress } from './BoatProgress';
+import { getPocketOperationExecutor, type PocketOperationExecutor } from '../persistence/PocketOperationExecutor';
 import { carryRider, deckBoundsFor, deckHeightAt, withinDeck, worldToDeckLocal } from './DeckSpace';
 import type { EconomyWallet } from '../progression/ProgressionTypes';
 import { findDockAt, getDock, worldHeightAt } from '../island/IslandRegistry';
@@ -99,6 +100,7 @@ export class BoatManager {
   private readonly pendingCannonIntentIds = new Set<string>();
   private authorityCannonCooldown = 0;
   private selectionListener: ((boatId: string) => void) | null = null;
+  private readonly pocketOperations: PocketOperationExecutor | null;
 
   constructor(
     private scene: THREE.Scene,
@@ -112,12 +114,14 @@ export class BoatManager {
     private onBoatDestroyed: () => void,
     economy?: EconomyWallet,
     private readonly storage: GameStorage = gameStorage(),
+    pocketOperations?: PocketOperationExecutor | null,
   ) {
     this.progress = new BoatProgress(economy, storage);
+    this.pocketOperations = pocketOperations ?? getPocketOperationExecutor();
     this.shop = new BoatShopUI(
       this.progress,
       () => this.active,
-      (action, boatId) => this.handleShopAction(action, boatId),
+      (action, boatId) => { void this.handleShopAction(action, boatId); },
     );
   }
 
@@ -763,8 +767,19 @@ export class BoatManager {
     this.hud.notify(`เรือแตก! เรียกใหม่ได้ใน ${RESPAWN_COOLDOWN} วินาที`, true);
   }
 
-  private handleShopAction(action: BoatShopAction, boatId?: string): void {
+  private async handleShopAction(action: BoatShopAction, boatId?: string): Promise<void> {
     if (action === 'purchase' && boatId) {
+      if (this.pocketOperations) {
+        try {
+          const reply = await this.pocketOperations.request({ type: 'boatPurchase', boatId, idempotencyKey: `boat-purchase:${boatId}:${Date.now()}` });
+          if (!this.progress.applyCanonicalPersisted(reply.persisted)) throw new Error('BOAT_STATE_INVALID');
+          if (this.progress.selectedBoatId) this.selectionListener?.(this.progress.selectedBoatId);
+          this.shop.setStatus('ซื้อเรือสำเร็จ');
+        } catch (error) {
+          this.shop.setStatus(error instanceof Error ? error.message : 'ซื้อเรือไม่สำเร็จ', true);
+        }
+        return;
+      }
       const result = this.progress.purchase(boatId);
       if (result.ok && this.progress.selectedBoatId) this.selectionListener?.(this.progress.selectedBoatId);
       this.shop.setStatus(result.message, !result.ok);
@@ -806,6 +821,16 @@ export class BoatManager {
     }
     if ((action === 'upgrade-hull' || action === 'upgrade-cannon' || action === 'upgrade-sail') && boatId) {
       const kind = action.replace('upgrade-', '') as 'hull' | 'cannon' | 'sail';
+      if (this.pocketOperations) {
+        try {
+          const reply = await this.pocketOperations.request({ type: 'boatUpgrade', boatId, kind, idempotencyKey: `boat-upgrade:${boatId}:${kind}:${Date.now()}` });
+          if (!this.progress.applyCanonicalPersisted(reply.persisted)) throw new Error('BOAT_STATE_INVALID');
+          this.shop.setStatus(`อัปเกรด ${kind} สำเร็จ — เรียกเรือใหม่เพื่อใช้ค่าอัปเกรด`);
+        } catch (error) {
+          this.shop.setStatus(error instanceof Error ? error.message : 'อัปเกรดเรือไม่สำเร็จ', true);
+        }
+        return;
+      }
       const result = this.progress.upgrade(boatId, kind);
       this.shop.setStatus(
         result.ok ? `${result.message} — เรียกเรือใหม่เพื่อใช้ค่าอัปเกรด` : result.message,

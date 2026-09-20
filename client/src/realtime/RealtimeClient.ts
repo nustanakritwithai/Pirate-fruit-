@@ -108,6 +108,45 @@ export interface RealtimeHandlers {
   onBoatIntentResult?(result: { intentId: string; accepted: boolean; reason?: string; entityId?: string }): void;
 }
 
+/** Deliver the original world-monster messages to an already wired handler set. */
+export function dispatchWorldMonsterMessage(
+  message: RealtimeServerMessage,
+  handlers: Pick<RealtimeHandlers, 'onWorldMonsterSnapshot' | 'onWorldMonsterDelta' | 'onWorldMonsterAttack' | 'onWorldMonsterDead' | 'onWorldMonsterRespawn'>,
+): void {
+  if (message.type === 'world-monster-snapshot') {
+    handlers.onWorldMonsterSnapshot?.(message.islandId, message.monsters);
+  } else if (message.type === 'world-monster-delta') {
+    handlers.onWorldMonsterDelta?.(message.islandId, message.updates);
+  } else if (message.type === 'world-monster-attack') {
+    handlers.onWorldMonsterAttack?.(message.attack);
+  } else if (message.type === 'world-monster-dead') {
+    handlers.onWorldMonsterDead?.(message.spawnId, message.byId, message.reward);
+  } else if (message.type === 'world-monster-respawn') {
+    handlers.onWorldMonsterRespawn?.(message.monster);
+  }
+}
+
+/** Deduplicate coalesced parent deliveries by the original per-message sequence. */
+export function dedupeWorldMonsterMessages(
+  messages: readonly RealtimeServerMessage[],
+  seen: Set<number>,
+  order: number[],
+  maxEntries = 512,
+): RealtimeServerMessage[] {
+  const fresh: RealtimeServerMessage[] = [];
+  for (const message of messages) {
+    if (seen.has(message.seq)) continue;
+    seen.add(message.seq);
+    order.push(message.seq);
+    fresh.push(message);
+  }
+  while (order.length > maxEntries) {
+    const expired = order.shift();
+    if (expired !== undefined) seen.delete(expired);
+  }
+  return fresh;
+}
+
 export interface RealtimeClientOptions {
   webSocketFactory?: (url: string) => RealtimeSocketLike;
   /** ฐาน backoff (มิลลิวินาที) — เทสต์ตั้งต่ำได้ */

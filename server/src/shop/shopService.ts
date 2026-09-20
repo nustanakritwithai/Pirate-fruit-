@@ -1,63 +1,19 @@
-import { createHash, randomInt, randomUUID } from 'node:crypto';
-import { z } from 'zod';
+import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {
-  SHOP_DRAW_COST,
-  SHOP_GACHA_CATALOG,
-  SHOP_POTIONS,
   SHOP_PROTOCOL_SCHEMA_VERSION,
-  SHOP_RARITY_WEIGHT,
-  type ShopCatalogEntry,
   type ShopPurchaseResponse,
 } from '@pirate-fruit/shared';
-
-const requestSchema = z.object({
-  schemaVersion: z.literal(SHOP_PROTOCOL_SCHEMA_VERSION),
-  idempotencyKey: z.string().min(8).max(128),
-  action: z.enum(['draw', 'potion']),
-  potionId: z.enum(['potion-hp', 'potion-mp']).optional(),
-}).superRefine((value, context) => {
-  if (value.action === 'potion' && !value.potionId) {
-    context.addIssue({ code: 'custom', message: 'potionId is required for potion purchases' });
-  }
-});
-
-type ShopRequest = z.infer<typeof requestSchema>;
+import {
+  drawShopCatalog, safeCanonicalCoins, shopCost, shopInventoryKind,
+  shopNextQuantity, shopRequestHash, parseShopRequest,
+} from './shopRules.js';
 
 export class ShopRejectedError extends Error {
   constructor(readonly code: 'INSUFFICIENT_COINS' | 'IDEMPOTENCY_KEY_REUSED') {
     super(code === 'INSUFFICIENT_COINS' ? 'Not enough coins' : 'Idempotency key was reused');
     this.name = 'ShopRejectedError';
   }
-}
-
-function requestHash(request: ShopRequest): string {
-  return createHash('sha256')
-    .update(`${request.action}|${request.potionId ?? ''}`, 'utf8')
-    .digest('hex');
-}
-
-function drawCatalog(roll: (max: number) => number): ShopCatalogEntry {
-  const total = SHOP_GACHA_CATALOG.reduce(
-    (sum, item) => sum + SHOP_RARITY_WEIGHT[item.rarity],
-    0,
-  );
-  let remaining = roll(total);
-  for (const item of SHOP_GACHA_CATALOG) {
-    remaining -= SHOP_RARITY_WEIGHT[item.rarity];
-    if (remaining < 0) return item;
-  }
-  return SHOP_GACHA_CATALOG[SHOP_GACHA_CATALOG.length - 1]!;
-}
-
-function inventoryKind(item: ShopCatalogEntry): string {
-  return item.kind === 'fighting-style' ? 'style' : item.kind;
-}
-
-function safeCoins(value: string): number {
-  const coins = Number(value);
-  if (!Number.isSafeInteger(coins) || coins < 0) throw new Error('Invalid canonical coin balance');
-  return coins;
 }
 
 export class ShopService {
@@ -67,8 +23,8 @@ export class ShopService {
   ) {}
 
   async purchase(characterId: string, body: unknown): Promise<ShopPurchaseResponse> {
-    const request = requestSchema.parse(body);
-    const hash = requestHash(request);
+    const request = parseShopRequest(body);
+    const hash = shopRequestHash(request);
     const client = await this.pool.connect();
     try {
       await client.query('begin');
@@ -89,10 +45,10 @@ export class ShopService {
         return { ...prior.rows[0].result_json, idempotentReplay: true };
       }
 
-      const drawn = request.action === 'draw' ? drawCatalog(this.roll) : null;
+      const drawn = request.action === 'draw' ? drawShopCatalog(this.roll) : null;
       const potionId = request.action === 'potion' ? request.potionId! : null;
-      const cost = drawn ? SHOP_DRAW_COST : SHOP_POTIONS[potionId!].price;
-      const coins = safeCoins(character.rows[0].coins);
+      const cost = shopCost(request, drawn);
+      const coins = safeCanonicalCoins(character.rows[0].coins);
       if (coins < cost) throw new ShopRejectedError('INSUFFICIENT_COINS');
 
       const itemId = drawn?.id ?? potionId!;
@@ -101,9 +57,9 @@ export class ShopService {
         [characterId, itemId],
       );
       const oldQuantity = current.rows[0]?.quantity ?? 0;
-      const quantity = drawn ? Math.max(1, oldQuantity) : oldQuantity + 1;
+      const quantity = shopNextQuantity(drawn, oldQuantity);
       const metadata = drawn
-        ? { kind: inventoryKind(drawn) }
+        ? { kind: shopInventoryKind(drawn) }
         : { kind: 'consumable' };
       await client.query(
         `insert into player_inventory

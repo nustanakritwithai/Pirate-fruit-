@@ -2,13 +2,12 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {
   QUESTS_BY_ID,
-  QUEST_PROGRESS_MAX_AMOUNT,
-  isQuestObjectivesComplete,
   type QuestDefinition,
   type QuestProgressEventPayload,
   type QuestRejectCode,
 } from '@pirate-fruit/shared';
 import { accrueServerExp } from '../progression/progressionAccrual.js';
+import { applyQuestProgress, calculateQuestReward, normalizeQuestProgress } from './newquestRules.js';
 
 /** คำขอถูกปฏิเสธด้วยเหตุผลทางธุรกิจ (เลเวล/สถานะเควสต์/คีย์ซ้ำ) — ไม่ใช่ความผิดพลาดระบบ */
 export class QuestRejectedError extends Error {
@@ -62,24 +61,7 @@ function requireDefinition(questId: string): QuestDefinition {
 
 /** progress_json เก็บเป็น {"objectives": number[]} — sanitize ทุกครั้งที่อ่าน */
 function readProgress(row: QuestRow, definition: QuestDefinition): number[] {
-  const raw = Array.isArray(row.progress_json?.objectives) ? row.progress_json.objectives : [];
-  return definition.objectives.map((objective, index) => {
-    const value = raw[index];
-    const count = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : 0;
-    return Math.min(objective.requiredAmount, Math.max(0, count));
-  });
-}
-
-function eventMatchesObjective(
-  event: QuestProgressEventPayload,
-  objective: QuestDefinition['objectives'][number],
-): boolean {
-  if (objective.targetId !== event.targetId) return false;
-  if (event.kind === 'kill') {
-    return objective.type === 'kill' || (objective.type === 'boss' && event.isBoss === true);
-  }
-  if (objective.type !== 'deliver') return false;
-  return !objective.islandId || objective.islandId === event.islandId;
+  return normalizeQuestProgress(definition, row.progress_json?.objectives);
 }
 
 /**
@@ -243,21 +225,13 @@ export class PostgresQuestRepository {
         return { questId: null, progress: [], completed: false };
       }
       const definition = requireDefinition(activeRow.quest_id);
-      const progress = readProgress(activeRow, definition);
-
-      for (const event of input.events) {
-        const amount = Math.min(
-          QUEST_PROGRESS_MAX_AMOUNT,
-          Math.max(0, Math.floor(event.amount)),
-        );
-        if (amount <= 0) continue;
-        definition.objectives.forEach((objective, index) => {
-          if (!eventMatchesObjective(event, objective)) return;
-          progress[index] = Math.min(objective.requiredAmount, progress[index] + amount);
-        });
-      }
-
-      const completed = isQuestObjectivesComplete(definition, progress);
+      const transition = applyQuestProgress(
+        definition,
+        readProgress(activeRow, definition),
+        input.events,
+      );
+      const progress = transition.progress;
+      const completed = transition.completed;
       await client.query(
         `update player_quests
             set progress_json = $2, status = $3,
@@ -348,9 +322,9 @@ export class PostgresQuestRepository {
         );
       }
 
-      const rewards = definition.rewards;
-      const masteryBonus = rewards.masteryBonus ?? 0;
-      const coinsTotal = coins + rewards.coins;
+      const rewards = calculateQuestReward(definition, characterRow.level, 0, coins);
+      const masteryBonus = rewards.masteryBonus;
+      const coinsTotal = rewards.coinsTotal;
       await client.query(
         'update characters set coins = $2, updated_at = now() where id = $1',
         [input.characterId, String(coinsTotal)],

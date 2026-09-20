@@ -56,7 +56,7 @@ import { RemoteQuestSync } from './quest/RemoteQuestSync';
 import { initializeRemoteMonster } from './monster/RemoteMonsterClient';
 import { RemoteMonsterSync } from './monster/RemoteMonsterSync';
 import { initializeRemoteProgression, reconcileProgression } from './progression/RemoteProgressionClient';
-import { initializeRealtime } from './realtime/RealtimeClient';
+import { dedupeWorldMonsterMessages, dispatchWorldMonsterMessage, initializeRealtime } from './realtime/RealtimeClient';
 import { RemotePlayers } from './realtime/RemotePlayers';
 import { ScopedVisualEffects } from './realtime/ScopedVisualEffects';
 import { shouldAcknowledgeDirectVisual, visualForDirectRealtime } from './realtime/VisualTransport';
@@ -468,6 +468,14 @@ async function main(): Promise<void> {
   const ownedMonsterRenderer = new PocketOwnedMonsterRenderer(game.scene, THREE);
   game.add(ownedMonsterRenderer);
   let centralAuthorityWasActive = false;
+  let pirateOriginalWorldReady = false;
+  // เมื่อรับโลกจาก server แล้ว ห้ามเปิดศัตรู local ซ้อนระหว่าง reconnect
+  let pirateOriginalWorldClaimed = false;
+  let parentSelfCharacterId: string | null = null;
+  let pirateOriginalWorldGeneration = 0;
+  let pirateOriginalWorldSequence = 0;
+  const pirateOriginalWorldMessageSeen = new Set<number>();
+  const pirateOriginalWorldMessageOrder: number[] = [];
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -512,6 +520,9 @@ async function main(): Promise<void> {
         // Owned actors use a separate authority envelope. Never route them through
         // the ambient `monster:` sanitizer or treat a visual hit as client damage.
         ownedMonsterRenderer.setActors(actors as unknown as readonly OwnedMonsterActor[]);
+        // Once the original-world stream is ready, its HP/state is authoritative;
+        // do not let the parent actor convenience payload overwrite it.
+        if (pirateOriginalWorldClaimed) return;
         // Central authority gates only the ambient `monster:` stream.
         if (!centralAuthorityRuntime?.accepts(mapZone)) return;
         const safeActors = pirateMonsterAuthority?.sanitizeActors(transportZone, actors, undefined, mapZone) ?? [];
@@ -520,15 +531,47 @@ async function main(): Promise<void> {
       onCentralAuthority: (capability) => {
         centralAuthorityRuntime?.update(capability);
         const active = centralAuthorityRuntime?.active ?? false;
-        monsterManager?.setAmbientSpawnsSuppressed(active);
+        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldClaimed);
         if (!active && centralAuthorityWasActive) {
           sharedMonsters?.resetSession(true);
         }
         centralAuthorityWasActive = active;
       },
+      onOriginalWorldReady: (ready) => {
+        pirateOriginalWorldReady = ready;
+        if (ready) pirateOriginalWorldClaimed = true;
+        if (!ready) parentSelfCharacterId = null;
+        monsterManager?.setAmbientSpawnsSuppressed(
+          pirateOriginalWorldClaimed,
+        );
+      },
+      onOriginalWorldMessages: (envelope) => {
+        if (envelope.generation < pirateOriginalWorldGeneration
+          || (envelope.generation === pirateOriginalWorldGeneration
+            && envelope.sequence <= pirateOriginalWorldSequence)) return;
+        const generationChanged = envelope.generation !== pirateOriginalWorldGeneration;
+        parentSelfCharacterId = envelope.viewerId;
+        if (generationChanged) {
+          pirateOriginalWorldMessageSeen.clear();
+          pirateOriginalWorldMessageOrder.length = 0;
+        }
+        pirateOriginalWorldGeneration = envelope.generation;
+        pirateOriginalWorldSequence = envelope.sequence;
+        for (const message of dedupeWorldMonsterMessages(
+          envelope.messages,
+          pirateOriginalWorldMessageSeen,
+          pirateOriginalWorldMessageOrder,
+        )) dispatchWorldMonsterMessage(message, originalWorldHandlers);
+      },
       onPresenceReset: () => {
         centralAuthorityRuntime?.reset();
         centralAuthorityWasActive = false;
+        pirateOriginalWorldReady = false;
+        parentSelfCharacterId = null;
+        pirateOriginalWorldGeneration = 0;
+        pirateOriginalWorldSequence = 0;
+        pirateOriginalWorldMessageSeen.clear();
+        pirateOriginalWorldMessageOrder.length = 0;
         sharedMonsters?.resetSession(true);
         ownedMonsterRenderer.reset();
       },
@@ -537,11 +580,12 @@ async function main(): Promise<void> {
         pirateMonsterAuthority?.setZone(islandManager.activeIsland);
         sharedMonsters?.setIsland(islandManager.activeIsland);
         ownedMonsterRenderer.reset();
-        monsterManager?.setAmbientSpawnsSuppressed(centralAuthorityRuntime?.active ?? false);
+        monsterManager?.setAmbientSpawnsSuppressed(
+          pirateOriginalWorldClaimed,
+        );
       },
     })
     : null;
-  pocketMonsterPresence?.start();
   // S15: PvP — Server เป็นเจ้าของ HP/ดาเมจการต่อสู้ระหว่างผู้เล่น (ต้องเปิด multiplayer ก่อน)
   const pvpEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_PVP === 'true' || import.meta.env.VITE_ENABLE_PVP === '1');
@@ -616,7 +660,7 @@ async function main(): Promise<void> {
   const boatWorldEnabled = multiplayerEnabled
     && (import.meta.env.VITE_ENABLE_BOAT_WORLD === 'true'
       || import.meta.env.VITE_ENABLE_BOAT_WORLD === '1');
-  const getSelfCharacterId = () => getRemoteSession().session?.characterId ?? null;
+  const getSelfCharacterId = () => getRemoteSession().session?.characterId ?? parentSelfCharacterId;
   const sharedMonsterRewardSources = new Map<string, {
     itemId: string;
     category: 'style' | 'sword' | 'gun' | 'fruit' | 'utility';
@@ -627,6 +671,55 @@ async function main(): Promise<void> {
     ? new BoatWorldClient(game.scene, getSelfCharacterId, boatManager, worldTextures, graphics, effects)
     : null;
   if (boatWorldClient) game.add(boatWorldClient);
+  const originalWorldHandlers = {
+    onWorldMonsterSnapshot: (islandId: string, monsters: import('@pirate-fruit/shared').WorldMonsterSnapshot[]) => sharedMonsters?.applySnapshot(islandId, monsters),
+    onWorldMonsterDelta: (islandId: string, updates: import('@pirate-fruit/shared').WorldMonsterDelta[]) => {
+      sharedMonsters?.applyDelta(islandId, updates);
+      if (islandId !== islandManager.activeIsland) return;
+      for (const update of updates) {
+        if (!update.damage || update.damage <= 0) continue;
+        const at = sharedMonsters?.positionOf(update.spawnId);
+        if (at) effects.spawnDamageNumber(at, update.damage);
+      }
+    },
+    onWorldMonsterAttack: (attack: import('@pirate-fruit/shared').WorldMonsterAttack) => {
+      sharedMonsters?.applyAttack(attack, getSelfCharacterId() ?? undefined);
+      const position = sharedMonsters?.positionOf(attack.spawnId);
+      audio.play('monster.attack', { eventId: `world-monster-attack:${attack.attackId}`, position });
+    },
+    onWorldMonsterDead: (spawnId: string, byId?: string, reward?: import('@pirate-fruit/shared').WorldMonsterReward) => {
+      const position = sharedMonsters?.positionOf(spawnId);
+      sharedMonsters?.markDead(spawnId);
+      audio.play('monster.death', { eventId: `world-monster-dead:${spawnId}`, position });
+      if (byId !== getSelfCharacterId() || !reward) return;
+      const item = sharedMonsterRewardSources.get(spawnId) ?? playerCombat?.activeItem
+        ?? { itemId: 'basic-brawl', category: 'style' as const, name: 'หมัด' };
+      sharedMonsterRewardSources.delete(spawnId);
+      progression.addPlayerExp(reward.playerExp, `shared-monster:${reward.monsterId}`);
+      progression.setCoinsFromServer(reward.coinsTotal, `shared-monster:${reward.monsterId}`);
+      const mastery = reward.masteryExp > 0
+        ? [{ itemId: item.itemId, category: item.category, amount: reward.masteryExp }]
+        : [];
+      if (reward.masteryExp > 0) progression.addMasteryExp(item.itemId, item.category, reward.masteryExp);
+      progression.emitRewardGranted({ playerExp: reward.playerExp, coins: reward.coins, mastery, multiplier: 1 });
+      const contribution = { enemyId: reward.monsterId, totalDamage: 0, lastHitItemId: item.itemId, lastHitCategory: item.category, highestDamageItemId: item.itemId, highestDamageCategory: item.category, killed: true };
+      progression.events.emit('monster:killed', {
+        monsterId: reward.monsterId,
+        monsterType: reward.monsterId.includes('boss') ? 'boss' : 'normal',
+        isBoss: reward.monsterId.includes('boss'),
+        position: position ?? { x: controller.position.x, y: controller.position.y, z: controller.position.z },
+        contribution,
+      });
+      progression.save();
+    },
+    onWorldMonsterRespawn: (monster: import('@pirate-fruit/shared').WorldMonsterSnapshot) => {
+      sharedMonsterRewardSources.delete(monster.spawnId);
+      sharedMonsters?.applyRespawn(monster);
+      audio.play('monster.respawn', { eventId: `world-monster-respawn:${monster.spawnId}`, position: { x: monster.x, y: world.collision.heightAt(monster.x, monster.z), z: monster.z } });
+    },
+  };
+  // Start only after the original-world dispatcher exists; parent transport may deliver immediately.
+  pocketMonsterPresence?.start();
   const realtime = initializeRealtime({
     onEconomy: (state) => {
       const world = state?.world ? parseEconomyDocument(state.world) : null;
@@ -642,10 +735,10 @@ async function main(): Promise<void> {
       monsterManager?.resetPresentationActors();
       pirateMonsterAuthority?.resetSession();
       if (centralAuthorityRuntime?.active) {
-        monsterManager?.setAmbientSpawnsSuppressed(true);
+        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldClaimed);
       } else {
         centralAuthorityRuntime?.reset();
-        monsterManager?.setAmbientSpawnsSuppressed(false);
+        monsterManager?.setAmbientSpawnsSuppressed(pirateOriginalWorldClaimed);
       }
       resyncAuthoritativeState();
     },
@@ -760,73 +853,7 @@ async function main(): Promise<void> {
       notifyPvp(messages[result.reason ?? ''] ?? '⚔️ Server ปฏิเสธการโจมตี');
     },
     // S16: มอนสเตอร์กลาง — Server เป็นเจ้าของ HP/state; client เรนเดอร์ตาม
-    onWorldMonsterSnapshot: (islandId, monsters) => sharedMonsters?.applySnapshot(islandId, monsters),
-    onWorldMonsterDelta: (islandId, updates) => {
-      sharedMonsters?.applyDelta(islandId, updates);
-      if (islandId !== islandManager.activeIsland) return;
-      for (const update of updates) {
-        if (!update.damage || update.damage <= 0) continue;
-        const at = sharedMonsters?.positionOf(update.spawnId);
-        if (at) effects.spawnDamageNumber(at, update.damage);
-      }
-    },
-    onWorldMonsterAttack: (attack) => {
-      sharedMonsters?.applyAttack(attack, getSelfCharacterId() ?? undefined);
-      const position = sharedMonsters?.positionOf(attack.spawnId);
-      audio.play('monster.attack', {
-        eventId: `world-monster-attack:${attack.attackId}`,
-        position,
-      });
-    },
-    onWorldMonsterDead: (spawnId, byId, reward) => {
-      const position = sharedMonsters?.positionOf(spawnId);
-      sharedMonsters?.markDead(spawnId);
-      audio.play('monster.death', { eventId: `world-monster-dead:${spawnId}`, position });
-      if (byId !== getSelfCharacterId() || !reward) return;
-
-      const item = sharedMonsterRewardSources.get(spawnId) ?? playerCombat?.activeItem
-        ?? { itemId: 'basic-brawl', category: 'style' as const, name: 'หมัด' };
-      sharedMonsterRewardSources.delete(spawnId);
-      progression.addPlayerExp(reward.playerExp, `shared-monster:${reward.monsterId}`);
-      progression.setCoinsFromServer(reward.coinsTotal, `shared-monster:${reward.monsterId}`);
-      const mastery = reward.masteryExp > 0
-        ? [{ itemId: item.itemId, category: item.category, amount: reward.masteryExp }]
-        : [];
-      if (reward.masteryExp > 0) {
-        progression.addMasteryExp(item.itemId, item.category, reward.masteryExp);
-      }
-      progression.emitRewardGranted({
-        playerExp: reward.playerExp,
-        coins: reward.coins,
-        mastery,
-        multiplier: 1,
-      });
-      const contribution = {
-        enemyId: reward.monsterId,
-        totalDamage: 0,
-        lastHitItemId: item.itemId,
-        lastHitCategory: item.category,
-        highestDamageItemId: item.itemId,
-        highestDamageCategory: item.category,
-        killed: true,
-      };
-      progression.events.emit('monster:killed', {
-        monsterId: reward.monsterId,
-        monsterType: reward.monsterId.includes('boss') ? 'boss' : 'normal',
-        isBoss: reward.monsterId.includes('boss'),
-        position: position ?? { x: controller.position.x, y: controller.position.y, z: controller.position.z },
-        contribution,
-      });
-      progression.save();
-    },
-    onWorldMonsterRespawn: (monster) => {
-      sharedMonsterRewardSources.delete(monster.spawnId);
-      sharedMonsters?.applyRespawn(monster);
-      audio.play('monster.respawn', {
-        eventId: `world-monster-respawn:${monster.spawnId}`,
-        position: { x: monster.x, y: world.collision.heightAt(monster.x, monster.z), z: monster.z },
-      });
-    },
+    ...originalWorldHandlers,
     onBoatSnapshot: (islandId, boats) => boatWorldClient?.applySnapshot(islandId, boats),
     onBoatDelta: (boat) => boatWorldClient?.applyDelta(boat),
     onBoatCannon: (event) => {
@@ -1130,9 +1157,11 @@ async function main(): Promise<void> {
       },
     },
     // S16: เปิด shared world monsters → ปิดมอนสเตอร์ท้องถิ่น (โลกกลางเป็นของ Server)
-    shouldSuppressLocalMonsters(sharedWorldMonstersEnabled, realtime !== null),
+    shouldSuppressLocalMonsters(sharedWorldMonstersEnabled, realtime !== null, pirateOriginalWorldClaimed),
   );
-  monsterManager.setAmbientSpawnsSuppressed(centralAuthorityRuntime?.active ?? false);
+  monsterManager.setAmbientSpawnsSuppressed(
+    pirateOriginalWorldClaimed,
+  );
 
   // Naval Combat (เรือ Phase 2-3) — เรือโจรสลัด AI + ปืนใหญ่ + Boarding
   const navalCombat = new NavalCombat(
@@ -1183,7 +1212,8 @@ async function main(): Promise<void> {
   // S15: ต่อ M1/สกิลของผู้เล่นเข้ากับ PvP — หาผู้เล่นคนอื่นในกรวยหน้าแล้วส่ง "เจตนาโจมตี"
   // ให้ Server ตัดสิน (ระยะ/คูลดาวน์/ดาเมจ) — Client ไม่ส่งดาเมจ (กันโกง)
   // S16: และต่อ M1/สกิลเข้ากับมอนสเตอร์กลาง — หาตัวในกรวยหน้าแล้วส่ง "เจตนาตี" ให้ Server ตัดสิน
-  if (realtime && (multiplayerEnabled || sharedWorldMonstersEnabled)) {
+  if ((realtime || pocketMonsterPresence)
+    && (multiplayerEnabled || sharedWorldMonstersEnabled || Boolean(pocketMonsterPresence))) {
     const CONE_HALF_ANGLE = Math.PI / 3; // ~120° กรวยหน้า
     playerCombat.onPvpAttack = ({
       origin,
@@ -1213,7 +1243,7 @@ async function main(): Promise<void> {
           const statCategory = category === 'utility'
             ? undefined
             : category as CombatStatCategory;
-          for (const id of targetIds) realtime.sendAttack(id, kind, skillId, statCategory);
+          for (const id of targetIds) realtime?.sendAttack(id, kind, skillId, statCategory);
           playerCombat?.markCombatActivity();
         }
       } else if (multiplayerEnabled && !pvpEnabled) {
@@ -1229,6 +1259,10 @@ async function main(): Promise<void> {
       range: requestedRange,
       area,
     }) => {
+      if (pirateOriginalWorldClaimed && !pirateOriginalWorldReady) {
+        notifyPvp('กำลังรอข้อมูลการต่อสู้จากเซิร์ฟเวอร์');
+        return;
+      }
       if (pocketMonsterPresence && pirateMonsterAuthority && centralAuthorityRuntime?.active) {
         const safeRange = Math.min(
           kind === 'skill' ? WORLD_MONSTER_SKILL_RANGE : WORLD_MONSTER_MELEE_RANGE,
@@ -1238,6 +1272,8 @@ async function main(): Promise<void> {
           ? sharedMonsters?.targetsInRadius(origin, Math.min(safeRange, Math.max(0.5, area))) ?? []
           : sharedMonsters?.targetsInCone(origin, forwardX, forwardZ, safeRange, CONE_HALF_ANGLE) ?? [];
         const targets = targetIds.length > 0 ? targetIds : [undefined];
+        const sourceItem = playerCombat?.activeItem;
+        if (sourceItem) for (const spawnId of targetIds) sharedMonsterRewardSources.set(spawnId, { ...sourceItem });
         for (const targetId of targets) {
           const identity = targetId ? sharedMonsters?.getActorIdentity(targetId) : undefined;
           pirateMonsterAuthority.queueIntent({
@@ -1248,7 +1284,7 @@ async function main(): Promise<void> {
             forwardZ,
             range: safeRange,
             ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
-            ...(identity ? {
+            ...(pirateOriginalWorldReady && targetId ? { targetActorId: `monster:${targetId}` } : identity ? {
               targetActorId: identity.actorId,
               expectedGeneration: identity.generation,
               expectedStateSequence: identity.stateSequence,
@@ -1267,7 +1303,7 @@ async function main(): Promise<void> {
         : sharedMonsters.targetsInCone(origin, forwardX, forwardZ, range, CONE_HALF_ANGLE);
       const item = playerCombat?.activeItem;
       if (item) for (const spawnId of spawnIds) sharedMonsterRewardSources.set(spawnId, { ...item });
-      realtime.sendMonsterHits(
+      realtime?.sendMonsterHits(
         spawnIds,
         kind,
         category === 'utility' ? undefined : category as CombatStatCategory,
@@ -1283,7 +1319,7 @@ async function main(): Promise<void> {
           if (blocking === lastBlocking && (!blocking || blockRefresh < 1)) return;
           lastBlocking = blocking;
           blockRefresh = 0;
-          realtime.sendCombatBlock(blocking);
+          realtime?.sendCombatBlock(blocking);
         },
       });
     }

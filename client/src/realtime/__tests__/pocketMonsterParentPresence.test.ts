@@ -8,6 +8,7 @@ import {
   PIRATE_LOCAL_PRESENCE_MESSAGE,
   PIRATE_PRESENCE_SNAPSHOT_MESSAGE,
   PIRATE_PRESENCE_STATUS_MESSAGE,
+  PIRATE_ORIGINAL_WORLD_CONTRACT,
   PocketMonsterParentPresence,
   parsePiratePresenceSnapshotMessage,
   resolvePocketMonsterParentOrigin,
@@ -142,6 +143,59 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(host.sent).toHaveLength(2);
     bridge.dispose();
     expect(host.hasListener()).toBe(false);
+  });
+
+  it('accepts bounded original-world monster messages and rejects stale/oversized envelopes', () => {
+    const message = {
+      type: 'world-monster-dead',
+      seq: 4,
+      spawnId: 'monster:pirate-1',
+      byId: 'player-1',
+    };
+    const parsed = parsePiratePresenceSnapshotMessage({
+      type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE,
+      payload: {
+        zone: 'pirate-fruit',
+        players: [],
+      pirateWorld: {
+        contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+        viewerId: 'character-1',
+        generation: 2,
+          sequence: 7,
+          messages: [message],
+        },
+      },
+    });
+    expect(parsed?.pirateWorld).toEqual({
+      contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+      viewerId: 'character-1',
+      generation: 2,
+      sequence: 7,
+      messages: [message],
+      hasInitialSnapshot: false,
+    });
+    expect(parsePiratePresenceSnapshotMessage({
+      type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE,
+      payload: {
+        zone: 'pirate-fruit',
+        players: [],
+        pirateWorld: {
+          contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+          viewerId: 'character-1',
+          generation: 2,
+          sequence: 8,
+          messages: Array.from({ length: 513 }, () => message),
+        },
+      },
+    })?.pirateWorld).toBeUndefined();
+    expect(parsePiratePresenceSnapshotMessage({
+      type: PIRATE_PRESENCE_SNAPSHOT_MESSAGE,
+      payload: {
+        zone: 'pirate-fruit',
+        players: [],
+        pirateWorld: { contract: PIRATE_ORIGINAL_WORLD_CONTRACT, viewerId: 'character-1', generation: 0, sequence: 1, messages: [] },
+      },
+    })?.pirateWorld).toBeUndefined();
   });
 
   it('signals owned-render reset only on an explicit disconnected presence status', () => {

@@ -5,9 +5,20 @@ import {
   type ShopPotionId,
 } from '@pirate-fruit/shared';
 import { getRemoteSession } from '../session/RemoteSession';
+import { getPocketOperationExecutor, requestPocketOperation, type PocketOperationExecutor } from '../persistence/PocketOperationExecutor';
 
 export interface RemoteShopExecutor {
   purchase(action: 'draw' | 'potion', potionId?: ShopPotionId): Promise<ShopPurchaseResponse>;
+}
+
+function isShopPurchaseResponse(value: unknown): value is ShopPurchaseResponse {
+  const payload = value as Partial<ShopPurchaseResponse> | null;
+  return !!payload && payload.ok === true
+    && payload.schemaVersion === SHOP_PROTOCOL_SCHEMA_VERSION
+    && (payload.action === 'draw' || payload.action === 'potion')
+    && typeof payload.coins === 'number' && !!payload.item
+    && typeof payload.quantity === 'number' && typeof payload.isNew === 'boolean'
+    && typeof payload.idempotentReplay === 'boolean';
 }
 
 function idempotencyKey(): string {
@@ -64,7 +75,21 @@ export function createRemoteShopExecutor(
   };
 }
 
+export function createRemoteShopOperationExecutor(executor: PocketOperationExecutor): RemoteShopExecutor {
+  return {
+    async purchase(action, potionId) {
+      const idempotencyKeyValue = idempotencyKey();
+      return requestPocketOperation(executor, {
+        type: 'shopPurchase', action, idempotencyKey: idempotencyKeyValue,
+        ...(potionId ? { potionId } : {}),
+      }, isShopPurchaseResponse);
+    },
+  };
+}
+
 export function initializeRemoteShop(): RemoteShopExecutor | null {
+  const pocketExecutor = getPocketOperationExecutor();
+  if (pocketExecutor) return createRemoteShopOperationExecutor(pocketExecutor);
   const enabled = import.meta.env.VITE_ENABLE_PROGRESSION_SERVER;
   if (enabled !== 'true' && enabled !== '1') return null;
   const session = getRemoteSession();

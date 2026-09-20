@@ -9,6 +9,7 @@
   "scripts": {
     "build:economy": "node scripts/build-economy-engine.mjs",
     "build": "npm run build:economy && tsc -p tsconfig.json",
+    "build:central-worker": "node scripts/build-central-worker.mjs",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "node --enable-source-maps dist/persistence/runMigrations.js",
     "db:migrate:dev": "tsx src/persistence/runMigrations.ts",
