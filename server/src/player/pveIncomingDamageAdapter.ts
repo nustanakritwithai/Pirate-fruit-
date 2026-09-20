@@ -28,7 +28,7 @@ export type CanonicalPveState = CanonicalPlayerState & {
   pveVitals?: CanonicalPveVitals;
   pveRespawn?: PveRespawnEvent;
   pveRespawnAtMs?: number;
-  vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean; respawn?: unknown } }>;
+  vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean; respawn?: PveRespawnEvent } }>;
   playerHitReceipts?: PlayerHitReceipt[];
 };
 

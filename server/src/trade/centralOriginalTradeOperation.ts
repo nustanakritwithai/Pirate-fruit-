@@ -1,6 +1,5 @@
 import { loadBundledEconomyEngine } from '../economy/economyEngine.js';
 import type { EconomyEngine } from '../economy/economyEngine.js';
-import type { CanonicalPlayerState } from '../player/playerState.js';
 import { serializePlayerState } from '../player/playerState.js';
 import {
   applyCanonicalTradeOperation,

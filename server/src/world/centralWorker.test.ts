@@ -3,6 +3,7 @@ import { CentralWorldWorker } from './centralWorker.js';
 import type { MonsterWorldStateSnapshot } from './monsterWorldService.js';
 import { defaultPlayerState } from '../player/playerState.js';
 import type { PendingPlayerHit } from './centralPlayerHits.js';
+import type { CanonicalPveState } from '../player/pveIncomingDamageAdapter.js';
 
 const profile = {
   level: 1,
@@ -14,7 +15,7 @@ const profile = {
 describe('CentralWorldWorker pure adapter', () => {
   it('routes canonical vitals tick, snapshot and idempotent potion operation', async () => {
     const worker = new CentralWorldWorker(() => 100_000);
-    const state = defaultPlayerState();
+    const state = defaultPlayerState() as CanonicalPveState;
     state.checkpoint.hp = 40;
     state.checkpoint.energy = 50;
     state.inventory.consumables['potion-hp'] = 1;

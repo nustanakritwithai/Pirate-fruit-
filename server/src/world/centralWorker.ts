@@ -225,7 +225,6 @@ export class CentralWorldWorker {
 
   private vitalsContext(request: CentralRequest, state?: any): PveVitalsContext {
     const flags = request.flags ?? {};
-    const player = request.characterId ? this.currentPlayers.get(request.characterId) : undefined;
     return { now: request.now, revision: request.nextRevision ?? request.revision, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
       blocking: flags.blocking === true, mounted: flags.mounted === true, sprinting: flags.sprinting === true,
       inWater: request.inWater === true,
