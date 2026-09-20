@@ -1264,6 +1264,8 @@ async function main(): Promise<void> {
           ? sharedMonsters?.targetsInRadius(origin, Math.min(safeRange, Math.max(0.5, area))) ?? []
           : sharedMonsters?.targetsInCone(origin, forwardX, forwardZ, safeRange, CONE_HALF_ANGLE) ?? [];
         const targets = targetIds.length > 0 ? targetIds : [undefined];
+        const sourceItem = playerCombat?.activeItem;
+        if (sourceItem) for (const spawnId of targetIds) sharedMonsterRewardSources.set(spawnId, { ...sourceItem });
         for (const targetId of targets) {
           const identity = targetId ? sharedMonsters?.getActorIdentity(targetId) : undefined;
           pirateMonsterAuthority.queueIntent({
@@ -1274,7 +1276,7 @@ async function main(): Promise<void> {
             forwardZ,
             range: safeRange,
             ...(area !== undefined ? { area: Math.max(0.5, area) } : {}),
-            ...(identity ? {
+            ...(pirateOriginalWorldReady && targetId ? { targetActorId: `monster:${targetId}` } : identity ? {
               targetActorId: identity.actorId,
               expectedGeneration: identity.generation,
               expectedStateSequence: identity.stateSequence,
