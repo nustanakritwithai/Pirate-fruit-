@@ -71,8 +71,8 @@ export function prepareCanonicalPlayerHit(
     hitstunUntil: resolved.state.hitstunUntil,
   };
   state.pveVitals = { ...(state.pveVitals ?? {
-    timeSinceDamaged: 99, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0,
-  }), timeSinceDamaged: 0 };
+    lastDamageAtMs: now, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0,
+  }), lastDamageAtMs: now };
   const outcome = {
     taken: resolved.taken,
     guardDamage: resolved.guardDamage,

@@ -14,10 +14,10 @@ export const PVE_DEVIL_FRUIT_ENERGY_DRAIN = 48;
 export const PVE_WATER_HP_DRAIN = 26;
 export const PVE_DEVIL_FRUIT_HP_DRAIN = 42;
 export const PVE_MP_REGEN = 9;
-export const PVE_POTION_COOLDOWN = 1.2;
+export const PVE_POTION_COOLDOWN_MS = 1_200;
 
 export interface CanonicalPveVitals {
-  timeSinceDamaged: number;
+  lastDamageAtMs: number;
   potionCooldownUntil: number;
   buffCooldowns: Record<string, number>;
   buffMultiplier: number;
@@ -39,6 +39,7 @@ export interface CanonicalVitalsSnapshot {
   contract: 'pirate-vitals/1'; revision: number; serverTimeMs: number;
   hp: number; maxHp: number; guard: number; guardMax: number; guardBroken: boolean; hitstunUntil: number;
   energy: number; maxEnergy: number; mp: number; maxMp: number; dead: boolean;
+  respawn?: { spawnId: string; islandId: string; x: number; y: number; z: number; heading: number; atRevision: number };
 }
 
 export interface PveBuffProfile {
@@ -47,27 +48,30 @@ export interface PveBuffProfile {
   mpRestore: number;
   healRatio: number;
   multiplier: number;
-  duration: number;
-  cooldown: number;
+  durationMs: number;
+  cooldownMs: number;
 }
 
 export type PveVitalsOperation =
   | { type: 'potion'; potionId: ShopPotionId; idempotencyKey: string }
-  | { type: 'buff'; profile: PveBuffProfile; idempotencyKey: string }
+  | { type: 'buff'; skillId: string; idempotencyKey: string }
   | { type: 'respawn'; idempotencyKey: string };
 
 export function advanceCanonicalVitals(current: CanonicalPveState, context: PveVitalsContext): { state: CanonicalPveState; changed: boolean } {
   const state = clone(current);
   const dt = Math.max(0, Math.min(1_000, context.dtMs)) / 1_000;
   const caps = resourceCapsForStats(state.progression.stats);
-  const vitals = state.pveVitals ?? defaultPveVitals();
+  const vitals = state.pveVitals ?? defaultPveVitals(context.now);
   const combat = state.pveCombat ?? { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 };
+  combat.guard = finite(combat.guard, PVE_GUARD_MAX, 0, PVE_GUARD_MAX);
+  combat.guardBroken = combat.guardBroken === true;
+  combat.hitstunUntil = finite(combat.hitstunUntil, 0, 0, Number.MAX_SAFE_INTEGER);
   if (!context.blocking) {
     combat.guard = Math.min(PVE_GUARD_MAX, combat.guard + PVE_GUARD_REGEN * dt);
     if (combat.guardBroken && combat.guard >= PVE_GUARD_REBLOCK_THRESHOLD) combat.guardBroken = false;
   }
   if (state.checkpoint.hp > 0 && !context.mounted && !context.combatActive
-    && vitals.timeSinceDamaged > PVE_HP_REGEN_DELAY)
+    && context.now - vitals.lastDamageAtMs > PVE_HP_REGEN_DELAY * 1_000)
     state.checkpoint.hp = Math.min(caps.maxHp, state.checkpoint.hp + PVE_HP_REGEN_RATE * dt);
   if (context.inWater) {
     state.checkpoint.energy = Math.max(0, state.checkpoint.energy
@@ -81,7 +85,6 @@ export function advanceCanonicalVitals(current: CanonicalPveState, context: PveV
     state.checkpoint.energy = Math.min(caps.maxEnergy, state.checkpoint.energy + PVE_ENERGY_REGEN * dt);
   }
   state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + PVE_MP_REGEN * dt);
-  vitals.timeSinceDamaged += dt;
   state.pveCombat = combat;
   state.pveVitals = vitals;
   const changed = state.checkpoint.hp !== current.checkpoint.hp
@@ -96,13 +99,19 @@ export const tickCanonicalVitals = advanceCanonicalVitals;
 
 export function deriveCanonicalVitalsSnapshot(current: CanonicalPveState, revision: number, serverTimeMs: number): CanonicalVitalsSnapshot {
   const caps = resourceCapsForStats(current.progression.stats);
-  const combat = current.pveCombat ?? { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 };
+  const combat = { ...(current.pveCombat ?? { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 }) };
+  combat.guard = finite(combat.guard, PVE_GUARD_MAX, 0, PVE_GUARD_MAX);
+  combat.guardBroken = combat.guardBroken === true;
+  combat.hitstunUntil = finite(combat.hitstunUntil, 0, 0, Number.MAX_SAFE_INTEGER);
   return {
     contract: 'pirate-vitals/1', revision, serverTimeMs,
     hp: current.checkpoint.hp, maxHp: caps.maxHp, guard: combat.guard, guardMax: PVE_GUARD_MAX,
     guardBroken: combat.guardBroken, hitstunUntil: combat.hitstunUntil,
     energy: current.checkpoint.energy, maxEnergy: caps.maxEnergy, mp: current.checkpoint.mp, maxMp: caps.maxMp,
     dead: current.checkpoint.hp <= 0,
+    ...(current.checkpoint.hp <= 0 ? { respawn: { spawnId: current.checkpoint.spawnId, islandId: current.checkpoint.islandId,
+      x: current.checkpoint.position.x, y: current.checkpoint.position.y, z: current.checkpoint.position.z,
+      heading: current.checkpoint.heading, atRevision: revision } } : {}),
   };
 }
 
@@ -128,12 +137,12 @@ export function applyCanonicalVitalsOperation(
     const caps = resourceCapsForStats(state.progression.stats);
     state.checkpoint.hp = caps.maxHp; state.checkpoint.energy = caps.maxEnergy; state.checkpoint.mp = caps.maxMp;
     state.pveCombat = { guard: PVE_GUARD_MAX, guardBroken: false, hitstunUntil: 0 };
-    state.pveVitals = defaultPveVitals();
+    state.pveVitals = defaultPveVitals(context.now);
     return record(state, { type: 'respawn', changed: true });
   }
   const state = clone(current);
   const caps = resourceCapsForStats(state.progression.stats);
-  const vitals = state.pveVitals ?? defaultPveVitals();
+  const vitals = state.pveVitals ?? defaultPveVitals(context.now);
   if (operation.type === 'potion') {
     const potion = SHOP_POTIONS[operation.potionId];
     if (vitals.potionCooldownUntil > context.now) throw new Error('POTION_COOLDOWN');
@@ -142,28 +151,39 @@ export function applyCanonicalVitalsOperation(
     state.inventory.consumables[operation.potionId] -= 1;
     if (potion.kind === 'hp') state.checkpoint.hp = Math.min(caps.maxHp, state.checkpoint.hp + potion.restore);
     else state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + potion.restore);
-    vitals.potionCooldownUntil = context.now + PVE_POTION_COOLDOWN;
+    vitals.potionCooldownUntil = context.now + PVE_POTION_COOLDOWN_MS;
     state.pveVitals = vitals;
     return record(state, { type: operation.potionId, changed: true });
   }
-  const profile = operation.profile;
-  if (!profile.skillId || profile.skillId.length > 128 || profile.energyCost < 0 || profile.mpRestore < 0
-    || profile.healRatio < 0 || profile.healRatio > 1 || profile.multiplier < 1 || profile.duration <= 0 || profile.cooldown <= 0)
-    throw new Error('INVALID_BUFF_PROFILE');
+  const profile = resolveTrustedBuffProfile(state, operation.skillId);
+  if (!profile) throw new Error('INVALID_BUFF_SKILL');
   if ((vitals.buffCooldowns[profile.skillId] ?? 0) > context.now) throw new Error('BUFF_COOLDOWN');
   if (state.checkpoint.hp <= 0 || state.checkpoint.mp < profile.energyCost
     || (state.pveCombat?.hitstunUntil ?? 0) > context.now) throw new Error('VITALS_UNAVAILABLE');
   state.checkpoint.mp -= profile.energyCost;
   state.checkpoint.hp = Math.min(caps.maxHp, state.checkpoint.hp + caps.maxHp * profile.healRatio);
   state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + profile.mpRestore);
-  vitals.buffCooldowns[profile.skillId] = context.now + profile.cooldown;
-  vitals.buffMultiplier = profile.multiplier; vitals.buffUntil = context.now + profile.duration;
+  vitals.buffCooldowns[profile.skillId] = context.now + profile.cooldownMs;
+  vitals.buffMultiplier = profile.multiplier; vitals.buffUntil = context.now + profile.durationMs;
   state.pveVitals = vitals;
   return record(state, { type: 'buff', changed: true });
 }
 
-export function defaultPveVitals(): CanonicalPveVitals {
-  return { timeSinceDamaged: 99, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
+export function defaultPveVitals(now = 0): CanonicalPveVitals {
+  return { lastDamageAtMs: now, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
+}
+
+export function resolveTrustedBuffProfile(state: CanonicalPveState, skillId: string): PveBuffProfile | null {
+  const fruit = state.inventory.loadout.equippedFruitId;
+  if (state.inventory.loadout.activeSet !== 'fruit' || !fruit || !skillId.startsWith(`${fruit}-`)) return null;
+  const profile = ({
+    'phoenix-moveset-v1-x': { energyCost: 24, mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000, cooldownMs: 9_000 },
+    'gas-moveset-z': { energyCost: 16, mpRestore: 18, healRatio: 0.12, multiplier: 1.25, durationMs: 8_000, cooldownMs: 6_000 },
+  } as const)[skillId as 'phoenix-moveset-v1-x' | 'gas-moveset-z'];
+  return profile ? { skillId, ...profile } : null;
 }
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
+function finite(value: number, fallback: number, min: number, max: number): number {
+  return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+}

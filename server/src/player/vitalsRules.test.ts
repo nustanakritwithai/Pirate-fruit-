@@ -4,7 +4,7 @@ import { applyCanonicalVitalsOperation, advanceCanonicalVitals, type PveVitalsCo
 import type { CanonicalPveState } from './pveIncomingDamageAdapter.js';
 
 const context: PveVitalsContext = {
-  now: 100, dtMs: 1_000, blocking: false, mounted: false, sprinting: false,
+  now: 100_000, dtMs: 1_000, blocking: false, mounted: false, sprinting: false,
   inWater: false, devilFruitUser: false, combatActive: false,
 };
 const state = (): CanonicalPveState => defaultPlayerState() as CanonicalPveState;
@@ -13,7 +13,7 @@ describe('canonical PvE vitals', () => {
   it('regenerates HP only after damage delay and guard reblocks at threshold', () => {
     const current = state();
     current.checkpoint.hp = 50;
-    current.pveVitals = { timeSinceDamaged: 6.1, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
+    current.pveVitals = { lastDamageAtMs: 93_900, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
     current.pveCombat = { guard: 20, guardBroken: true, hitstunUntil: 0 };
     const result = advanceCanonicalVitals(current, context);
     expect(result.changed).toBe(true);
