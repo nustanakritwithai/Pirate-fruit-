@@ -1,9 +1,11 @@
 import {
   MONSTER_REWARD_TABLE, MONSTER_PROTOCOL_SCHEMA_VERSION, MONSTER_KILLS_MAX_COUNT,
   MONSTER_KILLS_MAX_ENTRIES, STAT_POINTS_PER_LEVEL, computeEnemyReward, applyExpToProgress,
+  QUESTS_BY_ID,
   type MonsterKillEntry, type MonsterKillsResponse,
 } from '@pirate-fruit/shared';
 import type { CanonicalMasteryEntry, CanonicalPlayerState } from './playerState.js';
+import { applyQuestProgress } from '../quest/newquestRules.js';
 
 type RewardReceipt = { key: string; kills: string; outcome: MonsterKillsResponse };
 export type CentralCanonicalState = CanonicalPlayerState & { rewardReceipts?: RewardReceipt[] };
@@ -72,6 +74,18 @@ export function prepareCanonicalReward(
   state.progression.statPoints += progress.levelsGained * STAT_POINTS_PER_LEVEL;
   state.progression.coins += totals.coins;
   applyCanonicalMasteryExp(state, totals.masteryExp);
+  const activeQuestId = state.progression.activeQuestId;
+  const activeQuest = activeQuestId ? QUESTS_BY_ID.get(activeQuestId) : undefined;
+  if (activeQuest) {
+    const questEvents = kills.map(kill => ({
+      kind: 'kill' as const,
+      targetId: kill.monsterId,
+      amount: kill.count,
+      isBoss: MONSTER_REWARD_TABLE[kill.monsterId]!.isBoss,
+    }));
+    const questProgress = applyQuestProgress(activeQuest, state.progression.activeQuestProgress, questEvents);
+    state.progression.activeQuestProgress = questProgress.progress;
+  }
   const outcome: MonsterKillsResponse = { ok: true, schemaVersion: MONSTER_PROTOCOL_SCHEMA_VERSION,
     rewards, totals, coinsTotal: state.progression.coins, idempotentReplay: false };
   // Receipt อยู่ใน transaction เดียวกับเงิน/EXP เพื่อส่ง ack ซ้ำได้โดยไม่แจกซ้ำ
