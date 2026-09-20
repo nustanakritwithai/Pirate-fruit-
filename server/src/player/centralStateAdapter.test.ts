@@ -4,11 +4,38 @@ import {
   createCanonicalKillRequest,
   deriveCanonicalCombatProfile,
   normalizeInitialPlayerState,
+  applyCanonicalStateOperation,
 } from './centralStateAdapter.js';
 import type { MonsterRewardAuthority } from './centralStateAdapter.js';
 import { defaultPlayerState, serializePlayerState } from './playerState.js';
 
 describe('central state adapter', () => {
+  it('ใช้แต้มเดิมและไม่รับเงินหรือ XP จาก operation', () => {
+    const state = defaultPlayerState(); state.progression.statPoints = 3;
+    const updated = applyCanonicalStateOperation(state, { type: 'statAllocation', allocations: { combat: 2 } });
+    expect(updated.state.progression.stats.combat).toBe(state.progression.stats.combat + 2);
+    expect(updated.state.progression.statPoints).toBe(1);
+    expect(state.progression.statPoints).toBe(3);
+    expect(() => applyCanonicalStateOperation(state, { type: 'statAllocation', allocations: { combat: 4 } })).toThrow();
+    expect(() => applyCanonicalStateOperation(state, { type: 'statAllocation', allocations: { combat: 1 }, coins: 99 })).toThrow();
+  });
+
+  it('บันทึกตำแหน่งจาก server และไม่ฟื้นเลือดผ่าน checkpoint', () => {
+    const state = defaultPlayerState(); state.checkpoint.hp = 1;
+    const document = JSON.parse(serializePlayerState(state).player.checkpoint!); document.hp = 9999;
+    const updated = applyCanonicalStateOperation(state, { type: 'checkpoint', checkpoint: JSON.stringify(document) },
+      { islandId: 'starter-island', x: 10, y: 2, z: 11, heading: 0.5 });
+    expect(updated.state.checkpoint.hp).toBe(1);
+    expect(updated.state.checkpoint.position).toEqual({ x: 10, y: 2, z: 11 });
+  });
+
+  it('ใช้อุปกรณ์ที่มีจริงและเก็บ reward receipts หลังเปลี่ยนอุปกรณ์', () => {
+    const state = Object.assign(defaultPlayerState(), { rewardReceipts: [{ key: 'existing' }] });
+    const operation = { type: 'loadout', inventoryLoadout: state.inventory.loadout, loadout: state.loadout };
+    expect(applyCanonicalStateOperation(state, operation).state).toMatchObject({ rewardReceipts: [{ key: 'existing' }] });
+    expect(() => applyCanonicalStateOperation(state, { ...operation,
+      inventoryLoadout: { ...state.inventory.loadout, equippedSwordId: 'unowned' } })).toThrow('equipped-item-not-owned');
+  });
   it('normalizes and serializes the same canonical state without resetting progress', () => {
     const source = serializePlayerState(defaultPlayerState());
     const normalized = normalizeInitialPlayerState(source.player, source.cargo);

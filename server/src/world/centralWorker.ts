@@ -4,14 +4,15 @@ import { RealtimeHub, type RealtimeConnection, type RealtimeSocket } from '../re
 import type { AuthoritativeCombatProfile, CombatProfileProvider } from '../realtime/combatProfile.js';
 import { MonsterWorldService, type MonsterWorldStateSnapshot } from './monsterWorldService.js';
 import type { PlayerView } from './monsterSimulation.js';
-import { normalizeInitialPlayerState, deriveCanonicalCombatProfile } from '../player/centralStateAdapter.js';
+import { normalizeInitialPlayerState, deriveCanonicalCombatProfile, applyCanonicalStateOperation } from '../player/centralStateAdapter.js';
 import { prepareCanonicalReward } from '../player/centralRewardAdapter.js';
 import { serializePlayerState } from '../player/playerState.js';
 
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
-  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  characterId?: string; operation?: unknown;
   ownerId?: string; actorId?: string; targetSpawnId?: string; x?: number; z?: number; expectedHp?: number; damage?: number; range?: number; additionalTargets?: PlayerView[];
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
@@ -84,6 +85,14 @@ export class CentralWorldWorker {
     if (request.op === 'serialize-state') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
       return { id: request.id, ok: true, contract: PROTOCOL, persisted: serializePlayerState(request.state) };
+    }
+    if (request.op === 'state-operation') {
+      if (!request.state || !request.characterId) throw new Error('state-and-character-required');
+      const player = this.currentPlayers.get(request.characterId);
+      const position = player ? { islandId: player.islandId ?? this.islandForPosition(player.x, player.z) ?? '',
+        x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0 } : null;
+      return { id: request.id, ok: true, contract: PROTOCOL,
+        ...applyCanonicalStateOperation(request.state, request.operation, position) };
     }
     if (request.op === 'state-profile') {
       if (!request.state) return { id: request.id, ok: false, contract: PROTOCOL, error: 'state-required' };
