@@ -1,0 +1,143 @@
+{
+  "source": "actual PocketMonster sanitizers, three layers; HP progression fixture",
+  "messages": [
+    {
+      "type": "pocketmonster:pirate-presence-snapshot-v1",
+      "payload": {
+        "zone": "pirate-fruit",
+        "generation": 7,
+        "players": [],
+        "actors": [
+          {
+            "actorId": "monster:east-forest",
+            "kind": "monster",
+            "monsterType": "crab",
+            "zone": "pirate-fruit",
+            "generation": 1,
+            "lifecycle": "spawn",
+            "spawnSequence": 1,
+            "stateSequence": 1,
+            "pose": {
+              "x": 18.904702116597015,
+              "y": 3.162735840714411,
+              "z": -2.39975008994979,
+              "dir": 0
+            },
+            "locomotion": "walk",
+            "animation": {
+              "combatState": "idle",
+              "category": "utility",
+              "onGround": true,
+              "dashing": false,
+              "verticalVelocity": 0
+            },
+            "authority": {
+              "authorityVersion": "monster-authority/1",
+              "serverTimeUtc": "2026-09-08T12:00:00Z",
+              "generation": 1,
+              "hp": {
+                "current": 100,
+                "max": 100,
+                "revision": 1
+              },
+              "resultRevision": 1,
+              "actionSequence": 1,
+              "hit": true,
+              "damage": 0,
+              "death": false,
+              "actionId": "melee",
+              "attack": null
+            }
+          }
+        ],
+        "centralAuthority": {
+          "contract": "pirate-central-spatial/1",
+          "schemaVersion": 1,
+          "contentRevision": "pirate-monster-catalog-2026-09-07-ai-v2-transport-v2",
+          "contentHash": "fnv1a-236acf41",
+          "manifestSha256": "7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0",
+          "vectorsSha256": "A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7",
+          "transportZone": "pirate-fruit",
+          "generation": 1,
+          "zones": [
+            "azure-frost",
+            "ember-volcano",
+            "mist-jungle",
+            "starter-island",
+            "sunscar-desert",
+            "tempest-sky"
+          ]
+        }
+      }
+    },
+    {
+      "type": "pocketmonster:pirate-presence-snapshot-v1",
+      "payload": {
+        "zone": "pirate-fruit",
+        "generation": 7,
+        "players": [],
+        "actors": [
+          {
+            "actorId": "monster:east-forest",
+            "kind": "monster",
+            "monsterType": "crab",
+            "zone": "pirate-fruit",
+            "generation": 1,
+            "lifecycle": "spawn",
+            "spawnSequence": 1,
+            "stateSequence": 61,
+            "pose": {
+              "x": 18.904702116597015,
+              "y": 3.162735840714411,
+              "z": -2.39975008994979,
+              "dir": 0
+            },
+            "locomotion": "walk",
+            "animation": {
+              "combatState": "idle",
+              "category": "utility",
+              "onGround": true,
+              "dashing": false,
+              "verticalVelocity": 0
+            },
+            "authority": {
+              "authorityVersion": "monster-authority/1",
+              "serverTimeUtc": "2026-09-08T12:00:00Z",
+              "generation": 1,
+              "hp": {
+                "current": 40,
+                "max": 100,
+                "revision": 61
+              },
+              "resultRevision": 61,
+              "actionSequence": 1,
+              "hit": true,
+              "damage": 60,
+              "death": false,
+              "actionId": "melee",
+              "attack": null
+            }
+          }
+        ],
+        "centralAuthority": {
+          "contract": "pirate-central-spatial/1",
+          "schemaVersion": 1,
+          "contentRevision": "pirate-monster-catalog-2026-09-07-ai-v2-transport-v2",
+          "contentHash": "fnv1a-236acf41",
+          "manifestSha256": "7D0B9E054B4D9F7669EC0EB34E4F93EE3ADF46E655E4FC7D30EFBBE8C4DD83A0",
+          "vectorsSha256": "A3571B1D11E8EBFF68F9B1A027EF847E74D33B93B861D083D450910ADB4B4DF7",
+          "transportZone": "pirate-fruit",
+          "generation": 1,
+          "zones": [
+            "azure-frost",
+            "ember-volcano",
+            "mist-jungle",
+            "starter-island",
+            "sunscar-desert",
+            "tempest-sky"
+          ]
+        }
+      }
+    }
+  ]
+}
