@@ -44,11 +44,13 @@ describe('canonical shop adapter', () => {
     expect(first.state.inventory.consumables['potion-hp']).toBe(1);
     expect(first.persisted.player.progression).toContain('"coins":60');
     expect(getCanonicalShopReceipt(first.state)?.hash).toBeDefined();
-    const replay = applyCanonicalShopOperation(first.state, {
+    const roundTripped = JSON.parse(JSON.stringify(first.state));
+    const replay = applyCanonicalShopOperation(roundTripped, {
       idempotencyKey: 'shop-state-0001', action: 'potion', potionId: 'potion-hp',
     });
     expect(replay.outcome.idempotentReplay).toBe(true);
     expect(replay.state.progression.coins).toBe(60);
+    expect(replay.state.inventory.consumables['potion-hp']).toBe(1);
     expect(() => applyCanonicalShopOperation(first.state, {
       idempotencyKey: 'shop-state-0001', action: 'potion', potionId: 'potion-mp',
     })).toThrow('IDEMPOTENCY_KEY_REUSED');

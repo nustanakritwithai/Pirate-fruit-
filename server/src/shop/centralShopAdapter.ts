@@ -11,7 +11,11 @@ import {
 } from './shopRules.js';
 import { serializePlayerState, type CanonicalPlayerState } from '../player/playerState.js';
 
-const receipts = new WeakMap<object, { idempotencyKey: string; hash: string; outcome: ShopPurchaseResponse }>();
+const MAX_SHOP_RECEIPTS = 256;
+
+export type CentralShopState = CanonicalPlayerState & {
+  shopReceipts?: Array<{ idempotencyKey: string; hash: string; outcome: ShopPurchaseResponse }>;
+};
 
 /**
  * Canonical bridge for the existing ShopService authority.
@@ -27,8 +31,8 @@ export async function purchaseCanonicalShop(
   return shop.purchase(characterId, request);
 }
 
-export function getCanonicalShopReceipt(state: CanonicalPlayerState) {
-  return receipts.get(state);
+export function getCanonicalShopReceipt(state: CentralShopState) {
+  return state.shopReceipts?.at(-1);
 }
 
 /** Apply the existing shop economy to a canonical worker state without a Pool. */
@@ -36,17 +40,17 @@ export function applyCanonicalShopOperation(
   current: CanonicalPlayerState,
   input: unknown,
   roll: (max: number) => number = randomInt,
-): { state: CanonicalPlayerState; persisted: ReturnType<typeof serializePlayerState>; outcome: ShopPurchaseResponse } {
+): { state: CentralShopState; persisted: ReturnType<typeof serializePlayerState>; outcome: ShopPurchaseResponse } {
   const request: ShopPurchaseRequest = shopRequestFromOperation(input);
   const hash = shopRequestHash(request);
-  const prior = receipts.get(current);
+  const canonical = current as CentralShopState;
+  const prior = canonical.shopReceipts?.find((receipt) => receipt.idempotencyKey === request.idempotencyKey);
   if (prior?.hash === hash) {
-    const state = structuredClone(current);
-    receipts.set(state, prior);
+    const state = structuredClone(canonical) as CentralShopState;
     return { state, persisted: serializePlayerState(state), outcome: { ...prior.outcome, idempotentReplay: true } };
   }
   if (prior?.idempotencyKey === request.idempotencyKey) throw new Error('IDEMPOTENCY_KEY_REUSED');
-  const state = structuredClone(current);
+  const state = structuredClone(canonical) as CentralShopState;
   const drawn = request.action === 'draw' ? drawShopCatalog(roll) : null;
   const cost = shopCost(request, drawn);
   const coins = safeCanonicalCoins(String(state.progression.coins));
@@ -73,6 +77,6 @@ export function applyCanonicalShopOperation(
     coins: state.progression.coins, item: drawn ?? { kind: 'consumable', id: request.potionId!, rarity: 'common' },
     quantity, isNew: oldQuantity === 0, idempotentReplay: false,
   };
-  receipts.set(state, { idempotencyKey: request.idempotencyKey, hash, outcome });
+  state.shopReceipts = [...(state.shopReceipts ?? []).slice(-(MAX_SHOP_RECEIPTS - 1)), { idempotencyKey: request.idempotencyKey, hash, outcome }];
   return { state, persisted: serializePlayerState(state), outcome };
 }
