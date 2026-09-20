@@ -43,6 +43,7 @@ import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import type { RealtimeKnockback } from '@pirate-fruit/shared';
 import { resolvePveIncomingDamage } from '@pirate-fruit/shared';
 import type { SpellFxAssetId } from '../art/SpellFxAssetLibrary';
+import type { PirateVitalsSnapshot } from '../realtime/PirateVitalsAuthority';
 
 /** สลอตไม้ตายในอาเรย์คูลดาวน์ 4 ช่อง */
 const ULTIMATE_SLOT = 3;
@@ -192,8 +193,10 @@ export function canRegenerateHp(
   hp: number,
   hpMax: number,
   mounted: boolean,
+  serverVitalsAuthority = false,
 ): boolean {
-  return authoritativeCombatTimer <= 0
+  return !serverVitalsAuthority
+    && authoritativeCombatTimer <= 0
     && timeSinceDamaged > REGEN_DELAY
     && hp > 0
     && hp < hpMax
@@ -225,6 +228,7 @@ export class PlayerCombat {
   private readonly skillCooldowns = new Map<string, number>();
   private timeSinceDamaged = 99;
   private authoritativeCombatTimer = 0;
+  private serverVitalsAuthority = false;
   private damageReactionSerial = 0;
   private damageReactionAngle = 0;
   /**
@@ -511,6 +515,23 @@ export class PlayerCombat {
     this.authoritativeCombatTimer = Math.max(this.authoritativeCombatTimer, REGEN_DELAY + 1);
   }
 
+  setServerVitalsAuthority(active: boolean): void {
+    this.serverVitalsAuthority = active;
+  }
+
+  applyServerVitals(snapshot: PirateVitalsSnapshot): void {
+    this.controller.applyProgressionCaps(snapshot.maxHp, snapshot.maxEnergy, snapshot.maxMp, 'clamp');
+    this.controller.hp = snapshot.hp;
+    this.controller.energy = snapshot.energy;
+    this.controller.mp = snapshot.mp;
+    this.guard = snapshot.guard;
+    this.guardBroken = snapshot.guardBroken;
+    if (snapshot.dead && this.combatState !== 'dead') this.enterState('dead', 0.8);
+    if (!snapshot.dead && this.combatState === 'dead') this.notifyRespawn();
+    const remaining = Math.max(0, snapshot.hitstunUntil - Date.now()) / 1_000;
+    if (remaining > 0) this.controller.applyStun(remaining);
+  }
+
   /** Respawn is authoritative and must immediately release stale local combat locks. */
   notifyRespawn(): void {
     this.cancelPendingCast();
@@ -659,6 +680,7 @@ export class PlayerCombat {
       this.controller.hp,
       this.controller.hpMax,
       this.controller.isMounted,
+      this.serverVitalsAuthority,
     )) {
       this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + REGEN_RATE * dt);
     }
@@ -1582,7 +1604,7 @@ export class PlayerCombat {
   /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
-    const appliedHeal = this.authoritativeCombatTimer > 0 ? 0 : healHp;
+    const appliedHeal = this.serverVitalsAuthority || this.authoritativeCombatTimer > 0 ? 0 : healHp;
     this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + appliedHeal);
     // คืน MP (ทรัพยากรสกิล) แทน Energy
     this.controller.mp = Math.min(
