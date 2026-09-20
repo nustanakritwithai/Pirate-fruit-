@@ -1,4 +1,4 @@
-import { createEconomyEngine } from '../../economy-engine/entry.js';
+import { loadBundledEconomyEngine } from '../economy/economyEngine.js';
 import type { EconomyEngine } from '../economy/economyEngine.js';
 import type { CanonicalPlayerState } from '../player/playerState.js';
 import { serializePlayerState } from '../player/playerState.js';
@@ -37,7 +37,7 @@ export async function quoteCentralOriginalTradeOperation(
   if (!market || !Number.isSafeInteger(market.revision) || market.revision < 0
     || !market.document || typeof market.document !== 'object') throw new Error('MARKET_STATE_REQUIRED');
   const request = parseTradeQuoteRequest(input);
-  const engine = await createEconomyEngine(market.document);
+  const engine = await loadBundledEconomyEngine(market.document);
   return {
     quote: trustedQuote(engine, request.action, request.islandId, request.commodityId, request.quantity),
     marketRevision: market.revision,
@@ -57,7 +57,9 @@ export async function applyCentralOriginalTradeOperation(
 ): Promise<CentralOriginalTradeResult> {
   if (!market || !Number.isSafeInteger(market.revision) || market.revision < 0
     || !market.document || typeof market.document !== 'object') throw new Error('MARKET_STATE_REQUIRED');
-  const request = parseTradeRequest(input);
+  const { type: _tradeType, ...tradePayload } = input && typeof input === 'object'
+    ? input as Record<string, unknown> : {};
+  const request = parseTradeRequest(tradePayload);
   const hash = tradeRequestHash(request);
   const operationReceipts = (current as StateWithEconomy & {
     operationReceipts?: Array<{ key: string; hash: string; outcome: unknown }>;
@@ -87,7 +89,7 @@ export async function applyCentralOriginalTradeOperation(
   }
   if (prior) throw new Error('IDEMPOTENCY_KEY_REUSED');
 
-  const engine = await createEconomyEngine(market.document);
+  const engine = await loadBundledEconomyEngine(market.document);
   const quote = trustedQuote(engine, request.action, request.islandId, request.commodityId, request.quantity);
   const projected = applyCanonicalTradeOperation(current, request, quote,
     (boatId, slots, commodityId, quantity) => engine.cargoFits(boatId, slots, commodityId, quantity));

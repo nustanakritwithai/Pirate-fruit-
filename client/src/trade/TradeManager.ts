@@ -139,14 +139,16 @@ export class TradeManager {
     const commodity = getCommodity(commodityId);
     if (!commodity) return this.emit({ ok: false, message: 'ไม่พบสินค้า' });
     const qty = Math.max(1, Math.floor(quantity));
-    const expected = action === 'buy'
-      ? this.resolveBuyPrice(islandId, commodityId, qty)
-      : this.resolveSellPrice(islandId, commodityId, qty);
 
     try {
       // Boat selection determines canonical cargo capacity. Flush its pending save before
       // asking the trade authority, otherwise an immediate purchase can see the old boat.
       await flushBeforeRemoteTrade(this.storage);
+      const expected = this.remote?.quote
+        ? (await this.remote.quote({ action, islandId, commodityId, quantity: qty })).unitPrice
+        : action === 'buy'
+          ? this.resolveBuyPrice(islandId, commodityId, qty)
+          : this.resolveSellPrice(islandId, commodityId, qty);
       const response = await this.remote!.execute({
         action,
         islandId,
