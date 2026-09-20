@@ -5,6 +5,10 @@ import {
   SharedMonsterClient,
   resolveSharedMonsterPlayerDamage,
 } from '../SharedMonsterClient';
+import { PirateMonsterAuthorityAdapter } from '../PirateMonsterAuthorityAdapter';
+import { PirateCentralAuthorityRuntimeAdapter } from '../PirateCentralAuthorityRuntimeAdapter';
+import { parsePiratePresenceSnapshotMessage } from '../../realtime/PocketMonsterParentPresence';
+const hpFixture = JSON.parse(import.meta.glob('./fixtures/pirate-parent-central-hp.json', { query: '?raw', import: 'default', eager: true })['./fixtures/pirate-parent-central-hp.json'] as string) as { messages: unknown[] };
 
 const snapshot = (overrides: Partial<WorldMonsterSnapshot> = {}): WorldMonsterSnapshot => ({
   spawnId: 'starter-crab-1',
@@ -20,10 +24,14 @@ const snapshot = (overrides: Partial<WorldMonsterSnapshot> = {}): WorldMonsterSn
 });
 
 describe('S16 shared monster rendering and player defeat regression', () => {
+  let healthFillWidths: number[] = [];
   beforeEach(() => {
+    healthFillWidths = [];
     const context = {
       clearRect: vi.fn(),
-      fillRect: vi.fn(),
+      fillRect: vi.fn((_x: number, y: number, width: number) => {
+        if (y === 17) healthFillWidths.push(width);
+      }),
       strokeRect: vi.fn(),
       fillText: vi.fn(),
       fillStyle: '',
@@ -276,6 +284,38 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(remote.count).toBe(0);
     remote.resetSession(true);
     expect(remote.count).toBe(0);
+  });
+
+  it('accepts the actual parent capability and applies central HP to the rendered bar', () => {
+    const messages = (hpFixture as { messages: unknown[] }).messages;
+    const first = parsePiratePresenceSnapshotMessage(messages[0]);
+    const second = parsePiratePresenceSnapshotMessage(messages[1]);
+    expect(first?.centralAuthority?.transportZone).toBe('pirate-fruit');
+    expect(second?.centralAuthority?.transportZone).toBe('pirate-fruit');
+
+    const runtime = new PirateCentralAuthorityRuntimeAdapter();
+    expect(runtime.update(first?.centralAuthority)).toBe(true);
+    expect(runtime.active).toBe(true);
+    const authority = new PirateMonsterAuthorityAdapter();
+    const scene = new THREE.Scene();
+    const client = new SharedMonsterClient(scene, 'starter-island', () => 0);
+    const apply = (parsed: ReturnType<typeof parsePiratePresenceSnapshotMessage>) => {
+      const actors = authority.sanitizeActors('pirate-fruit', parsed?.actors ?? [], undefined, 'starter-island');
+      client.applyActors('starter-island', actors, runtime.sessionKey ?? 'central', undefined);
+    };
+    apply(first);
+    expect((client as any).monsters.get('east-forest').hp).toBe(100);
+    apply(second);
+    expect((client as any).monsters.get('east-forest').hp).toBe(40);
+    expect(healthFillWidths.at(-1)).toBeLessThan(healthFillWidths.at(-2)!);
+
+    const missingTransport = structuredClone(messages[0]) as any;
+    delete missingTransport.payload.centralAuthority.transportZone;
+    const rejected = parsePiratePresenceSnapshotMessage(missingTransport);
+    runtime.reset();
+    expect(rejected?.centralAuthority).toBeUndefined();
+    expect(runtime.update(rejected?.centralAuthority)).toBe(false);
+    expect(runtime.active).toBe(false);
   });
 
   it('derives bounded actor velocity and advances central motion between snapshots', () => {
