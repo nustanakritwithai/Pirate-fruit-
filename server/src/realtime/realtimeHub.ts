@@ -591,9 +591,9 @@ export class RealtimeHub {
     const kind: AttackKind = message.kind === 'skill' ? 'skill' : 'melee';
     const attackerPos = connection.presence;
     const targetPos = this.presenceOfCharacter(targetId);
-    if (!connection.playerVitalsReady || connection.playerDead) return reject('target-unavailable');
+    if (connection.playerDead) return reject('target-unavailable');
     const targetConnection = [...this.connections].find(candidate => candidate.characterId === targetId);
-    if (targetConnection && (!targetConnection.playerVitalsReady || targetConnection.playerDead)) return reject('target-unavailable');
+    if (targetConnection && (targetConnection.playerDead)) return reject('target-unavailable');
     // ต้องอยู่เกาะเดียวกัน (range check เป็นเรขาคณิตล้วน — กันพิกัดชนกันข้ามเกาะ)
     if (!attackerPos) return reject('presence-required');
     if (!targetPos) return reject('target-unavailable');
@@ -899,7 +899,7 @@ export class RealtimeHub {
   worldPlayerViews(): PlayerView[] {
     const views: PlayerView[] = [];
     for (const connection of this.connections) {
-      if (!connection.presence || !connection.playerVitalsReady || connection.playerDead) continue;
+      if (!connection.presence || connection.playerDead) continue;
       views.push({
         characterId: connection.characterId,
         islandId: connection.presence.islandId,
@@ -917,7 +917,7 @@ export class RealtimeHub {
 
   private handleWorldMonsterHit(connection: RealtimeConnection, message: Record<string, unknown>): void {
     if (!this.worldMonsters) return; // ปิด flag = เพิกเฉย
-    if (!connection.playerVitalsReady || connection.playerDead) return;
+    if (connection.playerDead) return;
     const intentId = message.intentId;
     const rawSpawnIds = message.spawnIds;
     if (

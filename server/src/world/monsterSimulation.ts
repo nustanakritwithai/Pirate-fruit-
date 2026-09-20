@@ -184,6 +184,11 @@ export class MonsterSimulation {
     }
   }
 
+  isPlayerInCombat(characterId: string): boolean {
+    return [...this.monsters.values()].some(monster => monster.targetId === characterId
+      && (monster.state === 'chase' || monster.state === 'attack'));
+  }
+
   private snapshotOf(monster: MonsterRuntime): WorldMonsterSnapshot {
     return {
       spawnId: monster.spawn.spawnId,

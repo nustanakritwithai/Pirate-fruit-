@@ -22,7 +22,7 @@ export interface CentralRequest {
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
   flags?: { playerVitalsReady?: boolean; blocking?: boolean; mounted?: boolean; sprinting?: boolean; devilFruitUser?: boolean; combatActive?: boolean; };
-  dtMs?: number; inWater?: boolean; revision?: number;
+  dtMs?: number; inWater?: boolean; revision?: number; nextRevision?: number;
   worldState?: MonsterWorldStateSnapshot & { pendingPlayerHits?: PendingPlayerHit[] };
   market?: { tick: number; documentVersion: number; document: Record<string, unknown>; revision: number };
   hitKey?: string;
@@ -39,6 +39,7 @@ class CaptureSocket implements RealtimeSocket {
 /** Pure JSON-lines adapter; importing this module never starts a process. */
 export class CentralWorldWorker {
   private readonly sockets = new Map<string, CaptureSocket>();
+  private readonly combatUntil = new Map<string, number>();
   private readonly connections = new Map<string, RealtimeConnection>();
   private readonly profiles: CombatProfileProvider;
   private readonly hub: RealtimeHub;
@@ -158,6 +159,7 @@ export class CentralWorldWorker {
     this.currentPlayers = new Map((request.players ?? []).map((player) => [player.characterId, player]));
     for (const [characterId, connection] of this.connections) {
       if (!this.currentPlayers.has(characterId)) {
+        this.combatUntil.delete(characterId);
         this.hub.unregister(connection); this.connections.delete(characterId); this.sockets.delete(characterId);
       }
     }
@@ -179,6 +181,7 @@ export class CentralWorldWorker {
     }
     for (const intent of grouped.values()) {
       const connection = this.connections.get(intent.characterId); if (!connection || intent.spawnIds.length === 0) continue;
+      this.combatUntil.set(intent.characterId, request.now + 7000);
       this.hub.handleClientMessage(connection, JSON.stringify({ type: 'world-monster-hit', intentId: intent.intentId, spawnIds: intent.spawnIds, kind: intent.kind ?? 'skill', category: intent.category }));
     }
     await Promise.resolve();
@@ -214,11 +217,12 @@ export class CentralWorldWorker {
   private vitalsContext(request: CentralRequest, state?: any): PveVitalsContext {
     const flags = request.flags ?? {};
     const player = request.characterId ? this.currentPlayers.get(request.characterId) : undefined;
-    return { now: request.now, revision: request.revision, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
+    return { now: request.now, revision: request.nextRevision ?? request.revision, dtMs: Math.max(0, Math.min(1_000, Number(request.dtMs) || 0)),
       blocking: flags.blocking === true, mounted: flags.mounted === true, sprinting: flags.sprinting === true,
       inWater: request.inWater === true,
-      devilFruitUser: Boolean(state?.inventory?.loadout?.equippedFruitId && state?.inventory?.loadout?.activeSet === 'fruit'),
-      combatActive: false };
+      devilFruitUser: Boolean(state?.inventory?.loadout?.equippedFruitId),
+      combatActive: Boolean(request.characterId && ((this.combatUntil.get(request.characterId) ?? 0) > request.now
+        || this.service.isPlayerInCombat(request.characterId))) };
   }
 }
 
