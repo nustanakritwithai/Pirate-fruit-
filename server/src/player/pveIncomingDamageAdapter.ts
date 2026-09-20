@@ -1,5 +1,6 @@
 import { resolvePveIncomingDamage, resourceCapsForStats } from '@pirate-fruit/shared';
 import type { CanonicalPlayerState } from './playerState.js';
+import type { CanonicalPveVitals } from './vitalsRules.js';
 
 export interface TrustedMonsterPlayerAttack {
   source: 'monster-simulation';
@@ -23,6 +24,8 @@ export interface PlayerHitReceipt {
 
 export type CanonicalPveState = CanonicalPlayerState & {
   pveCombat?: PveCombatState;
+  pveVitals?: CanonicalPveVitals;
+  vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean } }>;
   playerHitReceipts?: PlayerHitReceipt[];
 };
 
@@ -56,7 +59,7 @@ export function prepareCanonicalPlayerHit(
     maxHp: caps.maxHp,
     guard: combat.guard,
     guardMax: 100,
-    blocking,
+    blocking: blocking && !combat.guardBroken && combat.hitstunUntil <= now && current.checkpoint.hp > 0,
     guardBroken: combat.guardBroken,
     hitstunUntil: combat.hitstunUntil,
   }, { amount: attack.damage, unblockable: attack.unblockable }, now);
@@ -67,6 +70,9 @@ export function prepareCanonicalPlayerHit(
     guardBroken: resolved.state.guardBroken,
     hitstunUntil: resolved.state.hitstunUntil,
   };
+  state.pveVitals = { ...(state.pveVitals ?? {
+    timeSinceDamaged: 99, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0,
+  }), timeSinceDamaged: 0 };
   const outcome = {
     taken: resolved.taken,
     guardDamage: resolved.guardDamage,

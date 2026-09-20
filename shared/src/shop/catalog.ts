@@ -138,8 +138,8 @@ export const SHOP_GACHA_CATALOG: readonly ShopCatalogEntry[] = [
 ];
 
 export const SHOP_POTIONS = {
-  'potion-hp': { price: 40 },
-  'potion-mp': { price: 40 },
+  'potion-hp': { price: 40, kind: 'hp', restore: 75 },
+  'potion-mp': { price: 40, kind: 'mp', restore: 60 },
 } as const;
 
 export type ShopPotionId = keyof typeof SHOP_POTIONS;
