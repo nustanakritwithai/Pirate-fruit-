@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRemoteQuestOperationExecutor } from '../../quest/RemoteQuestClient';
 import { createRemoteShopOperationExecutor } from '../../shop/RemoteShopClient';
-import { createPocketOperationExecutor } from '../PocketOperationExecutor';
+import { createPocketOperationExecutor, getPocketOperationExecutor } from '../PocketOperationExecutor';
 
 describe('Pocket parent operation bridge', () => {
   it('maps shop and quest calls to server operations and returns verified outcomes', async () => {
@@ -26,7 +26,16 @@ describe('Pocket parent operation bridge', () => {
     expect((await quest.state()).active).toBeNull();
     await quest.progress([{ kind: 'kill', targetId: 'slime', amount: 1 }]);
     expect(operations.map(operation => operation.type)).toEqual(['shopPurchase', 'questState', 'questProgress']);
-    expect(operations[2]).toMatchObject({ type: 'questProgress', events: [{ targetId: 'slime', amount: 1 }] });
+    expect(operations[2]).toEqual({ type: 'questProgress' });
+  });
+
+  it('discovers the parent bridge before any HTTP feature flag is consulted', async () => {
+    const parent = { request: async () => ({ revision: 7, persisted: { online: true }, outcome: { ok: true } }) };
+    const executor = getPocketOperationExecutor({ POCKETMONSTER_PIRATE_OPERATIONS: parent } as Window);
+    expect(executor).not.toBeNull();
+    await expect(executor!.request({ type: 'questState' })).resolves.toEqual({
+      revision: 7, persisted: { online: true }, outcome: { ok: true },
+    });
   });
 
   it('rejects malformed bridge replies before they reach domain clients', async () => {

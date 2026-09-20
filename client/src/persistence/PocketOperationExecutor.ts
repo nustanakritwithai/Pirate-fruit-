@@ -22,12 +22,13 @@ export function createPocketOperationExecutor(
   return Object.freeze({
     async request(operation: Record<string, unknown>): Promise<PocketOperationReply> {
       const result = object(await bridge.request(operation));
-      if (!result || !Number.isSafeInteger(result.revision) || result.revision < 0
+      const revision = result?.revision;
+      if (!result || typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0
         || !Object.prototype.hasOwnProperty.call(result, 'persisted')
         || !Object.prototype.hasOwnProperty.call(result, 'outcome')) {
         throw new Error('POCKET_OPERATION_REPLY_INVALID');
       }
-      return { revision: result.revision, persisted: result.persisted, outcome: result.outcome };
+      return { revision, persisted: result.persisted, outcome: result.outcome };
     },
   });
 }
@@ -35,9 +36,10 @@ export function createPocketOperationExecutor(
 export function getPocketOperationExecutor(
   windowLike: WindowWithPocketOperations | undefined = typeof window === 'undefined' ? undefined : window,
 ): PocketOperationExecutor | null {
-  const request = windowLike?.POCKETMONSTER_PIRATE_OPERATIONS?.request;
+  const bridge = windowLike?.POCKETMONSTER_PIRATE_OPERATIONS;
+  const request = bridge?.request;
   return typeof request === 'function'
-    ? createPocketOperationExecutor({ request: request.bind(windowLike.POCKETMONSTER_PIRATE_OPERATIONS) })
+    ? createPocketOperationExecutor({ request: request.bind(bridge) })
     : null;
 }
 

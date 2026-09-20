@@ -147,8 +147,8 @@ export function createRemoteQuestOperationExecutor(executor: PocketOperationExec
         (value): value is { ok: true } => !!value && typeof value === 'object' && (value as { ok?: unknown }).ok === true);
       void outcome;
     },
-    // Progress is a server readback operation; the client never increments local quest state.
-    progress: events => requestPocketOperation(executor, { type: 'questProgress', events }, hasQuestSchema<QuestProgressResponse>),
+    // Progress is a server readback operation; the client never increments or submits local progress.
+    progress: () => requestPocketOperation(executor, { type: 'questProgress' }, hasQuestSchema<QuestProgressResponse>),
     claim: (questId, idempotencyKey) => requestPocketOperation(executor,
       { type: 'questClaim', questId, idempotencyKey }, hasQuestSchema<QuestClaimResponse>),
   };
