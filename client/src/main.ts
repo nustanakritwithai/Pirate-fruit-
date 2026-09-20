@@ -572,7 +572,10 @@ async function main(): Promise<void> {
       },
       onVitalsSnapshot: (snapshot) => {
         if (!playerCombat) return;
-        applyPirateVitalsSnapshot(pirateVitalsAuthority, controller, playerCombat, spawnManager, snapshot);
+        applyPirateVitalsSnapshot(pirateVitalsAuthority, controller, playerCombat, spawnManager, snapshot, {
+          onServerDefeat: () => audioBridge?.notifyDeath(`pirate-vitals-death:${snapshot.revision}`),
+          requestRespawn: () => pirateVitalsEmitter?.respawn() ?? Promise.resolve(false),
+        });
       },
       vitalsEmitter: pirateVitalsEmitter ?? undefined,
       getVitalsInput: () => ({

@@ -36,4 +36,23 @@ describe('Pirate vitals client bridge', () => {
     expect(controller.teleport).toHaveBeenCalledTimes(1);
     expect(spawn.activateSpawnPoint).toHaveBeenCalledTimes(1);
   });
+
+  it('requests server respawn once when a dead snapshot arrives, including at boot', async () => {
+    const authority = new PirateVitalsAuthority();
+    const controller = { setServerVitalsAuthority: vi.fn(), teleport: vi.fn(), heading: 0 } as any;
+    const combat = { setServerVitalsAuthority: vi.fn(), applyServerVitals: vi.fn() } as any;
+    const spawn = { setServerVitalsAuthority: vi.fn(), activateSpawnPoint: vi.fn() } as any;
+    const requestRespawn = vi.fn(async () => true);
+    const onServerDefeat = vi.fn();
+    const dead = {
+      contract: PIRATE_VITALS_CONTRACT, revision: 5, serverTimeMs: 100, hp: 0, maxHp: 100,
+      guard: 0, guardMax: 100, guardBroken: true, hitstunUntil: 100,
+      energy: 0, maxEnergy: 100, mp: 0, maxMp: 100, dead: true,
+    };
+    expect(applyPirateVitalsSnapshot(authority, controller, combat, spawn, dead, { onServerDefeat, requestRespawn })).toBe(true);
+    await Promise.resolve();
+    expect(applyPirateVitalsSnapshot(authority, controller, combat, spawn, { ...dead, revision: 6 }, { onServerDefeat, requestRespawn })).toBe(true);
+    expect(onServerDefeat).toHaveBeenCalledTimes(1);
+    expect(requestRespawn).toHaveBeenCalledTimes(1);
+  });
 });

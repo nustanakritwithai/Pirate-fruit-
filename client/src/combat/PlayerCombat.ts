@@ -449,7 +449,21 @@ export class PlayerCombat {
 
   /** เรียกจาก MonsterManager ก่อนหักเลือด — ตัดสิน Block/Guard/unblockable/ผลัก คืนดาเมจสุดท้าย */
   modifyIncomingDamage(attack: IncomingAttack): number {
-    if (this.serverVitalsAuthority) return 0;
+    if (this.serverVitalsAuthority) {
+      // Server owns HP/guard/stun; preserve the local impact presentation only.
+      this.damageReactionSerial++;
+      this.damageReactionAngle = getRelativeHitAngle(
+        this.controller.position.x,
+        this.controller.position.z,
+        this.controller.heading,
+        attack.sourceX,
+        attack.sourceZ,
+      );
+      if (this.combatState === 'blocking' && !attack.unblockable) {
+        this.effects.spawnHitSpark(this.controller.position, 0x8fd4ff);
+      }
+      return 0;
+    }
     this.timeSinceDamaged = 0;
     this.damageReactionSerial++;
     this.damageReactionAngle = getRelativeHitAngle(
@@ -530,7 +544,7 @@ export class PlayerCombat {
     this.guardBroken = snapshot.guardBroken;
     if (snapshot.dead && this.combatState !== 'dead') this.enterState('dead', 0.8);
     if (!snapshot.dead && this.combatState === 'dead') this.notifyRespawn();
-    const remaining = Math.max(0, snapshot.hitstunUntil - Date.now()) / 1_000;
+    const remaining = Math.max(0, snapshot.hitstunUntil - snapshot.serverTimeMs) / 1_000;
     if (remaining > 0) this.controller.applyStun(remaining);
   }
 
