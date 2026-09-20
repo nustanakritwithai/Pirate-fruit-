@@ -2,10 +2,28 @@ import { TRADE_PROTOCOL_SCHEMA_VERSION, type TradeExecuteResponse, type TradeCar
 import type { CanonicalPlayerState } from '../player/playerState.js';
 import { serializePlayerState } from '../player/playerState.js';
 import type { EconomyBuyQuote, EconomySellQuote } from '../economy/economyEngine.js';
+import type { TradeService } from './tradeService.js';
 import { assertTradePrice, parseTradeRequest, tradeRequestHash } from './tradeRules.js';
 
 export type TrustedTradeQuote = (EconomyBuyQuote | EconomySellQuote) & { islandId: string; commodityId: string };
 export type CanonicalTradeState = CanonicalPlayerState & { tradeReceipts?: Array<{ key: string; hash: string; outcome: TradeExecuteResponse }> };
+
+/**
+ * จุดเข้า typed operation ของ central state ใช้อำนาจ TradeService เดิมโดยตรง
+ * เพื่อให้ quote, stock, cargo, coins, SQL transaction และ idempotency อยู่ใน
+ * EconomyRuntime.executeAtomic ชุดเดียวกัน ไม่สร้างตลาดหรือ receipt ชุดที่สอง
+ * สำหรับ worker/bridge ที่ต้องส่ง operation ต่อให้ backend เดิม
+ */
+export async function executeCanonicalTrade(
+  trade: Pick<TradeService, 'execute'>,
+  characterId: string,
+  input: unknown,
+): Promise<TradeExecuteResponse> {
+  // ตรวจ schema ที่นี่ก่อน delegate เพื่อให้ bridge ไม่ส่ง payload รูปแบบอื่น
+  // เข้า authority และยังคง error semantics ของ trade route เดิมไว้
+  const request = parseTradeRequest(input);
+  return trade.execute(characterId, request);
+}
 
 export function applyCanonicalTradeOperation(
   current: CanonicalTradeState,

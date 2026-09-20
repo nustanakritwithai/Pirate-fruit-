@@ -1,9 +1,47 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { defaultPlayerState } from '../player/playerState.js';
 import { applyCanonicalBoatOperation } from '../player/centralBoatAdapter.js';
-import { applyCanonicalTradeOperation } from './centralTradeAdapter.js';
+import { applyCanonicalTradeOperation, executeCanonicalTrade } from './centralTradeAdapter.js';
 
 describe('canonical trade adapter', () => {
+  it('delegates typed central operations to the existing atomic TradeService', async () => {
+    const response = {
+      ok: true as const,
+      schemaVersion: 1 as const,
+      action: 'buy' as const,
+      islandId: 'starter-island',
+      commodityId: 'fresh-fish',
+      quantity: 2,
+      unitPrice: 10,
+      total: 20,
+      fee: 0,
+      coins: 80,
+      cargo: [{ commodityId: 'fresh-fish', quantity: 2 }],
+      idempotentReplay: false,
+    };
+    const execute = vi.fn(async (_characterId: string, input: unknown) => {
+      expect(input).toMatchObject({ action: 'buy', commodityId: 'fresh-fish', quantity: 2 });
+      return response;
+    });
+
+    await expect(executeCanonicalTrade(
+      { execute },
+      'character-1',
+      { schemaVersion: 1, idempotencyKey: 'trade-central-0001', action: 'buy',
+        islandId: 'starter-island', commodityId: 'fresh-fish', quantity: 2 },
+    )).resolves.toEqual(response);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith('character-1', expect.any(Object));
+  });
+
+  it('rejects a malformed central operation before reaching the authority', async () => {
+    const execute = vi.fn();
+    await expect(executeCanonicalTrade(
+      { execute }, 'character-1', { action: 'buy', commodityId: 'fresh-fish' },
+    )).rejects.toThrow();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('buys cargo using trusted quote and canonical coins', () => {
     const state = applyCanonicalBoatOperation(defaultPlayerState(), { type: 'boatPurchase', boatId: 'training-dinghy' }).state;
     state.progression.coins = 100;
