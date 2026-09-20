@@ -173,6 +173,19 @@ export function applyCanonicalVitalsOperation(
   if (operation.type === 'skill') {
     const skill = resolveTrustedSkillResource(state, operation.skillId);
     if (!skill) throw new Error('INVALID_SKILL');
+    const buff = resolveTrustedBuffProfile(state, operation.skillId);
+    if (buff) {
+      if ((vitals.buffCooldowns[buff.skillId] ?? 0) > context.now) throw new Error('BUFF_COOLDOWN');
+      if (state.checkpoint.hp <= 0 || state.checkpoint.mp < buff.energyCost
+        || (state.pveCombat?.hitstunUntil ?? 0) > context.now) throw new Error('VITALS_UNAVAILABLE');
+      state.checkpoint.mp -= buff.energyCost;
+      state.checkpoint.hp = Math.min(caps.maxHp, state.checkpoint.hp + caps.maxHp * buff.healRatio);
+      state.checkpoint.mp = Math.min(caps.maxMp, state.checkpoint.mp + buff.mpRestore);
+      vitals.buffCooldowns[buff.skillId] = context.now + buff.cooldownMs;
+      vitals.buffMultiplier = buff.multiplier; vitals.buffUntil = context.now + buff.durationMs;
+      state.pveVitals = vitals;
+      return record(state, { type: 'buff', changed: true });
+    }
     if ((vitals.skillCooldowns[skill.skillId] ?? 0) > context.now) throw new Error('SKILL_COOLDOWN');
     if (state.checkpoint.hp <= 0 || state.checkpoint.mp < skill.mpCost
       || (state.pveCombat?.hitstunUntil ?? 0) > context.now) throw new Error('VITALS_UNAVAILABLE');
