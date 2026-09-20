@@ -3,9 +3,10 @@ import {
   SHARED_WORLD_SPAWNS,
   WORLD_MONSTER_SNAPSHOT_INTERVAL_MS,
   WORLD_MONSTER_TICK_MS,
+  WORLD_MONSTER_SKILL_RANGE,
   type RealtimeServerMessage,
 } from '@pirate-fruit/shared';
-import { MonsterSimulation } from './monsterSimulation.js';
+import { MonsterSimulation, type PlayerView } from './monsterSimulation.js';
 import type { AttackKind } from '../realtime/combatAuthority.js';
 import type { RealtimeHub, WorldMonsterBridge } from '../realtime/realtimeHub.js';
 import type { PostgresWorldMonsterRepository, WorldMonsterRow } from './worldMonsterRepository.js';
@@ -34,6 +35,18 @@ export interface MonsterWorldServiceOptions {
   persistIntervalMs?: number;
   /** Server-authoritative reward transaction for a confirmed shared-world death. */
   rewards?: Pick<MonsterService, 'grantKills'>;
+}
+
+export interface ExternalMonsterHit {
+  characterId: string;
+  islandId: string;
+  x: number;
+  z: number;
+  spawnId: string;
+  kind?: AttackKind;
+  damage: number;
+  expectedHp?: number;
+  range?: number;
 }
 
 /**
@@ -107,7 +120,7 @@ export class MonsterWorldService implements WorldMonsterBridge {
     kind: AttackKind,
     damageMultiplier = 1,
   ): void {
-    const result = this.sim.applyHit(
+    this.commitHit(this.sim.applyHit(
       this.now(),
       spawnId,
       characterId,
@@ -115,7 +128,34 @@ export class MonsterWorldService implements WorldMonsterBridge {
       z,
       kind,
       damageMultiplier,
+    ));
+  }
+
+  islandForSpawn(spawnId: string): string | null {
+    return this.spawnMeta.get(spawnId)?.islandId ?? null;
+  }
+
+  applyExternalHit(input: ExternalMonsterHit): ReturnType<MonsterSimulation['applyHit']> {
+    const current = this.sim.snapshotForIsland(input.islandId).find((monster) => monster.spawnId === input.spawnId);
+    if (!current || current.hp <= 0 || current.state === 'dead') return null;
+    if (input.expectedHp !== undefined && current.hp !== input.expectedHp) return null;
+    const allowedRange = input.range ?? WORLD_MONSTER_SKILL_RANGE;
+    if (!Number.isFinite(allowedRange) || Math.hypot(current.x - input.x, current.z - input.z) > allowedRange) return null;
+    if (input.damage === 0) return {
+      spawnId: current.spawnId, monsterId: current.monsterId, islandId: current.islandId,
+      hp: current.hp, maxHp: current.maxHp, damage: 0, dead: false, delta: {
+        ...current, damage: 0,
+      },
+    };
+    const result = this.sim.applyHit(
+      this.now(), input.spawnId, input.characterId, input.x, input.z,
+      input.kind ?? 'skill', 1, input.damage,
     );
+    this.commitHit(result);
+    return result;
+  }
+
+  private commitHit(result: ReturnType<MonsterSimulation['applyHit']>): void {
     if (!result) return;
     this.hub.broadcastWorldMonster(result.islandId, {
       type: 'world-monster-delta',
@@ -203,11 +243,10 @@ export class MonsterWorldService implements WorldMonsterBridge {
     }
   }
 
-  private tick(): void {
-    const now = this.now();
-    const dtMs = now - this.lastTickAt;
+  step(now = this.now(), additionalTargets: readonly PlayerView[] = []): void {
+    const dtMs = Math.max(0, now - this.lastTickAt);
     this.lastTickAt = now;
-    const players = this.hub.worldPlayerViews();
+    const players = [...this.hub.worldPlayerViews(), ...additionalTargets];
     const { dirtyByIsland, respawns, attacks } = this.sim.tick(now, dtMs, players);
     this.processPendingRewards();
     for (const [islandId, updates] of dirtyByIsland) {
@@ -253,6 +292,8 @@ export class MonsterWorldService implements WorldMonsterBridge {
       void this.persist();
     }
   }
+
+  private tick(): void { this.step(this.now()); }
 
   private async persist(): Promise<void> {
     if (!this.options.repository) return;

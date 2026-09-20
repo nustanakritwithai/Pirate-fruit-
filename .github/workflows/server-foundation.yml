@@ -11,6 +11,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  central-worker-candidate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci --include=dev
+      - run: npm run build:central-worker
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pirate-central-worker-candidate
+          path: server/dist/centralWorker.mjs*
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

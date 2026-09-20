@@ -250,6 +250,7 @@ export class MonsterSimulation {
     attackerZ: number,
     kind: 'melee' | 'skill',
     damageMultiplier = 1,
+    damageOverride?: number,
   ): MonsterHitResult | null {
     const monster = this.monsters.get(spawnId);
     if (!monster || monster.state === 'dead' || monster.hp <= 0) return null;
@@ -262,7 +263,9 @@ export class MonsterSimulation {
     const safeMultiplier = Number.isFinite(damageMultiplier)
       ? Math.max(1, Math.min(100, damageMultiplier))
       : 1;
-    const damage = Math.max(1, Math.round(baseDamage * safeMultiplier));
+    const damage = damageOverride === undefined
+      ? Math.max(1, Math.round(baseDamage * safeMultiplier))
+      : Math.max(1, Math.min(monster.type.maxHp, Math.floor(damageOverride)));
     // Keep the latest id until it is superseded: clients schedule from receipt
     // time, so network delay can leave the action pending after Server hitAt.
     const cancelAttackId = monster.activeAttackId ?? undefined;
