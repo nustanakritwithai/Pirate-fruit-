@@ -1,4 +1,5 @@
 import type { RealtimePresenceSnapshot } from './RealtimeClient';
+import type { RealtimeServerMessage } from '@pirate-fruit/shared';
 import type { RemotePlayers } from './RemotePlayers';
 import type { PlayerActionSnapshot } from '../animation/PlayerActionAnimator';
 import type { RealtimePlayerAnimation, RealtimePlayerPresentation, RealtimePlayerVisual } from '@pirate-fruit/shared';
@@ -11,6 +12,8 @@ export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
 export const PIRATE_LOCAL_PRESENCE_MESSAGE = 'pocketmonster:pirate-presence-v1';
 export const PIRATE_PRESENCE_SNAPSHOT_MESSAGE = 'pocketmonster:pirate-presence-snapshot-v1';
 export const PIRATE_PRESENCE_STATUS_MESSAGE = 'pocketmonster:pirate-presence-status-v1';
+export const PIRATE_ORIGINAL_WORLD_CONTRACT = 'pirate-original-world/1';
+const MAX_ORIGINAL_WORLD_MESSAGES = 512;
 
 const MAX_REMOTE_PLAYERS = 100;
 const MAX_PLAYER_ID_LENGTH = 80;
@@ -69,6 +72,15 @@ export interface PiratePresenceSnapshot {
   players: PiratePresencePlayer[];
   actors?: SharedMonsterActor[];
   centralAuthority?: PirateCentralAuthorityCapability;
+  pirateWorld?: PirateOriginalWorldEnvelope;
+}
+
+export interface PirateOriginalWorldEnvelope {
+  contract: typeof PIRATE_ORIGINAL_WORLD_CONTRACT;
+  generation: number;
+  sequence: number;
+  messages: RealtimeServerMessage[];
+  hasInitialSnapshot: boolean;
 }
 
 export interface ParentPresenceEvent {
@@ -114,6 +126,8 @@ export interface PocketMonsterParentPresenceOptions {
   drainMonsterIntents?(): readonly PirateMonsterIntent[];
   onMonsterActors?(transportZone: string, mapZone: string, actors: readonly SharedMonsterActor[]): void;
   onCentralAuthority?(capability: PirateCentralAuthorityCapability | null): void;
+  onOriginalWorldMessages?(envelope: PirateOriginalWorldEnvelope): void;
+  onOriginalWorldReady?(ready: boolean): void;
   onPresenceReset?(): void;
 }
 
@@ -137,6 +151,39 @@ function optionalInteger(value: unknown, min: number, max: number): number | und
   return Number.isInteger(value) && typeof value === 'number' && value >= min && value <= max
     ? value
     : undefined;
+}
+
+function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope | undefined {
+  if (!isRecord(value)
+    || value.contract !== PIRATE_ORIGINAL_WORLD_CONTRACT
+    || typeof value.generation !== 'number' || !Number.isSafeInteger(value.generation) || value.generation < 1
+    || typeof value.sequence !== 'number' || !Number.isSafeInteger(value.sequence) || value.sequence < 1
+    || !Array.isArray(value.messages) || value.messages.length > MAX_ORIGINAL_WORLD_MESSAGES) return undefined;
+  const messages: RealtimeServerMessage[] = [];
+  for (const candidate of value.messages) {
+    if (!isRecord(candidate)
+      || typeof candidate.type !== 'string'
+      || typeof candidate.seq !== 'number' || !Number.isSafeInteger(candidate.seq) || candidate.seq < 0) return undefined;
+    if (candidate.type === 'world-monster-snapshot') {
+      if (typeof candidate.islandId !== 'string' || !Array.isArray(candidate.monsters)) return undefined;
+    } else if (candidate.type === 'world-monster-delta') {
+      if (typeof candidate.islandId !== 'string' || !Array.isArray(candidate.updates)) return undefined;
+    } else if (candidate.type === 'world-monster-attack') {
+      if (!isRecord(candidate.attack)) return undefined;
+    } else if (candidate.type === 'world-monster-dead') {
+      if (typeof candidate.spawnId !== 'string') return undefined;
+    } else if (candidate.type === 'world-monster-respawn') {
+      if (!isRecord(candidate.monster)) return undefined;
+    } else return undefined;
+    messages.push(candidate as unknown as RealtimeServerMessage);
+  }
+  return {
+    contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
+    generation: value.generation,
+    sequence: value.sequence,
+    messages,
+    hasInitialSnapshot: messages.some((message) => message.type === 'world-monster-snapshot'),
+  };
 }
 
 function createActionSessionId(): string {
@@ -336,7 +383,17 @@ export function parsePiratePresenceSnapshotMessage(data: unknown): PiratePresenc
     && (authorityGeneration as number) >= 1
     ? payload.centralAuthority as unknown as PirateCentralAuthorityCapability
     : undefined;
-  return { zone: POCKET_MONSTER_PIRATE_ZONE, players, ...(actors ? { actors } : {}), ...(authority ? { centralAuthority: authority } : {}) };
+  const pirateWorld = parseOriginalWorldEnvelope(payload.pirateWorld);
+  // If the field is present, reject the whole parent snapshot on contract failure;
+  // never silently keep an older original-world authority stream alive.
+  if (payload.pirateWorld !== undefined && !pirateWorld) return null;
+  return {
+    zone: POCKET_MONSTER_PIRATE_ZONE,
+    players,
+    ...(actors ? { actors } : {}),
+    ...(authority ? { centralAuthority: authority } : {}),
+    ...(pirateWorld ? { pirateWorld } : {}),
+  };
 }
 
 export function createBrowserParentPresenceHost(): ParentPresenceHost {
@@ -582,6 +639,10 @@ export class PocketMonsterParentPresence {
   private applySnapshot(snapshot: PiratePresenceSnapshot): void {
     const islandId = this.syncIsland();
     this.options.onCentralAuthority?.(snapshot.centralAuthority ?? null);
+    if (snapshot.pirateWorld) {
+      this.options.onOriginalWorldReady?.(snapshot.pirateWorld.hasInitialSnapshot);
+      this.options.onOriginalWorldMessages?.(snapshot.pirateWorld);
+    } else this.options.onOriginalWorldReady?.(false);
     const seen = new Set<string>();
     for (const player of snapshot.players) {
       seen.add(player.id);
