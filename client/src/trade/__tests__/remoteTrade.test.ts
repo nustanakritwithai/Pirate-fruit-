@@ -69,6 +69,10 @@ describe('S8 remote trade (client)', () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       type: 'tradeQuote', schemaVersion: 1, action: 'buy', quantity: 2,
     }));
+    const trade = new TradeManager(fakeWallet(100), 'training-dinghy', undefined, new MemoryStorage());
+    trade.setRemoteExecutor(executor);
+    await trade.quoteAsync('buy', 'pirate-fruit', 'fresh-fish', 2);
+    expect(trade.resolveBuyPrice('pirate-fruit', 'fresh-fish', 2)).toBe(42);
   });
 
   it('applies the server outcome: coin delta, canonical cargo, listener event', async () => {
