@@ -55,4 +55,25 @@ describe('Pirate vitals client bridge', () => {
     expect(onServerDefeat).toHaveBeenCalledTimes(1);
     expect(requestRespawn).toHaveBeenCalledTimes(1);
   });
+
+  it('retries a failed respawn request from the repeated dead snapshot after the backoff', async () => {
+    const authority = new PirateVitalsAuthority();
+    const controller = { setServerVitalsAuthority: vi.fn(), teleport: vi.fn(), heading: 0 } as any;
+    const combat = { setServerVitalsAuthority: vi.fn(), applyServerVitals: vi.fn() } as any;
+    const spawn = { setServerVitalsAuthority: vi.fn(), activateSpawnPoint: vi.fn() } as any;
+    const requestRespawn = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const dead = {
+      contract: PIRATE_VITALS_CONTRACT, revision: 8, serverTimeMs: 100, hp: 0, maxHp: 100,
+      guard: 0, guardMax: 100, guardBroken: true, hitstunUntil: 100,
+      energy: 0, maxEnergy: 100, mp: 0, maxMp: 100, dead: true,
+    };
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    applyPirateVitalsSnapshot(authority, controller, combat, spawn, dead, { requestRespawn });
+    await Promise.resolve();
+    clock.mockReturnValue(3_001);
+    applyPirateVitalsSnapshot(authority, controller, combat, spawn, dead, { requestRespawn });
+    await Promise.resolve();
+    expect(requestRespawn).toHaveBeenCalledTimes(2);
+    clock.mockRestore();
+  });
 });

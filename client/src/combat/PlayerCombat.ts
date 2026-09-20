@@ -818,7 +818,9 @@ export class PlayerCombat {
     const pending = this.pendingCast;
     if (!pending) return;
     this.pendingCast = null;
-    this.controller.mp = Math.min(this.controller.mpMax, this.controller.mp + pending.skill.energyCost);
+    if (!this.serverVitalsAuthority) {
+      this.controller.mp = Math.min(this.controller.mpMax, this.controller.mp + pending.skill.energyCost);
+    }
     this.skillCooldowns.delete(pending.skill.id);
   }
 
@@ -1002,7 +1004,7 @@ export class PlayerCombat {
       this.touch?.notify('MP ไม่พอ 🔵');
       return;
     }
-    this.controller.mp -= skill.energyCost;
+    if (!this.serverVitalsAuthority) this.controller.mp -= skill.energyCost;
     this.skillCooldowns.set(skill.id, skill.cooldown);
     this.swing = null;
     this.comboIndex = 0;
@@ -1619,12 +1621,19 @@ export class PlayerCombat {
 
   /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
-    if (this.serverVitalsAuthority && this.requestServerBuff) {
+    if (this.serverVitalsAuthority) {
+      if (!this.requestServerBuff) return;
       void this.requestServerBuff(skill.id).then((accepted) => {
+        if (accepted) {
+          this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
+          this.skillBuffTimer = 8;
+          this.emitShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
+        }
         this.touch?.notify(accepted ? '✨ Server ยืนยันบัฟแล้ว' : 'บัฟถูกปฏิเสธโดย Server');
       }).catch(() => {
         this.touch?.notify('บัฟส่งไป Server ไม่สำเร็จ');
       });
+      return;
     }
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
     const appliedHeal = this.serverVitalsAuthority || this.authoritativeCombatTimer > 0 ? 0 : healHp;

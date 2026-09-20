@@ -4,7 +4,12 @@ import type { SpawnManager } from '../world/SpawnManager';
 import { PirateVitalsAuthority } from './PirateVitalsAuthority';
 
 const lastAppliedRespawnRevision = new WeakMap<PirateVitalsAuthority, number>();
-const serverDeathState = new WeakMap<PirateVitalsAuthority, { respawnRequested: boolean }>();
+const serverDeathState = new WeakMap<PirateVitalsAuthority, {
+  defeatPresented: boolean;
+  respawnRequested: boolean;
+  respawnInFlight: boolean;
+  lastRespawnAttemptAt: number;
+}>();
 
 /** Applies a validated snapshot to presentation state; all local fallback writers stay disabled after claim. */
 export function applyPirateVitalsSnapshot(
@@ -18,21 +23,45 @@ export function applyPirateVitalsSnapshot(
     requestRespawn?: () => Promise<boolean>;
   } = {},
 ): boolean {
-  if (!authority.apply(value)) return false;
-  const snapshot = authority.snapshot!;
+  const accepted = authority.apply(value);
+  const current = authority.snapshot;
+  // A repeated dead snapshot is still useful to retry a failed respawn RPC;
+  // stale alive/other revisions remain rejected by the authority receiver.
+  if (!accepted && (!current || !current.dead || !isSameRevision(value, current.revision))) return false;
+  const snapshot = current!;
   controller.setServerVitalsAuthority(true);
   combat.setServerVitalsAuthority(true);
   spawn.setServerVitalsAuthority(true);
-  combat.applyServerVitals(snapshot);
-  const death = serverDeathState.get(authority) ?? { respawnRequested: false };
+  if (accepted) combat.applyServerVitals(snapshot);
+  const death = serverDeathState.get(authority) ?? {
+    defeatPresented: false,
+    respawnRequested: false,
+    respawnInFlight: false,
+    lastRespawnAttemptAt: 0,
+  };
   if (snapshot.dead) {
-    if (!death.respawnRequested) {
-      death.respawnRequested = true;
+    if (!death.defeatPresented) {
+      death.defeatPresented = true;
       hooks.onServerDefeat?.();
-      if (hooks.requestRespawn) void hooks.requestRespawn().catch(() => undefined);
+    }
+    const now = Date.now();
+    const retryWindowOpen = death.lastRespawnAttemptAt === 0 || now - death.lastRespawnAttemptAt >= 2_000;
+    if (hooks.requestRespawn && !death.respawnInFlight && retryWindowOpen) {
+      death.respawnRequested = true;
+      death.respawnInFlight = true;
+      death.lastRespawnAttemptAt = now;
+      void hooks.requestRespawn().then((ok) => {
+        death.respawnInFlight = false;
+        if (!ok) death.respawnRequested = false;
+      }).catch(() => {
+        death.respawnInFlight = false;
+        death.respawnRequested = false;
+      });
     }
   } else {
+    death.defeatPresented = false;
     death.respawnRequested = false;
+    death.respawnInFlight = false;
   }
   serverDeathState.set(authority, death);
   if (snapshot.respawn && !snapshot.dead
@@ -43,4 +72,10 @@ export function applyPirateVitalsSnapshot(
     controller.heading = snapshot.respawn.heading;
   }
   return true;
+}
+
+function isSameRevision(value: unknown, revision: number): boolean {
+  return Boolean(value && typeof value === 'object'
+    && typeof (value as Record<string, unknown>).revision === 'number'
+    && (value as Record<string, unknown>).revision === revision);
 }
