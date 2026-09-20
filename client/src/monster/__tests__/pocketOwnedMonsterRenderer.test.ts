@@ -4,6 +4,7 @@ import {
   isValidOwnedMonsterActor,
   ownedMonsterActionKey,
   ownedMonsterAnimationForState,
+  ownedMonsterActionMotion,
   PocketOwnedMonsterRenderer,
   type OwnedMonsterActor,
 } from '../PocketOwnedMonsterRenderer';
@@ -43,6 +44,15 @@ describe('PocketOwnedMonsterRenderer contract gate', () => {
     const nextAction = actor({ stateSequence: 12, actionSessionId: 'combat-1', actionSequence: 5 });
     expect(ownedMonsterActionKey(first)).toBe(ownedMonsterActionKey(sameAction));
     expect(ownedMonsterActionKey(first)).not.toBe(ownedMonsterActionKey(nextAction));
+    const authorityAction = actor({
+      stateSequence: 10,
+      authority: { ...actor().authority, actionSessionId: 'combat-2', actionSequence: 7 },
+    });
+    const authorityRepeat = actor({
+      stateSequence: 11,
+      authority: { ...actor().authority, actionSessionId: 'combat-2', actionSequence: 7 },
+    });
+    expect(ownedMonsterActionKey(authorityAction)).toBe(ownedMonsterActionKey(authorityRepeat));
   });
 
   it('maps canonical server combat states to owned renderer clips', () => {
@@ -50,6 +60,40 @@ describe('PocketOwnedMonsterRenderer contract gate', () => {
     expect(ownedMonsterAnimationForState('casting')).toBe('skill');
     expect(['stunned', 'knockback', 'knockdown'].map(ownedMonsterAnimationForState)).toEqual(['hurt', 'hurt', 'hurt']);
     expect(ownedMonsterAnimationForState('idle')).toBeNull();
+  });
+
+  it('keeps one action progressing across snapshots instead of restarting it', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PocketOwnedMonsterRenderer(scene, THREE);
+    const attack = actor({
+      actionSessionId: 'combat-1', actionSequence: 1,
+      animation: { combatState: 'attack1', actionSessionId: 'combat-1', actionSequence: 1 },
+    });
+    renderer.setActors([attack]);
+    renderer.update(0.025);
+    const group = scene.getObjectByName(attack.actorId)!;
+    const first = group.position.z;
+    renderer.setActors([{ ...attack, stateSequence: 2 }]);
+    renderer.update(0.05);
+    const second = group.position.z;
+    expect(second).toBeGreaterThan(first);
+    expect(ownedMonsterActionMotion('attack', 0.075).forward).toBeGreaterThan(
+      ownedMonsterActionMotion('attack', 0.025).forward,
+    );
+  });
+
+  it('gives casting a visible windup without changing authoritative coordinates', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PocketOwnedMonsterRenderer(scene, THREE);
+    const casting = actor({
+      actionSessionId: 'skill-1', actionSequence: 1,
+      animation: { combatState: 'casting', actionSessionId: 'skill-1', actionSequence: 1 },
+    });
+    renderer.setActors([casting]);
+    renderer.update(0.1);
+    const group = scene.getObjectByName(casting.actorId)!;
+    expect(group.position.x).toBeCloseTo(1, 5);
+    expect(group.position.z).not.toBeCloseTo(2, 3);
   });
 
   it('mounts a canonical Pirate owned model, removes it, and disposes the scene entry', () => {
