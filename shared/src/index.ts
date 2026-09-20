@@ -19,6 +19,7 @@ export * from './types/monster.js';
 export * from './monster/rewards.js';
 export * from './progression/level.js';
 export * from './progression/mastery.js';
+export * from './combat/pveIncomingDamage.js';
 export * from './progression/stats.js';
 export * from './shop/catalog.js';
 export * from './types/progression.js';

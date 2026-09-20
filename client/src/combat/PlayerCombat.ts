@@ -41,6 +41,7 @@ import {
 } from './CombatState';
 import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import type { RealtimeKnockback } from '@pirate-fruit/shared';
+import { resolvePveIncomingDamage } from '@pirate-fruit/shared';
 import type { SpellFxAssetId } from '../art/SpellFxAssetLibrary';
 
 /** สลอตไม้ตายในอาเรย์คูลดาวน์ 4 ช่อง */
@@ -452,18 +453,31 @@ export class PlayerCombat {
       attack.sourceX,
       attack.sourceZ,
     );
-    let amount = attack.amount;
-
+    const resolution = resolvePveIncomingDamage(
+      {
+        hp: this.controller.hp,
+        maxHp: this.controller.hpMax,
+        guard: this.guard,
+        guardMax: GUARD_MAX,
+        blocking: this.combatState === 'blocking',
+        guardBroken: this.guardBroken,
+        hitstunUntil: 0,
+      },
+      attack,
+      0,
+      GUARD_DAMAGE_FACTOR,
+      BLOCK_DAMAGE_RATIO,
+      GUARD_BREAK_STUN * 1_000,
+    );
+    this.guard = resolution.state.guard;
     if (this.combatState === 'blocking' && !attack.unblockable) {
-      this.guard = Math.max(0, this.guard - attack.amount * GUARD_DAMAGE_FACTOR);
-      amount = attack.amount * BLOCK_DAMAGE_RATIO;
       this.effects.spawnHitSpark(this.controller.position, 0x8fd4ff);
-      if (this.guard <= 0) {
-        this.guardBroken = true;
-        this.enterState('stunned', GUARD_BREAK_STUN);
-        this.controller.applyStun(GUARD_BREAK_STUN);
-        this.touch?.notify('🛡️ โล่แตก!');
-      }
+    }
+    if (resolution.guardBroke) {
+      this.guardBroken = true;
+      this.enterState('stunned', GUARD_BREAK_STUN);
+      this.controller.applyStun(GUARD_BREAK_STUN);
+      this.touch?.notify('🛡️ โล่แตก!');
     } else if (attack.unblockable && attack.knockback > 0) {
       const dx = this.controller.position.x - attack.sourceX;
       const dz = this.controller.position.z - attack.sourceZ;
@@ -482,8 +496,8 @@ export class PlayerCombat {
       }
     }
 
-    if (this.controller.hp - amount <= 0) this.enterState('dead', 0.8);
-    return amount;
+    if (resolution.defeated) this.enterState('dead', 0.8);
+    return resolution.taken;
   }
 
   /** แจ้งว่าเพิ่งโดนดาเมจ (หยุด HP regen) — main เรียกจาก onPlayerHit */
