@@ -29,6 +29,15 @@ describe('central state adapter', () => {
     expect(updated.state.checkpoint.position).toEqual({ x: 10, y: 2, z: 11 });
   });
 
+  it('เปลี่ยน active boat ได้เฉพาะเรือที่มีอยู่ และไม่สร้างเรือใหม่', () => {
+    const state = defaultPlayerState();
+    const selected = state.boats[0]!.definitionId;
+    const updated = applyCanonicalStateOperation(state, { type: 'boatSelection', selectedBoatId: selected });
+    expect(updated.state.boats.filter((boat) => boat.active).map((boat) => boat.definitionId)).toEqual([selected]);
+    expect(updated.state.boats).toHaveLength(state.boats.length);
+    expect(() => applyCanonicalStateOperation(state, { type: 'boatSelection', selectedBoatId: 'war-galleon' })).toThrow('boat-not-owned');
+  });
+
   it('ใช้อุปกรณ์ที่มีจริงและเก็บ reward receipts หลังเปลี่ยนอุปกรณ์', () => {
     const state = Object.assign(defaultPlayerState(), { rewardReceipts: [{ key: 'existing' }] });
     const operation = { type: 'loadout', inventoryLoadout: state.inventory.loadout, loadout: state.loadout };

@@ -27,6 +27,7 @@ const stateOperation = z.discriminatedUnion('type', [
     combat: statAmount, vitality: statAmount, blade: statAmount,
     ranged: statAmount, fruitPower: statAmount, mana: statAmount,
   }).strict() }).strict(),
+  z.object({ type: z.literal('boatSelection'), selectedBoatId: z.string().min(1).max(128) }).strict(),
   z.object({ type: z.literal('loadout'), inventoryLoadout: z.object({
     activeSet: z.enum(['weapon', 'fruit']), equippedWeaponKind: z.enum(['sword', 'gun', 'fighting-style']),
     equippedSwordId: itemId, equippedGunId: itemId, equippedFightingStyleId: itemId,
@@ -62,8 +63,14 @@ export function applyCanonicalStateOperation(current: CanonicalPlayerState, inpu
     if (position && ISLAND_IDS.includes(position.islandId as IslandId)) {
       const islandId = position.islandId as IslandId;
       state.checkpoint = { ...state.checkpoint, islandId, spawnId: SPAWN_ID_BY_ISLAND[islandId],
-        position: { x: position.x, y: position.y, z: position.z }, heading: position.heading };
+      position: { x: position.x, y: position.y, z: position.z }, heading: position.heading };
     }
+  } else if (operation.type === 'boatSelection') {
+    if (!state.boats.some((boat) => boat.definitionId === operation.selectedBoatId)) {
+      throw new Error('boat-not-owned');
+    }
+    // เปลี่ยนได้เฉพาะเรือที่ server มีอยู่แล้ว ไม่สร้างเรือ/เงิน/อัปเกรดจาก client
+    state.boats = state.boats.map((boat) => ({ ...boat, active: boat.definitionId === operation.selectedBoatId }));
   } else {
     const owned = { sword: state.inventory.ownedSwords, gun: state.inventory.ownedGuns,
       style: state.inventory.ownedStyles, fruit: state.inventory.ownedFruits };
