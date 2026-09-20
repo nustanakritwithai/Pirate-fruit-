@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline';
 import { inferIslandId, type MonsterKillsRequest, type RealtimeServerMessage } from '@pirate-fruit/shared';
 import { RealtimeHub, type RealtimeConnection, type RealtimeSocket } from '../realtime/realtimeHub.js';
 import type { AuthoritativeCombatProfile, CombatProfileProvider } from '../realtime/combatProfile.js';
-import { MonsterWorldService } from './monsterWorldService.js';
+import { MonsterWorldService, type MonsterWorldStateSnapshot } from './monsterWorldService.js';
 import type { PlayerView } from './monsterSimulation.js';
 import { normalizeInitialPlayerState, deriveCanonicalCombatProfile } from '../player/centralStateAdapter.js';
 import { prepareCanonicalReward } from '../player/centralRewardAdapter.js';
@@ -11,10 +11,11 @@ import { serializePlayerState } from '../player/playerState.js';
 export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
-  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
+  id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
   ownerId?: string; actorId?: string; targetSpawnId?: string; x?: number; z?: number; expectedHp?: number; damage?: number; range?: number; additionalTargets?: PlayerView[];
   rewardKey?: string; outcome?: { rewards: unknown[]; coinsTotal: number };
   player?: unknown; cargo?: unknown; state?: any; kills?: unknown[];
+  worldState?: MonsterWorldStateSnapshot;
 }
 const PROTOCOL = 'pirate-original-world/1' as const;
 
@@ -34,6 +35,7 @@ export class CentralWorldWorker {
   private readonly service: MonsterWorldService;
   private currentPlayers = new Map<string, CentralPlayer>();
   private clockNow: number;
+  private worldRestored = false;
   private readonly pendingRewards = new Map<string, { characterId: string; body: MonsterKillsRequest; resolve: (value: any) => void; reject: (error: Error) => void; }>();
   private readonly deliverySeq = new Map<string, number>();
 
@@ -68,6 +70,12 @@ export class CentralWorldWorker {
 
   async handle(request: CentralRequest): Promise<Record<string, unknown>> {
     if (request.op === 'ready') return { id: request.id, ok: true, contract: PROTOCOL };
+    if (request.op === 'export-world') return { id: request.id, ok: true, contract: PROTOCOL, worldState: this.service.exportWorldState() };
+    if (request.op === 'restore-world') {
+      if (!request.worldState) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-required' };
+      this.service.restoreWorldState(request.worldState); this.worldRestored = true;
+      return { id: request.id, ok: true, contract: PROTOCOL };
+    }
     if (request.op === 'normalize-state') {
       if (!request.player) return { id: request.id, ok: false, contract: PROTOCOL, error: 'player-state-required' };
       return { id: request.id, ok: true, contract: PROTOCOL, ...normalizeInitialPlayerState(request.player as any, request.cargo as any) };
@@ -98,6 +106,7 @@ export class CentralWorldWorker {
       const result = this.service.applyExternalHit({ characterId: request.actorId, creditCharacterId: request.ownerId, islandId, x: request.x!, z: request.z!, spawnId: request.targetSpawnId, damage: request.damage!, range: request.range, expectedHp: request.expectedHp });
       return { id: request.id, ok: !!result, contract: PROTOCOL, result: result ? { hp: result.hp, damage: result.damage, dead: result.dead, spawnId: result.spawnId } : null };
     }
+    if (!this.worldRestored) return { id: request.id, ok: false, contract: PROTOCOL, error: 'world-state-restore-required' };
     this.clockNow = request.now;
     this.currentPlayers = new Map((request.players ?? []).map((player) => [player.characterId, player]));
     for (const [characterId, connection] of this.connections) {

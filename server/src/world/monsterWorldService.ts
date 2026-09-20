@@ -37,6 +37,12 @@ export interface MonsterWorldServiceOptions {
   rewards?: Pick<MonsterService, 'grantKills'>;
 }
 
+export interface MonsterWorldStateSnapshot {
+  schemaVersion: 1;
+  monsters: ReturnType<MonsterSimulation['serialize']>;
+  pendingRewards: Omit<PendingDeathReward, 'inFlight'>[];
+}
+
 export interface ExternalMonsterHit {
   characterId: string;
   creditCharacterId?: string;
@@ -134,6 +140,26 @@ export class MonsterWorldService implements WorldMonsterBridge {
 
   islandForSpawn(spawnId: string): string | null {
     return this.spawnMeta.get(spawnId)?.islandId ?? null;
+  }
+
+  exportWorldState(): MonsterWorldStateSnapshot {
+    return {
+      schemaVersion: 1,
+      monsters: this.sim.serialize(),
+      pendingRewards: [...this.pendingRewards.values()].map(({ inFlight: _inFlight, ...pending }) => pending),
+    };
+  }
+
+  restoreWorldState(snapshot: MonsterWorldStateSnapshot): void {
+    if (snapshot.schemaVersion !== 1 || !Array.isArray(snapshot.monsters) || !Array.isArray(snapshot.pendingRewards)) {
+      throw new Error('invalid-world-state');
+    }
+    this.sim.restore(snapshot.monsters);
+    this.pendingRewards.clear();
+    for (const pending of snapshot.pendingRewards) {
+      if (!pending.idempotencyKey || !pending.characterId || !pending.spawnId || !pending.monsterId) continue;
+      this.pendingRewards.set(pending.idempotencyKey, { ...pending, inFlight: false, retryAt: Math.min(pending.retryAt, this.now()) });
+    }
   }
 
   applyExternalHit(input: ExternalMonsterHit): ReturnType<MonsterSimulation['applyHit']> {
