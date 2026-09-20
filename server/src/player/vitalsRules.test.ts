@@ -32,4 +32,17 @@ describe('canonical PvE vitals', () => {
     const replay = applyCanonicalVitalsOperation(first.state, { type: 'potion', potionId: 'potion-hp', idempotencyKey: 'potion:1' }, context);
     expect(replay.state.inventory.consumables['potion-hp']).toBe(0);
   });
+
+  it('charges MP from the trusted generated skill catalog and replays idempotently', () => {
+    const current = state();
+    current.inventory.loadout.activeSet = 'fruit';
+    current.inventory.loadout.equippedFruitId = 'phoenix';
+    current.progression.mastery.phoenix = { itemId: 'phoenix', category: 'fruit', level: 1, exp: 0 };
+    current.checkpoint.mp = 50;
+    const operation = { type: 'skill' as const, skillId: 'phoenix-moveset-v1-z', idempotencyKey: 'skill:phoenix-z' };
+    const first = applyCanonicalVitalsOperation(current, operation, context);
+    expect(first.state.checkpoint.mp).toBe(34);
+    const replay = applyCanonicalVitalsOperation(first.state, operation, context);
+    expect(replay.state.checkpoint.mp).toBe(34);
+  });
 });

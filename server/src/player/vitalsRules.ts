@@ -20,6 +20,7 @@ export interface CanonicalPveVitals {
   lastDamageAtMs: number;
   potionCooldownUntil: number;
   buffCooldowns: Record<string, number>;
+  skillCooldowns?: Record<string, number>;
   buffMultiplier: number;
   buffUntil: number;
 }
@@ -60,6 +61,7 @@ export interface PveBuffProfile {
 
 export type PveVitalsOperation =
   | { type: 'potion'; potionId: ShopPotionId; idempotencyKey: string }
+  | { type: 'skill'; skillId: string; idempotencyKey: string }
   | { type: 'buff'; skillId: string; idempotencyKey: string }
   | { type: 'respawn'; idempotencyKey: string };
 
@@ -152,6 +154,8 @@ export function applyCanonicalVitalsOperation(
   const state = clone(current);
   const caps = resourceCapsForStats(state.progression.stats);
   const vitals = state.pveVitals ?? defaultPveVitals(context.now);
+  vitals.buffCooldowns ??= {};
+  vitals.skillCooldowns ??= {};
   if (operation.type === 'potion') {
     const potion = SHOP_POTIONS[operation.potionId];
     if (vitals.potionCooldownUntil > context.now) throw new Error('POTION_COOLDOWN');
@@ -163,6 +167,17 @@ export function applyCanonicalVitalsOperation(
     vitals.potionCooldownUntil = context.now + PVE_POTION_COOLDOWN_MS;
     state.pveVitals = vitals;
     return record(state, { type: operation.potionId, changed: true });
+  }
+  if (operation.type === 'skill') {
+    const skill = resolveTrustedSkillResource(state, operation.skillId);
+    if (!skill) throw new Error('INVALID_SKILL');
+    if ((vitals.skillCooldowns[skill.skillId] ?? 0) > context.now) throw new Error('SKILL_COOLDOWN');
+    if (state.checkpoint.hp <= 0 || state.checkpoint.mp < skill.mpCost
+      || (state.pveCombat?.hitstunUntil ?? 0) > context.now) throw new Error('VITALS_UNAVAILABLE');
+    state.checkpoint.mp -= skill.mpCost;
+    vitals.skillCooldowns[skill.skillId] = context.now + skill.cooldownMs;
+    state.pveVitals = vitals;
+    return record(state, { type: 'skill', changed: true });
   }
   const profile = resolveTrustedBuffProfile(state, operation.skillId);
   if (!profile) throw new Error('INVALID_BUFF_SKILL');
@@ -179,7 +194,19 @@ export function applyCanonicalVitalsOperation(
 }
 
 export function defaultPveVitals(now = 0): CanonicalPveVitals {
-  return { lastDamageAtMs: now, potionCooldownUntil: 0, buffCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
+  return { lastDamageAtMs: now, potionCooldownUntil: 0, buffCooldowns: {}, skillCooldowns: {}, buffMultiplier: 1, buffUntil: 0 };
+}
+
+export interface PveSkillResource { skillId: string; mpCost: number; cooldownMs: number; }
+
+/** ค่าทรัพยากรจาก generated skill catalog เดิม; client ส่งได้เพียง skillId */
+export function resolveTrustedSkillResource(state: CanonicalPveState, skillId: string): PveSkillResource | null {
+  const fruit = state.inventory.loadout.equippedFruitId;
+  if (state.inventory.loadout.activeSet !== 'fruit' || !fruit || !skillId.startsWith(`${fruit}-`)) return null;
+  const slot = skillId.endsWith('-m1') ? 'm1' : skillId.slice(skillId.lastIndexOf('-') + 1);
+  const resource = ({ m1: [4, 1_200], z: [16, 6_000], x: [24, 9_000], c: [32, 12_000], v: [50, 20_000], f: [10, 4_000] } as const)[slot as 'm1' | 'z' | 'x' | 'c' | 'v' | 'f'];
+  if (!resource) return null;
+  return { skillId, mpCost: resource[0], cooldownMs: resource[1] };
 }
 
 export function resolveTrustedBuffProfile(state: CanonicalPveState, skillId: string): PveBuffProfile | null {
