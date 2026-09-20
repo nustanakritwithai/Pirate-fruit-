@@ -47,6 +47,7 @@ export async function applyCentralOriginalTradeOperation(
     ? operationReceipts?.find((receipt) => receipt.key === commandId)
     : undefined;
   if (operationReceipt) {
+    if (operationReceipt.hash !== hash) throw new Error('IDEMPOTENCY_KEY_REUSED');
     const state = structuredClone(current) as StateWithEconomy;
     return {
       state,
@@ -58,7 +59,12 @@ export async function applyCentralOriginalTradeOperation(
   const prior = current.tradeReceipts?.find((receipt) => receipt.key === request.idempotencyKey);
   if (prior?.hash === hash) {
     const state = structuredClone(current) as StateWithEconomy;
-    return { state, persisted: serializePlayerState(state), outcome: { ...prior.outcome, idempotentReplay: true } };
+    return {
+      state,
+      persisted: serializePlayerState(state),
+      outcome: { ...prior.outcome, idempotentReplay: true },
+      nextMarket: structuredClone(market),
+    };
   }
   if (prior) throw new Error('IDEMPOTENCY_KEY_REUSED');
 
