@@ -19,6 +19,13 @@ describe('central original reward transaction', () => {
     expect(() => prepareCanonicalReward(first.state, 'world-kill:fixture:1', [{ monsterId, count: 2 }])).toThrow('IDEMPOTENCY_KEY_REUSED');
   });
 
+  it('credits the original starter style mastery item when canonical loadout says combat', () => {
+    const state = defaultPlayerState();
+    const result = prepareCanonicalReward(state, 'world-kill:starter-style', [{ monsterId: 'crab', count: 1 }]);
+    expect(result.state.progression.mastery['basic-brawl']?.exp).toBeGreaterThan(0);
+    expect(result.state.progression.mastery['combat']).toBeUndefined();
+  });
+
   it('advances the active canonical quest from trusted kills and does not double-count replay', () => {
     const state = defaultPlayerState();
     state.progression.activeQuestId = 'starter-crabs';

@@ -10,6 +10,12 @@ import { applyQuestProgress } from '../quest/newquestRules.js';
 type RewardReceipt = { key: string; kills: string; outcome: MonsterKillsResponse };
 export type CentralCanonicalState = CanonicalPlayerState & { rewardReceipts?: RewardReceipt[] };
 
+function canonicalMasteryItemId(itemId: string, category: CanonicalMasteryEntry['category']): string {
+  // ระบบเดิมใช้ basic-brawl เป็น starter style; ค่า combat ใน canonical loadout
+  // เป็นชื่อ combat profile ไม่ใช่ mastery item id
+  return category === 'style' && itemId === 'combat' ? 'basic-brawl' : itemId;
+}
+
 /** สูตรเดียวกับ client MasterySystem และ persisted player-state projection */
 export function applyCanonicalMasteryExp(state: CanonicalPlayerState, amount: number): void {
   const loadout = state.inventory.loadout;
@@ -20,17 +26,18 @@ export function applyCanonicalMasteryExp(state: CanonicalPlayerState, amount: nu
       : loadout.equippedWeaponKind === 'gun'
         ? loadout.equippedGunId
         : loadout.equippedFightingStyleId;
-  if (!itemId || !Number.isFinite(amount) || amount <= 0) return;
   const category: CanonicalMasteryEntry['category'] = loadout.activeSet === 'fruit'
     ? 'fruit'
     : loadout.equippedWeaponKind === 'sword'
       ? 'sword'
       : loadout.equippedWeaponKind === 'gun'
-        ? 'gun'
-        : 'style';
-  const entry: CanonicalMasteryEntry = state.progression.mastery[itemId] ?? { itemId, category, level: 1, exp: 0 };
+      ? 'gun'
+      : 'style';
+  const masteryItemId = itemId ? canonicalMasteryItemId(itemId, category) : null;
+  if (!masteryItemId || !Number.isFinite(amount) || amount <= 0) return;
+  const entry: CanonicalMasteryEntry = state.progression.mastery[masteryItemId] ?? { itemId: masteryItemId, category, level: 1, exp: 0 };
   applySharedMasteryExp(entry, amount);
-  state.progression.mastery[itemId] = entry;
+  state.progression.mastery[masteryItemId] = entry;
 }
 
 /** เตรียม transaction เท่านั้น: C# ต้อง CAS commit state ก่อนตอบ reward-ack ให้โลกเดิม */
