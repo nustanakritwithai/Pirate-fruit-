@@ -10,6 +10,8 @@ export interface OwnedMonsterAuthority {
   authorityVersion: 'monster-authority/1';
   generation: number;
   hp: { current: number; max: number; revision: number };
+  actionSequence?: number;
+  actionSessionId?: string;
 }
 
 export interface OwnedMonsterActor {
@@ -33,11 +35,35 @@ export interface OwnedMonsterActor {
 const MAX_ACTORS = 32;
 const MAX_COORDINATE = 10_000;
 type Handle = ReturnType<ReturnType<typeof createBigheadMonsterProvider>>;
-interface Entry { actor: OwnedMonsterActor; handle: Handle; group: Group; target: THREE_NS.Vector3; render: THREE_NS.Vector3; hpFill: THREE_NS.Mesh; lastActionKey: string; }
+interface Entry {
+  actor: OwnedMonsterActor;
+  handle: Handle;
+  group: Group;
+  target: THREE_NS.Vector3;
+  render: THREE_NS.Vector3;
+  hpFill: THREE_NS.Mesh;
+  lastActionKey: string;
+  actionClip: 'attack' | 'skill' | 'hurt' | null;
+  actionElapsed: number;
+}
 
-export function ownedMonsterActionKey(actor: Pick<OwnedMonsterActor, 'generation' | 'actionSequence' | 'actionSessionId' | 'stateSequence' | 'animation'>): string {
-  const sequence = actor.actionSequence ?? actor.animation?.actionSequence;
-  const session = actor.actionSessionId ?? actor.animation?.actionSessionId ?? '';
+/** Returns a short presentation-only motion for an authoritative action. */
+export function ownedMonsterActionMotion(
+  clip: 'attack' | 'skill' | 'hurt' | null,
+  elapsed: number,
+): { forward: number; lift: number } {
+  if (!clip) return { forward: 0, lift: 0 };
+  const duration = clip === 'attack' ? 0.32 : clip === 'skill' ? 0.42 : 0.18;
+  const progress = Math.max(0, Math.min(1, elapsed / duration));
+  const pulse = Math.sin(progress * Math.PI);
+  if (clip === 'attack') return { forward: pulse * 0.46, lift: pulse * 0.035 };
+  if (clip === 'skill') return { forward: -pulse * 0.28, lift: pulse * 0.18 };
+  return { forward: -pulse * 0.08, lift: pulse * 0.025 };
+}
+
+export function ownedMonsterActionKey(actor: Pick<OwnedMonsterActor, 'generation' | 'actionSequence' | 'actionSessionId' | 'stateSequence' | 'animation' | 'authority'>): string {
+  const sequence = actor.actionSequence ?? actor.animation?.actionSequence ?? actor.authority.actionSequence;
+  const session = actor.actionSessionId ?? actor.animation?.actionSessionId ?? actor.authority.actionSessionId ?? '';
   return `${actor.generation}:${session}:${sequence ?? actor.stateSequence}`;
 }
 
@@ -73,6 +99,8 @@ export function isValidOwnedMonsterActor(actor: unknown): actor is OwnedMonsterA
     && Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z) && Number.isFinite(p?.dir)
     && Math.abs(p.x) <= MAX_COORDINATE && Math.abs(p.y) <= MAX_COORDINATE && Math.abs(p.z) <= MAX_COORDINATE
     && a.authorityVersion === 'monster-authority/1' && a.generation === generation
+    && (a.actionSequence === undefined || Number.isSafeInteger(a.actionSequence))
+    && (a.actionSessionId === undefined || (typeof a.actionSessionId === 'string' && a.actionSessionId.length > 0 && a.actionSessionId.length <= 120))
     && Number.isFinite(a.hp.current) && Number.isFinite(a.hp.max) && a.hp.max > 0
     && a.hp.current >= 0 && a.hp.current <= a.hp.max && Number.isSafeInteger(a.hp.revision) && a.hp.revision >= 0;
 }
@@ -128,24 +156,35 @@ export class PocketOwnedMonsterRenderer implements Updatable {
         group.add(hpFill);
         this.scene.add(group);
         const target = new this.THREE.Vector3(actor.pose.x, actor.pose.y, actor.pose.z);
-        entry = { actor, handle, group, target, render: target.clone(), hpFill, lastActionKey: '' };
+        entry = {
+          actor, handle, group, target, render: target.clone(), hpFill,
+          lastActionKey: '', actionClip: null, actionElapsed: 0,
+        };
         this.entries.set(actor.actorId, entry);
       }
       entry.actor = actor;
       entry.target.set(actor.pose.x, actor.pose.y, actor.pose.z);
       entry.render.lerp(entry.target, Math.min(1, dt * 12));
-      entry.group.position.copy(entry.render);
-      entry.group.rotation.y = actor.pose.dir;
-      entry.hpFill.scale.x = actor.authority.hp.current / actor.authority.hp.max;
       const state = actor.animation?.combatState ?? 'idle';
       const actionKey = ownedMonsterActionKey(actor);
-      if (actionKey !== entry.lastActionKey) {
-        const animation = ownedMonsterAnimationForState(state);
-        if (animation === 'attack') entry.handle.play('attack', { duration: 0.22 });
-        else if (animation === 'skill') entry.handle.play('skill', { duration: 0.3 });
+      const animation = ownedMonsterAnimationForState(state);
+      if (animation && actionKey !== entry.lastActionKey) {
+        entry.actionClip = animation;
+        entry.actionElapsed = 0;
+        if (animation === 'attack') entry.handle.play('attack', { duration: 0.32 });
+        else if (animation === 'skill') entry.handle.play('skill', { duration: 0.42 });
         else if (animation === 'hurt') entry.handle.play('hurt', { duration: 0.18 });
         entry.lastActionKey = actionKey;
       }
+      entry.actionElapsed += dt;
+      const motion = ownedMonsterActionMotion(entry.actionClip, entry.actionElapsed);
+      entry.group.position.set(
+        entry.render.x + Math.sin(actor.pose.dir) * motion.forward,
+        entry.render.y + motion.lift,
+        entry.render.z + Math.cos(actor.pose.dir) * motion.forward,
+      );
+      entry.group.rotation.y = actor.pose.dir;
+      entry.hpFill.scale.x = actor.authority.hp.current / actor.authority.hp.max;
       entry.handle.update(dt, { moving: actor.locomotion !== 'idle' });
     }
     for (const id of this.entries.keys()) if (!seen.has(id)) this.remove(id);
