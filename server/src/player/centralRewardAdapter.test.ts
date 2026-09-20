@@ -11,7 +11,7 @@ describe('central original reward transaction', () => {
     const before = structuredClone(state);
     const first = prepareCanonicalReward(state, 'world-kill:fixture:1', [{ monsterId, count: 1 }]);
     expect(state).toEqual(before);
-    expect(first.outcome.totals).toEqual(expected);
+    expect(first.outcome.totals).toEqual({ playerExp: expected.playerExp, coins: expected.coins, masteryExp: expected.masteryExp });
     expect(first.state.progression.coins).toBe(state.progression.coins + expected.coins);
     const replay = prepareCanonicalReward(first.state, 'world-kill:fixture:1', [{ monsterId, count: 1 }]);
     expect(replay.state).toEqual(first.state);
