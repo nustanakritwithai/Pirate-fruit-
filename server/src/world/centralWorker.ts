@@ -122,8 +122,15 @@ export class CentralWorldWorker {
       connection.presence = { islandId, x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0, onBoat: false };
       if (previousIsland !== islandId) this.sockets.get(player.characterId)!.messages.push(this.service.snapshotMessageForIsland(islandId));
     }
+    const grouped = new Map<string, CentralIntent>();
     for (const intent of request.intents ?? []) {
-      const connection = this.connections.get(intent.characterId); if (!connection) continue;
+      const key = `${intent.characterId}\u0000${intent.kind ?? 'skill'}\u0000${intent.category ?? ''}`;
+      const existing = grouped.get(key);
+      if (existing) existing.spawnIds = [...new Set([...existing.spawnIds, ...intent.spawnIds])].slice(0, 16);
+      else grouped.set(key, { ...intent, spawnIds: [...new Set(intent.spawnIds)].slice(0, 16) });
+    }
+    for (const intent of grouped.values()) {
+      const connection = this.connections.get(intent.characterId); if (!connection || intent.spawnIds.length === 0) continue;
       this.hub.handleClientMessage(connection, JSON.stringify({ type: 'world-monster-hit', intentId: intent.intentId, spawnIds: intent.spawnIds, kind: intent.kind ?? 'skill', category: intent.category }));
     }
     await Promise.resolve();
