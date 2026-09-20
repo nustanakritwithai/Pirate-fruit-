@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { TRADE_PRICE_TOLERANCE, TRADE_PROTOCOL_SCHEMA_VERSION, type TradeExecuteRequest } from '@pirate-fruit/shared';
+import { TRADE_PRICE_TOLERANCE, TRADE_PROTOCOL_SCHEMA_VERSION } from '@pirate-fruit/shared';
 import { TradeRejectedError } from './tradeRepository.js';
 
 export const tradeRequestSchema = z.object({

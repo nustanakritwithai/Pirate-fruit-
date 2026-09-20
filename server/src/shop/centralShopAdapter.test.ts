@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SHOP_PROTOCOL_SCHEMA_VERSION } from '@pirate-fruit/shared';
+import { SHOP_PROTOCOL_SCHEMA_VERSION, type ShopPurchaseResponse } from '@pirate-fruit/shared';
 import { applyCanonicalShopOperation, getCanonicalShopReceipt, purchaseCanonicalShop } from './centralShopAdapter.js';
 import { defaultPlayerState } from '../player/playerState.js';
 
 describe('canonical shop adapter', () => {
   it('passes only the existing protocol request to ShopService', async () => {
-    const purchase = vi.fn(async (_characterId: string, request: unknown) => ({
+    const purchase = vi.fn(async (_characterId: string, _request: unknown): Promise<ShopPurchaseResponse> => ({
       ok: true as const,
       schemaVersion: SHOP_PROTOCOL_SCHEMA_VERSION,
       action: 'potion' as const,
@@ -17,8 +17,10 @@ describe('canonical shop adapter', () => {
     }));
     const result = await purchaseCanonicalShop({ purchase }, 'character-1', {
       idempotencyKey: 'shop-adapter-0001', action: 'potion', potionId: 'potion-hp',
-      coins: 999999, item: 'forged', quantity: 99,
     });
+    await expect(purchaseCanonicalShop({ purchase }, 'character-1', {
+      idempotencyKey: 'shop-adapter-0002', action: 'potion', potionId: 'potion-hp', coins: 999999,
+    })).rejects.toThrow();
     expect(result.coins).toBe(10);
     expect(purchase).toHaveBeenCalledWith('character-1', {
       schemaVersion: SHOP_PROTOCOL_SCHEMA_VERSION,

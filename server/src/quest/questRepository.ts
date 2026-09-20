@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import {
   QUESTS_BY_ID,
   type QuestDefinition,
+  type QuestProgressEventPayload,
   type QuestRejectCode,
 } from '@pirate-fruit/shared';
 import { accrueServerExp } from '../progression/progressionAccrual.js';

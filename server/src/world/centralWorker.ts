@@ -4,7 +4,7 @@ import { RealtimeHub, type RealtimeConnection, type RealtimeSocket } from '../re
 import type { AuthoritativeCombatProfile, CombatProfileProvider } from '../realtime/combatProfile.js';
 import { MonsterWorldService, type MonsterWorldStateSnapshot } from './monsterWorldService.js';
 import type { PlayerView } from './monsterSimulation.js';
-import { normalizeInitialPlayerState, deriveCanonicalCombatProfile, applyCanonicalStateOperation } from '../player/centralStateAdapter.js';
+import { normalizeInitialPlayerState, deriveCanonicalCombatProfile } from '../player/centralStateAdapter.js';
 import { prepareCanonicalReward } from '../player/centralRewardAdapter.js';
 import { serializePlayerState } from '../player/playerState.js';
 import { applyCentralOperation } from '../player/centralOperationsAdapter.js';
