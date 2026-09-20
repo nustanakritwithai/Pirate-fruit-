@@ -19,6 +19,12 @@ export class PirateVitalsEmitter {
 
   constructor(private readonly executor: PocketOperationExecutor) {}
 
+  /** ล้าง debounce เมื่อออกจากฉาก โดยไม่ยกเลิกคำขอที่กำลังรอผลจาก Server */
+  reset(): void {
+    this.lastInputSignature = '';
+    this.lastInputAt = 0;
+  }
+
   async sendInput(input: PirateVitalsInput): Promise<boolean> {
     const signature = `${input.blocking ? 1 : 0}:${input.mounted ? 1 : 0}:${input.sprinting ? 1 : 0}`;
     const now = Date.now();

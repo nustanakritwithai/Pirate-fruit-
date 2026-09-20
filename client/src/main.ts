@@ -65,6 +65,10 @@ import {
   createBrowserParentPresenceHost,
   resolvePocketMonsterParentOrigin,
 } from './realtime/PocketMonsterParentPresence';
+import { PirateVitalsAuthority } from './realtime/PirateVitalsAuthority';
+import { applyPirateVitalsSnapshot } from './realtime/PirateVitalsClientBridge';
+import { PirateVitalsEmitter } from './realtime/PirateVitalsEmitter';
+import { getPocketOperationExecutor } from './persistence/PocketOperationExecutor';
 import { SharedMonsterClient, resolveSharedMonsterPlayerDamage, type SharedMonsterActor } from './monster/SharedMonsterClient';
 import { PirateMonsterAuthorityAdapter } from './monster/PirateMonsterAuthorityAdapter';
 import { PirateCentralAuthorityRuntimeAdapter } from './monster/PirateCentralAuthorityRuntimeAdapter';
@@ -476,6 +480,9 @@ async function main(): Promise<void> {
   let pirateOriginalWorldSequence = 0;
   const pirateOriginalWorldMessageSeen = new Set<number>();
   const pirateOriginalWorldMessageOrder: number[] = [];
+  const pirateVitalsAuthority = new PirateVitalsAuthority();
+  const pirateVitalsExecutor = pocketMonsterParentOrigin ? getPocketOperationExecutor() : null;
+  const pirateVitalsEmitter = pirateVitalsExecutor ? new PirateVitalsEmitter(pirateVitalsExecutor) : null;
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -563,6 +570,16 @@ async function main(): Promise<void> {
           pirateOriginalWorldMessageOrder,
         )) dispatchWorldMonsterMessage(message, originalWorldHandlers);
       },
+      onVitalsSnapshot: (snapshot) => {
+        if (!playerCombat) return;
+        applyPirateVitalsSnapshot(pirateVitalsAuthority, controller, playerCombat, spawnManager, snapshot);
+      },
+      vitalsEmitter: pirateVitalsEmitter ?? undefined,
+      getVitalsInput: () => ({
+        blocking: playerCombat?.blocking ?? false,
+        mounted: controller.isMounted,
+        sprinting: controller.moveState.sprinting,
+      }),
       onPresenceReset: () => {
         centralAuthorityRuntime?.reset();
         centralAuthorityWasActive = false;
@@ -1068,6 +1085,8 @@ async function main(): Promise<void> {
     touchControls,
     touchControls.usesTouchLayout,
     () => playerCombat?.state ?? 'idle',
+    () => pirateVitalsAuthority.active,
+    (potionId) => pirateVitalsEmitter?.potion(potionId) ?? Promise.resolve(false),
   );
   // กระเป๋าเก็บของ (ปุ่ม 🎒 / คีย์ B) — ติดตั้ง/กิน/จัดยาลงช่องลัด
   let controlsBeforeInv = true;
