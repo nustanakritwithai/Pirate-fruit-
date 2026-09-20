@@ -58,8 +58,9 @@ export class CentralWorldWorker {
     let connection = this.connections.get(player.characterId);
     if (!connection) {
       const socket = new CaptureSocket();
-      connection = this.hub.register(socket, player.characterId, player.characterId, player.characterId);
-      if (!connection) throw new Error('virtual socket registration failed');
+      const registered = this.hub.register(socket, player.characterId, player.characterId, player.characterId);
+      if (!registered) throw new Error('virtual socket registration failed');
+      connection = registered;
       this.sockets.set(player.characterId, socket); this.connections.set(player.characterId, connection);
     }
     return connection;
@@ -109,7 +110,7 @@ export class CentralWorldWorker {
       if (!islandId) continue;
       const connection = this.connectionFor({ ...player, islandId });
       const previousIsland = connection.presence?.islandId;
-      connection.presence = { islandId, x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0 };
+      connection.presence = { islandId, x: player.x, y: player.y ?? 0, z: player.z, heading: player.heading ?? 0, onBoat: false };
       if (previousIsland !== islandId) this.sockets.get(player.characterId)!.messages.push(this.service.snapshotMessageForIsland(islandId));
     }
     for (const intent of request.intents ?? []) {
@@ -119,7 +120,10 @@ export class CentralWorldWorker {
     await Promise.resolve();
     this.service.step(request.now, request.additionalTargets ?? []);
     const islands = [...new Set((request.players ?? []).map((player) => player.islandId ?? this.islandForPosition(player.x, player.z)).filter((value): value is string => !!value))];
-    const snapshots = islands.map((islandId) => ({ islandId, monsters: this.service.snapshotMessageForIsland(islandId).monsters }));
+    const snapshots = islands.map((islandId) => {
+      const message = this.service.snapshotMessageForIsland(islandId);
+      return { islandId, monsters: 'monsters' in message ? message.monsters : [] };
+    });
     const deliveries: { characterId: string; message: RealtimeServerMessage }[] = [];
     const worldTypes = new Set(['world-monster-snapshot', 'world-monster-delta', 'world-monster-respawn', 'world-monster-attack', 'world-monster-dead']);
     for (const [characterId, socket] of this.sockets) for (const message of socket.messages.splice(0)) if (worldTypes.has(message.type)) {
