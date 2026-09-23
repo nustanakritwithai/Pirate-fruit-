@@ -23,7 +23,7 @@ jobs:
       - run: npm ci --include=dev
       - run: npm run build:shared
       - run: npm run build:central-worker --workspace=pirate-fruit-server
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pirate-central-worker-candidate
           path: server/dist/centralWorker.mjs*
