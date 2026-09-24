@@ -272,6 +272,14 @@ if (process.env.SMOKE_EXPECT_AUDIO === 'true') {
 }
 
 try {
+  // Make the checkpoint dirty through real gameplay input before pagehide.
+  // RepositoryBackedStorage correctly suppresses identical writes, so relying on
+  // an unchanged initial checkpoint made this gate timing-dependent.
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(350);
+  await page.keyboard.up('KeyW');
+  await page.waitForTimeout(100);
+
   const saveResponse = page.waitForResponse(
     (response) =>
       response.url().startsWith(API_URL)
