@@ -70,7 +70,9 @@ describe('canonical PvE vitals', () => {
     expect(resolveTrustedSkillResource(current, 'flame-moveset-v2-z')?.mpCost).toBe(15);
     current.inventory.loadout.fruitAwakened = false;
     current.inventory.loadout.equippedFruitId = 'rubber';
-    current.progression.mastery.rubber = { itemId: 'rubber', category: 'fruit', level: 1, exp: 0 };
-    expect(resolveTrustedSkillResource(current, 'rubber-moveset-transformed-z')?.mpCost).toBe(15);
+    // The generated source catalog requires mastery 25 for transformed Rubber Z
+    // and assigns the current canonical MP cost of 16.
+    current.progression.mastery.rubber = { itemId: 'rubber', category: 'fruit', level: 25, exp: 0 };
+    expect(resolveTrustedSkillResource(current, 'rubber-moveset-transformed-z')?.mpCost).toBe(16);
   });
 });

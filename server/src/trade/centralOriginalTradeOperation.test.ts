@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { defaultPlayerState } from '../player/playerState.js';
+import { applyCanonicalBoatOperation } from '../player/centralBoatAdapter.js';
 import { applyCentralOriginalTradeOperation, quoteCentralOriginalTradeOperation } from './centralOriginalTradeOperation.js';
 
 const market = { revision: 4, tick: 8, documentVersion: 1, document: {} };
@@ -26,7 +27,10 @@ describe('original central trade operation', () => {
     }, market);
     expect(quote).toMatchObject({ marketRevision: 4, quote: { unitPrice: 10, tradableStock: 20 } });
 
-    const state = defaultPlayerState();
+    const state = applyCanonicalBoatOperation(
+      defaultPlayerState(),
+      { type: 'boatPurchase', boatId: 'training-dinghy' },
+    ).state;
     state.progression.coins = 100;
     const input = { schemaVersion: 1, type: 'trade', idempotencyKey: 'trade:test-0001', action: 'buy', islandId: 'starter-island', commodityId: 'fresh-fish', quantity: 2 };
     const first = await applyCentralOriginalTradeOperation(state, input, market, 'pirate-trade-command-1');
