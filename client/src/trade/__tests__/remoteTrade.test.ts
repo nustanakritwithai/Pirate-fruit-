@@ -58,21 +58,21 @@ describe('S8 remote trade (client)', () => {
         revision: 7,
         persisted: null,
         outcome: {
-          quote: { unitPrice: 42, tradableStock: 8, feeRate: 0.05, islandId: 'pirate-fruit', commodityId: 'fresh-fish' },
+          quote: { unitPrice: 42, tradableStock: 8, feeRate: 0.05, islandId: 'starter-island', commodityId: 'fresh-fish' },
           marketRevision: 12,
         },
       };
     });
     const executor = createRemoteTradeOperationExecutor({ request } as PocketOperationExecutor);
-    await expect(executor.quote?.({ action: 'buy', islandId: 'pirate-fruit', commodityId: 'fresh-fish', quantity: 2 }))
+    await expect(executor.quote?.({ action: 'buy', islandId: 'starter-island', commodityId: 'fresh-fish', quantity: 2 }))
       .resolves.toMatchObject({ unitPrice: 42, marketRevision: 12 });
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       type: 'tradeQuote', schemaVersion: 1, action: 'buy', quantity: 2,
     }));
     const trade = new TradeManager(fakeWallet(100), 'training-dinghy', undefined, new MemoryStorage());
     trade.setRemoteExecutor(executor);
-    await trade.quoteAsync('buy', 'pirate-fruit', 'fresh-fish', 2);
-    expect(trade.resolveBuyPrice('pirate-fruit', 'fresh-fish', 2)).toBe(42);
+    await trade.quoteAsync('buy', 'starter-island', 'fresh-fish', 2);
+    expect(trade.resolveBuyPrice('starter-island', 'fresh-fish', 2)).toBe(42);
   });
 
   it('applies the server outcome: coin delta, canonical cargo, listener event', async () => {

@@ -24,6 +24,7 @@ function createCombat(requestServerSkill: (skillId: string) => Promise<boolean>)
     undefined,
     undefined,
     undefined,
+    undefined,
     requestServerSkill,
   );
   combat.setServerVitalsAuthority(true);
