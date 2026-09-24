@@ -24,3 +24,4 @@ export * from './progression/stats.js';
 export * from './shop/catalog.js';
 export * from './types/progression.js';
 export * from './validation/guards.js';
+export * from './combat/skillResources.js';

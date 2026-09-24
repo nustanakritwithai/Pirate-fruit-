@@ -65,6 +65,10 @@ import {
   createBrowserParentPresenceHost,
   resolvePocketMonsterParentOrigin,
 } from './realtime/PocketMonsterParentPresence';
+import { PirateVitalsAuthority } from './realtime/PirateVitalsAuthority';
+import { applyPirateVitalsSnapshot } from './realtime/PirateVitalsClientBridge';
+import { PirateVitalsEmitter } from './realtime/PirateVitalsEmitter';
+import { getPocketOperationExecutor } from './persistence/PocketOperationExecutor';
 import { SharedMonsterClient, resolveSharedMonsterPlayerDamage, type SharedMonsterActor } from './monster/SharedMonsterClient';
 import { PirateMonsterAuthorityAdapter } from './monster/PirateMonsterAuthorityAdapter';
 import { PirateCentralAuthorityRuntimeAdapter } from './monster/PirateCentralAuthorityRuntimeAdapter';
@@ -476,6 +480,9 @@ async function main(): Promise<void> {
   let pirateOriginalWorldSequence = 0;
   const pirateOriginalWorldMessageSeen = new Set<number>();
   const pirateOriginalWorldMessageOrder: number[] = [];
+  const pirateVitalsAuthority = new PirateVitalsAuthority();
+  const pirateVitalsExecutor = pocketMonsterParentOrigin ? getPocketOperationExecutor() : null;
+  const pirateVitalsEmitter = pirateVitalsExecutor ? new PirateVitalsEmitter(pirateVitalsExecutor) : null;
   // Read-only and credential-free: the parent Browser acceptance can inspect
   // whether a relayed transient effect is actually drawable inside this iframe.
   Object.defineProperty(window, '__pocketRemotePresentation', {
@@ -563,6 +570,28 @@ async function main(): Promise<void> {
           pirateOriginalWorldMessageOrder,
         )) dispatchWorldMonsterMessage(message, originalWorldHandlers);
       },
+      onVitalsSnapshot: (snapshot) => {
+        if (!playerCombat) return;
+        applyPirateVitalsSnapshot(pirateVitalsAuthority, controller, playerCombat, spawnManager, snapshot, {
+          onServerDefeat: () => audioBridge?.notifyDeath(`pirate-vitals-death:${snapshot.revision}`),
+          requestRespawn: () => pirateVitalsEmitter?.respawn() ?? Promise.resolve(false),
+          onServerDamage: (amount) => {
+            hud.flashDamage();
+            effects.spawnPlayerDamageNumber(controller.position, Math.round(amount));
+            audio.play('combat.hit', {
+              eventId: `pirate-vitals-hit:${snapshot.revision}`,
+              position: controller.position,
+            });
+          },
+          onServerGuardBreak: () => touchControls?.notify('🛡️ โล่แตก!'),
+        });
+      },
+      vitalsEmitter: pirateVitalsEmitter ?? undefined,
+      getVitalsInput: () => ({
+        blocking: playerCombat?.blocking ?? false,
+        mounted: controller.isMounted,
+        sprinting: controller.moveState.sprinting,
+      }),
       onPresenceReset: () => {
         centralAuthorityRuntime?.reset();
         centralAuthorityWasActive = false;
@@ -622,7 +651,7 @@ async function main(): Promise<void> {
     // PvE: มอนสเตอร์กลางส่ง attack action แล้ว client รับเฉพาะ hit frame ครั้งเดียว
     game.add({
       update: () => {
-        if (selfPvpDefeated) {
+        if (selfPvpDefeated || pirateVitalsAuthority.active) {
           sharedMonsters.collectPlayerHits(controller.position);
           return;
         }
@@ -647,6 +676,7 @@ async function main(): Promise<void> {
           }
           if (resolution.defeated) {
             audioBridge?.notifyDeath();
+            if (pirateVitalsAuthority.active) void pirateVitalsEmitter?.respawn();
             spawnManager.respawn();
             playerCombat?.notifyRespawn();
             globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);
@@ -1068,6 +1098,8 @@ async function main(): Promise<void> {
     touchControls,
     touchControls.usesTouchLayout,
     () => playerCombat?.state ?? 'idle',
+    () => pirateVitalsAuthority.active,
+    (potionId) => pirateVitalsEmitter?.potion(potionId) ?? Promise.resolve(false),
   );
   // กระเป๋าเก็บของ (ปุ่ม 🎒 / คีย์ B) — ติดตั้ง/กิน/จัดยาลงช่องลัด
   let controlsBeforeInv = true;
@@ -1120,6 +1152,10 @@ async function main(): Promise<void> {
       },
       onBossAudioState: (active) => audioBridge?.setBossActive(active),
       onPlayerDefeated: () => {
+        if (pirateVitalsAuthority.active) {
+          void pirateVitalsEmitter?.respawn();
+          return;
+        }
         spawnManager.respawn();
         playerCombat?.notifyRespawn();
         hud.flashDamage();
@@ -1192,6 +1228,7 @@ async function main(): Promise<void> {
     progression,
     navalCombat,
     () => camera.yaw,
+    (skillId) => pirateVitalsEmitter?.skill(skillId) ?? Promise.resolve(false),
   );
   sharedMonsters?.setActorProvider((zone, generation) => monsterManager?.getPresentationActors(zone, generation) ?? []);
   controller.setDevilFruitUser(playerCombat.hasDevilFruit);
@@ -1398,6 +1435,7 @@ async function main(): Promise<void> {
   controller.onDrown = () => {
     audio.play('player.drowning');
     audioBridge?.notifyDeath();
+    if (pirateVitalsAuthority.active) void pirateVitalsEmitter?.respawn();
     spawnManager.respawn();
     playerCombat?.notifyRespawn();
     globalThis.setTimeout(() => audioBridge?.notifyRespawn(), 900);

@@ -142,6 +142,8 @@ export class MonsterWorldService implements WorldMonsterBridge {
     return this.spawnMeta.get(spawnId)?.islandId ?? null;
   }
 
+  isPlayerInCombat(characterId: string): boolean { return this.sim.isPlayerInCombat(characterId); }
+
   exportWorldState(): MonsterWorldStateSnapshot {
     return {
       schemaVersion: 1,

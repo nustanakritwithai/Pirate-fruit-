@@ -16,6 +16,7 @@ export class SpawnManager {
   readonly defaultSpawn: SpawnLocation;
   private checkpointSpawn: SpawnLocation;
   private checkpointIslandId: IslandId = 'starter-island';
+  private serverVitalsAuthority = false;
 
   constructor(
     private controller: CharacterController,
@@ -27,6 +28,10 @@ export class SpawnManager {
 
   get islandId(): IslandId {
     return this.checkpointIslandId;
+  }
+
+  setServerVitalsAuthority(active: boolean): void {
+    this.serverVitalsAuthority = active;
   }
 
   get checkpoint(): { spawnId: string; islandId: IslandId } {
@@ -92,6 +97,7 @@ export class SpawnManager {
 
   respawn(): void {
     this.teleportToCheckpoint();
+    if (this.serverVitalsAuthority) return;
     this.controller.hp = this.controller.hpMax;
     this.controller.energy = this.controller.energyMax;
     this.controller.mp = this.controller.mpMax;

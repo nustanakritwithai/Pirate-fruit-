@@ -57,6 +57,7 @@ export class CharacterController {
 
   hp = 100;
   private _hpMax = 100;
+  private serverVitalsAuthority = false;
   energy = ENERGY_MAX;
   private _energyMax = ENERGY_MAX;
   /** MP (พลังเวท) — ใช้ร่ายสกิล */
@@ -102,6 +103,10 @@ export class CharacterController {
 
   get hpMax(): number {
     return this._hpMax;
+  }
+
+  setServerVitalsAuthority(active: boolean): void {
+    this.serverVitalsAuthority = active;
   }
 
   get energyMax(): number {
@@ -351,7 +356,7 @@ export class CharacterController {
       const energyDrain = this.devilFruitUser ? DEVIL_FRUIT_ENERGY_DRAIN : WATER_ENERGY_DRAIN;
       const hpDrain = this.devilFruitUser ? DEVIL_FRUIT_HP_DRAIN : WATER_HP_DRAIN;
       this.energy = Math.max(0, this.energy - energyDrain * dt);
-      if (this.energy <= 0) this.hp = Math.max(0, this.hp - hpDrain * dt);
+      if (this.energy <= 0 && !this.serverVitalsAuthority) this.hp = Math.max(0, this.hp - hpDrain * dt);
       if (this.hp <= 0 && !this.drownCallbackFired) {
         this.drownCallbackFired = true;
         this.onDrown?.();

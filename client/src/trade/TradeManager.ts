@@ -48,6 +48,7 @@ export class TradeManager {
   private cargo: CargoHold;
   private listener: TradeTransactionListener | null = null;
   private remote: RemoteTradeExecutor | null = null;
+  private readonly remoteQuotes = new Map<string, number>();
   readonly living: LivingTradeSimulator;
 
   constructor(
@@ -82,11 +83,15 @@ export class TradeManager {
 
   /** ราคาซื้อ — living หรือ static (สูตรกลางใน TradePricing ใช้ร่วมกับ server) */
   resolveBuyPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
+    const remote = this.remoteQuotes.get(this.quoteKey('buy', islandId, commodityId, quantity));
+    if (remote !== undefined) return remote;
     return resolveBuyUnitPrice(this.living, islandId, commodityId, quantity);
   }
 
   /** ราคาขาย — living หรือ static */
   resolveSellPrice(islandId: IslandId, commodityId: string, quantity: number): number | null {
+    const remote = this.remoteQuotes.get(this.quoteKey('sell', islandId, commodityId, quantity));
+    if (remote !== undefined) return remote;
     return resolveSellUnitPrice(this.living, islandId, commodityId, quantity);
   }
 
@@ -118,6 +123,14 @@ export class TradeManager {
     return this.transactRemote('sell', islandId, commodityId, quantity);
   }
 
+  async quoteAsync(action: 'buy' | 'sell', islandId: IslandId, commodityId: string, quantity: number) {
+    if (!this.remote?.quote) return null;
+    const normalizedQuantity = Math.max(1, Math.floor(quantity));
+    const quote = await this.remote.quote({ action, islandId, commodityId, quantity: normalizedQuantity });
+    this.remoteQuotes.set(this.quoteKey(action, islandId, commodityId, normalizedQuantity), quote.unitPrice);
+    return quote;
+  }
+
   /**
    * ส่ง intent ให้ Server ตัดสิน แล้ว sync ผลจริงกลับ:
    * - เหรียญ: reconcile ให้เท่ากับยอด canonical ที่ Server ตอบเสมอ รวม idempotent replay
@@ -134,14 +147,17 @@ export class TradeManager {
     const commodity = getCommodity(commodityId);
     if (!commodity) return this.emit({ ok: false, message: 'ไม่พบสินค้า' });
     const qty = Math.max(1, Math.floor(quantity));
-    const expected = action === 'buy'
-      ? this.resolveBuyPrice(islandId, commodityId, qty)
-      : this.resolveSellPrice(islandId, commodityId, qty);
 
     try {
       // Boat selection determines canonical cargo capacity. Flush its pending save before
       // asking the trade authority, otherwise an immediate purchase can see the old boat.
       await flushBeforeRemoteTrade(this.storage);
+      const expected = this.remote?.quote
+        ? (await this.remote.quote({ action, islandId, commodityId, quantity: qty })).unitPrice
+        : action === 'buy'
+          ? this.resolveBuyPrice(islandId, commodityId, qty)
+          : this.resolveSellPrice(islandId, commodityId, qty);
+      if (this.remote?.quote) this.remoteQuotes.set(this.quoteKey(action, islandId, commodityId, qty), expected!);
       const response = await this.remote!.execute({
         action,
         islandId,
@@ -294,6 +310,10 @@ export class TradeManager {
   private emit(result: TradeTransactionResult): TradeTransactionResult {
     if (result.ok) this.listener?.(result);
     return result;
+  }
+
+  private quoteKey(action: 'buy' | 'sell', islandId: string, commodityId: string, quantity: number): string {
+    return `${action}|${islandId}|${commodityId}|${Math.max(1, Math.floor(quantity))}`;
   }
 
   private canAddCargo(commodityId: string, quantity: number): boolean {

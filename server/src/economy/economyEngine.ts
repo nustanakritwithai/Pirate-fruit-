@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 export interface EconomyEngineSnapshot {
   tick: number;
   documentVersion: number;
@@ -48,7 +51,12 @@ let modulePromise: Promise<BundledEconomyModule> | null = null;
 
 /** Load the build-time bundle of the existing gameplay simulation kernel. */
 export async function loadBundledEconomyEngine(initialDocument?: unknown): Promise<EconomyEngine> {
-  const moduleUrl = new URL('../../dist/economy-engine.js', import.meta.url);
+  const candidates = [
+    new URL('./economy-engine.mjs', import.meta.url),
+    new URL('./economy-engine.js', import.meta.url),
+    new URL('../../dist/economy-engine.js', import.meta.url),
+  ];
+  const moduleUrl = candidates.find((candidate) => existsSync(fileURLToPath(candidate))) ?? candidates[0];
   modulePromise ??= import(moduleUrl.href) as Promise<BundledEconomyModule>;
   const module = await modulePromise;
   return module.createEconomyEngine(initialDocument);

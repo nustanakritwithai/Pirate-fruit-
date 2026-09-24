@@ -17,6 +17,7 @@ export interface AuthoritativeCombatProfile {
   weaponCategory: CombatStatCategory;
   activeSkillCategory: CombatStatCategory;
   allowedSkillCategories: readonly CombatStatCategory[];
+  timedDamageBuff?: { multiplier: number; until: number };
 }
 
 export interface CombatProfileProvider {
@@ -74,8 +75,12 @@ export function combatDamageMultiplier(
   profile: AuthoritativeCombatProfile,
   kind: AttackKind,
   requested?: CombatStatCategory,
+  now = Date.now(),
 ): number {
-  return statDamageMultiplier(profile.stats, combatCategoryFor(profile, kind, requested));
+  const buff = profile.timedDamageBuff;
+  const multiplier = buff && Number.isFinite(buff.until) && buff.until > now
+    && Number.isFinite(buff.multiplier) ? Math.max(1, Math.min(1.4, buff.multiplier)) : 1;
+  return statDamageMultiplier(profile.stats, combatCategoryFor(profile, kind, requested)) * multiplier;
 }
 
 interface ProfileRow {

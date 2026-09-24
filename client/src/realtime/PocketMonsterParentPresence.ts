@@ -7,6 +7,8 @@ import type { SharedMonsterActor } from '../monster/SharedMonsterClient';
 import type { PirateMonsterIntent } from '../monster/PirateMonsterAuthorityAdapter';
 import type { PirateCentralAuthorityCapability } from '../monster/PirateCentralAuthorityRuntimeAdapter';
 import { sanitizePresentation, sanitizeVisual } from './PresentationProtocol';
+import { isPirateVitalsSnapshot, type PirateVitalsSnapshot } from './PirateVitalsAuthority';
+import type { PirateVitalsEmitter, PirateVitalsInput } from './PirateVitalsEmitter';
 
 export const POCKET_MONSTER_PIRATE_ZONE = 'pirate-fruit';
 export const PIRATE_LOCAL_PRESENCE_MESSAGE = 'pocketmonster:pirate-presence-v1';
@@ -82,6 +84,7 @@ export interface PirateOriginalWorldEnvelope {
   sequence: number;
   messages: RealtimeServerMessage[];
   hasInitialSnapshot: boolean;
+  vitals?: PirateVitalsSnapshot;
 }
 
 export interface ParentPresenceEvent {
@@ -129,6 +132,9 @@ export interface PocketMonsterParentPresenceOptions {
   onCentralAuthority?(capability: PirateCentralAuthorityCapability | null): void;
   onOriginalWorldMessages?(envelope: PirateOriginalWorldEnvelope): void;
   onOriginalWorldReady?(ready: boolean): void;
+  onVitalsSnapshot?(snapshot: PirateVitalsSnapshot): void;
+  vitalsEmitter?: PirateVitalsEmitter;
+  getVitalsInput?(): PirateVitalsInput;
   onPresenceReset?(): void;
 }
 
@@ -179,6 +185,10 @@ function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope
     } else return undefined;
     messages.push(candidate as unknown as RealtimeServerMessage);
   }
+  const vitals = value.vitals === undefined
+    ? undefined
+    : isPirateVitalsSnapshot(value.vitals) ? value.vitals : null;
+  if (value.vitals !== undefined && !vitals) return undefined;
   return {
     contract: PIRATE_ORIGINAL_WORLD_CONTRACT,
     viewerId: value.viewerId,
@@ -186,6 +196,7 @@ function parseOriginalWorldEnvelope(value: unknown): PirateOriginalWorldEnvelope
     sequence: value.sequence,
     messages,
     hasInitialSnapshot: messages.some((message) => message.type === 'world-monster-snapshot'),
+    ...(vitals ? { vitals } : {}),
   };
 }
 
@@ -495,6 +506,10 @@ export class PocketMonsterParentPresence {
     this.syncIsland();
     this.sampleLocalPresence();
     this.publishLocalPresence(false);
+    const vitalsInput = this.options.getVitalsInput?.();
+    if (vitalsInput && this.options.vitalsEmitter) {
+      void this.options.vitalsEmitter.sendInput(vitalsInput).catch(() => undefined);
+    }
   }
 
   dispose(): void {
@@ -507,6 +522,7 @@ export class PocketMonsterParentPresence {
     this.sampledPresence = null;
     this.liveTransientKey = null;
     this.latchedAction = null;
+    this.options.vitalsEmitter?.reset();
     this.options.onPresenceReset?.();
   }
 
@@ -646,6 +662,7 @@ export class PocketMonsterParentPresence {
       this.options.onOriginalWorldReady?.(snapshot.pirateWorld.hasInitialSnapshot);
       this.options.onOriginalWorldMessages?.(snapshot.pirateWorld);
     } else this.options.onOriginalWorldReady?.(false);
+    if (snapshot.pirateWorld?.vitals) this.options.onVitalsSnapshot?.(snapshot.pirateWorld.vitals);
     const seen = new Set<string>();
     for (const player of snapshot.players) {
       seen.add(player.id);

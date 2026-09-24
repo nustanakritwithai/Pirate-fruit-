@@ -43,6 +43,7 @@ import type { ActiveLoadoutItem } from '../progression/ProgressionTypes';
 import type { RealtimeKnockback } from '@pirate-fruit/shared';
 import { resolvePveIncomingDamage } from '@pirate-fruit/shared';
 import type { SpellFxAssetId } from '../art/SpellFxAssetLibrary';
+import type { PirateVitalsSnapshot } from '../realtime/PirateVitalsAuthority';
 
 /** สลอตไม้ตายในอาเรย์คูลดาวน์ 4 ช่อง */
 const ULTIMATE_SLOT = 3;
@@ -192,8 +193,10 @@ export function canRegenerateHp(
   hp: number,
   hpMax: number,
   mounted: boolean,
+  serverVitalsAuthority = false,
 ): boolean {
-  return authoritativeCombatTimer <= 0
+  return !serverVitalsAuthority
+    && authoritativeCombatTimer <= 0
     && timeSinceDamaged > REGEN_DELAY
     && hp > 0
     && hp < hpMax
@@ -225,6 +228,8 @@ export class PlayerCombat {
   private readonly skillCooldowns = new Map<string, number>();
   private timeSinceDamaged = 99;
   private authoritativeCombatTimer = 0;
+  private serverVitalsAuthority = false;
+  private serverSkillInFlight = false;
   private damageReactionSerial = 0;
   private damageReactionAngle = 0;
   /**
@@ -293,6 +298,7 @@ export class PlayerCombat {
     private progression?: CombatProgressionAdapter,
     private navalCombat?: Pick<NavalCombat, 'damageNearestEnemyShipFromSkill'>,
     private getCameraYaw?: () => number,
+    private requestServerSkill?: (skillId: string) => Promise<boolean>,
   ) {
     this.set = resolveActiveSet(this.loadout);
 
@@ -444,6 +450,21 @@ export class PlayerCombat {
 
   /** เรียกจาก MonsterManager ก่อนหักเลือด — ตัดสิน Block/Guard/unblockable/ผลัก คืนดาเมจสุดท้าย */
   modifyIncomingDamage(attack: IncomingAttack): number {
+    if (this.serverVitalsAuthority) {
+      // Server owns HP/guard/stun; preserve the local impact presentation only.
+      this.damageReactionSerial++;
+      this.damageReactionAngle = getRelativeHitAngle(
+        this.controller.position.x,
+        this.controller.position.z,
+        this.controller.heading,
+        attack.sourceX,
+        attack.sourceZ,
+      );
+      if (this.combatState === 'blocking' && !attack.unblockable) {
+        this.effects.spawnHitSpark(this.controller.position, 0x8fd4ff);
+      }
+      return 0;
+    }
     this.timeSinceDamaged = 0;
     this.damageReactionSerial++;
     this.damageReactionAngle = getRelativeHitAngle(
@@ -509,6 +530,23 @@ export class PlayerCombat {
   markCombatActivity(): void {
     this.timeSinceDamaged = 0;
     this.authoritativeCombatTimer = Math.max(this.authoritativeCombatTimer, REGEN_DELAY + 1);
+  }
+
+  setServerVitalsAuthority(active: boolean): void {
+    this.serverVitalsAuthority = active;
+  }
+
+  applyServerVitals(snapshot: PirateVitalsSnapshot): void {
+    this.controller.applyProgressionCaps(snapshot.maxHp, snapshot.maxEnergy, snapshot.maxMp, 'clamp');
+    this.controller.hp = snapshot.hp;
+    this.controller.energy = snapshot.energy;
+    this.controller.mp = snapshot.mp;
+    this.guard = snapshot.guard;
+    this.guardBroken = snapshot.guardBroken;
+    if (snapshot.dead && this.combatState !== 'dead') this.enterState('dead', 0.8);
+    if (!snapshot.dead && this.combatState === 'dead') this.notifyRespawn();
+    const remaining = Math.max(0, snapshot.hitstunUntil - snapshot.serverTimeMs) / 1_000;
+    if (remaining > 0) this.controller.applyStun(remaining);
   }
 
   /** Respawn is authoritative and must immediately release stale local combat locks. */
@@ -659,6 +697,7 @@ export class PlayerCombat {
       this.controller.hp,
       this.controller.hpMax,
       this.controller.isMounted,
+      this.serverVitalsAuthority,
     )) {
       this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + REGEN_RATE * dt);
     }
@@ -780,7 +819,9 @@ export class PlayerCombat {
     const pending = this.pendingCast;
     if (!pending) return;
     this.pendingCast = null;
-    this.controller.mp = Math.min(this.controller.mpMax, this.controller.mp + pending.skill.energyCost);
+    if (!this.serverVitalsAuthority) {
+      this.controller.mp = Math.min(this.controller.mpMax, this.controller.mp + pending.skill.energyCost);
+    }
     this.skillCooldowns.delete(pending.skill.id);
   }
 
@@ -964,7 +1005,28 @@ export class PlayerCombat {
       this.touch?.notify('MP ไม่พอ 🔵');
       return;
     }
-    this.controller.mp -= skill.energyCost;
+    if (this.serverVitalsAuthority) {
+      if (!this.requestServerSkill || this.serverSkillInFlight) return;
+      this.serverSkillInFlight = true;
+      void this.requestServerSkill(skill.id).then((accepted) => {
+        this.serverSkillInFlight = false;
+        if (!accepted) {
+          this.touch?.notify('Server ไม่อนุมัติสกิล');
+          return;
+        }
+        if (this.combatState === 'dead' || !canCastSkill(this.combatState) || this.pendingCast) return;
+        this.startCast(skill, slot, aim);
+      }).catch(() => {
+        this.serverSkillInFlight = false;
+        this.touch?.notify('ส่งสกิลไป Server ไม่สำเร็จ');
+      });
+      return;
+    }
+    this.startCast(skill, slot, aim);
+  }
+
+  private startCast(skill: CastableSkill, slot: number, aim?: SkillAimCommand): void {
+    if (!this.serverVitalsAuthority) this.controller.mp -= skill.energyCost;
     this.skillCooldowns.set(skill.id, skill.cooldown);
     this.swing = null;
     this.comboIndex = 0;
@@ -1581,8 +1643,15 @@ export class PlayerCombat {
 
   /** buff/heal — ฮีล + คืน MP + บัฟดาเมจชั่วคราว */
   private castBuff(skill: CastableSkill, position: THREE.Vector3): void {
+    if (this.serverVitalsAuthority) {
+      this.skillBuffMultiplier = skill.isUltimate ? 1.4 : 1.25;
+      this.skillBuffTimer = 8;
+      this.emitShockwave(position, skill.radius > 0 ? skill.radius : 3, skill.color);
+      this.touch?.notify('✨ Server ยืนยันบัฟแล้ว');
+      return;
+    }
     const healHp = this.controller.hpMax * (skill.isUltimate ? 0.22 : 0.12);
-    const appliedHeal = this.authoritativeCombatTimer > 0 ? 0 : healHp;
+    const appliedHeal = this.serverVitalsAuthority || this.authoritativeCombatTimer > 0 ? 0 : healHp;
     this.controller.hp = Math.min(this.controller.hpMax, this.controller.hp + appliedHeal);
     // คืน MP (ทรัพยากรสกิล) แทน Energy
     this.controller.mp = Math.min(

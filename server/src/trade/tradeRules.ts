@@ -12,6 +12,14 @@ export const tradeRequestSchema = z.object({
 }).strict();
 export type TradeRequest = z.infer<typeof tradeRequestSchema>;
 export const parseTradeRequest = (input: unknown): TradeRequest => tradeRequestSchema.parse(input);
+export const tradeQuoteSchema = z.object({
+  schemaVersion: z.literal(TRADE_PROTOCOL_SCHEMA_VERSION),
+  type: z.literal('tradeQuote'),
+  action: z.enum(['buy', 'sell']), islandId: z.string().min(1).max(96),
+  commodityId: z.string().min(1).max(128), quantity: z.number().int().min(1).max(999),
+}).strict();
+export type TradeQuoteRequest = z.infer<typeof tradeQuoteSchema>;
+export const parseTradeQuoteRequest = (input: unknown): TradeQuoteRequest => tradeQuoteSchema.parse(input);
 export const tradeRequestHash = (request: TradeRequest): string => createHash('sha256')
   .update([request.action, request.islandId, request.commodityId, request.quantity].join('|'), 'utf8').digest('hex');
 export function assertTradePrice(expected: number | undefined, actual: number): void {

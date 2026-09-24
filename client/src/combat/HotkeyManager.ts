@@ -17,6 +17,7 @@ const SLOT_KEYS = ['Z', 'X'];
 
 export class HotkeyManager implements Updatable {
   private cooldown = 0;
+  private potionRequestInFlight = false;
   private lastSig = '';
   private readonly bar: HTMLDivElement | null;
   private readonly slotEls: HTMLDivElement[] = [];
@@ -28,6 +29,8 @@ export class HotkeyManager implements Updatable {
     private touch: TouchControls | null,
     isTouchDevice: boolean,
     private readonly getCombatState: () => string = () => 'idle',
+    private readonly isServerVitalsAuthority: () => boolean = () => false,
+    private readonly requestServerPotion?: (potionId: string) => Promise<boolean>,
   ) {
     // แถบ quickslot บนจอ — เฉพาะเดสก์ท็อป (มือถือใช้ปุ่ม TouchControls)
     this.bar = isTouchDevice ? null : this.buildBar();
@@ -38,7 +41,7 @@ export class HotkeyManager implements Updatable {
     if (this.cooldown > 0) this.cooldown -= dt;
 
     const slot = this.input.consumePotion();
-    if (slot >= 1 && this.cooldown <= 0) this.usePotion(slot - 1);
+    if (slot >= 1 && this.cooldown <= 0) void this.usePotion(slot - 1);
 
     // อัปเดต UI เมื่อจำนวน/การจัดช่องเปลี่ยน
     const sig = this.slotSignature();
@@ -63,7 +66,17 @@ export class HotkeyManager implements Updatable {
     }
   }
 
-  private usePotion(slot: number): void {
+  private async usePotion(slot: number): Promise<void> {
+    if (this.potionRequestInFlight) return;
+    this.potionRequestInFlight = true;
+    try {
+      await this.usePotionInternal(slot);
+    } finally {
+      this.potionRequestInFlight = false;
+    }
+  }
+
+  private async usePotionInternal(slot: number): Promise<void> {
     if (
       this.controller.hp <= 0
       || ['stunned', 'knockback', 'knockdown', 'dead'].includes(this.getCombatState())
@@ -78,6 +91,20 @@ export class HotkeyManager implements Updatable {
     }
     const potion = getPotion(id);
     if (!potion) return;
+    // The server owns BOTH HP and MP, including the inventory debit.
+    // An ACK schedules presentation; it must never apply a second local consume.
+    if (this.isServerVitalsAuthority()) {
+      let accepted = false;
+      const resource = potion.kind === 'hp' ? 'HP' : 'MP';
+      try {
+        accepted = this.requestServerPotion ? await this.requestServerPotion(id) : false;
+      } catch {
+        this.touch?.notify(`ส่งคำขอฟื้น ${resource} ไม่สำเร็จ`);
+      }
+      this.touch?.notify(accepted ? `ใช้ยาแล้ว — รอ Server ยืนยัน ${resource}` : `ยาฟื้น ${resource} ต้องยืนยันจาก Server`);
+      this.cooldown = accepted ? POTION_COOLDOWN : 0;
+      return;
+    }
     if (!this.inventory.useConsumable(id)) {
       this.touch?.notify(`ไม่มี${potion.nameTh} แล้ว`);
       return;

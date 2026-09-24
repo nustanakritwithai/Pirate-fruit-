@@ -1,5 +1,6 @@
 import { resolvePveIncomingDamage, resourceCapsForStats } from '@pirate-fruit/shared';
 import type { CanonicalPlayerState } from './playerState.js';
+import type { CanonicalPveVitals } from './vitalsRules.js';
 
 export interface TrustedMonsterPlayerAttack {
   source: 'monster-simulation';
@@ -14,6 +15,7 @@ export interface PveCombatState {
   guardBroken: boolean;
   hitstunUntil: number;
 }
+export interface PveRespawnEvent { spawnId: string; islandId: string; x: number; y: number; z: number; heading: number; atRevision: number; }
 
 export interface PlayerHitReceipt {
   key: string;
@@ -23,6 +25,11 @@ export interface PlayerHitReceipt {
 
 export type CanonicalPveState = CanonicalPlayerState & {
   pveCombat?: PveCombatState;
+  pveVitals?: CanonicalPveVitals;
+  pveRespawn?: PveRespawnEvent;
+  pveRespawnAtMs?: number;
+  pveSkillCasts?: Array<{ key: string; skillId: string; mpCost: number; cancelUntilMs: number; canceled: boolean }>;
+  vitalsReceipts?: Array<{ key: string; identity: string; outcome: { type: string; changed: boolean; respawn?: PveRespawnEvent } }>;
   playerHitReceipts?: PlayerHitReceipt[];
 };
 
@@ -49,6 +56,12 @@ export function prepareCanonicalPlayerHit(
     if (prior.identity !== identity) return { ok: false, code: 'IDEMPOTENCY_KEY_REUSED' };
     return { ok: true, replay: true, state: clone(current), outcome: prior.outcome };
   }
+  if (typeof current.pveRespawnAtMs === 'number' && now < current.pveRespawnAtMs) {
+    const outcome = { taken: 0, guardDamage: 0, guardBroke: false, defeated: false } as const;
+    const state = clone(current);
+    state.playerHitReceipts = [...(state.playerHitReceipts ?? []), { key, identity, outcome }].slice(-256);
+    return { ok: true, replay: false, state, outcome };
+  }
   const caps = resourceCapsForStats(current.progression.stats);
   const combat = current.pveCombat ?? { guard: 100, guardBroken: false, hitstunUntil: 0 };
   const resolved = resolvePveIncomingDamage({
@@ -56,7 +69,7 @@ export function prepareCanonicalPlayerHit(
     maxHp: caps.maxHp,
     guard: combat.guard,
     guardMax: 100,
-    blocking,
+    blocking: blocking && !combat.guardBroken && combat.hitstunUntil <= now && current.checkpoint.hp > 0,
     guardBroken: combat.guardBroken,
     hitstunUntil: combat.hitstunUntil,
   }, { amount: attack.damage, unblockable: attack.unblockable }, now);
@@ -67,6 +80,9 @@ export function prepareCanonicalPlayerHit(
     guardBroken: resolved.state.guardBroken,
     hitstunUntil: resolved.state.hitstunUntil,
   };
+  state.pveVitals = { ...(state.pveVitals ?? {
+    lastDamageAtMs: now, potionCooldownUntil: 0, buffCooldowns: {}, skillCooldowns: {}, buffMultiplier: 1, buffUntil: 0,
+  }), lastDamageAtMs: now };
   const outcome = {
     taken: resolved.taken,
     guardDamage: resolved.guardDamage,

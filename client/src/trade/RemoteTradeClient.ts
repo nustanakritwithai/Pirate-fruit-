@@ -11,6 +11,7 @@ import {
   type TradeRejectCode,
 } from '@pirate-fruit/shared';
 import { getRemoteSession } from '../session/RemoteSession';
+import { getPocketOperationExecutor, requestPocketOperation, type PocketOperationExecutor } from '../persistence/PocketOperationExecutor';
 
 export type TradeFetch = (
   input: string | URL | Request,
@@ -25,6 +26,16 @@ export interface RemoteTradeIntent {
   expectedUnitPrice?: number;
 }
 
+export type RemoteTradeQuoteIntent = Pick<RemoteTradeIntent, 'action' | 'islandId' | 'commodityId' | 'quantity'>;
+export interface RemoteTradeQuote {
+  unitPrice: number;
+  tradableStock: number | null;
+  feeRate: number;
+  islandId: string;
+  commodityId: string;
+  marketRevision: number;
+}
+
 export class RemoteTradeError extends Error {
   constructor(
     readonly code: TradeRejectCode | 'NETWORK',
@@ -37,6 +48,27 @@ export class RemoteTradeError extends Error {
 
 export interface RemoteTradeExecutor {
   execute(intent: RemoteTradeIntent): Promise<TradeExecuteResponse>;
+  quote?(intent: RemoteTradeQuoteIntent): Promise<RemoteTradeQuote>;
+}
+
+function isTradeQuote(value: unknown): value is Omit<RemoteTradeQuote, 'marketRevision'> {
+  if (!value || typeof value !== 'object') return false;
+  const quote = value as Partial<RemoteTradeQuote>;
+  return typeof quote.unitPrice === 'number' && Number.isFinite(quote.unitPrice)
+    && (quote.tradableStock === null || typeof quote.tradableStock === 'number')
+    && typeof quote.feeRate === 'number' && Number.isFinite(quote.feeRate)
+    && typeof quote.islandId === 'string' && typeof quote.commodityId === 'string';
+}
+
+function isTradeQuoteEnvelope(value: unknown): value is {
+  quote: Omit<RemoteTradeQuote, 'marketRevision'>; marketRevision: number;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as { quote?: unknown; marketRevision?: unknown };
+  return isTradeQuote(envelope.quote)
+    && typeof envelope.marketRevision === 'number'
+    && Number.isSafeInteger(envelope.marketRevision)
+    && envelope.marketRevision >= 0;
 }
 
 function isTradeResponse(value: unknown): value is TradeExecuteResponse {
@@ -127,11 +159,30 @@ export function createRemoteTradeExecutor(
   };
 }
 
+export function createRemoteTradeOperationExecutor(executor: PocketOperationExecutor): RemoteTradeExecutor {
+  return {
+    async execute(intent) {
+      return requestPocketOperation(executor, {
+        type: 'trade', schemaVersion: TRADE_PROTOCOL_SCHEMA_VERSION,
+        idempotencyKey: newIdempotencyKey(), ...intent,
+      }, isTradeResponse);
+    },
+    async quote(intent) {
+      const result = await requestPocketOperation(executor, {
+        type: 'tradeQuote', schemaVersion: TRADE_PROTOCOL_SCHEMA_VERSION, ...intent,
+      }, isTradeQuoteEnvelope);
+      return { ...result.quote, marketRevision: result.marketRevision };
+    },
+  };
+}
+
 /**
  * ต่อ trade authority เมื่อ flag เปิด + session online เท่านั้น (คืน null = เล่นโหมด local เดิม)
  * ค่าเริ่มต้น production ยังปิด — เปิดโดยตั้ง VITE_ENABLE_TRADE_SERVER=true ตอน build
  */
 export function initializeRemoteTrade(): RemoteTradeExecutor | null {
+  const pocketExecutor = getPocketOperationExecutor();
+  if (pocketExecutor) return createRemoteTradeOperationExecutor(pocketExecutor);
   const flag = import.meta.env.VITE_ENABLE_TRADE_SERVER;
   if (flag !== 'true' && flag !== '1') return null;
   const session = getRemoteSession();

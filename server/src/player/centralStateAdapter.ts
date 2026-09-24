@@ -135,6 +135,7 @@ export function deriveCanonicalCombatProfile(state: CanonicalPlayerState): Autho
     mana: state.progression.stats.mana,
   };
   const equippedWeapon = weaponCategory(state);
+  const vitals = (state as CanonicalPlayerState & { pveVitals?: { buffMultiplier: number; buffUntil: number } }).pveVitals;
   const hasFruit = Boolean(state.inventory.loadout.equippedFruitId);
   const activeSkillCategory: CombatStatCategory = state.loadout.activeCategory === 'fruit' && hasFruit
     ? 'fruit'
@@ -146,6 +147,7 @@ export function deriveCanonicalCombatProfile(state: CanonicalPlayerState): Autho
     weaponCategory: equippedWeapon,
     activeSkillCategory,
     allowedSkillCategories: hasFruit ? [equippedWeapon, 'fruit'] : [equippedWeapon],
+    ...(vitals ? { timedDamageBuff: { multiplier: vitals.buffMultiplier, until: vitals.buffUntil } } : {}),
   };
 }
 
