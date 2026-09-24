@@ -91,14 +91,17 @@ export class HotkeyManager implements Updatable {
     }
     const potion = getPotion(id);
     if (!potion) return;
-    if (this.isServerVitalsAuthority() && potion.kind === 'hp') {
+    // The server owns BOTH HP and MP, including the inventory debit.
+    // An ACK schedules presentation; it must never apply a second local consume.
+    if (this.isServerVitalsAuthority()) {
       let accepted = false;
+      const resource = potion.kind === 'hp' ? 'HP' : 'MP';
       try {
         accepted = this.requestServerPotion ? await this.requestServerPotion(id) : false;
       } catch {
-        this.touch?.notify('ส่งคำขอฟื้น HP ไม่สำเร็จ');
+        this.touch?.notify(`ส่งคำขอฟื้น ${resource} ไม่สำเร็จ`);
       }
-      this.touch?.notify(accepted ? '❤️ ใช้ยาแล้ว — รอ Server ยืนยัน HP' : 'ยาฟื้น HP ต้องยืนยันจาก Server');
+      this.touch?.notify(accepted ? `ใช้ยาแล้ว — รอ Server ยืนยัน ${resource}` : `ยาฟื้น ${resource} ต้องยืนยันจาก Server`);
       this.cooldown = accepted ? POTION_COOLDOWN : 0;
       return;
     }
