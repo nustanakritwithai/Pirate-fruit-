@@ -117,4 +117,25 @@ describe('PocketOwnedMonsterRenderer contract gate', () => {
     renderer.reset();
     expect(scene.children).toHaveLength(0);
   });
+
+  it('recreates an owned actor after a zero-HP snapshot only when a positive authoritative snapshot returns', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PocketOwnedMonsterRenderer(scene, THREE);
+    const dead = actor({
+      zone: 'pirate-fruit', stateSequence: 9, animation: { combatState: 'dead' },
+      authority: { ...actor().authority, hp: { current: 0, max: 20, revision: 2 } },
+    });
+    renderer.setActors([dead]);
+    renderer.update(1 / 60);
+    expect(scene.getObjectByName(dead.actorId)).toBeUndefined();
+
+    const recovered = {
+      ...dead,
+      animation: { combatState: 'idle' },
+      authority: { ...dead.authority, hp: { current: 10, max: 20, revision: 3 } },
+    };
+    renderer.setActors([recovered]);
+    renderer.update(1 / 60);
+    expect(scene.getObjectByName(recovered.actorId)).toBeDefined();
+  });
 });

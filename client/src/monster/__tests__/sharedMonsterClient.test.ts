@@ -364,6 +364,32 @@ describe('S16 shared monster rendering and player defeat regression', () => {
     expect(hit).toHaveBeenCalledTimes(1);
   });
 
+  it('clears a dead presentation on a newer positive authoritative HP revision without a state-sequence change', () => {
+    const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island');
+    const actor = {
+      actorId: 'monster:recovered-1', kind: 'monster' as const, monsterType: 'crab', zone: 'starter-island',
+      generation: 1, spawnSequence: 1, stateSequence: 7, lifecycle: 'active' as const,
+      pose: { x: 1, y: 0, z: 1, dir: 0 }, locomotion: 'idle' as const,
+      animation: { combatState: 'dead', category: 'style', onGround: true, dashing: false, verticalVelocity: 0 },
+      authority: { authorityVersion: 'monster-authority/1' as const, serverTimeUtc: '2026-09-08T07:00:00.000Z', generation: 1,
+        hp: { current: 0, max: 70, revision: 1 }, actionSequence: 1, resultRevision: 1, hit: true, damage: 70, death: true },
+      presentation: { events: [], projectiles: [] },
+    };
+    client.applyActors('starter-island', [actor]);
+    const state = (client as any).monsters.get('recovered-1');
+    expect(state.state).toBe('dead');
+    expect(state.hp).toBe(0);
+
+    client.applyActors('starter-island', [{
+      ...actor,
+      animation: { ...actor.animation, combatState: 'idle' },
+      authority: { ...actor.authority, hp: { current: 35, max: 70, revision: 2 }, hit: false, damage: 0, death: false },
+    }]);
+
+    expect(state.state).toBe('idle');
+    expect(state.hp).toBe(35);
+  });
+
   it('rejects malformed authority extension and does not invent HP for legacy actors', () => {
     const client = new SharedMonsterClient(new THREE.Scene(), 'starter-island');
     const actor = {

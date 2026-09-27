@@ -420,6 +420,13 @@ export class SharedMonsterClient implements Updatable {
       this.actorHpRevisions.set(revisionKey, authority.hp.revision);
       monster.hp = authority.hp.current;
       monster.maxHp = authority.hp.max;
+      // HP authority can advance independently from pose/stateSequence. If a
+      // newer canonical HP revision revives this actor, do not keep the local
+      // presentation dead merely because the state sequence did not change.
+      if (authority.hp.current > 0 && authority.death === false && monster.state === 'dead') {
+        const recoveredState = actorWorldState(actor.animation.combatState);
+        if (recoveredState !== 'dead') monster.state = recoveredState;
+      }
       monster.visual.applyAuthoritativeState(monster.hp, monster.maxHp, renderState(monster.state));
       if (authority.hp.current === 0) this.markDead(spawnId);
     }

@@ -5,6 +5,7 @@ on:
     paths:
       - 'client/src/monster/PocketOwnedMonsterRenderer.ts'
       - 'client/src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts'
+      - 'client/src/monster/__tests__/pirateMonsterAuthorityAdapter.test.ts'
       - 'client/src/monster/SharedMonsterClient.ts'
       - 'client/src/monster/__tests__/sharedMonsterClient.test.ts'
       - 'scripts/monster-combat-visual-proof.mjs'
@@ -48,6 +49,7 @@ jobs:
       - run: npm run build:shared
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts src/realtime/__tests__/pocketMonsterParentPresence.test.ts
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/sharedMonsterClient.test.ts
+      - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pirateMonsterAuthorityAdapter.test.ts
       - name: Typecheck nested client
         working-directory: client
         run: npx tsc --noEmit
