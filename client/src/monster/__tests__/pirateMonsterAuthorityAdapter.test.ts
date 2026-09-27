@@ -26,6 +26,27 @@ describe('PirateMonsterAuthorityAdapter', () => {
     expect(intents[31]).not.toHaveProperty('target');
   });
 
+  it('preserves the canonical ambient target actor identity and snapshot preconditions through drain', () => {
+    const adapter = new PirateMonsterAuthorityAdapter();
+    const queued = adapter.queueIntent({
+      zone: 'pirate-fruit', kind: 'melee', category: 'sword', forwardX: 0, forwardZ: 2, range: 4.5,
+      targetActorId: 'monster:wild-crab-7', expectedGeneration: 3, expectedStateSequence: 18,
+    });
+    expect(queued).toMatchObject({
+      targetActorId: 'monster:wild-crab-7', expectedGeneration: 3, expectedStateSequence: 18,
+      kind: 'melee', category: 'sword', forwardX: 0, forwardZ: 1,
+    });
+    expect(adapter.drainIntents()).toEqual([queued]);
+    expect(adapter.drainIntents()).toEqual([]);
+  });
+
+  it.each(['style', 'sword', 'gun', 'fruit', 'utility'] as const)('accepts native combat category %s', (category) => {
+    const adapter = new PirateMonsterAuthorityAdapter();
+    expect(adapter.queueIntent({
+      zone: 'pirate-fruit', kind: 'melee', category, forwardX: 1, forwardZ: 0, range: 4,
+    })?.category).toBe(category);
+  });
+
   it('clears old intents and advances lifecycle generation on zone/session change', () => {
     const adapter = new PirateMonsterAuthorityAdapter();
     const first = adapter.queueIntent({ zone: 'pirate-fruit', kind: 'skill', category: 'fruit', forwardX: 0, forwardZ: 1, range: 8, skillId: 'fireball' })!;
