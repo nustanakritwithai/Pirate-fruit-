@@ -13,6 +13,18 @@ const profile = {
 } as const;
 
 describe('CentralWorldWorker pure adapter', () => {
+  it('rejects queued player attacks until canonical hitstun expires', async () => {
+    const worker = new CentralWorldWorker(() => 10_000);
+    const players = [{ characterId: 'player-1', islandId: 'starter-island', x: 22, y: 0, z: -4, profile, hitstunUntil: 10_350 }];
+    const hp = (reply: any) => reply.snapshots[0].monsters.find((m: any) => m.spawnId === 'starter-crab-1').hp;
+    const initial = await worker.handle({ id: 1, op: 'step', now: 10_000, players });
+    const stunned = await worker.handle({ id: 2, op: 'step', now: 10_349, players,
+      intents: [{ characterId: 'player-1', intentId: 'stun:blocked', spawnIds: ['starter-crab-1'], kind: 'melee', category: 'style' }] });
+    expect(hp(stunned)).toBe(hp(initial));
+    const released = await worker.handle({ id: 3, op: 'step', now: 10_350, players,
+      intents: [{ characterId: 'player-1', intentId: 'stun:released', spawnIds: ['starter-crab-1'], kind: 'melee', category: 'style' }] });
+    expect(hp(released)).toBeLessThan(hp(initial));
+  });
   it('routes canonical vitals tick, snapshot and idempotent potion operation', async () => {
     const worker = new CentralWorldWorker(() => 100_000);
     const state = defaultPlayerState() as CanonicalPveState;
