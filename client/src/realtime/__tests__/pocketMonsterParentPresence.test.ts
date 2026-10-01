@@ -36,7 +36,7 @@ function createHost() {
 }
 
 describe('Pocket Monster parent presence bridge', () => {
-  it('ส่ง intent ที่เกิดหลัง pose ในเฟรมเดียวกันทันทีด้วยตำแหน่งล่าสุด และไม่ส่งซ้ำ', () => {
+  it.each([50, 100])('ส่ง intent ทันทีแม้ติดรอบ pose %ims ด้วยตำแหน่งล่าสุด และไม่ส่งซ้ำ', (interval) => {
     let now = 1_000;
     let x = 7;
     const host = createHost();
@@ -46,6 +46,7 @@ describe('Pocket Monster parent presence bridge', () => {
       remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
       getPosition: () => ({ x, z: 0 }), getHeading: () => 0,
       getIslandId: () => 'starter-island', heightAt: () => 0, now: () => now,
+      ...(interval === 50 ? { publishIntervalMs: 50 } : {}),
       drainMonsterIntents: () => authority.drainIntents(),
     });
     bridge.start();
@@ -59,7 +60,7 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(host.sent).toHaveLength(2);
     expect(host.sent[1].message).toMatchObject({ x: 8, monsterIntents: [intent] });
     bridge.update();
-    now += 49;
+    now += interval - 1;
     bridge.update();
     expect(host.sent).toHaveLength(2);
     now += 1;
