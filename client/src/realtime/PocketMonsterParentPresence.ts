@@ -630,11 +630,13 @@ export class PocketMonsterParentPresence {
 
   private publishLocalPresence(force: boolean): void {
     const now = this.now();
-    if (!force && now - this.lastPublishedAt < this.publishIntervalMs) return;
     const presence = this.sampledPresence;
     if (!presence) return;
-    this.lastPublishedAt = now;
     try {
+      // คำสั่งที่พร้อมแล้วไม่ต้องรอรอบ pose หรือเฟรมถัดไป; ไม่เปลี่ยนจังหวะสร้าง hit
+      const monsterIntents = this.options.drainMonsterIntents?.().slice(0, 32);
+      if (!force && !monsterIntents?.length && now - this.lastPublishedAt < this.publishIntervalMs) return;
+      this.lastPublishedAt = now;
       this.options.host.postToParent({
       type: PIRATE_LOCAL_PRESENCE_MESSAGE,
       zone: POCKET_MONSTER_PIRATE_ZONE,
@@ -647,7 +649,7 @@ export class PocketMonsterParentPresence {
       ...(presence.presentation ? { presentation: presence.presentation } : {}),
       ...(presence.visual ? { visual: presence.visual } : {}),
       ...(this.options.getMonsterActors ? { actors: this.options.getMonsterActors().slice(0, 128) } : {}),
-      ...(this.options.drainMonsterIntents ? { monsterIntents: this.options.drainMonsterIntents().slice(0, 32) } : {}),
+      ...(monsterIntents !== undefined ? { monsterIntents } : {}),
       }, this.options.targetOrigin);
       if (presence.visual) this.options.acknowledgeVisual?.(presence.visual.events.length);
     } catch {
