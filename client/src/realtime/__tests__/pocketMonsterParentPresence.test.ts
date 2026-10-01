@@ -44,7 +44,7 @@ describe('Pocket Monster parent presence bridge', () => {
     const bridge = new PocketMonsterParentPresence({
       targetOrigin: 'https://pocket.example', host: host.host,
       remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
-      getPosition: () => ({ x, z: 0 }), getHeading: () => 0,
+      getPosition: () => ({ x, y: 0, z: 0 }), getHeading: () => 0,
       getIslandId: () => 'starter-island', heightAt: () => 0, now: () => now,
       ...(interval === 50 ? { publishIntervalMs: 50 } : {}),
       drainMonsterIntents: () => authority.drainIntents(),
