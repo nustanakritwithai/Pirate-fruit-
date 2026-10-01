@@ -3,6 +3,9 @@ name: Pirate owned monster renderer
 on:
   pull_request:
     paths:
+      - 'client/src/realtime/PocketMonsterParentPresence.ts'
+      - 'client/src/realtime/__tests__/pocketMonsterParentPresence.test.ts'
+      - 'client/scripts/test-presence-intent-cadence.mjs'
       - 'client/src/monster/PocketOwnedMonsterRenderer.ts'
       - 'client/src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts'
       - 'client/src/monster/__tests__/pirateMonsterAuthorityAdapter.test.ts'
@@ -47,6 +50,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:shared
+      - run: node --test client/scripts/test-presence-intent-cadence.mjs
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts src/realtime/__tests__/pocketMonsterParentPresence.test.ts
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/sharedMonsterClient.test.ts
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pirateMonsterAuthorityAdapter.test.ts

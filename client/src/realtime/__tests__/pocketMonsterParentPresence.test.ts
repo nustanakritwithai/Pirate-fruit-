@@ -36,6 +36,45 @@ function createHost() {
 }
 
 describe('Pocket Monster parent presence bridge', () => {
+  it.each([50, 100])('ส่ง intent ทันทีแม้ติดรอบ pose %ims ด้วยตำแหน่งล่าสุด และไม่ส่งซ้ำ', (interval) => {
+    let now = 1_000;
+    let x = 7;
+    const host = createHost();
+    const authority = new PirateMonsterAuthorityAdapter();
+    const bridge = new PocketMonsterParentPresence({
+      targetOrigin: 'https://pocket.example', host: host.host,
+      remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
+      getPosition: () => ({ x, y: 0, z: 0 }), getHeading: () => 0,
+      getIslandId: () => 'starter-island', heightAt: () => 0, now: () => now,
+      ...(interval === 50 ? { publishIntervalMs: 50 } : {}),
+      drainMonsterIntents: () => authority.drainIntents(),
+    });
+    bridge.start();
+    const intent = authority.queueIntent({
+      zone: 'pirate-fruit', kind: 'melee', category: 'style',
+      forwardX: 1, forwardZ: 0, range: 2.6, targetActorId: 'wild-1',
+    });
+    expect(intent).not.toBeNull();
+    x = 8;
+    bridge.update();
+    expect(host.sent).toHaveLength(2);
+    expect(host.sent[1].message).toMatchObject({ x: 8, monsterIntents: [intent] });
+    bridge.update();
+    now += interval - 1;
+    bridge.update();
+    expect(host.sent).toHaveLength(2);
+    now += 1;
+    bridge.update();
+    expect(host.sent).toHaveLength(3);
+    expect(host.sent[2].message).toMatchObject({ monsterIntents: [] });
+    bridge.dispose();
+    authority.queueIntent({ zone: 'pirate-fruit', kind: 'melee', category: 'style', forwardX: 1, forwardZ: 0, range: 2.6 });
+    now += 50;
+    bridge.update();
+    expect(host.sent).toHaveLength(3);
+    expect(authority.drainIntents()).toHaveLength(1);
+  });
+
   it('enables only for an embedded frame with an explicit origin-only parentOrigin', () => {
     expect(resolvePocketMonsterParentOrigin(
       '?parentOrigin=https%3A%2F%2Fpocket.example',
