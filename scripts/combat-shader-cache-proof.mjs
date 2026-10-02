@@ -30,12 +30,15 @@ try {
       camera.position.set(0, 3, 7); camera.lookAt(0, 1, 0);
       const effects = new Effects(scene);
       const gl = renderer.getContext();
-      let links = 0;
+      let links = 0, programLogs = 0;
       const linkProgram = gl.linkProgram.bind(gl);
       gl.linkProgram = program => { links++; return linkProgram(program); };
+      const getProgramInfoLog = gl.getProgramInfoLog.bind(gl);
+      gl.getProgramInfoLog = program => { programLogs++; return getProgramInfoLog(program); };
       if (warm) await effects.prepareCombatShaders(renderer, camera);
       if (scene.children.length !== 0) throw new Error('warmup-must-not-spawn-visible-effect');
       const preparationLinks = links;
+      const preparationProgramLogs = programLogs;
       const samples = [];
       for (let cycle = 0; cycle < 5; cycle++) {
         const before = links;
@@ -53,6 +56,7 @@ try {
         await new Promise(resolve => requestAnimationFrame(resolve));
       }
       fixtures.push({ warm, preparationLinks, effectLinks: links - preparationLinks, samples,
+        preparationProgramLogs, effectProgramLogs: programLogs - preparationProgramLogs,
         retainedPrograms: renderer.info.programs.length, checkShaderErrors: renderer.debug.checkShaderErrors });
       effects.dispose(); renderer.dispose();
     }
@@ -63,6 +67,9 @@ try {
   assert.deepEqual(errors, [], 'ไม่กลบshaderหรือpage errors');
   assert.ok(result.fixtures[0].effectLinks >= 10, 'baselineต้องเห็นprogramถูกlinkใหม่หลังแต่ละeffectหมดอายุ');
   assert.equal(result.fixtures[1].effectLinks, 0, 'warmcacheต้องไม่linkprogramใหม่ในVFXพื้นฐาน5รอบ');
+  assert.ok(result.fixtures[0].effectProgramLogs >= 10, 'baselineมีfirst-useGPUqueryหลังแต่ละVFXหมดอายุ');
+  assert.ok(result.fixtures[1].preparationProgramLogs >= 2, 'shadererrorchecksยังทำจริงระหว่างloading');
+  assert.equal(result.fixtures[1].effectProgramLogs, 0, 'warmcacheต้องไม่เหลือfirst-useGPUqueryใน5รอบต่อสู้');
   assert.ok(result.fixtures[1].preparationLinks > 0 && result.fixtures[1].retainedPrograms >= 2);
   console.log(JSON.stringify(result));
 } finally { await browser.close(); }

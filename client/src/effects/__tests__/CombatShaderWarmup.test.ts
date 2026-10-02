@@ -7,8 +7,9 @@ function fixture() {
   const camera = new THREE.PerspectiveCamera();
   const effects = new Effects(scene);
   const compileAsync = vi.fn(async (root: THREE.Object3D) => root);
-  const renderer = { compileAsync } as unknown as THREE.WebGLRenderer;
-  return { scene, camera, effects, renderer, compileAsync };
+  const programs: { getUniforms: ReturnType<typeof vi.fn> }[] = [];
+  const renderer = { compileAsync, info: { programs } } as unknown as THREE.WebGLRenderer;
+  return { scene, camera, effects, renderer, compileAsync, programs };
 }
 
 describe('shadercacheเอฟเฟกต์พื้นฐาน ไม่ใช่combat authority', () => {
@@ -42,7 +43,7 @@ describe('shadercacheเอฟเฟกต์พื้นฐาน ไม่ใ�
     expect(sprite.material.depthTest).toBe(false);
     expect(sprite.material.depthWrite).toBe(false);
     expect(sprite.material.toneMapped).toBe(false);
-    expect(Object.keys(f.renderer)).toEqual(['compileAsync']);
+    expect(Object.keys(f.renderer).sort()).toEqual(['compileAsync', 'info']);
     f.effects.dispose();
   });
 
@@ -86,5 +87,54 @@ describe('shadercacheเอฟเฟกต์พื้นฐาน ไม่ใ�
     expect(f.compileAsync).toHaveBeenCalledTimes(1);
     expect(f.scene.children).toHaveLength(0);
     f.effects.dispose();
+  });
+
+  it('initializeเฉพาะprogramใหม่ของanchorsหลังcompileพร้อม ไม่แตะprogramเดิมหรือที่เพิ่มภายหลัง', async () => {
+    const f = fixture();
+    const previous = { getUniforms: vi.fn() };
+    const anchor = { getUniforms: vi.fn() };
+    const later = { getUniforms: vi.fn() };
+    f.programs.push(previous);
+    let ready!: () => void;
+    f.compileAsync.mockImplementationOnce(() => {
+      f.programs.push(anchor);
+      return new Promise(resolve => { ready = () => resolve(new THREE.Group()); });
+    });
+    const preparing = f.effects.prepareCombatShaders(f.renderer, f.camera);
+    f.programs.push(later);
+    expect(anchor.getUniforms).not.toHaveBeenCalled();
+    ready();
+    await preparing;
+    expect(anchor.getUniforms).toHaveBeenCalledTimes(1);
+    expect(previous.getUniforms).not.toHaveBeenCalled();
+    expect(later.getUniforms).not.toHaveBeenCalled();
+    await f.effects.prepareCombatShaders(f.renderer, f.camera);
+    expect(anchor.getUniforms).toHaveBeenCalledTimes(1);
+    f.effects.dispose();
+  });
+
+  it('first-useerrorไม่ถูกกลบเป็นstartupสำเร็จ', async () => {
+    const f = fixture();
+    f.compileAsync.mockImplementationOnce(async root => {
+      f.programs.push({ getUniforms: vi.fn(() => { throw new Error('first-use-test-only'); }) });
+      return root;
+    });
+    await expect(f.effects.prepareCombatShaders(f.renderer, f.camera)).rejects.toThrow('first-use-test-only');
+    f.effects.dispose();
+  });
+
+  it('disposeระหว่างcompileไม่initializeprogramที่ถูกคืนresourceไปแล้ว', async () => {
+    const f = fixture();
+    const anchor = { getUniforms: vi.fn() };
+    let ready!: () => void;
+    f.compileAsync.mockImplementationOnce(() => {
+      f.programs.push(anchor);
+      return new Promise(resolve => { ready = () => resolve(new THREE.Group()); });
+    });
+    const preparing = f.effects.prepareCombatShaders(f.renderer, f.camera);
+    f.effects.dispose();
+    ready();
+    await preparing;
+    expect(anchor.getUniforms).not.toHaveBeenCalled();
   });
 });

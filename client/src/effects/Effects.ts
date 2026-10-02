@@ -146,7 +146,15 @@ export class Effects {
     this.shaderAnchorTexture = texture;
     // ไม่ใส่anchorsในฉากจริง/ไม่spawnattackหรือเลขดาเมจ และใช้fog/lightของฉากเดิม
     // เก็บmaterialsจนEffectsdisposeเพื่อให้programcacheมีreferenceแม้VFXเดิมหมดอายุ
-    this.shaderWarmup = renderer.compileAsync(anchors, camera, this.scene).then(() => undefined);
+    const previousPrograms = new Set(renderer.info.programs ?? []);
+    const compilation = renderer.compileAsync(anchors, camera, this.scene);
+    // compileAsyncสร้างprogramทันที แต่r178ยังเก็บerror check/uniform lookupไว้ที่first use
+    // snapshotก่อนawaitจึงได้เฉพาะprogramที่anchorsสร้าง ไม่ไล่initializeshaderอื่นทั้งเกม
+    const newPrograms = (renderer.info.programs ?? []).filter(program => !previousPrograms.has(program));
+    this.shaderWarmup = compilation.then(() => {
+      if (this.shaderAnchors !== anchors) return;
+      for (const program of newPrograms) program.getUniforms();
+    });
     return this.shaderWarmup;
   }
 
