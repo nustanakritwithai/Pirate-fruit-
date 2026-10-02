@@ -31,6 +31,8 @@ export class Input {
   private weaponSwitchQueue = 0;
   private potionQueue = 0; // 1-2 = ช่องลัดยาที่กด, 0 = ไม่มี
   private mode: ControlMode = 'player';
+  /** รุ่นของinputชั่วคราวฝั่งclient ไม่ใช่revisionหรือคำสั่งเกมจากServer */
+  private transientResetSequenceValue = 0;
 
   private touch: TouchControls | null = null;
 
@@ -61,10 +63,9 @@ export class Input {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      this.dragging = false;
-      this.touch?.resetTransientInputs();
+    window.addEventListener('blur', () => this.resetTransientInputs());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.resetTransientInputs();
     });
 
     domElement.addEventListener('mousedown', (e) => {
@@ -99,6 +100,10 @@ export class Input {
   }
 
   setMode(mode: ControlMode): void {
+    if (mode !== this.mode) {
+      this.transientResetSequenceValue++;
+      this.attackQueue = 0;
+    }
     this.mode = mode;
     this.anchorQueue = 0;
     this.jumpQueue = 0;
@@ -110,6 +115,18 @@ export class Input {
 
   get controlMode(): ControlMode {
     return this.mode;
+  }
+
+  get transientResetSequence(): number {
+    return this.transientResetSequenceValue;
+  }
+
+  private resetTransientInputs(): void {
+    this.transientResetSequenceValue++;
+    this.attackQueue = 0;
+    this.keys.clear();
+    this.dragging = false;
+    this.touch?.resetTransientInputs();
   }
 
   isDown(code: string): boolean {

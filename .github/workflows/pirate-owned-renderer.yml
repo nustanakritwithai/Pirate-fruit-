@@ -3,6 +3,9 @@ name: Pirate owned monster renderer
 on:
   pull_request:
     paths:
+      - 'client/src/combat/PlayerCombat.ts'
+      - 'client/src/combat/__tests__/OnlineM1Clock.test.ts'
+      - 'client/src/engine/Input.ts'
       - 'client/src/realtime/PocketMonsterParentPresence.ts'
       - 'client/src/realtime/__tests__/pocketMonsterParentPresence.test.ts'
       - 'client/scripts/test-presence-intent-cadence.mjs'
@@ -51,6 +54,8 @@ jobs:
       - run: npm ci
       - run: npm run build:shared
       - run: node --test client/scripts/test-presence-intent-cadence.mjs
+      - name: ตรวจM1elapsedเดิมและauthority/inputresetไม่ส่งhitค้าง
+        run: npm test --workspace=pirate-fruit-client -- --run src/combat/__tests__/OnlineM1Clock.test.ts src/combat/__tests__/PlayerVitalsSkillAuthority.test.ts src/realtime/__tests__/normalAttackPresence.test.ts
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pocketOwnedMonsterRenderer.test.ts src/realtime/__tests__/pocketMonsterParentPresence.test.ts
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/sharedMonsterClient.test.ts
       - run: npm test --workspace=pirate-fruit-client -- --run src/monster/__tests__/pirateMonsterAuthorityAdapter.test.ts

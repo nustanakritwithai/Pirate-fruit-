@@ -162,6 +162,9 @@ interface ActiveSwing {
   comboIndex: number;
   timer: number;
   hitDone: boolean;
+  /** เวลาแสดงผล/ส่งintentออนไลน์เท่านั้น; ServerยังตัดสินHP/range/cooldownเอง */
+  onlineStartedAtMs: number | null;
+  inputResetSequence: number;
 }
 
 /** Phase 6 progression bridge — ใช้ตัวคูณดาเมจตามสเตตจาก mastery/stat */
@@ -220,6 +223,7 @@ export class PlayerCombat {
   private combatState: CombatState = 'idle';
   private comboIndex = 0;
   private comboWindowTimer = 0;
+  private onlineComboDeadlineMs: number | null = null;
   private swing: ActiveSwing | null = null;
   private pendingCast: PendingCast | null = null;
   private stateTimer = 0;
@@ -533,7 +537,16 @@ export class PlayerCombat {
   }
 
   setServerVitalsAuthority(active: boolean): void {
+    if (active !== this.serverVitalsAuthority) this.cancelM1Swing();
     this.serverVitalsAuthority = active;
+  }
+
+  private cancelM1Swing(): void {
+    this.swing = null;
+    this.comboIndex = 0;
+    this.comboWindowTimer = 0;
+    this.onlineComboDeadlineMs = null;
+    if (isAttackState(this.combatState)) this.combatState = 'idle';
   }
 
   applyServerVitals(snapshot: PirateVitalsSnapshot): void {
@@ -679,7 +692,11 @@ export class PlayerCombat {
       if (next <= 0) this.skillCooldowns.delete(id);
       else this.skillCooldowns.set(id, next);
     }
-    this.comboWindowTimer -= dt;
+    if (this.serverVitalsAuthority && this.onlineComboDeadlineMs !== null) {
+      this.comboWindowTimer = Math.max(0, (this.onlineComboDeadlineMs - performance.now()) / 1_000);
+    } else {
+      this.comboWindowTimer -= dt;
+    }
     if (this.comboWindowTimer <= 0 && !this.swing) this.comboIndex = 0;
 
     // ---------- Guard regen (ตอนไม่บล็อก) ----------
@@ -836,6 +853,8 @@ export class PlayerCombat {
       comboIndex: index,
       timer: combo[index].windup + combo[index].recovery,
       hitDone: false,
+      onlineStartedAtMs: this.serverVitalsAuthority ? performance.now() : null,
+      inputResetSequence: this.input.transientResetSequence ?? 0,
     };
     this.combatState = ATTACK_STATES[Math.min(index, ATTACK_STATES.length - 1)];
   }
@@ -850,8 +869,23 @@ export class PlayerCombat {
     const combo = m1.combo;
     const hit = combo[Math.min(this.swing.comboIndex, combo.length - 1)];
     const total = hit.windup + hit.recovery;
-    this.swing.timer -= dt;
-    const elapsed = total - this.swing.timer;
+    let elapsed: number;
+    if (this.swing.onlineStartedAtMs !== null) {
+      if (!this.serverVitalsAuthority
+        || this.swing.inputResetSequence !== (this.input.transientResetSequence ?? 0)
+        || !this.controller.inputEnabled || this.controller.isMounted) {
+        this.cancelM1Swing();
+        return;
+      }
+      // ไม่สะสมdtของmax5fixedsteps: เฟรมช้าต้องไม่ยืดwindup/recoveryหลายเท่า
+      // ไม่มีtimerใหม่/ย้อนหลังหลายhit; hitDoneยังให้หนึ่งswingส่งหนึ่งhitเท่านั้น
+      const elapsedSeconds = Math.max(0, performance.now() - this.swing.onlineStartedAtMs) / 1_000;
+      this.swing.timer = Math.min(this.swing.timer, total - elapsedSeconds);
+      elapsed = Math.max(total - this.swing.timer, elapsedSeconds);
+    } else {
+      this.swing.timer -= dt;
+      elapsed = total - this.swing.timer;
+    }
 
     if (!this.swing.hitDone && elapsed >= hit.windup) {
       this.swing.hitDone = true;
@@ -929,8 +963,13 @@ export class PlayerCombat {
 
     if (this.swing.timer <= 0) {
       const isFinisher = this.swing.comboIndex === combo.length - 1;
-      this.comboIndex = isFinisher ? 0 : this.swing.comboIndex + 1;
-      this.comboWindowTimer = COMBO_WINDOW;
+      this.onlineComboDeadlineMs = this.swing.onlineStartedAtMs !== null
+        ? this.swing.onlineStartedAtMs + (total + COMBO_WINDOW) * 1_000
+        : null;
+      this.comboWindowTimer = this.onlineComboDeadlineMs !== null
+        ? Math.max(0, (this.onlineComboDeadlineMs - performance.now()) / 1_000)
+        : COMBO_WINDOW;
+      this.comboIndex = isFinisher || this.comboWindowTimer <= 0 ? 0 : this.swing.comboIndex + 1;
       this.swing = null;
       this.combatState = 'idle';
     }
