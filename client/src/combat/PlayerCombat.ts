@@ -224,6 +224,7 @@ export class PlayerCombat {
   private comboIndex = 0;
   private comboWindowTimer = 0;
   private onlineComboDeadlineMs: number | null = null;
+  private lastOnlineM1HitAtMs: number | null = null;
   private swing: ActiveSwing | null = null;
   private pendingCast: PendingCast | null = null;
   private stateTimer = 0;
@@ -546,6 +547,7 @@ export class PlayerCombat {
     this.comboIndex = 0;
     this.comboWindowTimer = 0;
     this.onlineComboDeadlineMs = null;
+    this.lastOnlineM1HitAtMs = null;
     if (isAttackState(this.combatState)) this.combatState = 'idle';
   }
 
@@ -849,11 +851,22 @@ export class PlayerCombat {
   private startSwing(): void {
     const combo = this.set.m1.combo;
     const index = Math.min(this.comboIndex, combo.length - 1);
+    const now = this.serverVitalsAuthority ? performance.now() : null;
+    const queuedAt = this.input.lastAttackInputAtMs;
+    // เวลาที่รอคิวเป็นส่วนหนึ่งของwindupเดิม ไม่เริ่มง้างใหม่เมื่อrendererเพิ่งรับinput
+    // ห้ามย้อนหลังข้ามrecoveryหรือhitที่เพิ่งปล่อยในเฟรมเดียวกันให้เป็นburst
+    const requestedAt = now !== null && typeof queuedAt === 'number'
+      && Number.isFinite(queuedAt) && queuedAt >= 0 && queuedAt <= now ? queuedAt : now;
+    const onlineStartedAtMs = now === null ? null : Math.min(now, Math.max(
+      requestedAt ?? now,
+      this.lastOnlineM1HitAtMs ?? 0,
+      this.onlineComboDeadlineMs !== null ? this.onlineComboDeadlineMs - COMBO_WINDOW * 1_000 : 0,
+    ));
     this.swing = {
       comboIndex: index,
       timer: combo[index].windup + combo[index].recovery,
       hitDone: false,
-      onlineStartedAtMs: this.serverVitalsAuthority ? performance.now() : null,
+      onlineStartedAtMs,
       inputResetSequence: this.input.transientResetSequence ?? 0,
     };
     this.combatState = ATTACK_STATES[Math.min(index, ATTACK_STATES.length - 1)];
@@ -889,6 +902,7 @@ export class PlayerCombat {
 
     if (!this.swing.hitDone && elapsed >= hit.windup) {
       this.swing.hitDone = true;
+      if (this.swing.onlineStartedAtMs !== null) this.lastOnlineM1HitAtMs = performance.now();
       const isFinisher = this.swing.comboIndex === combo.length - 1;
       const position = this.controller.position;
       const heading = this.controller.heading;

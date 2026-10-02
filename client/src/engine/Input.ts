@@ -22,6 +22,8 @@ export class Input {
   private dashQueue = 0;
   private jumpQueue = 0;
   private attackQueue = 0;
+  private queuedAttackAtMs: number | null = null;
+  private consumedAttackAtMs: number | null = null;
   private interactQueue = 0;
   private anchorQueue = 0;
   private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา (เฉพาะโหมดเรือ)
@@ -74,6 +76,7 @@ export class Input {
         domElement.requestPointerLock();
       }
       // The gesture that acquires pointer lock is still a deliberate canvas attack.
+      if (this.attackQueue === 0) this.queuedAttackAtMs = performance.now();
       this.attackQueue++;
       this.dragging = true;
     });
@@ -103,6 +106,8 @@ export class Input {
     if (mode !== this.mode) {
       this.transientResetSequenceValue++;
       this.attackQueue = 0;
+      this.queuedAttackAtMs = null;
+      this.consumedAttackAtMs = null;
     }
     this.mode = mode;
     this.anchorQueue = 0;
@@ -121,9 +126,16 @@ export class Input {
     return this.transientResetSequenceValue;
   }
 
+  /** เวลาgestureที่เพิ่งconsumeจากคิวเดิม สำหรับM1presentation ไม่ใช่เวลาdamageจากServer */
+  get lastAttackInputAtMs(): number | null {
+    return this.consumedAttackAtMs;
+  }
+
   private resetTransientInputs(): void {
     this.transientResetSequenceValue++;
     this.attackQueue = 0;
+    this.queuedAttackAtMs = null;
+    this.consumedAttackAtMs = null;
     this.keys.clear();
     this.dragging = false;
     this.touch?.resetTransientInputs();
@@ -244,8 +256,13 @@ export class Input {
   /** อ่านคำสั่งโจมตีหนึ่งครั้ง */
   consumeAttack(): boolean {
     const fromTouch = this.touch?.consumeAttack() ?? false;
-    if (fromTouch) return true;
+    if (fromTouch) {
+      this.consumedAttackAtMs = this.touch?.lastAttackInputAtMs ?? performance.now();
+      return true;
+    }
     if (this.attackQueue > 0) {
+      this.consumedAttackAtMs = this.queuedAttackAtMs ?? performance.now();
+      this.queuedAttackAtMs = null;
       this.attackQueue = 0;
       return true;
     }

@@ -76,6 +76,8 @@ export class TouchControls {
   private dashQueue = 0;
   private jumpQueue = 0;
   private attackQueue = 0;
+  private queuedAttackAtMs: number | null = null;
+  private consumedAttackAtMs: number | null = null;
   private anchorQueue = 0;
   private cannonQueue = 0; // 1 = ยิงกราบซ้าย, 2 = ยิงกราบขวา
   private skillTapQueue = 0;
@@ -185,7 +187,7 @@ export class TouchControls {
 
     // ---------- ปุ่มฝั่งขวาแบบ RoV ----------
     // ปุ่มโจมตีหลัก (ใหญ่สุด มุมขวาล่าง)
-    const attack = this.makeButton('tc-attack', '⚔️', () => (this.attackQueue = 1));
+    const attack = this.makeButton('tc-attack', '⚔️', () => this.queueAttack());
     // พุ่งหลบ — ติดตัวมาเลย ใช้ได้จริง
     const dash = this.makeButton('tc-dash', '💨', () => (this.dashQueue = 1));
     // กระโดด (กดค้างได้)
@@ -282,6 +284,7 @@ export class TouchControls {
   }
 
   setMode(mode: ControlMode): void {
+    if (mode !== this.mode) this.clearAttackInput();
     this.mode = mode;
     this.jumpHeldRaw = false;
     this.blockHeldRaw = false;
@@ -317,6 +320,7 @@ export class TouchControls {
   }
 
   resetTransientInputs(): void {
+    this.clearAttackInput();
     this.jumpHeldRaw = false;
     this.blockHeldRaw = false;
     this.blockBtn.classList.remove('tc-on');
@@ -482,8 +486,26 @@ export class TouchControls {
     return false;
   }
 
+  /** ยังใช้คิวโจมตีเดิมหนึ่งช่อง; กดซ้ำระหว่างรอไม่เลื่อนเวลาgestureแรก */
+  private queueAttack(): void {
+    if (this.attackQueue === 0) this.queuedAttackAtMs = performance.now();
+    this.attackQueue = 1;
+  }
+
+  private clearAttackInput(): void {
+    this.attackQueue = 0;
+    this.queuedAttackAtMs = null;
+    this.consumedAttackAtMs = null;
+  }
+
+  get lastAttackInputAtMs(): number | null {
+    return this.consumedAttackAtMs;
+  }
+
   consumeAttack(): boolean {
     if (this.attackQueue > 0) {
+      this.consumedAttackAtMs = this.queuedAttackAtMs;
+      this.queuedAttackAtMs = null;
       this.attackQueue = 0;
       return true;
     }
