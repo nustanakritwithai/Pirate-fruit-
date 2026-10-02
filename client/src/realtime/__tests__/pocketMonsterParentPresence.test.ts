@@ -75,6 +75,34 @@ describe('Pocket Monster parent presence bridge', () => {
     expect(authority.drainIntents()).toHaveLength(1);
   });
 
+  it('flushes a ready attack with fresh pose before another render step and does not send twice', () => {
+    const host = createHost();
+    const authority = new PirateMonsterAuthorityAdapter();
+    let x = 1;
+    const bridge = new PocketMonsterParentPresence({
+      targetOrigin: 'https://pocket.example', host: host.host,
+      remotePlayers: { setIsland: vi.fn(), applyPresence: vi.fn(), remove: vi.fn() },
+      getPosition: () => ({ x, y: 0, z: 2 }), getHeading: () => 0,
+      getIslandId: () => 'starter-island', heightAt: () => 0, now: () => 1000,
+      drainMonsterIntents: () => authority.drainIntents(),
+    });
+    bridge.start();
+    x = 9;
+    const intent = authority.queueIntent({zone: 'starter-island', kind: 'melee', category: 'style',
+      forwardX: 1, forwardZ: 0, range: 2.6, targetActorId: 'monster:starter-crab-1'});
+    // ไม่มี update/render ใหม่ระหว่าง hit กับ flush: ยังคงใช้ publisher และ intent เดิม
+    bridge.flushReadyIntents();
+    expect(host.sent).toHaveLength(2);
+    expect(host.sent[1].message).toMatchObject({x: 9, monsterIntents: [intent]});
+    bridge.update();
+    expect(host.sent).toHaveLength(2);
+    bridge.dispose();
+    authority.queueIntent({zone: 'starter-island', kind: 'melee', category: 'style', forwardX: 1, forwardZ: 0, range: 2.6});
+    bridge.flushReadyIntents();
+    expect(host.sent).toHaveLength(2);
+    expect(authority.drainIntents()).toHaveLength(1);
+  });
+
   it('enables only for an embedded frame with an explicit origin-only parentOrigin', () => {
     expect(resolvePocketMonsterParentOrigin(
       '?parentOrigin=https%3A%2F%2Fpocket.example',

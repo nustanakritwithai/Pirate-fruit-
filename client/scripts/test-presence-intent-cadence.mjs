@@ -10,11 +10,13 @@ function method(start, end) {
   assert.ok(offset >= 0, `ไม่พบ ${start}`);
   const finish = source.indexOf(end, offset);
   assert.ok(finish > offset, `ไม่พบ ${end}`);
-  return source.slice(offset, finish).trim().replace(/^private /, '').replace('(force: boolean): void', '(force)').replace('(): void', '()');
+  const body = source.slice(offset, finish).trim();
+  return body.slice(0, body.lastIndexOf('}') + 1).replace(/^private /, '').replace('(force: boolean): void', '(force)').replace('(): void', '()');
 }
 const methods = new Function('PIRATE_LOCAL_PRESENCE_MESSAGE', 'POCKET_MONSTER_PIRATE_ZONE',
   `return { ${method('  private publishLocalPresence(', '  private applySnapshot(')},
-  ${method('  update(): void {', '  dispose(): void {')} };`
+  ${method('  update(): void {', '  flushReadyIntents(): void {')},
+  ${method('  flushReadyIntents(): void {', '  dispose(): void {')} };`
 )('pirate-local-presence', 'pirate-fruit');
 
 function fixture() {
@@ -40,6 +42,29 @@ function intent(sequence = 1) {
     zone: 'pirate-fruit', kind: 'melee', category: 'style', forwardX: 1,
     forwardZ: 0, range: 2.6, targetActorId: 'wild-1' };
 }
+
+test('hit ที่พร้อมแล้วส่งก่อน render/update ใหม่ และ baseline แบบรอ update ล้ม', () => {
+  function check(legacy) {
+    const f = fixture();
+    f.state.update();
+    f.pending.push(intent());
+    f.pose({x: 9, z: 2, dir: 0});
+    if (!legacy) f.state.flushReadyIntents();
+    assert.equal(f.sent.length, 2, 'ready hit must not wait for another update');
+    assert.equal(f.sent[1].x, 9);
+    f.state.update();
+    assert.equal(f.sent.length, 2, 'intent must not be sent twice');
+  }
+  assert.throws(() => check(true), /ready hit must not wait for another update/);
+  check(false);
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const start = main.indexOf('if (pocketMonsterPresence && pirateMonsterAuthority && centralAuthorityRuntime?.active)');
+  const body = main.slice(start, main.indexOf('if (!sharedMonsters) return;', start));
+  const queueIndex = body.indexOf('pirateMonsterAuthority.queueIntent(');
+  const flushIndex = body.indexOf('pocketMonsterPresence.flushReadyIntents();');
+  assert.ok(start >= 0 && queueIndex >= 0 && flushIndex > queueIndex,
+    'production attack hook must flush after queuing the whole hit');
+});
 
 test('คำสั่งตีในสเตปถัดมาของเฟรมเดียวกันส่งทันทีและไม่ซ้ำ', () => {
   const f = fixture();
