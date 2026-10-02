@@ -13,7 +13,7 @@ import { prepareCanonicalPlayerHit } from '../player/pveIncomingDamageAdapter.js
 import { advanceCanonicalVitals, deriveCanonicalVitalsSnapshot, type PveVitalsContext } from '../player/vitalsRules.js';
 import { advanceCentralOriginalMarket, applyCentralOriginalTradeOperation, quoteCentralOriginalTradeOperation } from '../trade/centralOriginalTradeOperation.js';
 
-export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; dead?: boolean; blocking?: boolean; }
+export interface CentralPlayer { characterId: string; islandId?: string; x: number; y?: number; z: number; heading?: number; profile: AuthoritativeCombatProfile; playerVitalsReady?: boolean; dead?: boolean; blocking?: boolean; hitstunUntil?: number; }
 export interface CentralIntent { characterId: string; intentId: string; spawnIds: string[]; kind?: 'melee' | 'skill'; category?: string; }
 export interface CentralRequest {
   id: string | number; op: 'ready' | 'step' | 'owned-hit' | 'reward-ack' | 'normalize-state' | 'serialize-state' | 'state-profile' | 'reward-preview' | 'export-world' | 'restore-world' | 'state-operation' | 'economy-tick' | 'vitals-tick' | 'vitals-snapshot' | 'player-hit-preview' | 'player-hit-ack'; now: number; players?: CentralPlayer[]; intents?: CentralIntent[];
@@ -189,6 +189,8 @@ export class CentralWorldWorker {
       else grouped.set(key, { ...intent, spawnIds: [...new Set(intent.spawnIds)].slice(0, 16) });
     }
     for (const intent of grouped.values()) {
+      // ค่านี้ส่งจาก canonical state ฝั่ง host ไม่ใช่ intent ของ client
+      if ((this.currentPlayers.get(intent.characterId)?.hitstunUntil ?? 0) > request.now) continue;
       const connection = this.connections.get(intent.characterId); if (!connection || intent.spawnIds.length === 0) continue;
       this.combatUntil.set(intent.characterId, request.now + 7000);
       this.hub.handleClientMessage(connection, JSON.stringify({ type: 'world-monster-hit', intentId: intent.intentId, spawnIds: intent.spawnIds, kind: intent.kind ?? 'skill', category: intent.category }));
