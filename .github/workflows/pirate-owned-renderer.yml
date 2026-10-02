@@ -6,6 +6,7 @@ on:
       - 'client/src/combat/PlayerCombat.ts'
       - 'client/src/combat/__tests__/OnlineM1Clock.test.ts'
       - 'client/src/engine/Input.ts'
+      - 'client/src/ui/TouchControls.ts'
       - 'client/src/realtime/PocketMonsterParentPresence.ts'
       - 'client/src/realtime/__tests__/pocketMonsterParentPresence.test.ts'
       - 'client/scripts/test-presence-intent-cadence.mjs'

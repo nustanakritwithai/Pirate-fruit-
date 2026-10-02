@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Game } from '../../engine/Game';
 import { Input } from '../../engine/Input';
+import { TouchControls } from '../../ui/TouchControls';
 import { Effects } from '../../effects/Effects';
 import { ScopedVisualEffects } from '../../realtime/ScopedVisualEffects';
 import { PlayerCombat } from '../PlayerCombat';
@@ -13,7 +14,7 @@ function fixture(online = true, sword = false) {
   vi.spyOn(performance, 'now').mockImplementation(() => now);
   const scene = new THREE.Scene();
   const input = {
-    block: false, transientResetSequence: 0,
+    block: false, transientResetSequence: 0, lastAttackInputAtMs: null as number | null,
     consumeAttack: vi.fn(() => false), consumeWeaponSwitch: () => false,
     consumeSkillAim: () => null, consumeUltimateAim: () => null, getSkillAimPreview: () => null,
   };
@@ -50,6 +51,48 @@ function fixture(online = true, sword = false) {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('M1ออนไลน์ใช้elapsedเดิมแยกจากงบฟิสิกส์', () => {
+  it('คิวรอ150msไม่เริ่มwindup100msใหม่หลังconsume', () => {
+    const f = fixture();
+    f.input.lastAttackInputAtMs = 0;
+    f.setNow(150);
+    f.attack();
+    f.frame(160);
+    expect(f.hits).toEqual([160]);
+  });
+
+  it('เวลาคิวอนาคตไม่ทำให้ข้ามwindup และgesture90msยังต้องรอ100ms', () => {
+    const f = fixture();
+    f.input.lastAttackInputAtMs = 90;
+    f.setNow(95);
+    f.attack();
+    f.frame(100);
+    expect(f.hits).toHaveLength(0);
+    f.frame(190);
+    expect(f.hits).toEqual([190]);
+    f.combat.setServerVitalsAuthority(false);
+    f.combat.setServerVitalsAuthority(true);
+    f.input.lastAttackInputAtMs = 10_000;
+    f.attack();
+    f.frame(200);
+    expect(f.hits).toEqual([190]);
+    f.frame(290);
+    expect(f.hits).toEqual([190, 290]);
+  });
+
+  it('คิวเก่าไม่ปล่อยhitสองครั้งในเฟรมเดียวหรือข้ามrecovery', () => {
+    const f = fixture();
+    f.input.lastAttackInputAtMs = 0;
+    f.attack();
+    f.frame(500);
+    expect(f.hits).toEqual([500]);
+    f.input.lastAttackInputAtMs = 80;
+    f.attack();
+    f.frame(500);
+    f.frame(550);
+    expect(f.hits).toEqual([500]);
+    f.frame(600);
+    expect(f.hits).toEqual([500, 600]);
+  });
   it.each([1_000 / 60, 125, 250, 500])('เฟรม%imsไม่ยืดwindupและไม่สร้างhitซ้ำ', (frameMs) => {
     const f = fixture();
     f.attack();
@@ -132,6 +175,42 @@ describe('M1ออนไลน์ใช้elapsedเดิมแยกจาก�
 });
 
 describe('Inputทำให้swingค้างใช้ต่อหลังblur/hidden/modechangeไม่ได้', () => {
+  it('Touch→Inputส่งtimestampเดิม/coalesceกดรัวและresetไม่เหลือattackค้าง', () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible', pointerLockElement: null });
+    const dom = Object.assign(new EventTarget(), { requestPointerLock: vi.fn() });
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('document', doc);
+    const input = new Input(dom as unknown as HTMLElement);
+    // พอร์ตDOMจำลองเฉพาะconstructor; queue/consume/resetใช้เมธอดจริงทั้งสองคลาส
+    const touch = Object.assign(Object.create(TouchControls.prototype), {
+      attackQueue: 0, queuedAttackAtMs: null, consumedAttackAtMs: null,
+      blockBtn: { classList: { remove: vi.fn() } },
+      joyBase: { classList: { remove: vi.fn() } }, cancelSkillAim: vi.fn(),
+    }) as any;
+    (input as any).touch = touch;
+    touch.queueAttack();
+    now = 90;
+    touch.queueAttack();
+    now = 150;
+    expect(input.consumeAttack()).toBe(true);
+    expect(input.lastAttackInputAtMs).toBe(0);
+    expect(input.consumeAttack()).toBe(false);
+    touch.queueAttack();
+    win.dispatchEvent(new Event('blur'));
+    expect(input.consumeAttack()).toBe(false);
+    expect(input.lastAttackInputAtMs).toBeNull();
+    // เมาส์ก็ใช้timestampgestureแรก ไม่ใช้เวลาที่game loopมารับคิว
+    now = 200;
+    dom.dispatchEvent(Object.assign(new Event('mousedown'), { button: 0 }));
+    now = 220;
+    dom.dispatchEvent(Object.assign(new Event('mousedown'), { button: 0 }));
+    now = 350;
+    expect(input.consumeAttack()).toBe(true);
+    expect(input.lastAttackInputAtMs).toBe(200);
+  });
   it('resetsequenceและattackqueueจริง ไม่ต้องสร้างtimerหรือตัวส่งเกมใหม่', () => {
     const win = new EventTarget();
     const doc = Object.assign(new EventTarget(), { visibilityState: 'visible', pointerLockElement: null });
