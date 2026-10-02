@@ -1555,7 +1555,15 @@ async function main(): Promise<void> {
 
   // เตรียมshaderเอฟเฟกต์พื้นฐานระหว่างloading ไม่ย้ายงานcompileไปค้างตอนเข้าตี
   // ไม่มีการตี/แก้HPหรือเพิ่มwriter; เอฟเฟกต์จริงยังเกิดจากจังหวะและauthorityเดิม
-  await effects.prepareCombatShaders(game.renderer, game.camera);
+  // QAพบcoldshaderของวงportalตอนกล้องกลับจากcombat: เตรียมเฉพาะmeshทึบเดิม
+  // ไม่ส่งgroupทั้งก้อนเข้าcompile เพราะจะนับPointLightของportalซ้ำกับฉากจริง
+  const portalRingMeshes = [pocketMonsterPortal, livingWorldPortal].flatMap(portal =>
+    portal.group.children.filter((object): object is THREE.Mesh =>
+      object instanceof THREE.Mesh && object.material instanceof THREE.MeshBasicMaterial
+      && !object.material.transparent,
+    ),
+  );
+  await effects.prepareCombatShaders(game.renderer, game.camera, portalRingMeshes);
   loading.remove();
   game.start();
 }

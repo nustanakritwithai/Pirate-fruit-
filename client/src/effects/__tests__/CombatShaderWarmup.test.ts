@@ -13,6 +13,104 @@ function fixture() {
 }
 
 describe('shadercacheเอฟเฟกต์พื้นฐาน ไม่ใช่combat authority', () => {
+  it('วงportalยืมmesh/materialเดิมนอกฉาก ไม่ย้ายportalหรือนับไฟซ้ำ', async () => {
+    const f = fixture();
+    const portal = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.05, 0.18, 16, 72),
+      new THREE.MeshBasicMaterial({ color: 0x2ddcff, toneMapped: false }));
+    const light = new THREE.PointLight();
+    portal.add(ring, light); f.scene.add(portal);
+    Object.assign(f.renderer, { getRenderTarget: () => null, getActiveCubeFace: () => 0,
+      getActiveMipmapLevel: () => 0, setRenderTarget: vi.fn() });
+    const materialDispose = vi.spyOn(ring.material, 'dispose');
+    const geometryDispose = vi.spyOn(ring.geometry, 'dispose');
+    await f.effects.prepareCombatShaders(f.renderer, f.camera, [ring]);
+    const root = f.compileAsync.mock.calls[0][0];
+    const template = root.children[2] as THREE.Mesh;
+    expect(template).not.toBe(ring);
+    expect(template.geometry).toBe(ring.geometry);
+    expect(template.material).toBe(ring.material);
+    expect(root.children).toHaveLength(3);
+    expect(root.children.every(object => !(object instanceof THREE.Light))).toBe(true);
+    expect(f.compileAsync).toHaveBeenCalledWith(root, f.camera, f.scene);
+    expect(f.compileAsync).toHaveBeenCalledTimes(2);
+    const linearRoot = f.compileAsync.mock.calls[1][0];
+    expect(linearRoot.children).toHaveLength(0); // templateถูกคืนหลังcompile ไม่แตะringจริง
+    expect(ring.parent).toBe(portal);
+    expect(light.parent).toBe(portal);
+    expect(f.scene.children).toEqual([portal]);
+    expect(portal.visible).toBe(true);
+    f.effects.dispose();
+    expect(materialDispose).not.toHaveBeenCalled();
+    expect(geometryDispose).not.toHaveBeenCalled();
+    expect(portal.children).toEqual([ring, light]);
+  });
+
+  it('linearvariantคืนtarget/face/mipก่อนawait และdisposeRTหลังพร้อม', async () => {
+    const f = fixture();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(), new THREE.MeshBasicMaterial({ toneMapped: false }));
+    const previous = new THREE.WebGLRenderTarget(2, 2);
+    let current: THREE.WebGLRenderTarget | null = previous;
+    const setTarget = vi.fn((next: THREE.WebGLRenderTarget | null) => { current = next; });
+    Object.assign(f.renderer, { getRenderTarget: () => current, getActiveCubeFace: () => 3,
+      getActiveMipmapLevel: () => 2, setRenderTarget: setTarget });
+    let ready!: () => void;
+    let target!: THREE.WebGLRenderTarget;
+    const dispose = vi.fn();
+    const linear = { getUniforms: vi.fn() };
+    f.compileAsync.mockImplementationOnce(async root => root).mockImplementationOnce(root => {
+      target = current!; target.addEventListener('dispose', dispose);
+      expect(target.texture.colorSpace).toBe(THREE.LinearSRGBColorSpace);
+      expect(target.width).toBe(1); expect(target.height).toBe(1);
+      f.programs.push(linear);
+      return new Promise(resolve => { ready = () => resolve(root); });
+    });
+    const pending = f.effects.prepareCombatShaders(f.renderer, f.camera, [ring]);
+    await Promise.resolve();
+    expect(current).toBe(previous);
+    expect(setTarget).toHaveBeenLastCalledWith(previous, 3, 2);
+    expect(dispose).not.toHaveBeenCalled();
+    expect(linear.getUniforms).not.toHaveBeenCalled();
+    ready(); await pending;
+    expect(linear.getUniforms).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    f.effects.dispose(); previous.dispose();
+  });
+
+  it('linearcompileล้มเหลวส่งerrorเดิม คืนrendererและdisposeRTครบ', async () => {
+    const f = fixture();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(), new THREE.MeshBasicMaterial());
+    let current: THREE.WebGLRenderTarget | null = null;
+    const dispose = vi.fn();
+    Object.assign(f.renderer, { getRenderTarget: () => current, getActiveCubeFace: () => 0,
+      getActiveMipmapLevel: () => 0, setRenderTarget: (next: THREE.WebGLRenderTarget | null) => { current = next; } });
+    const failure = new Error('linear-original-error');
+    f.compileAsync.mockImplementationOnce(async root => root).mockImplementationOnce(() => {
+      current!.addEventListener('dispose', dispose); throw failure;
+    });
+    await expect(f.effects.prepareCombatShaders(f.renderer, f.camera, [ring])).rejects.toBe(failure);
+    expect(current).toBeNull(); expect(dispose).toHaveBeenCalledTimes(1);
+    f.effects.dispose();
+  });
+
+  it('disposeระหว่างรอlinearคืนRTโดยไม่initializeshaderที่ปิดแล้ว', async () => {
+    const f = fixture();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(), new THREE.MeshBasicMaterial());
+    let current: THREE.WebGLRenderTarget | null = null;
+    const dispose = vi.fn(), linear = { getUniforms: vi.fn() };
+    let ready!: () => void;
+    Object.assign(f.renderer, { getRenderTarget: () => current, getActiveCubeFace: () => 0,
+      getActiveMipmapLevel: () => 0, setRenderTarget: (next: THREE.WebGLRenderTarget | null) => { current = next; } });
+    f.compileAsync.mockImplementationOnce(async root => root).mockImplementationOnce(root => {
+      current!.addEventListener('dispose', dispose); f.programs.push(linear);
+      return new Promise(resolve => { ready = () => resolve(root); });
+    });
+    const pending = f.effects.prepareCombatShaders(f.renderer, f.camera, [ring]);
+    await Promise.resolve(); f.effects.dispose(); ready(); await pending;
+    expect(current).toBeNull(); expect(dispose).toHaveBeenCalledTimes(1);
+    expect(linear.getUniforms).not.toHaveBeenCalled();
+  });
+
   it('compileครั้งเดียวด้วยฉากเดิมและไม่เพิ่มobjectหรือeffectในโลกจริง', async () => {
     const f = fixture();
     const first = f.effects.prepareCombatShaders(f.renderer, f.camera);
