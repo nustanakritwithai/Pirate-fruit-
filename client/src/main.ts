@@ -1553,6 +1553,9 @@ async function main(): Promise<void> {
     });
   }
 
+  // เตรียมshaderเอฟเฟกต์พื้นฐานระหว่างloading ไม่ย้ายงานcompileไปค้างตอนเข้าตี
+  // ไม่มีการตี/แก้HPหรือเพิ่มwriter; เอฟเฟกต์จริงยังเกิดจากจังหวะและauthorityเดิม
+  await effects.prepareCombatShaders(game.renderer, game.camera);
   loading.remove();
   game.start();
 }
