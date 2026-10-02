@@ -130,7 +130,11 @@ export class Effects {
   }
 
   /** เก็บreference shaderพื้นฐานไว้ ไม่ให้disposeเอฟเฟกต์แต่ละครั้งล้างGPUprogramสุดท้าย */
-  prepareCombatShaders(renderer: THREE.WebGLRenderer, camera: THREE.Camera): Promise<void> {
+  prepareCombatShaders(
+    renderer: THREE.WebGLRenderer,
+    camera: THREE.Camera,
+    preloadMeshes: readonly THREE.Mesh[] = [],
+  ): Promise<void> {
     if (this.shaderWarmup) return this.shaderWarmup;
     const anchors = new THREE.Group();
     anchors.name = 'combat-shader-cache';
@@ -141,6 +145,9 @@ export class Effects {
     texture.needsUpdate = true;
     const spriteMaterial = damageNumberMaterial(texture);
     anchors.add(new THREE.Mesh(this.slashGeo, meshMaterial), new THREE.Sprite(spriteMaterial));
+    // ยืมgeometry/materialของวงportalจริงผ่านtemplateนอกฉาก ไม่reparentหรือcloneวัสดุ
+    // Effectsเป็นเจ้าของเพียงcacheของตัวเอง จึงห้ามdisposeทรัพยากรที่ยืมจากโลก
+    for (const mesh of preloadMeshes) anchors.add(new THREE.Mesh(mesh.geometry, mesh.material));
     this.shaderAnchors = anchors;
     this.shaderAnchorMaterials.push(meshMaterial, spriteMaterial);
     this.shaderAnchorTexture = texture;

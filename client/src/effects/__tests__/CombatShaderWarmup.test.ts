@@ -13,6 +13,34 @@ function fixture() {
 }
 
 describe('shadercacheเอฟเฟกต์พื้นฐาน ไม่ใช่combat authority', () => {
+  it('วงportalยืมmesh/materialเดิมนอกฉาก ไม่ย้ายportalหรือนับไฟซ้ำ', async () => {
+    const f = fixture();
+    const portal = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.05, 0.18, 16, 72),
+      new THREE.MeshBasicMaterial({ color: 0x2ddcff, toneMapped: false }));
+    const light = new THREE.PointLight();
+    portal.add(ring, light); f.scene.add(portal);
+    const materialDispose = vi.spyOn(ring.material, 'dispose');
+    const geometryDispose = vi.spyOn(ring.geometry, 'dispose');
+    await f.effects.prepareCombatShaders(f.renderer, f.camera, [ring]);
+    const root = f.compileAsync.mock.calls[0][0];
+    const template = root.children[2] as THREE.Mesh;
+    expect(template).not.toBe(ring);
+    expect(template.geometry).toBe(ring.geometry);
+    expect(template.material).toBe(ring.material);
+    expect(root.children).toHaveLength(3);
+    expect(root.children.every(object => !(object instanceof THREE.Light))).toBe(true);
+    expect(f.compileAsync).toHaveBeenCalledWith(root, f.camera, f.scene);
+    expect(ring.parent).toBe(portal);
+    expect(light.parent).toBe(portal);
+    expect(f.scene.children).toEqual([portal]);
+    expect(portal.visible).toBe(true);
+    f.effects.dispose();
+    expect(materialDispose).not.toHaveBeenCalled();
+    expect(geometryDispose).not.toHaveBeenCalled();
+    expect(portal.children).toEqual([ring, light]);
+  });
+
   it('compileครั้งเดียวด้วยฉากเดิมและไม่เพิ่มobjectหรือeffectในโลกจริง', async () => {
     const f = fixture();
     const first = f.effects.prepareCombatShaders(f.renderer, f.camera);
