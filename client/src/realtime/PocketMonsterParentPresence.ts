@@ -502,14 +502,21 @@ export class PocketMonsterParentPresence {
   }
 
   update(): void {
+    this.flushReadyIntents();
     if (!this.started) return;
-    this.syncIsland();
-    this.sampleLocalPresence();
-    this.publishLocalPresence(false);
     const vitalsInput = this.options.getVitalsInput?.();
     if (vitalsInput && this.options.vitalsEmitter) {
       void this.options.vitalsEmitter.sendInput(vitalsInput).catch(() => undefined);
     }
+  }
+
+  // ใช้ publisher เดิมเมื่อ hit สร้าง intent พร้อมแล้ว ไม่รอเอฟเฟกต์/งานท้าย fixed step
+  // ไม่เร่ง windup/cooldown และไม่สร้าง transport หรือ HP writer เพิ่ม
+  flushReadyIntents(): void {
+    if (!this.started) return;
+    this.syncIsland();
+    this.sampleLocalPresence();
+    this.publishLocalPresence(false);
   }
 
   dispose(): void {

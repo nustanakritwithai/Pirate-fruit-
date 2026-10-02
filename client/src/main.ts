@@ -1328,6 +1328,8 @@ async function main(): Promise<void> {
             } : {}),
           });
         }
+        // ส่ง pose+intent ชุดเดียวทันทีผ่าน publisher เดิม ก่อนสร้าง visual effects ต่อ
+        pocketMonsterPresence.flushReadyIntents();
         return;
       }
       if (!sharedMonsters) return;
