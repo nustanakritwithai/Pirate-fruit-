@@ -158,9 +158,38 @@ export class Effects {
     // compileAsyncสร้างprogramทันที แต่r178ยังเก็บerror check/uniform lookupไว้ที่first use
     // snapshotก่อนawaitจึงได้เฉพาะprogramที่anchorsสร้าง ไม่ไล่initializeshaderอื่นทั้งเกม
     const newPrograms = (renderer.info.programs ?? []).filter(program => !previousPrograms.has(program));
-    this.shaderWarmup = compilation.then(() => {
+    this.shaderWarmup = compilation.then(async () => {
       if (this.shaderAnchors !== anchors) return;
       for (const program of newPrograms) program.getUniforms();
+      if (!preloadMeshes.length) return;
+      // r178วาดopaqueลงlinear render targetในtransmission passก่อนวาดบนจอ
+      // เตรียมเฉพาะringที่ยืมมาให้ครบทั้งสองoutputspace ไม่เปลี่ยนสีของrendererจริง
+      const linearAnchors = new THREE.Group();
+      for (const mesh of preloadMeshes) linearAnchors.add(new THREE.Mesh(mesh.geometry, mesh.material));
+      const target = new THREE.WebGLRenderTarget(1, 1, {
+        colorSpace: THREE.LinearSRGBColorSpace, depthBuffer: false, stencilBuffer: false,
+      });
+      try {
+        const previousTarget = renderer.getRenderTarget();
+        const previousCubeFace = renderer.getActiveCubeFace();
+        const previousMipmapLevel = renderer.getActiveMipmapLevel();
+        const existingPrograms = new Set(renderer.info.programs ?? []);
+        let linearCompilation: Promise<THREE.Object3D>;
+        let linearPrograms: NonNullable<THREE.WebGLRenderer['info']['programs']>;
+        try {
+          renderer.setRenderTarget(target);
+          linearCompilation = renderer.compileAsync(linearAnchors, camera, this.scene);
+          linearPrograms = (renderer.info.programs ?? []).filter(program => !existingPrograms.has(program));
+        } finally {
+          // คืนtarget/face/mipก่อนawait ไม่ทิ้งสถานะglobalไว้ระหว่างรอGPU
+          renderer.setRenderTarget(previousTarget, previousCubeFace, previousMipmapLevel);
+        }
+        await linearCompilation;
+        if (this.shaderAnchors === anchors) for (const program of linearPrograms) program.getUniforms();
+      } finally {
+        target.dispose();
+        linearAnchors.clear();
+      }
     });
     return this.shaderWarmup;
   }

@@ -63,7 +63,7 @@ try {
     }
     // ใช้WorldPortalจริงและไฟจริง; ไม่นับการwarmgroupที่ใส่ไฟซ้ำเป็นผลผ่าน
     const portalFixtures = [];
-    for (const warmPortalRing of [false, true]) {
+    for (const warmPortalRing of [false, 'screen-only', true]) {
       const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true });
       renderer.setSize(320, 180);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -80,6 +80,10 @@ try {
       const rings = portals.flatMap(portal => portal.group.children.filter(object =>
         object instanceof THREE.Mesh && object.material instanceof THREE.MeshBasicMaterial && !object.material.transparent));
       if (rings.length !== 4) throw new Error('expected-real-portal-rings');
+      // จำลองpassที่พบในฉากเต็ม: opaqueถูกวาดลงlinearRTเมื่อมีวัตถุtransmissionในมุมกล้อง
+      const glass = new THREE.Mesh(new THREE.SphereGeometry(.7, 12, 8),
+        new THREE.MeshPhysicalMaterial({ transmission: .7, thickness: .2, roughness: .1 }));
+      glass.position.set(9, 2.35, 16); scene.add(glass);
       const camera = new THREE.PerspectiveCamera(50, 320 / 180, 0.1, 100);
       camera.position.set(7, 3.5, 23); camera.lookAt(7, 2.35, 15);
       const effects = new Effects(scene), gl = renderer.getContext();
@@ -93,7 +97,16 @@ try {
       gl.getProgramInfoLog = program => { if (drawingRing) ringProgramLogs++; return getProgramInfoLog(program); };
       const before = scene.children.slice();
       // baselineคือproductionเดิมที่warmVFXแล้ว แต่ยังไม่warmวงportal
-      await effects.prepareCombatShaders(renderer, camera, warmPortalRing ? rings : []);
+      await effects.prepareCombatShaders(renderer, camera, warmPortalRing === true ? rings : []);
+      if (warmPortalRing === 'screen-only') {
+        // ตัวเทียบ857เดิม: เตรียมringเฉพาะscreenแต่ยังขาดlinear transmission variant
+        const templates = new THREE.Group();
+        rings.forEach(ring => templates.add(new THREE.Mesh(ring.geometry, ring.material)));
+        const previous = new Set(renderer.info.programs);
+        const compilation = renderer.compileAsync(templates, camera, scene);
+        const prepared = renderer.info.programs.filter(program => !previous.has(program));
+        await compilation; prepared.forEach(program => program.getUniforms()); templates.clear();
+      }
       if (before.some((object, index) => scene.children[index] !== object)
           || scene.children.length !== before.length) throw new Error('warmup-changed-real-scene');
       for (let cycle = 0; cycle < 5; cycle++) {
@@ -105,13 +118,14 @@ try {
         await new Promise(resolve => requestAnimationFrame(resolve));
       }
       portalFixtures.push({ warmPortalRing, ringLinks, ringProgramLogs, entries,
+        transmission: true,
         checkShaderErrors: renderer.debug.checkShaderErrors,
         realLights: portals.reduce((count, portal) => count + portal.group.children.filter(object => object.isLight).length, 0) });
       effects.dispose(); renderer.dispose();
     }
     return { scope: 'controlled-real-vfx-and-portal-program-cache-not-authenticated-combat-or-mobile', fixtures, portalFixtures };
   });
-  await page.screenshot({ path: `${output}/cold-and-warm.png` });
+  await page.screenshot({ path: `${output}/cold-and-warm.png`, fullPage: true });
   await fs.writeFile(`${output}/result.json`, JSON.stringify({ ...result, errors }, null, 2));
   assert.deepEqual(errors, [], 'ไม่กลบshaderหรือpage errors');
   assert.ok(result.fixtures[0].effectLinks >= 10, 'baselineต้องเห็นprogramถูกlinkใหม่หลังแต่ละeffectหมดอายุ');
@@ -122,8 +136,10 @@ try {
   assert.ok(result.fixtures[1].preparationLinks > 0 && result.fixtures[1].retainedPrograms >= 2);
   assert.ok(result.portalFixtures[0].ringLinks > 0 && result.portalFixtures[0].ringProgramLogs > 0,
     'baselineวงportalจริงต้องมีcoldshader');
-  assert.equal(result.portalFixtures[1].ringLinks, 0, 'วงportalwarmแล้วไม่linkตอนกลับมามอง');
-  assert.equal(result.portalFixtures[1].ringProgramLogs, 0, 'วงportalwarmแล้วไม่queryfirstuseตอนกลับมามอง');
+  assert.ok(result.portalFixtures[1].ringLinks > 0 && result.portalFixtures[1].ringProgramLogs > 0,
+    'screen-onlyเหมือน857เดิมต้องยังพบcoldlinearshader');
+  assert.equal(result.portalFixtures[2].ringLinks, 0, 'วงportalwarmครบสองoutputspaceแล้วไม่linkตอนกลับมามอง');
+  assert.equal(result.portalFixtures[2].ringProgramLogs, 0, 'วงportalwarmครบแล้วไม่queryfirstuseตอนกลับมามอง');
   for (const portal of result.portalFixtures) {
     assert.equal(portal.checkShaderErrors, true); assert.equal(portal.realLights, 2); assert.equal(portal.entries, 0);
   }
