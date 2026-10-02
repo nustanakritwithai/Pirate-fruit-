@@ -66,6 +66,16 @@ function additiveMaterial(color: THREE.ColorRepresentation, opacity: number): TH
   });
 }
 
+function damageNumberMaterial(texture: THREE.Texture): THREE.SpriteMaterial {
+  return new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
+}
+
 function easeOutCubic(value: number): number {
   const inverse = 1 - THREE.MathUtils.clamp(value, 0, 1);
   return 1 - inverse * inverse * inverse;
@@ -97,6 +107,10 @@ export function getForwardArcRotation(
 /** เอฟเฟกต์การต่อสู้แบบ procedural และงบต่ำสำหรับมือถือ */
 export class Effects {
   private currentOwner: object | undefined;
+  private shaderWarmup: Promise<void> | null = null;
+  private shaderAnchors: THREE.Group | null = null;
+  private readonly shaderAnchorMaterials: THREE.Material[] = [];
+  private shaderAnchorTexture: THREE.DataTexture | null = null;
   private readonly active: ActiveEffect[] = [];
   private readonly numbers: DamageNumber[] = [];
   private readonly slashGeo = new THREE.RingGeometry(0.5, 1.5, 24, 1, 0, SLASH_ARC_LENGTH);
@@ -113,6 +127,27 @@ export class Effects {
 
   constructor(private scene: THREE.Scene) {
     preloadSpellFxAssets();
+  }
+
+  /** เก็บreference shaderพื้นฐานไว้ ไม่ให้disposeเอฟเฟกต์แต่ละครั้งล้างGPUprogramสุดท้าย */
+  prepareCombatShaders(renderer: THREE.WebGLRenderer, camera: THREE.Camera): Promise<void> {
+    if (this.shaderWarmup) return this.shaderWarmup;
+    const anchors = new THREE.Group();
+    anchors.name = 'combat-shader-cache';
+    anchors.visible = false;
+    const meshMaterial = additiveMaterial(0xffffff, 0.9);
+    const texture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    const spriteMaterial = damageNumberMaterial(texture);
+    anchors.add(new THREE.Mesh(this.slashGeo, meshMaterial), new THREE.Sprite(spriteMaterial));
+    this.shaderAnchors = anchors;
+    this.shaderAnchorMaterials.push(meshMaterial, spriteMaterial);
+    this.shaderAnchorTexture = texture;
+    // ไม่ใส่anchorsในฉากจริง/ไม่spawnattackหรือเลขดาเมจ และใช้fog/lightของฉากเดิม
+    // เก็บmaterialsจนEffectsdisposeเพื่อให้programcacheมีreferenceแม้VFXเดิมหมดอายุ
+    this.shaderWarmup = renderer.compileAsync(anchors, camera, this.scene).then(() => undefined);
+    return this.shaderWarmup;
   }
 
   /** คลื่นโค้งหน้าตัวละคร สำหรับหมัด/ท่าพุ่งที่ไม่มีใบดาบ */
@@ -474,6 +509,11 @@ export class Effects {
       number.sprite.material.map?.dispose();
       number.sprite.material.dispose();
     }
+    for (const material of this.shaderAnchorMaterials.splice(0)) material.dispose();
+    this.shaderAnchorTexture?.dispose();
+    this.shaderAnchorTexture = null;
+    this.shaderAnchors?.clear();
+    this.shaderAnchors = null;
     for (const value of Object.values(this)) if (value instanceof THREE.BufferGeometry) value.dispose();
   }
 
@@ -576,15 +616,7 @@ export class Effects {
     ctx.fillText(`${prefix}${Math.round(amount)}`, 64, 32);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
+    const sprite = new THREE.Sprite(damageNumberMaterial(texture));
     sprite.scale.set(1.5, 0.75, 1);
     sprite.position.copy(position);
     sprite.position.y += 1.9 + Math.random() * 0.4;
