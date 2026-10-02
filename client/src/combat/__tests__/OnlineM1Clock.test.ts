@@ -25,7 +25,8 @@ function fixture(online = true, sword = false) {
   const loadout = new SkillLoadout();
   if (sword) loadout.equipSword('training-sword');
   const combat = new PlayerCombat(scene, input as never, controller as never,
-    { playerAttack: vi.fn() } as never, new ScopedVisualEffects(new Effects(scene)), null, loadout);
+    { playerAttack: vi.fn(), recordPresentationEventAt: vi.fn() } as never,
+    new ScopedVisualEffects(new Effects(scene)), null, loadout);
   combat.setServerVitalsAuthority(online);
   const hits: number[] = [];
   combat.onSharedMonsterAttack = () => { hits.push(now); };
@@ -37,8 +38,9 @@ function fixture(online = true, sword = false) {
   const attack = () => { input.consumeAttack.mockReturnValueOnce(true); combat.update(0); };
   let previous = 0;
   const frame = (time: number) => {
+    const frameDelta = (time - previous) / 1_000;
     now = time;
-    game.clock.getDelta = () => (now - previous) / 1_000;
+    game.clock.getDelta = () => frameDelta;
     previous = now;
     game.tick();
   };
