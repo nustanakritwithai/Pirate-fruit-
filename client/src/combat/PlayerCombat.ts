@@ -164,6 +164,8 @@ interface ActiveSwing {
   hitDone: boolean;
   /** เวลาแสดงผล/ส่งintentออนไลน์เท่านั้น; ServerยังตัดสินHP/range/cooldownเอง */
   onlineStartedAtMs: number | null;
+  /** เมื่อเฟรมช้า ต้องพักหลัง hit ที่ปล่อยจริง ไม่ข้าม recovery ย้อนหลัง */
+  onlineHitAtMs: number | null;
   inputResetSequence: number;
 }
 
@@ -867,6 +869,7 @@ export class PlayerCombat {
       timer: combo[index].windup + combo[index].recovery,
       hitDone: false,
       onlineStartedAtMs,
+      onlineHitAtMs: null,
       inputResetSequence: this.input.transientResetSequence ?? 0,
     };
     this.combatState = ATTACK_STATES[Math.min(index, ATTACK_STATES.length - 1)];
@@ -892,7 +895,10 @@ export class PlayerCombat {
       }
       // ไม่สะสมdtของmax5fixedsteps: เฟรมช้าต้องไม่ยืดwindup/recoveryหลายเท่า
       // ไม่มีtimerใหม่/ย้อนหลังหลายhit; hitDoneยังให้หนึ่งswingส่งหนึ่งhitเท่านั้น
-      const elapsedSeconds = Math.max(0, performance.now() - this.swing.onlineStartedAtMs) / 1_000;
+      const now = performance.now();
+      const elapsedSeconds = this.swing.onlineHitAtMs !== null
+        ? hit.windup + Math.max(0, now - this.swing.onlineHitAtMs) / 1_000
+        : Math.max(0, now - this.swing.onlineStartedAtMs) / 1_000;
       this.swing.timer = Math.min(this.swing.timer, total - elapsedSeconds);
       elapsed = Math.max(total - this.swing.timer, elapsedSeconds);
     } else {
@@ -902,7 +908,12 @@ export class PlayerCombat {
 
     if (!this.swing.hitDone && elapsed >= hit.windup) {
       this.swing.hitDone = true;
-      if (this.swing.onlineStartedAtMs !== null) this.lastOnlineM1HitAtMs = performance.now();
+      if (this.swing.onlineStartedAtMs !== null) {
+        this.swing.onlineHitAtMs = performance.now();
+        this.lastOnlineM1HitAtMs = this.swing.onlineHitAtMs;
+        // จ่าย windup ที่ค้างได้หนึ่ง hit แต่ recovery ยังต้องครบหลัง hit นี้
+        this.swing.timer = hit.recovery;
+      }
       const isFinisher = this.swing.comboIndex === combo.length - 1;
       const position = this.controller.position;
       const heading = this.controller.heading;
@@ -977,8 +988,8 @@ export class PlayerCombat {
 
     if (this.swing.timer <= 0) {
       const isFinisher = this.swing.comboIndex === combo.length - 1;
-      this.onlineComboDeadlineMs = this.swing.onlineStartedAtMs !== null
-        ? this.swing.onlineStartedAtMs + (total + COMBO_WINDOW) * 1_000
+      this.onlineComboDeadlineMs = this.swing.onlineHitAtMs !== null
+        ? this.swing.onlineHitAtMs + (hit.recovery + COMBO_WINDOW) * 1_000
         : null;
       this.comboWindowTimer = this.onlineComboDeadlineMs !== null
         ? Math.max(0, (this.onlineComboDeadlineMs - performance.now()) / 1_000)

@@ -8,8 +8,9 @@ import { ScopedVisualEffects } from '../../realtime/ScopedVisualEffects';
 import { PlayerCombat } from '../PlayerCombat';
 import { SkillLoadout } from '../SkillLoadout';
 import { COMBO_WINDOW, LOADOUT_ITEMS } from '../CombatData';
+import { WEAPON_M1 } from '../SkillCasting';
 
-function fixture(online = true, sword = false) {
+function fixture(online = true, weapon: keyof typeof WEAPON_M1 = 'fighting-style', fruitActive = false) {
   let now = 0;
   vi.spyOn(performance, 'now').mockImplementation(() => now);
   const scene = new THREE.Scene();
@@ -24,7 +25,9 @@ function fixture(online = true, sword = false) {
     setMovementLock: vi.fn(), applyStun: vi.fn(), applyKnockback: vi.fn(),
   };
   const loadout = new SkillLoadout();
-  if (sword) loadout.equipSword('training-sword');
+  if (weapon === 'sword') loadout.equipSword('training-sword');
+  if (weapon === 'gun') loadout.equipGun('acidum-rifle');
+  if (fruitActive) loadout.setActiveSet('fruit');
   const combat = new PlayerCombat(scene, input as never, controller as never,
     { playerAttack: vi.fn(), recordPresentationEventAt: vi.fn() } as never,
     new ScopedVisualEffects(new Effects(scene)), null, loadout);
@@ -85,13 +88,22 @@ describe('M1ออนไลน์ใช้elapsedเดิมแยกจาก�
     f.attack();
     f.frame(500);
     expect(f.hits).toEqual([500]);
+    expect(f.combat.state).toBe('attack1');
+    expect(1 - f.combat.attackCooldownFraction).toBeCloseTo(0.25);
     f.input.lastAttackInputAtMs = 80;
     f.attack();
     f.frame(500);
     f.frame(550);
     expect(f.hits).toEqual([500]);
     f.frame(600);
-    expect(f.hits).toEqual([500, 600]);
+    expect(f.hits).toEqual([500]);
+    f.frame(800);
+    expect(f.combat.state).toBe('idle');
+    f.attack();
+    f.frame(890);
+    expect(f.hits).toEqual([500]);
+    f.frame(900);
+    expect(f.hits).toEqual([500, 900]);
   });
   it.each([1_000 / 60, 125, 250, 500])('เฟรม%imsไม่ยืดwindupและไม่สร้างhitซ้ำ', (frameMs) => {
     const f = fixture();
@@ -106,18 +118,71 @@ describe('M1ออนไลน์ใช้elapsedเดิมแยกจาก�
   });
 
   it('ดาบยังใช้windup140ms/recovery380msเดิม ไม่เร่งกฎอาวุธ', () => {
-    const f = fixture(true, true);
+    const f = fixture(true, 'sword');
     f.attack();
-    f.frame(125);
+    f.frame(100);
     expect(f.hits).toHaveLength(0);
-    f.frame(250);
-    expect(f.hits).toEqual([250]);
-    f.frame(500);
+    f.frame(140);
+    expect(f.hits).toEqual([140]);
+    f.frame(510);
     expect(f.combat.state).toBe('attack1');
-    f.frame(625);
+    f.frame(520);
     expect(f.combat.state).toBe('idle');
     expect(f.hits).toHaveLength(1);
   });
+
+  it.each((['fighting-style', 'sword', 'gun'] as const).flatMap(weapon =>
+    [false, true].map(fruitActive => ({ weapon, fruitActive })),
+  ))(
+    '$weapon fruitActive=$fruitActive เฟรมค้างต้องพักครบหลังhitจริง', ({ weapon, fruitActive }) => {
+      const f = fixture(true, weapon, fruitActive);
+      const [first, second] = WEAPON_M1[weapon].combo;
+      const firstHitAt = Math.round((first.windup + first.recovery) * 1_000) + 100;
+      const recoveredAt = firstHitAt + Math.round(first.recovery * 1_000);
+      const nextHitAt = recoveredAt + Math.round(second.windup * 1_000);
+      f.attack();
+      f.frame(firstHitAt);
+      expect(f.hits).toEqual([firstHitAt]);
+      expect(f.combat.state).toBe('attack1');
+      expect(1 - f.combat.attackCooldownFraction).toBeCloseTo(first.windup / (first.windup + first.recovery));
+      f.input.lastAttackInputAtMs = 80;
+      f.attack();
+      f.frame(recoveredAt - 20);
+      expect(f.combat.state).toBe('attack1');
+      f.frame(recoveredAt);
+      expect(f.combat.state).toBe('idle');
+      f.attack();
+      f.frame(nextHitAt - 20);
+      expect(f.hits).toEqual([firstHitAt]);
+      f.frame(nextHitAt);
+      expect(f.hits).toEqual([firstHitAt, nextHitAt]);
+      expect(f.controller.hp).toBe(100);
+    },
+  );
+
+  it.each(['fighting-style', 'sword', 'gun'] as const)(
+    '%sทุกลำดับคอมโบคงwindup/recoveryเดิมเมื่อเฟรมตรงเวลา', (weapon) => {
+      const f = fixture(true, weapon);
+      let now = 0;
+      for (const [index, hit] of WEAPON_M1[weapon].combo.entries()) {
+        f.attack();
+        const hitAt = now + Math.round(hit.windup * 1_000);
+        f.frame(hitAt - 20);
+        expect(f.hits).toHaveLength(index);
+        f.frame(hitAt);
+        expect(f.hits).toHaveLength(index + 1);
+        expect(f.hits[index]).toBe(hitAt);
+        now = hitAt + Math.round(hit.recovery * 1_000);
+        f.frame(now - 20);
+        expect(f.combat.state).toBe(`attack${index + 1}`);
+        f.frame(now);
+        expect(f.combat.state).toBe('idle');
+      }
+      f.attack();
+      expect(f.combat.state).toBe('attack1');
+      expect(f.controller.hp).toBe(100);
+    },
+  );
 
   it('offlineยังเดินตามfixedstepเดิม', () => {
     const f = fixture(false);
@@ -135,20 +200,30 @@ describe('M1ออนไลน์ใช้elapsedเดิมแยกจาก�
     f.attack();
     expect(f.hits).toEqual([250]);
     f.frame(500);
+    expect(f.combat.state).toBe('attack1');
+    f.frame(550);
     expect(f.combat.state).toBe('idle');
     f.attack();
-    f.frame(550);
-    expect(f.hits).toEqual([250]);
     f.frame(600);
-    expect(f.hits).toEqual([250, 600]);
+    expect(f.hits).toEqual([250]);
+    f.frame(650);
+    expect(f.hits).toEqual([250, 650]);
   });
 
-  it('combo windowหมดตามเวลาเดิมแม้มีเฟรมช้า', () => {
+  it('combo windowเริ่มหลังrecoveryของhitจริง ไม่หมดก่อนเพราะเฟรมช้า', () => {
     const f = fixture();
     f.attack();
     f.frame(500);
-    f.frame((LOADOUT_ITEMS['basic-brawl'].combo[0].windup
-      + LOADOUT_ITEMS['basic-brawl'].combo[0].recovery + COMBO_WINDOW) * 1_000 + 1);
+    f.frame(1_601);
+    f.attack();
+    expect(f.combat.state).toBe('attack2');
+  });
+
+  it('combo windowยังหมดหลังrecoveryบวกCOMBO_WINDOWเดิม', () => {
+    const f = fixture();
+    f.attack();
+    f.frame(500);
+    f.frame(500 + (LOADOUT_ITEMS['basic-brawl'].combo[0].recovery + COMBO_WINDOW) * 1_000 + 1);
     f.attack();
     expect(f.combat.state).toBe('attack1');
   });
@@ -162,6 +237,22 @@ describe('M1ออนไลน์ใช้elapsedเดิมแยกจาก�
     if (reason === 'authority') f.combat.setServerVitalsAuthority(false);
     f.frame(500);
     expect(f.hits).toHaveLength(0);
+    expect(f.combat.state).toBe('idle');
+  });
+
+  it.each(['reset', 'disabled', 'mounted', 'authority'] as const)('%sหลังhitยกเลิกrecoveryโดยไม่ส่งhitซ้ำ', (reason) => {
+    const f = fixture();
+    f.attack();
+    f.frame(500);
+    expect(f.hits).toEqual([500]);
+    expect(f.combat.state).toBe('attack1');
+    if (reason === 'reset') f.input.transientResetSequence++;
+    if (reason === 'disabled') f.controller.inputEnabled = false;
+    if (reason === 'mounted') f.controller.isMounted = true;
+    if (reason === 'authority') f.combat.setServerVitalsAuthority(false);
+    f.frame(600);
+    f.frame(900);
+    expect(f.hits).toEqual([500]);
     expect(f.combat.state).toBe('idle');
   });
 
