@@ -1,4 +1,5 @@
 import { Game } from './engine/Game';
+import { showRuntimeStartFailure } from './engine/RuntimeStartFailure';
 import * as THREE from 'three';
 import { Input } from './engine/Input';
 import { World } from './world/World';
@@ -1570,13 +1571,6 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error('เกมเริ่มไม่สำเร็จ:', err);
-  document.querySelector('.game-loading')?.remove();
-  document.body.insertAdjacentHTML(
-    'beforeend',
-    `<div style="position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;
-      padding:24px;text-align:center;color:#ff9b8e;background:#06121f">
-      เปิดเกมไม่สำเร็จ — อุปกรณ์นี้อาจไม่รองรับ WebGL<br>ลองเปิดด้วย Chrome หรือปรับเบราว์เซอร์ให้ใช้ GPU
-    </div>`,
-  );
+  showRuntimeStartFailure();
 });
 
