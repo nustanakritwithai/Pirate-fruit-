@@ -563,7 +563,13 @@ export class PlayerCombat {
     if (snapshot.dead && this.combatState !== 'dead') this.enterState('dead', 0.8);
     if (!snapshot.dead && this.combatState === 'dead') this.notifyRespawn();
     const remaining = Math.max(0, snapshot.hitstunUntil - snapshot.serverTimeMs) / 1_000;
-    if (remaining > 0) this.controller.applyStun(remaining);
+    if (remaining > 0 && !snapshot.dead) {
+      this.controller.applyStun(remaining);
+      // หยุดทั้งท่า/การร่าย ไม่ใช่เพียง input เดิน; ห้ามลด knockdown เดิม
+      if (this.combatState !== 'knockback' && this.combatState !== 'knockdown') {
+        this.enterState('stunned', Math.max(remaining, this.combatState === 'stunned' ? this.stateTimer : 0));
+      }
+    }
   }
 
   /** Respawn is authoritative and must immediately release stale local combat locks. */

@@ -1,3 +1,5 @@
+import { WORLD_MONSTER_HITSTUN_MS } from '../world/monsters.js';
+
 export interface PveIncomingAttack {
   amount: number;
   unblockable: boolean;
@@ -51,5 +53,9 @@ export function resolvePveIncomingDamage(
     }
   }
   state.hp = Math.max(0, state.hp - taken);
+  // ใช้จังหวะโดนตีเดิมของเกม; hit ใหม่ต่อเวลา แต่ไม่ลดสตันยาวจากโล่แตก
+  if (taken > 0 && state.hp > 0) {
+    state.hitstunUntil = Math.max(state.hitstunUntil, now + WORLD_MONSTER_HITSTUN_MS);
+  }
   return { state, taken, guardDamage, guardBroke, defeated: state.hp <= 0 };
 }
