@@ -84,19 +84,19 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:5173/ >/dev/null && break; sleep 1; done
           node scripts/monster-combat-visual-proof.mjs
           node scripts/combat-shader-cache-proof.mjs
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: combat-shader-cache-proof
           path: combat-shader-cache-proof/
           if-no-files-found: warn
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: monster-combat-visual-proof
           path: combat-visual-proof/
           if-no-files-found: warn
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v6
         with:
           name: pirate-client-dist
           path: client/dist
